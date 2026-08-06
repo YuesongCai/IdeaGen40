@@ -1,0 +1,4 @@
+# Runtime dependencies. Python >= 3.11 (uses zoneinfo and PEP 604 unions).
+requests>=2.31
+futu-api>=9.0          # market data only; the trade context is never opened
+pandas>=2.0            # required by futu-api's kline return type

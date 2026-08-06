@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------- secrets
+# Credentials never live in the repo. See README: they go in ~/.ideagen.env.
+.ideagen.env
+*.env
+
+# ---------------------------------------------------------------- generated
+data/ideagen.db
+data/ideagen.db-*
+data/logs/
+web/index.html
+web/report.json
+
+# ---------------------------------------------------- third-party content
+# This repository is public. The briefing pack embeds verbatim excerpts from
+# Wisburg's subscription research, and the Olive snapshots contain Nexus HK
+# product-shelf data (product codes, NAVs, yields). Neither is ours to
+# republish, so both stay local. Both are regenerable:
+#     python -m ideagen.cli ingest && python -m ideagen.cli score
+#     python -m ideagen.cli brief
+#     python -m ideagen.cli olive-ingest <your own capture>
+data/briefings/
+data/snapshots/
+
+# ---------------------------------------------------------------- python
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+venv/

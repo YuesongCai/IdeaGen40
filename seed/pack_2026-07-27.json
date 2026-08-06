@@ -1,0 +1,3344 @@
+{
+ "updatedIdeas": [
+  {
+   "id": 21,
+   "tool": "P/E FX",
+   "toolDesc": "P/E FX Strategy UCITS Fund · Olive L03028",
+   "vehicle": "私募 / UCITS",
+   "view": "欧美利率与日元政策继续分化时，用高波动外汇多空捕捉跨市场重定价",
+   "theme": "能源与政策",
+   "horizon": "1个月",
+   "action": "等待回撤",
+   "price": "NAV 999.32",
+   "entry": "较最新NAV回撤3%–5%后企稳，先投计划仓位的一半",
+   "take": "净收益达到+5%–7%分批；波动继续扩大时先收回本金",
+   "stop": "净值跌破建仓成本6%；或主要货币仓位与宏观分化方向持续相反",
+   "product": "The P/E FX Strategy Fund；底层 P/E FX Strategy UCITS Fund（L03028）",
+   "position": "初始0.5%，上限1.5%",
+   "thesis": "能源冲击重新拉开欧美政策路径，日元又接近政策干预区。外汇比股票更快反映利率差、资本流与政策沟通的变化。P/E FX承担高波动战术仓，回报空间来自货币分化，仓位上限负责控制模型反转和杠杆风险。",
+   "fit": "一个月内可由利差、汇率和策略NAV共同验证；只在回撤后建立小仓。",
+   "risk": "管理人净敞口、杠杆和申赎条款未完全公开，保守情景扩大下行幅度。",
+   "role": "宏观分化的高弹性表达",
+   "hurdle": 0.35,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     8,
+     2.5,
+     -5
+    ]
+   },
+   "conservative": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     6,
+     2,
+     -4
+    ]
+   },
+   "series": [
+    100,
+    101.4,
+    99.8,
+    104.2,
+    106.1,
+    103.5,
+    108.6,
+    111.2,
+    109.7,
+    114.8,
+    116.5,
+    119.1
+   ],
+   "source": "Olive MCP 已落盘产品记录与底层月末NAV"
+  },
+  {
+   "id": 29,
+   "tool": "KRE",
+   "toolDesc": "SPDR S&P Regional Banking ETF",
+   "vehicle": "ETF",
+   "view": "曲线陡峭与存款成本见顶改善区域银行净息差，信用损失仍是独立约束",
+   "theme": "久期与信用",
+   "horizon": "1个月",
+   "action": "可执行",
+   "price": "$75.73",
+   "entry": "$73–76分两笔；财报确认净息差稳定后补足",
+   "take": "$82–85分批；曲线继续陡峭而信用利差恶化时先减仓",
+   "stop": "日收盘低于$69.50；或存款外流、CRE拨备与融资成本同步恶化",
+   "product": "State Street SPDR S&P Regional Banking ETF（KRE）",
+   "position": "初始1.5%，上限3%",
+   "thesis": "长端利率维持高位、短端不再上移时，银行资产收益率重定价有机会快过负债成本。KRE把这条传导集中到区域银行；当前价格仍低于前高，财报可以在一个月内验证净息差与信用成本。",
+   "fit": "价格、曲线与财报可同时验证，入场后不需要等待半年叙事。",
+   "risk": "曲线陡峭也可能来自期限溢价和融资压力，CRE损失会抵消净息差改善。",
+   "role": "久期高位下的银行盈利分支",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     8,
+     2.5,
+     -6
+    ]
+   },
+   "conservative": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     6,
+     2,
+     -6
+    ]
+   },
+   "series": [
+    100,
+    106.2,
+    103.1,
+    100.5,
+    107.7,
+    107.4,
+    115.5,
+    116.8
+   ],
+   "source": "State Street / YFinance"
+  },
+  {
+   "id": 4,
+   "tool": "XLE",
+   "toolDesc": "Energy Select Sector SPDR ETF",
+   "vehicle": "ETF",
+   "view": "供给缺口维持时保留美国能源生产商，油价失守后迅速退出",
+   "theme": "能源与政策",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "price": "$59.62",
+   "entry": "$56.50–58.50回踩企稳；或Brent重回$100且库存缺口扩大",
+   "take": "$64–67分批；油价进入加速段后采用移动止盈",
+   "stop": "日收盘低于$54.80；或Brent跌破$85且库存缺口快速收窄",
+   "product": "State Street Energy Select Sector SPDR ETF（XLE）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "原油与成品油库存仍低于季节常态，能源价格继续影响通胀与政策利率。XLE过去一年已经上涨，当前赔率依赖供给缺口继续存在。价格回踩与库存再度恶化缺一不可。",
+   "fit": "油价、库存和ETF价格每天更新，适合条件式战术交易。",
+   "risk": "停火、航运恢复或需求走弱会同时压低油价和盈利预期。",
+   "role": "供给冲击的直接权益表达",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     8,
+     1,
+     -8
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     40,
+     35
+    ],
+    "r": [
+     5,
+     0,
+     -10
+    ]
+   },
+   "series": [
+    44.71,
+    51.05,
+    55.92,
+    61.26,
+    59.65,
+    56.29,
+    53.11,
+    59.62
+   ],
+   "source": "State Street / EIA / YFinance"
+  },
+  {
+   "id": 9,
+   "tool": "QUAL",
+   "toolDesc": "iShares MSCI USA Quality Factor ETF",
+   "vehicle": "ETF",
+   "view": "AI资本开支进入回报验证期后，持有利润率、低杠杆与现金流质量",
+   "theme": "盈利兑现",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$216.81",
+   "entry": "$207–213分两笔；或财报后盈利上修范围扩大",
+   "take": "$232–240分批；相对QQQ超额收益超过8个百分点后降低仓位",
+   "stop": "日收盘低于$199；或质量因子盈利预期与自由现金流同步下修",
+   "product": "BlackRock iShares MSCI USA Quality Factor ETF（QUAL）",
+   "position": "初始2%，上限4%",
+   "thesis": "资本成本上升后，订单能否转化为利润和自由现金流决定估值能否维持。QUAL用高ROE、稳定盈利与低杠杆过滤美国大盘，降低组合对单一AI叙事和巨头估值扩张的依赖。",
+   "fit": "六个月覆盖两个财报季，能观察盈利上修与价格反应。",
+   "risk": "市场重新奖励高杠杆与长久期成长时，质量因子可能相对落后。",
+   "role": "盈利兑现阶段的核心beta",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     12,
+     6,
+     -10
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     50,
+     25
+    ],
+    "r": [
+     8,
+     3,
+     -13
+    ]
+   },
+   "series": [
+    198.62,
+    202.42,
+    204.86,
+    191.81,
+    207.25,
+    215.49,
+    219.43,
+    216.81
+   ],
+   "source": "BlackRock / YFinance"
+  },
+  {
+   "id": 7,
+   "tool": "PAVE",
+   "toolDesc": "Global X U.S. Infrastructure Development ETF",
+   "vehicle": "ETF",
+   "view": "电网、设备与工程订单承接AI和制造业资本开支，价格回落后再配置",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$57.69",
+   "entry": "$53–56分两笔；订单与自由现金流至少一项继续上修",
+   "take": "$64–68分批；估值扩张快过盈利上修时降低仓位",
+   "stop": "日收盘低于$50.50；或设备订单、工程积压与利润率同步转弱",
+   "product": "Global X U.S. Infrastructure Development ETF（PAVE）",
+   "position": "初始1.5%，上限3%",
+   "thesis": "AI投资已经从GPU扩散到电网、设备、工程和供电。PAVE覆盖能够把资本开支转成订单的基础设施公司。过去一年涨幅提高了入价程度，回踩与订单确认决定当前节点的收益性价比。",
+   "fit": "两个财报季可验证订单、积压和利润率，产品流动性充足。",
+   "risk": "融资成本上升、项目延期和材料价格上涨会压缩现金回报。",
+   "role": "AI资本开支的基础设施传导",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     15,
+     5,
+     -13
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     8,
+     1,
+     -17
+    ]
+   },
+   "series": [
+    47.79,
+    50.75,
+    55.09,
+    50.81,
+    56.79,
+    56.31,
+    58.92,
+    57.69
+   ],
+   "source": "Global X / YFinance"
+  },
+  {
+   "id": 33,
+   "tool": "XOP",
+   "toolDesc": "SPDR S&P Oil & Gas Exploration & Production ETF",
+   "vehicle": "ETF",
+   "view": "油价再度突破时用勘探生产商放大经营杠杆，避免在区间中部追价",
+   "theme": "能源与政策",
+   "horizon": "1个月",
+   "action": "等待突破",
+   "price": "$174.05",
+   "entry": "$163–169回踩；或收盘高于$181且Brent同步突破",
+   "take": "$190–200分批",
+   "stop": "日收盘低于$157；或油价与生产商盈利预期同时下修",
+   "product": "State Street SPDR S&P Oil & Gas Exploration & Production ETF（XOP）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "XOP对油价和上游资本纪律的弹性高于综合能源股，适合供应冲击的加速阶段。过去一年涨幅和较大回撤都说明路径风险高，当前只接受回踩或油价确认后的交易。",
+   "fit": "一个月窗口能用油价突破、库存和盈利预期快速验证。",
+   "risk": "高beta会放大停火、需求走弱与成本上升的冲击。",
+   "role": "能源供给冲击的高弹性仓",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     10,
+     2,
+     -10
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     40,
+     35
+    ],
+    "r": [
+     6,
+     0,
+     -12
+    ]
+   },
+   "series": [
+    126.26,
+    140.24,
+    153.72,
+    181.83,
+    178.21,
+    163.99,
+    154.26,
+    174.05
+   ],
+   "source": "State Street / YFinance"
+  },
+  {
+   "id": 2,
+   "tool": "USMV",
+   "toolDesc": "iShares MSCI USA Min Vol Factor ETF",
+   "vehicle": "ETF",
+   "view": "盈利尚稳而风险溢价偏薄时，降低美国权益波动与集中度",
+   "theme": "盈利兑现",
+   "horizon": "1个月",
+   "action": "替换部分beta",
+   "price": "$96.95",
+   "entry": "$94–97等额替换SPY敞口",
+   "take": "相对SPY跑赢4–6个百分点后分批回收",
+   "stop": "相对SPY连续20个交易日落后5个百分点，且市场波动回到低位",
+   "product": "BlackRock iShares MSCI USA Min Vol Factor ETF（USMV）",
+   "position": "仅替换现有美国大盘敞口，上限3%",
+   "thesis": "美股盈利仍有支撑，估值与信用补偿减少了容错。USMV保留美国权益参与度，同时降低高beta和个股集中风险。它的预期收益上限有限，定位是一个月的结构调整。",
+   "fit": "交易目的和退出条件清楚，适合替换而非新增总beta。",
+   "risk": "风险偏好快速回升时，低波动组合会明显落后。",
+   "role": "盈利兑现前的beta降档",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     4,
+     1,
+     -4
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     2,
+     0.3,
+     -5
+    ]
+   },
+   "series": [
+    94.16,
+    94.99,
+    97.81,
+    92.74,
+    94.64,
+    96.6,
+    96.46,
+    96.95
+   ],
+   "source": "BlackRock / YFinance"
+  },
+  {
+   "id": 8,
+   "tool": "POINT72 TURION",
+   "toolDesc": "Point72 Turion Onshore, L.P. · AI股票多空",
+   "vehicle": "私募",
+   "view": "AI产业内部胜负差扩大时，用基本面股票多空获取选股收益",
+   "theme": "盈利兑现",
+   "horizon": "6个月",
+   "action": "准入与份额复核",
+   "price": "季度NAV",
+   "entry": "确认新份额、季度流动性与65天通知期；净值未处高水位急升阶段再申购",
+   "take": "六个月净收益达到+10%–12%后降低一半；alpha来源转为净beta时退出",
+   "stop": "滚动三个月alpha转负且净beta升至0.5以上；或回撤达到10%",
+   "product": "Point72 Turion Onshore, L.P.",
+   "position": "初始1%，上限2.5%",
+   "thesis": "AI资本开支进入回报验证后，产业链公司之间的订单、利润和现金流差异会扩大。Turion聚焦AI股票多空，公开审计材料显示季度赎回与65天通知，外部报道记录其早期强劲业绩。保守情景已经计入短历史、持仓不透明和高水位风险。",
+   "fit": "多空结构能把AI主题从方向beta转为选股alpha，六个月覆盖两个业绩季。",
+   "risk": "成立时间短、持仓不公开，强历史业绩可能包含AI风格beta与拥挤交易。",
+   "role": "AI盈利分化的主动alpha",
+   "hurdle": 2.52,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     15,
+     8,
+     -8
+    ]
+   },
+   "conservative": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     10,
+     5,
+     -10
+    ]
+   },
+   "source": "UBS A&Q audited holdings / Bloomberg manager coverage"
+  },
+  {
+   "id": 30,
+   "tool": "AB MORTGAGE",
+   "toolDesc": "AB FCP I Mortgage Income Portfolio · LU1021288185",
+   "vehicle": "公募",
+   "view": "增长与油价降温后，用短久期证券化信用获取票息与利率回落收益",
+   "theme": "久期与信用",
+   "horizon": "6个月",
+   "action": "等待利率触发",
+   "price": "NAV约$23.6",
+   "entry": "10年美债回到4.45%以下；NAV回撤2%内分两笔",
+   "take": "六个月净收益+5%–7%分批",
+   "stop": "信用利差扩至400bp且证券化资产基本面同步恶化；或NAV回撤7%",
+   "product": "AB FCP I Mortgage Income Portfolio A2 USD Acc（LU1021288185）",
+   "position": "初始1%，上限3%",
+   "thesis": "基金的久期约2年，收益来自非机构RMBS、CLO、CMBS和票息，利率敏感度低于长债。当前信用利差偏窄限制上行，只有增长与油价先降温，票息和利率回落才具备更好的组合赔率。",
+   "fit": "日度公募适合六个月观察，资产组合比纯长久期更抗利率波动。",
+   "risk": "证券化信用下行时，票息无法覆盖利差扩张和流动性折价。",
+   "role": "宽松分支的短久期信用",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     7,
+     4,
+     -6
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     50,
+     30
+    ],
+    "r": [
+     5,
+     2,
+     -8
+    ]
+   },
+   "source": "AllianceBernstein factsheet / Olive public-fund record"
+  },
+  {
+   "id": 1,
+   "tool": "DBMF",
+   "toolDesc": "iMGP DBi Managed Futures Strategy ETF",
+   "vehicle": "ETF",
+   "view": "趋势持续时用规则化CTA复制分散股债、外汇与商品方向风险",
+   "theme": "能源与政策",
+   "horizon": "1个月",
+   "action": "CTA流动基准",
+   "price": "$31.41",
+   "entry": "$30.80–31.40分两笔；同时核对直接CTA的当前暴露",
+   "take": "$33–34分批；趋势反转信号增加时先降仓",
+   "stop": "日收盘低于$30.30；或复制滞后扩大且主要趋势同步反转",
+   "product": "iMGP DBi Managed Futures Strategy ETF（DBMF）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "DBMF根据大型CTA的滞后收益反推共同仓位，属于主动规则型 managed futures ETF。它能提供日内流动和跨资产趋势敞口，模型复制、约60日观察窗与0.85%费用决定它只能作为直接CTA的流动基准。",
+   "fit": "当前宏观同时影响油价、利率和美元，多资产趋势具备分散价值。",
+   "risk": "市场快速反转会让滞后复制同时失去方向和入场价格。",
+   "role": "跨资产趋势的流动fallback",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     4,
+     1,
+     -4
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     2,
+     0.2,
+     -5
+    ]
+   },
+   "series": [
+    28.06,
+    29.19,
+    31.47,
+    30.15,
+    30.56,
+    31,
+    30.61,
+    31.41
+   ],
+   "source": "iMGP / YFinance"
+  },
+  {
+   "id": 17,
+   "tool": "COPX",
+   "toolDesc": "Global X Copper Miners ETF",
+   "vehicle": "ETF",
+   "view": "电网与数据中心铜需求延续时配置铜矿，回避已经过度扩张的价格",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$77.72",
+   "entry": "$70–75分两笔；铜库存与矿山供应至少一项继续收紧",
+   "take": "$88–95分批",
+   "stop": "日收盘低于$65；或铜库存、美元与矿山供应同时转向不利",
+   "product": "Global X Copper Miners ETF（COPX）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "AI与电气化增加电网、输配电和数据中心的铜需求。COPX过去一年涨幅很高，矿山股仍受成本、政治与资本开支约束。赔率主要来自回踩后的供需再确认。",
+   "fit": "六个月能观察库存、矿山产量与资本开支传导。",
+   "risk": "中国需求走弱、美元走强和成本上升会放大矿山股回撤。",
+   "role": "AI基础设施的材料瓶颈",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     18,
+     5,
+     -18
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     10,
+     0,
+     -25
+    ]
+   },
+   "series": [
+    71.79,
+    84.81,
+    95.7,
+    76.35,
+    79.61,
+    88.14,
+    76.97,
+    77.72
+   ],
+   "source": "Global X / YFinance"
+  },
+  {
+   "id": 6,
+   "tool": "XLU",
+   "toolDesc": "Utilities Select Sector SPDR ETF",
+   "vehicle": "ETF",
+   "view": "电力需求与受监管资本开支上升时配置公用事业，接受利率敏感度",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$46.29",
+   "entry": "$43.50–45.50分两笔；负荷增长与资本开支指引保持上修",
+   "take": "$50–52分批",
+   "stop": "日收盘低于$41.80；或真实利率继续上升且盈利指引下修",
+   "product": "State Street Utilities Select Sector SPDR ETF（XLU）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "数据中心把AI需求传导到发电、输电和配电。XLU的受监管资产回报与资本开支提供较稳定的盈利路径，长久期属性仍会受到真实利率压制。",
+   "fit": "六个月能同时观察电力负荷、监管回报和利率。",
+   "risk": "融资成本上升速度可能快过电价和允许回报的调整。",
+   "role": "AI电力需求的低波动表达",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     12,
+     5,
+     -10
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     7,
+     1,
+     -13
+    ]
+   },
+   "series": [
+    42.69,
+    43.25,
+    47.73,
+    45.89,
+    46.85,
+    44.42,
+    45.34,
+    46.29
+   ],
+   "source": "State Street / YFinance"
+  },
+  {
+   "id": 22,
+   "tool": "AQR DELPHI",
+   "toolDesc": "AQR Delphi Long-Short Equity UCITS Fund · Olive L02907",
+   "vehicle": "公募 / UCITS",
+   "view": "高资本成本扩大质量与估值差异时，用系统股票多空获取相对收益",
+   "theme": "盈利兑现",
+   "horizon": "6个月",
+   "action": "可执行",
+   "price": "NAV 123.87",
+   "entry": "NAV附近分两笔；先复核份额、费用与约0.5 beta",
+   "take": "六个月净收益+6%–8%分批；alpha稳定可留一半",
+   "stop": "三个月相对现金收益转负且beta升至0.7以上；或NAV回撤8%",
+   "product": "AQR Delphi Long-Short Equity UCITS Fund（L02907）",
+   "position": "初始1.5%，上限3%",
+   "thesis": "盈利兑现阶段会扩大股票之间的质量、估值和融资差异。Delphi用系统信号建立全球多空组合，约0.5 beta带来有限方向敞口。已落盘的一年收益和回撤处于可控范围，评分仍扣除了费用、模型拥挤和beta上升风险。",
+   "fit": "六个月覆盖足够的横截面分化，UCITS结构便于执行。",
+   "risk": "价值、质量和动量信号可能同时失效，约0.5 beta也会放大市场回撤。",
+   "role": "盈利分化的系统多空",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     10,
+     6,
+     -4
+    ]
+   },
+   "conservative": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     7,
+     4,
+     -6
+    ]
+   },
+   "series": [
+    100,
+    100.8,
+    101.5,
+    102.1,
+    103,
+    104.2,
+    103.6,
+    105.4,
+    106.1,
+    105.7,
+    106.6,
+    107.3
+   ],
+   "source": "Olive L02907 / AQR official materials"
+  },
+  {
+   "id": 27,
+   "tool": "CIBR",
+   "toolDesc": "First Trust Nasdaq Cybersecurity ETF",
+   "vehicle": "ETF",
+   "view": "AI扩散提高网络攻击面，优先选择订阅收入与现金流能够兑现的网络安全公司",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$88.40",
+   "entry": "$80–85回踩；或行业续费率与自由现金流继续上修",
+   "take": "$98–104分批",
+   "stop": "日收盘低于$75；或订单、续费和自由现金流同步转弱",
+   "product": "First Trust Nasdaq Cybersecurity ETF（CIBR）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "AI Agent和云迁移扩大身份、数据与网络安全支出。CIBR过去一年上涨并经历较大回撤，当前需用续费率、订单和现金流筛选真实需求。",
+   "fit": "六个月覆盖两个财报季，能验证订阅增长和利润兑现。",
+   "risk": "估值仍高，项目延迟和竞争加剧会带来双重压缩。",
+   "role": "AI扩散的安全预算",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     14,
+     5,
+     -15
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     8,
+     1,
+     -20
+    ]
+   },
+   "series": [
+    71.45,
+    69.06,
+    62.91,
+    62.68,
+    67.45,
+    89.04,
+    89.85,
+    88.4
+   ],
+   "source": "First Trust / YFinance"
+  },
+  {
+   "id": 16,
+   "tool": "SMD-AM JAPAN",
+   "toolDesc": "Japan Equity High Conviction Fund · Olive L03242",
+   "vehicle": "私募 / UCITS",
+   "view": "日股回撤后买企业盈利、治理与资本配置改善，减少单一汇率押注",
+   "theme": "日本政策重置",
+   "horizon": "6个月",
+   "action": "可执行",
+   "price": "NAV 157.22",
+   "entry": "NAV附近先投2%；若TOPIX回撤5%–7%且盈利修正未转负再加",
+   "take": "绝对收益+12%–15%分批；相对TOPIX超额超过2.5个百分点保留核心",
+   "stop": "三个月跑输TOPIX 6个百分点；或盈利质量、设备订单和治理改善中两项转弱",
+   "product": "SMD-AM Japan Equity High Conviction Fund（L03242）",
+   "position": "初始2%，上限4%",
+   "thesis": "日本企业盈利、设备订单、治理和资本配置仍形成独立驱动。主动基金约30只高信念股票，能够避开只靠日元贬值的出口beta。当前机会来自日股回撤后的盈利兑现，BOJ与汇率仍是主要风险。",
+   "fit": "六个月覆盖BOJ沟通、两个业绩季与企业资本配置变化。",
+   "risk": "日元升值、利率上行和主动选股失误会同时拖累相对收益。",
+   "role": "日本盈利与治理重估",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     30,
+     50,
+     20
+    ],
+    "r": [
+     14,
+     6,
+     -14
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     50,
+     30
+    ],
+    "r": [
+     10,
+     3,
+     -18
+    ]
+   },
+   "source": "Olive L03242 / SMD-AM KFS / Wisburg Japan Daily"
+  },
+  {
+   "id": 31,
+   "tool": "MANULIFE SEMI",
+   "toolDesc": "Manulife Global Semiconductor Opportunities AA USD Inc · LU0274383776",
+   "vehicle": "公募",
+   "view": "用全球主动半导体基金分散单一国家风险，等待估值和价格回撤",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "NAV约$6.4",
+   "entry": "同一份额NAV回撤8%–10%且订单未转弱；下单前复核最新NAV",
+   "take": "六个月净收益+12%–15%分批",
+   "stop": "NAV回撤15%；或订单、利润率与自由现金流同步下修",
+   "product": "Manulife Global Fund Global Semiconductor Opportunities AA USD Inc（LU0274383776）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "基金分散配置美国、日本与半导体设备/IP环节，降低中国单一政策风险。近期强劲表现显著提高入价程度，产品更适合作为回撤后的六个月候选。",
+   "fit": "主动选股可覆盖AI互联、设备和存储等细分差异。",
+   "risk": "同一份额NAV口径需要复核；半导体周期和估值压缩会放大回撤。",
+   "role": "全球半导体主动选股",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     16,
+     4,
+     -20
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     8,
+     0,
+     -25
+    ]
+   },
+   "source": "Manulife official factsheet / Olive public-fund record"
+  },
+  {
+   "id": 10,
+   "tool": "KWEB",
+   "toolDesc": "KraneShares CSI China Internet ETF",
+   "vehicle": "ETF",
+   "view": "中国互联网大幅回撤后，用低仓位等待盈利与资金流共同改善",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "可小仓试错",
+   "price": "$26.29",
+   "entry": "$24.50–26.50分两笔；主动资金流或盈利上修出现一项即可首仓",
+   "take": "$31–34分批",
+   "stop": "日收盘低于$22.50；或盈利、回购与资金流同步转弱",
+   "product": "KraneShares CSI China Internet ETF（KWEB）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "KWEB过去一年大幅下跌，入价程度明显低于多数AI资产。政策与竞争风险仍高，当前优势来自较低价格与盈利/回购潜在改善。小仓试错比等待全面牛市证据更符合战术目标。",
+   "fit": "价格处于低位，六个月能够观察盈利、回购和资金流。",
+   "risk": "政策、竞争与地缘风险会让估值折价长期存在。",
+   "role": "中国互联网的高弹性反转",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     22,
+     8,
+     -18
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     14,
+     4,
+     -24
+    ]
+   },
+   "series": [
+    34.05,
+    35.38,
+    31.06,
+    28.43,
+    28.77,
+    26.73,
+    24.47,
+    26.29
+   ],
+   "source": "KraneShares / YFinance"
+  },
+  {
+   "id": 13,
+   "tool": "FIDELITY CHINA FOCUS",
+   "toolDesc": "Fidelity Funds China Focus Fund A-USD",
+   "vehicle": "公募",
+   "view": "用主动选股承接中国盈利修复，控制指数中低质量与政策敏感暴露",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "可执行",
+   "price": "按最新日度NAV",
+   "entry": "NAV附近分两笔；首仓后观察盈利上修和主动资金流",
+   "take": "六个月净收益+12%–15%分批",
+   "stop": "NAV回撤12%；或主动超额与盈利修正连续三个月转负",
+   "product": "Fidelity Funds China Focus Fund A-USD",
+   "position": "初始1.5%，上限3%",
+   "thesis": "中国资产仍呈结构性分化，盈利、回购和政策受益行业比全面指数更值得配置。主动基金能够调整国企、互联网、消费与制造的权重，评分同时扣除管理费和风格漂移风险。",
+   "fit": "日度公募执行方便，六个月覆盖政策与两个业绩季。",
+   "risk": "主动持仓可能集中，风格和政策判断错误会扩大相对回撤。",
+   "role": "中国盈利修复的主动表达",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     18,
+     8,
+     -15
+    ]
+   },
+   "conservative": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     12,
+     5,
+     -18
+    ]
+   },
+   "source": "Fidelity International official factsheet"
+  },
+  {
+   "id": 34,
+   "tool": "GOLDEN CHINA",
+   "toolDesc": "Greenwoods Golden China Fund",
+   "vehicle": "私募",
+   "view": "中国资产低位分化时，用成熟长短仓管理人获取选股与风险控制收益",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "准入复核后执行",
+   "price": "季度NAV",
+   "entry": "确认可售份额、净敞口、季度流动性与65天通知；NAV未出现单季急升",
+   "take": "六个月净收益+12%–15%分批；alpha稳定可保留一半",
+   "stop": "NAV回撤12%；或净beta、风格暴露与主动超额同时恶化",
+   "product": "Greenwoods Golden China Fund",
+   "position": "初始1.5%，上限3%",
+   "thesis": "中国市场的政策、行业与个股分化为长短仓提供更丰富的相对价值。Golden China具有长周期管理记录，当前价格与宏观主题提供低位窗口。保守情景已经加入季度流动性、持仓不透明与管理人风格变化。",
+   "fit": "六个月适合观察选股alpha，季度申赎仍可满足窗口。",
+   "risk": "管理人持仓和净敞口不透明，强历史记录无法消除政策和流动性风险。",
+   "role": "中国资产的长短仓alpha",
+   "hurdle": 2.52,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     20,
+     9,
+     -12
+    ]
+   },
+   "conservative": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     15,
+     7,
+     -12
+    ]
+   },
+   "source": "Greenwoods fund filing / Olive shelf reference"
+  },
+  {
+   "id": 18,
+   "tool": "ROBECO SMART ENERGY",
+   "toolDesc": "RobecoSAM Smart Energy Equities E EUR · LU2145462052",
+   "vehicle": "公募",
+   "view": "电网、储能与能效订单继续增长时，用全球主动基金覆盖欧洲电气化",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "只等回撤",
+   "price": "按最新日度NAV",
+   "entry": "NAV回撤8%–12%且订单与利润率未转弱",
+   "take": "六个月净收益+12%–15%分批",
+   "stop": "NAV回撤15%；或电网、储能与能效盈利预期同步下修",
+   "product": "RobecoSAM Smart Energy Equities E EUR（LU2145462052）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "产品覆盖清洁能源、电网储能、能源管理和数据中心效率，规模满足公募筛选。近一年涨幅约90%显著压缩当前赔率，只有价格回撤且订单保持才能恢复安全边际。",
+   "fit": "主题匹配AI电力传导，主动基金能跨地区选股。",
+   "risk": "高估值与高管理费会放大订单稍弱时的净值回撤。",
+   "role": "电气化与能效的主动篮子",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     14,
+     4,
+     -18
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     7,
+     0,
+     -24
+    ]
+   },
+   "source": "Robeco official product page"
+  },
+  {
+   "id": 15,
+   "tool": "AQR ADAPTIVE MARKET NEUTRAL",
+   "toolDesc": "AQR Adaptive Equity Market Neutral UCITS IAU1 USD · LU2805323800",
+   "vehicle": "公募 / UCITS",
+   "view": "市场广度和个股分化扩大时，用低净beta系统选股获取现金以上回报",
+   "theme": "盈利兑现",
+   "horizon": "6个月",
+   "action": "观察后执行",
+   "price": "NAV $121.77",
+   "entry": "NAV附近分两笔；先确认当前净beta、总敞口与费用",
+   "take": "六个月净收益+5%–7%分批",
+   "stop": "NAV回撤7%；或三个月低于现金且beta升至0.3以上",
+   "product": "AQR Adaptive Equity Market Neutral UCITS IAU1 USD Acc（LU2805323800）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "基金用大量基本面、价格与行为信号建立约3000只股票的多空组合，目标低市场beta。2026年短期表现仍有限，历史较短，当前优势来自与股债低相关和盈利分化环境，不能依靠产品标签给出高等级。",
+   "fit": "UCITS日度NAV便于执行，六个月能观察现金以上alpha。",
+   "risk": "新UCITS历史短，交易成本、信号拥挤和模型失效会侵蚀收益。",
+   "role": "盈利分化的纯市场中性",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     8,
+     5,
+     -3
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     5,
+     2.5,
+     -5
+    ]
+   },
+   "source": "AQR official / LU2805323800 public NAV"
+  },
+  {
+   "id": 14,
+   "tool": "PRIVATE CREDIT SECONDARIES",
+   "toolDesc": "高级担保二级份额 / Distressed sleeve",
+   "vehicle": "私募策略",
+   "view": "只有真实NAV折价和现金回收可验证时，参与私募信贷二级折价",
+   "theme": "久期与信用",
+   "horizon": "6个月",
+   "action": "等待具体折价",
+   "price": "按NAV折价报价",
+   "entry": "NAV折价至少15%–20%；高级担保、非PIK依赖且六个月有现金回收路径",
+   "take": "折价收窄一半或实现8%–10%净收益后分批",
+   "stop": "底层现金流恶化、PIK资本化加速、估值政策变化或赎回条款收紧",
+   "product": "Olive货架 Private Credit Secondaries / Distressed 候选，逐单映射",
+   "position": "单笔0.5%–1%，组合上限2%",
+   "thesis": "公开信用利差偏窄时，普通票息缺少安全边际。二级私募信贷只有在真实折价、优先担保和现金回收同时存在时才具备战术价值。产品未出现合格报价前，观点保持等待。",
+   "fit": "六个月能观察折价回收，前提是不存在更长硬锁与资本调用错配。",
+   "risk": "管理人估值平滑、PIK收入和回收延期会让表面折价失真。",
+   "role": "信用错价的折价回收",
+   "hurdle": 3.02,
+   "central": {
+    "p": [
+     30,
+     50,
+     20
+    ],
+    "r": [
+     9,
+     6,
+     -4
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     6,
+     3,
+     -8
+    ]
+   },
+   "source": "Olive strategy screen; product remains deal-specific"
+  },
+  {
+   "id": 35,
+   "tool": "RSP",
+   "toolDesc": "Invesco S&P 500 Equal Weight ETF",
+   "vehicle": "ETF",
+   "view": "盈利扩散到非巨头公司时，用等权指数降低美股集中度",
+   "theme": "盈利兑现",
+   "horizon": "6个月",
+   "action": "等待相对强度",
+   "price": "$213.57",
+   "entry": "$207–211回踩；或相对SPY的20日趋势转强",
+   "take": "$230–236分批；相对SPY超额达到6个百分点后降仓",
+   "stop": "日收盘低于$199；或市场广度与盈利扩散继续恶化",
+   "product": "Invesco S&P 500 Equal Weight ETF（RSP）",
+   "position": "初始1%，上限3%",
+   "thesis": "美股巨头估值和AI资本开支提高了集中度风险。RSP只有在盈利上修扩散、市场广度改善时才具备更好的相对赔率，当前价格已部分确认经济韧性。",
+   "fit": "六个月覆盖盈利扩散和指数再平衡。",
+   "risk": "高利率会压制中型公司，巨头继续领涨时等权长期落后。",
+   "role": "美国盈利广度的表达",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     11,
+     5,
+     -11
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     6,
+     1,
+     -15
+    ]
+   },
+   "series": [
+    191.56,
+    198.08,
+    204.97,
+    191.92,
+    203.44,
+    208.83,
+    212.77,
+    213.57
+   ],
+   "source": "Invesco / YFinance"
+  },
+  {
+   "id": 36,
+   "tool": "AMLP",
+   "toolDesc": "Alerian MLP ETF",
+   "vehicle": "ETF",
+   "view": "能源维持高位时，用中游管道现金流降低对单日油价的依赖",
+   "theme": "能源与政策",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$54.99",
+   "entry": "$52–54回踩；主要成分分派和运输量保持稳定",
+   "take": "$59–62分批",
+   "stop": "日收盘低于$49.80；或分派、运输量和资本开支指引同步下修",
+   "product": "Alerian MLP ETF（AMLP）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "中游管道更依赖运输量和合同现金流，油价方向敏感度低于上游。能源供应风险和现金分派提供六个月carry，税务结构与利率敏感度限制估值扩张。",
+   "fit": "六个月能观察分派、运输量与资本开支。",
+   "risk": "需求走弱、融资成本上升和税务结构会侵蚀现金回报。",
+   "role": "能源高位的现金流表达",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     10,
+     5,
+     -9
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     6,
+     2,
+     -12
+    ]
+   },
+   "series": [
+    47.02,
+    50.03,
+    52.04,
+    52.64,
+    54.12,
+    51.6,
+    51.85,
+    54.99
+   ],
+   "source": "Alerian / YFinance"
+  },
+  {
+   "id": 37,
+   "tool": "BKLN",
+   "toolDesc": "Invesco Senior Loan ETF",
+   "vehicle": "ETF",
+   "view": "利率高位时保留浮息carry，信用利差过窄限制新增仓位",
+   "theme": "久期与信用",
+   "horizon": "1个月",
+   "action": "仅观察",
+   "price": "$20.39",
+   "entry": "$20.15–20.30且贷款折价扩大、违约预期未上修",
+   "take": "含分派总收益+2%–3%后退出",
+   "stop": "日收盘低于$19.95；或贷款价格、回收率与信用利差同步恶化",
+   "product": "Invesco Senior Loan ETF（BKLN）",
+   "position": "上限1.5%",
+   "thesis": "浮息贷款降低久期，当前主要收益来自carry。信用利差和贷款价格提供的安全边际有限，只有折价扩大且违约预期稳定时才值得投入战术仓。",
+   "fit": "一个月可以快速观察折价、分派与信用压力。",
+   "risk": "低质量借款人再融资压力会让浮息优势转为信用损失。",
+   "role": "高利率下的短久期carry",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     1.5,
+     0.7,
+     -2
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     0.8,
+     0.2,
+     -3
+    ]
+   },
+   "series": [
+    21,
+    20.74,
+    20.21,
+    20.41,
+    20.58,
+    20.47,
+    20.37,
+    20.39
+   ],
+   "source": "Invesco / YFinance; chart excludes distributions"
+  },
+  {
+   "id": 38,
+   "tool": "XLV",
+   "toolDesc": "Health Care Select Sector SPDR ETF",
+   "vehicle": "ETF",
+   "view": "医疗现金流提供防守增长，降低组合对AI资本开支的单一依赖",
+   "theme": "盈利兑现",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$162.57",
+   "entry": "$156–160回踩；行业盈利上修范围扩大后分两笔",
+   "take": "$174–180分批",
+   "stop": "日收盘低于$151；或医药、器械与保险盈利预期同时下修",
+   "product": "State Street Health Care Select Sector SPDR ETF（XLV）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "医疗的现金流和需求稳定性可在高资本成本环境中提供盈利防守。价格已上涨，当前更适合等待回踩和行业盈利扩散。",
+   "fit": "六个月能观察药品、器械和保险多个子行业的盈利。",
+   "risk": "政策、药价与保险赔付率变化会压低估值和利润。",
+   "role": "非AI盈利防守",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     10,
+     5,
+     -9
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     6,
+     1,
+     -12
+    ]
+   },
+   "series": [
+    154.8,
+    154.74,
+    160.2,
+    146.61,
+    145.99,
+    149.47,
+    158.66,
+    162.57
+   ],
+   "source": "State Street / YFinance"
+  },
+  {
+   "id": 39,
+   "tool": "PIMCO GLOBAL IG",
+   "toolDesc": "PIMCO GIS Global Investment Grade Credit E-INC USD · IE00B2R34T20",
+   "vehicle": "公募",
+   "view": "科技新券让利出现后，用主动IG组合获取carry，当前不把宽基基金当作科技纯表达",
+   "theme": "久期与信用",
+   "horizon": "6个月",
+   "action": "等待新券让利",
+   "price": "NAV约$12.38",
+   "entry": "3–7年科技新券让利至少10bp；基金组合久期与利差风险未明显上升",
+   "take": "六个月总回报+4%–6%分批",
+   "stop": "利差压至60bp以下；或资本开支、净债务与自由现金流同步恶化",
+   "product": "PIMCO GIS Global Investment Grade Credit Fund E-INC USD（IE00B2R34T20）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "AI公司增加债券融资，强现金流发行人可能提供新券让利。PIMCO产品是宽基IG主动组合，无法精确复制科技新券；因此只在市场出现真实让利后作为可执行公募，评分反映了表达稀释。",
+   "fit": "六个月能获取carry和roll-down，产品日度流动。",
+   "risk": "宽基组合包含非科技信用，当前利差偏窄且久期仍受供给冲击。",
+   "role": "科技融资的宽基信用代理",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     6,
+     3,
+     -5
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     4,
+     1,
+     -7
+    ]
+   },
+   "source": "PIMCO official product record"
+  },
+  {
+   "id": 26,
+   "tool": "URA",
+   "toolDesc": "Global X Uranium ETF",
+   "vehicle": "ETF",
+   "view": "电力需求增长与核电重启支持铀链，较大回撤改善入价程度",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "price": "$39.89",
+   "entry": "$37–40分两笔；公用事业采购与供应纪律保持",
+   "take": "$47–52分批",
+   "stop": "日收盘低于$34；或长期合同价格与核电项目进度同步转弱",
+   "product": "Global X Uranium ETF（URA）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "数据中心和电气化提高稳定基荷电力价值，核电重启与燃料采购支持铀链。URA过去一年回撤显著，入价程度改善；高波动和政策风险仍要求小仓。",
+   "fit": "六个月能观察长期合同、采购与项目进展。",
+   "risk": "矿山增产、政策变化和高beta会放大下行。",
+   "role": "AI电力需求的核能分支",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     20,
+     8,
+     -18
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     12,
+     3,
+     -24
+    ]
+   },
+   "series": [
+    42.73,
+    54.99,
+    54.34,
+    48.43,
+    56.42,
+    50.76,
+    43.7,
+    39.89
+   ],
+   "source": "Global X / YFinance"
+  },
+  {
+   "id": 24,
+   "tool": "METI",
+   "toolDesc": "Macquarie Energy Transition Infrastructure Fund · X03368系列",
+   "vehicle": "私募",
+   "view": "运营型能源转型基础设施提供合同现金流，季度赎回限制仓位",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "低流动观察仓",
+   "price": "NAV 123.61（2026-05）",
+   "entry": "NAV附近小仓；确认季度赎回、5%上限与排队情况",
+   "take": "六个月净收益+5%–7%或估值明显高于可比交易后降低",
+   "stop": "项目现金流、长期PPA覆盖或赎回条件明显恶化",
+   "product": "Macquarie Energy Transition Infrastructure Fund（X03368/X03369/X03370/X03371）",
+   "position": "初始0.5%，上限1.5%",
+   "thesis": "基金约45%资产处于运营阶段，并用长期PPA降低收入波动。季度赎回和单期5%上限带来真实流动性成本，平滑NAV也会低估经济波动。它只承担六个月低流动观察仓。",
+   "fit": "合同现金流和运营资产匹配AI电力需求的中期传导。",
+   "risk": "估值平滑、赎回排队、项目建设与利率变化会延迟回报兑现。",
+   "role": "能源转型基础设施的私募carry",
+   "hurdle": 2.52,
+   "central": {
+    "p": [
+     30,
+     50,
+     20
+    ],
+    "r": [
+     8,
+     5,
+     -4
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     50,
+     30
+    ],
+    "r": [
+     5,
+     2,
+     -7
+    ]
+   },
+   "series": [
+    100,
+    100.8,
+    102.4,
+    104.1,
+    106.7,
+    108.6,
+    110.2,
+    112.9,
+    115.4,
+    117.8,
+    120.5,
+    123.61
+   ],
+   "source": "Olive private-fund record X03368 series"
+  },
+  {
+   "id": 12,
+   "tool": "DXJ",
+   "toolDesc": "WisdomTree Japan Hedged Equity Fund",
+   "vehicle": "ETF",
+   "view": "日元干预造成错价后买出口盈利，避免追逐极端汇率",
+   "theme": "日本政策重置",
+   "horizon": "1个月",
+   "action": "等待汇率冲击",
+   "price": "$176.98",
+   "entry": "美元兑日元干预后，DXJ回撤5%–8%且盈利修正未转负",
+   "take": "$188–195分批",
+   "stop": "日收盘低于$164；或日元升值与出口盈利下修同步出现",
+   "product": "WisdomTree Japan Hedged Equity Fund（DXJ）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "弱日元提高出口商折算盈利，极端汇率也提高政策干预风险。DXJ过去一年涨幅超过40%，当前只能等待汇率冲击后的价格错位。",
+   "fit": "一个月能用汇率、干预和盈利修正快速验证。",
+   "risk": "日元快速升值会直接压低对冲后出口股盈利预期。",
+   "role": "日本出口盈利的汇率对冲仓",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     6,
+     1,
+     -8
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     3,
+     0,
+     -10
+    ]
+   },
+   "series": [
+    144.16,
+    152.73,
+    169.58,
+    158.58,
+    162.07,
+    171.52,
+    173.52,
+    176.98
+   ],
+   "source": "WisdomTree / YFinance"
+  },
+  {
+   "id": 20,
+   "tool": "CNYB",
+   "toolDesc": "iShares China CNY Bond UCITS ETF · IE00BYPC1H27",
+   "vehicle": "ETF",
+   "view": "人民币稳定与中国利率下行时配置本币债，当前收益率限制上行",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "等待汇率与久期",
+   "price": "NAV约$5.66",
+   "entry": "美元转弱、人民币稳定且中国利率重新下行；NAV附近分两笔",
+   "take": "六个月总回报+4%–6%分批",
+   "stop": "人民币贬值超过4%；或中国长端收益率与信用利差同步上升",
+   "product": "iShares China CNY Bond UCITS ETF USD Dist（IE00BYPC1H27）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "基金规模超过10亿美元门槛，久期约5.9年，底层到期收益率较低。收益主要依赖人民币、久期和票息共同改善，当前入价程度较高。",
+   "fit": "六个月能观察汇率和中国利率传导，ETF流动性可执行。",
+   "risk": "低YTM不足以覆盖人民币贬值和久期损失。",
+   "role": "中国政策宽松的本币债表达",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     7,
+     3,
+     -8
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     4,
+     1,
+     -10
+    ]
+   },
+   "source": "BlackRock iShares official product page"
+  },
+  {
+   "id": 5,
+   "tool": "STIP",
+   "toolDesc": "iShares 0-5 Year TIPS Bond ETF",
+   "vehicle": "ETF",
+   "view": "短期通胀预期继续上升时配置短久期TIPS，真实利率主导时退出",
+   "theme": "能源与政策",
+   "horizon": "1个月",
+   "action": "等待通胀确认",
+   "price": "$101.23",
+   "entry": "$100.50–101.30且5年盈亏平衡通胀继续上行",
+   "take": "$103–104分批",
+   "stop": "日收盘低于$99.80；或Brent跌破$85且通胀预期回落",
+   "product": "BlackRock iShares 0-5 Year TIPS Bond ETF（STIP）",
+   "position": "初始1%，上限2%",
+   "thesis": "能源冲击可能先进入短期通胀预期，STIP降低了长久期损失。过去一年价格下跌说明真实利率仍是主要约束，只有盈亏平衡通胀继续上行时才具备战术赔率。",
+   "fit": "一个月能用油价、通胀预期和价格确认。",
+   "risk": "实际利率上行会压过通胀补偿。",
+   "role": "能源通胀的短久期保护",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     3,
+     0.6,
+     -2.5
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     1,
+     0.2,
+     -3
+    ]
+   },
+   "series": [
+    102.39,
+    102.95,
+    103.32,
+    103.43,
+    104.15,
+    103.67,
+    102.16,
+    101.23
+   ],
+   "source": "BlackRock / YFinance"
+  },
+  {
+   "id": 11,
+   "tool": "MCHI",
+   "toolDesc": "iShares MSCI China ETF",
+   "vehicle": "ETF",
+   "view": "中国宽基回撤后用流动ETF等待盈利和资金流扩散",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "price": "$53.33",
+   "entry": "$51–54分两笔；结汇与主动资金流未重新转弱",
+   "take": "$60–64分批",
+   "stop": "日收盘低于$48；或盈利、汇率与资金流同步恶化",
+   "product": "BlackRock iShares MSCI China ETF（MCHI）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "MCHI过去一年回撤改善了入价程度，覆盖互联网、金融、消费与国企。宽基会稀释结构性alpha，流动性和低价使其适合作为中国重估的试错工具。",
+   "fit": "六个月能观察盈利、汇率和资金流扩散。",
+   "risk": "宽基包含低质量与政策敏感公司，估值折价可能延续。",
+   "role": "中国宽基低位试错",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     18,
+     7,
+     -16
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     11,
+     3,
+     -21
+    ]
+   },
+   "series": [
+    60.07,
+    62.4,
+    59.06,
+    56.18,
+    57.57,
+    55.1,
+    51.03,
+    53.33
+   ],
+   "source": "BlackRock / YFinance"
+  },
+  {
+   "id": 3,
+   "tool": "EWJ",
+   "toolDesc": "iShares MSCI Japan ETF",
+   "vehicle": "ETF",
+   "view": "日本盈利与治理改善延续时配置不对冲日元的宽基权益",
+   "theme": "日本政策重置",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "price": "$91.21",
+   "entry": "$86–90分两笔；日元波动下降且盈利修正保持正值",
+   "take": "$99–104分批",
+   "stop": "日收盘低于$82；或日元、盈利和资本配置预期同步恶化",
+   "product": "BlackRock iShares MSCI Japan ETF（EWJ）",
+   "position": "初始1%，上限2.5%",
+   "thesis": "EWJ保留日元敞口，能够同时承接企业盈利、治理改善和汇率反转。主动基金仍是首选，EWJ提供流动补充和明确价格条件。",
+   "fit": "六个月覆盖BOJ、盈利与汇率多个验证点。",
+   "risk": "宽基包含金融、工业和内需混合暴露，日元波动会主导美元回报。",
+   "role": "日本宽基与日元共同重估",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     14,
+     6,
+     -12
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     8,
+     2,
+     -17
+    ]
+   },
+   "series": [
+    80.74,
+    85.72,
+    92.37,
+    84.44,
+    89.1,
+    92.96,
+    93.27,
+    91.21
+   ],
+   "source": "BlackRock / YFinance"
+  },
+  {
+   "id": 23,
+   "tool": "PDBC",
+   "toolDesc": "Invesco Optimum Yield Diversified Commodity Strategy ETF",
+   "vehicle": "ETF",
+   "view": "多类商品趋势共振时配置透明篮子，单一油价上涨不足以触发",
+   "theme": "能源与政策",
+   "horizon": "1个月",
+   "action": "等待共振",
+   "price": "$17.95",
+   "entry": "$16.80–17.40回踩；或收盘高于$18.30且至少两类商品同步走强",
+   "take": "$19.50–20.50分批",
+   "stop": "日收盘低于$15.75；或油价回落、美元走强与金属库存回升同时出现",
+   "product": "Invesco Optimum Yield Diversified Commodity Strategy No K-1 ETF（PDBC）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "PDBC把能源、金属和农产品放入同一透明工具。过去一年涨幅提高了入价程度，只有多类商品形成共振时才值得承担展期和美元风险。",
+   "fit": "一个月能快速观察商品共振和展期结构。",
+   "risk": "美元走强与供给修复会同时压低现货和期货展期收益。",
+   "role": "供应冲击的商品篮子",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     35,
+     40,
+     25
+    ],
+    "r": [
+     7,
+     1.5,
+     -7
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     40,
+     35
+    ],
+    "r": [
+     4,
+     0,
+     -9
+    ]
+   },
+   "series": [
+    13.25,
+    14.52,
+    14.92,
+    17.32,
+    18.53,
+    17.62,
+    15.88,
+    17.95
+   ],
+   "source": "Invesco / YFinance"
+  },
+  {
+   "id": 25,
+   "tool": "DLR",
+   "toolDesc": "Digital Realty Trust",
+   "vehicle": "股票",
+   "view": "数据中心租赁与电力接入转化为现金流时配置REIT，控制利率敏感度",
+   "theme": "AI融资",
+   "horizon": "6个月",
+   "action": "等待订单与价格",
+   "price": "下单前刷新",
+   "entry": "回撤8%–10%；或租赁签约、预租和资金成本至少两项改善",
+   "take": "六个月总回报+12%–15%分批",
+   "stop": "日收盘跌破建仓价12%；或租赁、开发收益率与融资成本同步恶化",
+   "product": "Digital Realty Trust（DLR）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "APAC Data Center Fund的8+2年期限无法承担战术任务。DLR提供上市数据中心资产、租赁现金流和日度流动性，能够用订单、预租与融资成本验证AI资本开支传导。",
+   "fit": "六个月覆盖租赁、项目交付与利率变化，退出路径清楚。",
+   "risk": "REIT对利率、资本开支和电力接入敏感，AI需求放缓会降低开发回报。",
+   "role": "AI数据中心的流动权益表达",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     16,
+     6,
+     -15
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     9,
+     2,
+     -20
+    ]
+   },
+   "source": "Digital Realty investor relations"
+  },
+  {
+   "id": 28,
+   "tool": "1615.T",
+   "toolDesc": "NEXT FUNDS TOPIX Banks ETF",
+   "vehicle": "ETF",
+   "view": "BOJ政策与曲线陡峭继续改善银行息差时配置日本银行",
+   "theme": "日本政策重置",
+   "horizon": "1个月",
+   "action": "等待BOJ后回踩",
+   "price": "¥774",
+   "entry": "BOJ会议后回撤5%–8%，且日元与银行盈利指引未同步恶化",
+   "take": "¥850–900分批",
+   "stop": "日收盘低于¥700；或BOJ转鸽与净息差预期同步下修",
+   "product": "NEXT FUNDS TOPIX Banks ETF（1615.T）",
+   "position": "初始0.75%，上限2%",
+   "thesis": "日本银行受益于利率正常化、贷款重定价和资本回报。过去一年涨幅约72%显著提高入价程度，当前只接受BOJ事件后的价格回踩。",
+   "fit": "一个月内可由BOJ、日元和银行财报验证。",
+   "risk": "政策转鸽、日元快速升值或信用成本上升会压低盈利预期。",
+   "role": "日本政策正常化的银行beta",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     7,
+     1,
+     -9
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     4,
+     0,
+     -12
+    ]
+   },
+   "series": [
+    450.3,
+    472.3,
+    468.3,
+    505.5,
+    528.2,
+    598.3,
+    647.9,
+    573.5,
+    618.8,
+    656.1,
+    701,
+    774
+   ],
+   "source": "Nomura NEXT FUNDS / YFinance"
+  },
+  {
+   "id": 19,
+   "tool": "JPM CHINA A-SHARE",
+   "toolDesc": "JPMorgan China A-Share Opportunities Fund",
+   "vehicle": "公募",
+   "view": "政策资金与内需盈利改善时，用主动A股基金获取行业轮动收益",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "等待资金流确认",
+   "price": "按最新日度NAV",
+   "entry": "主动资金净流入与盈利修正至少一项转强，NAV附近分两笔",
+   "take": "六个月净收益+10%–13%分批",
+   "stop": "NAV回撤12%；或资金流、人民币与盈利修正同步恶化",
+   "product": "JPMorgan China A-Share Opportunities Fund，可售份额下单前复核",
+   "position": "初始1%，上限2.5%",
+   "thesis": "A股对政策资金、内需与行业轮动的敏感度高于离岸中国。主动基金能避开低质量指数权重，当前需要资金流与盈利共同支持。",
+   "fit": "六个月覆盖政策、资金流和两个业绩季。",
+   "risk": "主动风格、政策节奏和人民币变化会造成较大净值波动。",
+   "role": "中国A股主动alpha",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     35,
+     45,
+     20
+    ],
+    "r": [
+     16,
+     7,
+     -15
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     45,
+     30
+    ],
+    "r": [
+     9,
+     3,
+     -20
+    ]
+   },
+   "source": "J.P. Morgan Asset Management fund materials"
+  },
+  {
+   "id": 32,
+   "tool": "159995",
+   "toolDesc": "华夏国证半导体芯片ETF",
+   "vehicle": "ETF",
+   "view": "国产替代与AI订单继续兑现时配置中国半导体，近期大涨后不追价",
+   "theme": "中国资产重估",
+   "horizon": "6个月",
+   "action": "等待回撤",
+   "price": "¥1.27",
+   "entry": "回撤10%–15%且订单、盈利和产业政策未转弱",
+   "take": "六个月收益+15%–20%分批",
+   "stop": "跌破建仓价15%；或订单、盈利与政策支持同步转弱",
+   "product": "华夏国证半导体芯片ETF（159995.SZ）；基金规模约人民币372亿元",
+   "position": "初始0.75%，上限2%",
+   "thesis": "159995规模满足ETF门槛，集中表达中国半导体。官方区间收益显示近期涨幅很高，当前收益性价比显著低于中国宽基和主动alpha，等待回撤是核心条件。",
+   "fit": "六个月能观察设备、设计、制造与政策传导。",
+   "risk": "高集中、政策预期和估值波动会放大回撤；公司行为使未调整价格图失真。",
+   "role": "中国半导体高弹性beta",
+   "hurdle": 2.02,
+   "central": {
+    "p": [
+     30,
+     45,
+     25
+    ],
+    "r": [
+     18,
+     4,
+     -22
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     9,
+     0,
+     -28
+    ]
+   },
+   "source": "ChinaAMC official product page"
+  },
+  {
+   "id": 40,
+   "tool": "TAIL PROTECTION",
+   "toolDesc": "日/周流动凸性策略；具体UCITS份额待复核",
+   "vehicle": "公募 / 私募",
+   "view": "保护成本回落时，用小预算覆盖油价、利率与股债同跌的跳变",
+   "theme": "盈利兑现",
+   "horizon": "1个月",
+   "action": "等待产品与成本",
+   "price": "按三个月保护成本",
+   "entry": "三个月保护成本不超过组合0.50%；确认危机捕获率与底层期权授权",
+   "take": "组合回撤被对冲50%后先回收一半；事件风险消退后退出",
+   "stop": "三个月损耗超过预算；或股债同跌阶段仍无法提供正凸性",
+   "product": "Olive货架日/周流动 Tail Risk / Convexity UCITS 候选，逐份额复核",
+   "position": "成本预算0.25%–0.50%",
+   "thesis": "油价、利率和政策概率能够在数小时内重定价，组合风险补偿又偏薄。尾部保护的价值来自非线性危机收益，产品未完成映射前只能保留研究位。",
+   "fit": "一个月与事件窗口匹配，预算能够预先限定。",
+   "risk": "长期损耗、隐含波动溢价和产品结构差异会侵蚀收益。",
+   "role": "事件风险的凸性预算",
+   "hurdle": 0.31,
+   "central": {
+    "p": [
+     20,
+     45,
+     35
+    ],
+    "r": [
+     8,
+     -0.5,
+     -0.5
+    ]
+   },
+   "conservative": {
+    "p": [
+     15,
+     40,
+     45
+    ],
+    "r": [
+     5,
+     -0.7,
+     -0.7
+    ]
+   },
+   "source": "Strategy placeholder; exact shelf share class required"
+  }
+ ],
+ "themeSignalRegistry": [
+  {
+   "id": "EN-1M-TREND",
+   "theme": "能源与政策",
+   "exposure": "跨资产趋势策略",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    1
+   ]
+  },
+  {
+   "id": "EN-1M-FX",
+   "theme": "能源与政策",
+   "exposure": "外汇趋势策略",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    21
+   ]
+  },
+  {
+   "id": "EN-1M-STIP",
+   "theme": "能源与政策",
+   "exposure": "短久期通胀保值债",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    5
+   ]
+  },
+  {
+   "id": "EN-1M-ENERGY-EQ",
+   "theme": "能源与政策",
+   "exposure": "能源生产商",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    4,
+    33
+   ]
+  },
+  {
+   "id": "EN-1M-COMMODITY",
+   "theme": "能源与政策",
+   "exposure": "广义商品篮子",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    23
+   ],
+   "gate": "能源之外至少两个商品板块同步走强"
+  },
+  {
+   "id": "EN-6M-MIDSTREAM",
+   "theme": "能源与政策",
+   "exposure": "能源中游基础设施",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    36
+   ]
+  },
+  {
+   "id": "AI-6M-UTILITY",
+   "theme": "AI融资",
+   "exposure": "电力公用事业",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    6
+   ]
+  },
+  {
+   "id": "AI-6M-GRID",
+   "theme": "AI融资",
+   "exposure": "电网与工程基础设施",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    7
+   ]
+  },
+  {
+   "id": "AI-6M-COPPER",
+   "theme": "AI融资",
+   "exposure": "铜矿股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    17
+   ]
+  },
+  {
+   "id": "AI-6M-TRANSITION-EQ",
+   "theme": "AI融资",
+   "exposure": "能源转型股票",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    18
+   ]
+  },
+  {
+   "id": "AI-6M-TRANSITION-INFRA",
+   "theme": "AI融资",
+   "exposure": "能源转型基础设施",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    24
+   ]
+  },
+  {
+   "id": "AI-6M-DATA-REIT",
+   "theme": "AI融资",
+   "exposure": "数据中心REIT",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    25
+   ]
+  },
+  {
+   "id": "AI-6M-NUCLEAR",
+   "theme": "AI融资",
+   "exposure": "铀矿与核能股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    26
+   ]
+  },
+  {
+   "id": "AI-6M-CYBER",
+   "theme": "AI融资",
+   "exposure": "网络安全股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    27
+   ]
+  },
+  {
+   "id": "AI-6M-SEMI",
+   "theme": "AI融资",
+   "exposure": "全球半导体股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    31
+   ]
+  },
+  {
+   "id": "AI-6M-NEXTGEN",
+   "theme": "AI融资",
+   "exposure": "下一代科技股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    32
+   ]
+  },
+  {
+   "id": "AI-6M-PLATFORM",
+   "theme": "AI融资",
+   "exposure": "AI平台与应用股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    40
+   ]
+  },
+  {
+   "id": "ER-1M-LOWVOL",
+   "theme": "盈利兑现",
+   "exposure": "低波动美国股票",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    2
+   ]
+  },
+  {
+   "id": "ER-6M-SYSTEM-LS",
+   "theme": "盈利兑现",
+   "exposure": "系统股票多空",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    22
+   ]
+  },
+  {
+   "id": "ER-6M-MULTI-ABS",
+   "theme": "盈利兑现",
+   "exposure": "多策略绝对收益",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    15
+   ]
+  },
+  {
+   "id": "ER-6M-QUALITY",
+   "theme": "盈利兑现",
+   "exposure": "高质量盈利股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    9
+   ]
+  },
+  {
+   "id": "ER-6M-HEALTHCARE",
+   "theme": "盈利兑现",
+   "exposure": "医疗保健股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    38
+   ]
+  },
+  {
+   "id": "ER-6M-EQUAL",
+   "theme": "盈利兑现",
+   "exposure": "美国等权股票",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    35
+   ]
+  },
+  {
+   "id": "ER-6M-QUANT-MULTI",
+   "theme": "盈利兑现",
+   "exposure": "量化多策略",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    8
+   ]
+  },
+  {
+   "id": "JP-1M-EXPORT",
+   "theme": "日本政策重置",
+   "exposure": "日本出口商",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    12
+   ]
+  },
+  {
+   "id": "JP-6M-BROAD",
+   "theme": "日本政策重置",
+   "exposure": "日本宽基权益",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    3
+   ]
+  },
+  {
+   "id": "JP-6M-ACTIVE",
+   "theme": "日本政策重置",
+   "exposure": "日本主动权益",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    16,
+    28
+   ]
+  },
+  {
+   "id": "CR-1M-REGIONAL-BANK",
+   "theme": "久期与信用",
+   "exposure": "美国区域银行股",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    29
+   ]
+  },
+  {
+   "id": "CR-1M-FLOATING",
+   "theme": "久期与信用",
+   "exposure": "浮息贷款",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": [
+    37
+   ]
+  },
+  {
+   "id": "CR-6M-SECURITIZED",
+   "theme": "久期与信用",
+   "exposure": "证券化信用",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    30
+   ]
+  },
+  {
+   "id": "CR-6M-GLOBAL-IG",
+   "theme": "久期与信用",
+   "exposure": "全球投资级债",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    39
+   ]
+  },
+  {
+   "id": "CR-6M-FIN-SUB",
+   "theme": "久期与信用",
+   "exposure": "金融次级债",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    14
+   ]
+  },
+  {
+   "id": "CN-6M-ACTIVE",
+   "theme": "中国资产重估",
+   "exposure": "中国主动权益",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    13
+   ]
+  },
+  {
+   "id": "CN-6M-INTERNET",
+   "theme": "中国资产重估",
+   "exposure": "中国互联网",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    10
+   ]
+  },
+  {
+   "id": "CN-6M-BROAD",
+   "theme": "中国资产重估",
+   "exposure": "中国宽基权益",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    11
+   ]
+  },
+  {
+   "id": "CN-6M-A-SHARE",
+   "theme": "中国资产重估",
+   "exposure": "中国A股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    19,
+    34
+   ]
+  },
+  {
+   "id": "CN-6M-RMB-BOND",
+   "theme": "中国资产重估",
+   "exposure": "人民币债券",
+   "direction": "↑",
+   "horizon": "6个月",
+   "ideaIds": [
+    20
+   ]
+  },
+  {
+   "id": "EN-1M-OIL",
+   "theme": "能源与政策",
+   "exposure": "原油",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "EN-1M-UST-LONG",
+   "theme": "能源与政策",
+   "exposure": "长端美债",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "EN-1M-AIRLINE",
+   "theme": "能源与政策",
+   "exposure": "航空股",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "EN-6M-GROWTH",
+   "theme": "能源与政策",
+   "exposure": "长久期成长股",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "EN-6M-IMPORTERS",
+   "theme": "能源与政策",
+   "exposure": "欧洲与日本能源进口行业",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "AI-1M-SEMI-EQUIP",
+   "theme": "AI融资",
+   "exposure": "半导体设备",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "AI-1M-SOFTWARE",
+   "theme": "AI融资",
+   "exposure": "高估值软件",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "AI-1M-TECH-CREDIT",
+   "theme": "AI融资",
+   "exposure": "科技债",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "AI-6M-UNSECURED-CREDIT",
+   "theme": "AI融资",
+   "exposure": "无担保科技信用",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "ER-1M-LONG-VOL",
+   "theme": "盈利兑现",
+   "exposure": "多头波动率",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "ER-1M-LOW-PROFIT",
+   "theme": "盈利兑现",
+   "exposure": "高估值低盈利股",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "ER-6M-CROWDED",
+   "theme": "盈利兑现",
+   "exposure": "拥挤成长股",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "JP-1M-BANK",
+   "theme": "日本政策重置",
+   "exposure": "日本银行股",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "JP-1M-SEMI-EQUIP",
+   "theme": "日本政策重置",
+   "exposure": "日本半导体设备",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "JP-1M-JPY",
+   "theme": "日本政策重置",
+   "exposure": "日元",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "JP-6M-JGB",
+   "theme": "日本政策重置",
+   "exposure": "日本超长期国债",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CR-1M-UST",
+   "theme": "久期与信用",
+   "exposure": "美国长债",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CR-1M-EU-BOND",
+   "theme": "久期与信用",
+   "exposure": "欧洲长债",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CR-1M-HY",
+   "theme": "久期与信用",
+   "exposure": "高收益信用",
+   "direction": "↓",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CR-6M-REIT",
+   "theme": "久期与信用",
+   "exposure": "REITs",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CR-6M-PE",
+   "theme": "久期与信用",
+   "exposure": "私募股权",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CN-1M-CNY",
+   "theme": "中国资产重估",
+   "exposure": "人民币",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CN-1M-CGB",
+   "theme": "中国资产重估",
+   "exposure": "中国国债",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CN-1M-A-SHARE",
+   "theme": "中国资产重估",
+   "exposure": "中国A股",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CN-1M-HK-EQ",
+   "theme": "中国资产重估",
+   "exposure": "香港权益",
+   "direction": "↑",
+   "horizon": "1个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CN-6M-EXPORT",
+   "theme": "中国资产重估",
+   "exposure": "出口商",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  },
+  {
+   "id": "CN-6M-HK-PROPERTY",
+   "theme": "中国资产重估",
+   "exposure": "香港地产",
+   "direction": "↓",
+   "horizon": "6个月",
+   "ideaIds": []
+  }
+ ],
+ "themeTransmissionRegistry": [
+  {
+   "id": "EN-SUPPLY",
+   "theme": "能源与政策",
+   "label": "物理供给与运输",
+   "signalIds": [
+    "EN-1M-OIL",
+    "EN-1M-ENERGY-EQ",
+    "EN-1M-AIRLINE",
+    "EN-6M-MIDSTREAM",
+    "EN-6M-IMPORTERS"
+   ]
+  },
+  {
+   "id": "EN-INFLATION",
+   "theme": "能源与政策",
+   "label": "通胀与利率重定价",
+   "signalIds": [
+    "EN-1M-STIP",
+    "EN-1M-UST-LONG",
+    "EN-6M-GROWTH"
+   ]
+  },
+  {
+   "id": "EN-CROSS-ASSET",
+   "theme": "能源与政策",
+   "label": "跨资产价格趋势",
+   "signalIds": [
+    "EN-1M-TREND",
+    "EN-1M-FX",
+    "EN-1M-COMMODITY"
+   ]
+  },
+  {
+   "id": "AI-HARDWARE",
+   "theme": "AI融资",
+   "label": "算力硬件与技术扩散",
+   "signalIds": [
+    "AI-1M-SEMI-EQUIP",
+    "AI-6M-SEMI",
+    "AI-6M-NEXTGEN"
+   ]
+  },
+  {
+   "id": "AI-POWER",
+   "theme": "AI融资",
+   "label": "供电瓶颈与实体基础设施",
+   "signalIds": [
+    "AI-6M-UTILITY",
+    "AI-6M-GRID",
+    "AI-6M-COPPER",
+    "AI-6M-TRANSITION-EQ",
+    "AI-6M-TRANSITION-INFRA",
+    "AI-6M-DATA-REIT",
+    "AI-6M-NUCLEAR"
+   ]
+  },
+  {
+   "id": "AI-MONETIZATION",
+   "theme": "AI融资",
+   "label": "商业化与现金流筛选",
+   "signalIds": [
+    "AI-1M-SOFTWARE",
+    "AI-6M-CYBER",
+    "AI-6M-PLATFORM"
+   ]
+  },
+  {
+   "id": "AI-FUNDING",
+   "theme": "AI融资",
+   "label": "融资供给与信用压力",
+   "signalIds": [
+    "AI-1M-TECH-CREDIT",
+    "AI-6M-UNSECURED-CREDIT"
+   ]
+  },
+  {
+   "id": "ER-RISK",
+   "theme": "盈利兑现",
+   "label": "估值压缩与风险降档",
+   "signalIds": [
+    "ER-1M-LOWVOL",
+    "ER-1M-LONG-VOL",
+    "ER-1M-LOW-PROFIT",
+    "ER-6M-CROWDED"
+   ]
+  },
+  {
+   "id": "ER-QUALITY",
+   "theme": "盈利兑现",
+   "label": "盈利质量与市场广度",
+   "signalIds": [
+    "ER-6M-QUALITY",
+    "ER-6M-HEALTHCARE",
+    "ER-6M-EQUAL"
+   ]
+  },
+  {
+   "id": "ER-ALPHA",
+   "theme": "盈利兑现",
+   "label": "横截面分化与主动Alpha",
+   "signalIds": [
+    "ER-6M-SYSTEM-LS",
+    "ER-6M-MULTI-ABS",
+    "ER-6M-QUANT-MULTI"
+   ]
+  },
+  {
+   "id": "JP-EXPORT-FX",
+   "theme": "日本政策重置",
+   "label": "汇率与出口盈利",
+   "signalIds": [
+    "JP-1M-EXPORT",
+    "JP-1M-JPY"
+   ]
+  },
+  {
+   "id": "JP-DOMESTIC",
+   "theme": "日本政策重置",
+   "label": "本土盈利与资本配置",
+   "signalIds": [
+    "JP-1M-BANK",
+    "JP-1M-SEMI-EQUIP",
+    "JP-6M-BROAD",
+    "JP-6M-ACTIVE"
+   ]
+  },
+  {
+   "id": "JP-RATES",
+   "theme": "日本政策重置",
+   "label": "利率正常化与债券供给",
+   "signalIds": [
+    "JP-6M-JGB"
+   ]
+  },
+  {
+   "id": "CR-DURATION",
+   "theme": "久期与信用",
+   "label": "期限溢价与长久期压力",
+   "signalIds": [
+    "CR-1M-UST",
+    "CR-1M-EU-BOND",
+    "CR-6M-REIT",
+    "CR-6M-PE"
+   ]
+  },
+  {
+   "id": "CR-BANKING",
+   "theme": "久期与信用",
+   "label": "银行息差与资本结构",
+   "signalIds": [
+    "CR-1M-REGIONAL-BANK",
+    "CR-6M-FIN-SUB"
+   ]
+  },
+  {
+   "id": "CR-SELECTION",
+   "theme": "久期与信用",
+   "label": "信用筛选与票息补偿",
+   "signalIds": [
+    "CR-1M-FLOATING",
+    "CR-1M-HY",
+    "CR-6M-SECURITIZED",
+    "CR-6M-GLOBAL-IG"
+   ]
+  },
+  {
+   "id": "CN-FLOW",
+   "theme": "中国资产重估",
+   "label": "政策资金与本币支撑",
+   "signalIds": [
+    "CN-1M-CNY",
+    "CN-1M-CGB",
+    "CN-6M-RMB-BOND"
+   ]
+  },
+  {
+   "id": "CN-EQUITY",
+   "theme": "中国资产重估",
+   "label": "盈利修复与权益重估",
+   "signalIds": [
+    "CN-1M-A-SHARE",
+    "CN-1M-HK-EQ",
+    "CN-6M-ACTIVE",
+    "CN-6M-INTERNET",
+    "CN-6M-BROAD",
+    "CN-6M-A-SHARE"
+   ]
+  },
+  {
+   "id": "CN-DIVERGENCE",
+   "theme": "中国资产重估",
+   "label": "内外需与行业分化",
+   "signalIds": [
+    "CN-6M-EXPORT",
+    "CN-6M-HK-PROPERTY"
+   ]
+  }
+ ],
+ "detailData": {
+  "2": {
+   "eyebrow": "Lower-volatility equity beta",
+   "subtitle": "低波权益：保留美国盈利敞口，减少对少数高波动权重股的依赖",
+   "role": "等额替换部分SPY或美国大盘仓位，不增加总权益风险",
+   "rationale": "美国经济与企业盈利仍有支撑，指数集中度和AI融资压力提高了短期路径风险。USMV通过低波动股票组合保留美国权益敞口，历史波动明显低于大盘。它的费用和机会成本更透明，也避开HELO期权结构长期拖累上行的问题。当前适合作为风险交换，仓位规模由现有美国大盘敞口决定。",
+   "why": "工具规模约231亿美元、流动性充足，风险降低机制简单；上行阶段仍可能落后，因此列为B级。",
+   "macro": "AI资本开支正在向债券融资扩散，市场更重视自由现金流。低波动组合可以降低单一科技权重对净值的影响。",
+   "chain": [
+    "AI融资增加 → 高估值股票对现金流更敏感",
+    "指数集中度高 → 少数股票放大组合波动",
+    "低波动筛选 → 降低组合beta与个股尾部影响",
+    "等额替换 → 保留美国增长敞口且不加总风险"
+   ],
+   "fit": "路径清楚、工具透明、可以等额替换；若相对收益持续落后，退出也容易执行。",
+   "risk": "市场快速转向高beta和小盘股时，低波动因子可能明显落后；它只能降低波动，无法消除系统性下跌。",
+   "position": "替换5%–10%的SPY或美国大盘敞口",
+   "take": "波动回落且盈利扩散后，分批换回普通beta",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97289",
+     "WISBURG · 美国日报",
+     "AI资本开支、现金流与美债约束"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777847",
+     "华尔街见闻 · Meta再融资",
+     "AI融资从现金流向信用市场传导"
+    ],
+    [
+     "https://www.ishares.com/us/products/239695/ishares-msci-usa-minimum-volatility-etf",
+     "iShares · USMV",
+     "策略、持仓、费用与约231亿美元规模"
+    ]
+   ]
+  },
+  "3": {
+   "eyebrow": "Duration reversal",
+   "subtitle": "中久期美债：只交易收益率冲高后的反转",
+   "role": "在能源与增长数据共同降温后，获取中久期国债的价格弹性",
+   "rationale": "10年期美债收益率约4.68%，能源价格与强劲PMI仍在抬高期限溢价，当前缺少直接做多久期的确认。IEF提供7至10年期美国国债敞口，基金规模约471亿美元，价格与成交量能够每日验证。交易只在收益率进一步冲高后出现反转、油价和增长数据同时降温时启动。过去一年价格下跌约1.8%，说明久期压力仍未解除。",
+   "why": "工具流动性和价格弹性充足，触发条件仍未满足；当前只列C级等待观点。",
+   "macro": "美国PMI保持扩张、油价仍高、长端收益率约4.68%。三项变量中至少两项转弱，才构成中久期反转的市场验证。",
+   "chain": [
+    "能源与强PMI抬高通胀预期 → 10年期收益率冲高",
+    "油价回落且增长数据降温 → 期限溢价开始收缩",
+    "收益率从4.85%–5.00%区域反转 → IEF获得价格弹性",
+    "收益率站稳5.05% → 久期交易失效并退出"
+   ],
+   "fit": "价格、收益率、油价和宏观数据都能明确验证，适合一个月窗口的条件式反转交易。",
+   "risk": "财政供给、期限溢价或通胀继续上行时，增长放缓也可能无法推动长端收益率下降。",
+   "position": "初始1.5%，上限3%",
+   "take": "$95.50–96.50分批；10年期收益率跌破4.35%后保留一半",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97284",
+     "WISBURG · 债券 / 信用",
+     "长端收益率、债券供给与期限溢价"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777892",
+     "华尔街见闻 · 美国PMI",
+     "增长韧性对久期交易的约束"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777915",
+     "华尔街见闻 · 油价回落",
+     "能源风险溢价的反向验证"
+    ],
+    [
+     "https://www.ishares.com/us/products/239456/",
+     "iShares · IEF",
+     "7至10年期国债策略、费用与约471亿美元规模"
+    ]
+   ]
+  },
+  "23": {
+   "eyebrow": "Transparent commodity basket",
+   "subtitle": "商品篮子：等待能源、金属和农产品形成更广泛的趋势",
+   "role": "把商品观点放进透明ETF，避免私募净值滞后和持仓不可见",
+   "rationale": "过去三天油价可以在同一周内从约70美元快速回到85美元附近，随后又因谈判预期回落，说明单一能源方向仍受新闻驱动。PDBC提供能源、金属和农产品的多元商品期货敞口，产品规模满足页面门槛，持仓与价格可以每日观察。它过去一年价格涨幅较大、最大回撤也高，因此只保留为C级等待观点。",
+   "why": "表达透明度高于原商品私募候选，当前价格已反映较多能源冲击，赔率仍需等待。",
+   "macro": "商品日报同时提示能源供应风险和金属战略库存。只有多个商品板块共同走强，商品篮子的趋势质量才会提高。",
+   "chain": [
+    "能源供应受扰 → 商品通胀重新定价",
+    "铜与工业金属库存下降 → 趋势从原油扩散",
+    "多板块共振 → 商品篮子比单一油价更稳健",
+    "美元走强或谈判推进 → 趋势快速反转"
+   ],
+   "fit": "每天有价格、持仓和止损，适合短期验证；只在跨商品共振出现后使用。",
+   "risk": "期货展期、能源权重和税务结构会影响实际回报；新闻驱动阶段容易高位追入。",
+   "position": "初始1%，上限2%",
+   "take": "$19.20–20.00分批；跨商品共振消失时提前减仓",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97287",
+     "WISBURG · 商品日报",
+     "能源、铜、黄金与战略库存"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777830",
+     "华尔街见闻 · 布油突破100美元",
+     "供应风险如何推动商品定价"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777915",
+     "华尔街见闻 · 油价回落",
+     "谈判预期对商品风险溢价的反向验证"
+    ],
+    [
+     "https://www.invesco.com/us/financial-products/etfs/product-detail?audienceType=Investor&ticker=PDBC",
+     "Invesco · PDBC",
+     "策略、持仓、费用与产品规模"
+    ]
+   ]
+  },
+  "35": {
+   "eyebrow": "Breadth over concentration",
+   "subtitle": "美股等权：经济韧性若能扩散，收益来源应从少数巨头向更多行业展开",
+   "role": "降低市值加权指数集中度，保留美国中大型公司整体敞口",
+   "rationale": "美国综合PMI升至八个月高位，经济活动仍有韧性；芯片指数却在油价回落当天大跌，宏观改善没有自动转成科技股上涨。RSP把标普500成分股等权配置，降低超大市值科技公司的主导程度，同时增加工业、金融、医疗等板块权重。过去一年价格上涨约13.8%，当前需要等待市场广度继续改善。",
+   "why": "观点、工具和市场验证可以直接对应；高利率对较小公司融资成本仍有压力，所以维持B级。",
+   "macro": "增长韧性与科技股价格分化，是检验盈利是否向指数更广范围扩散的直接信号。",
+   "chain": [
+    "美国PMI保持扩张 → 企业收入环境仍有支撑",
+    "科技权重股波动上升 → 市值加权指数集中风险显现",
+    "盈利扩散至工业、金融和医疗 → 等权指数相对收益改善",
+    "市场广度验证 → 再提高RSP仓位"
+   ],
+   "fit": "保留美国增长，同时把风险从少数权重股分散到更多行业；价格和相对强弱都能每日验证。",
+   "risk": "高利率会压制中等市值公司，若盈利继续集中在AI巨头，RSP可能持续落后SPY。",
+   "position": "初始2%，上限4%",
+   "take": "相对SPY取得5%–7%超额收益后分批；盈利扩散继续时保留核心仓",
+   "sources": [
+    [
+     "https://wallstreetcn.com/articles/3777892",
+     "华尔街见闻 · 美国PMI",
+     "经济活动保持扩张"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777833",
+     "华尔街见闻 · 芯片指数下跌",
+     "宏观改善与科技股价格验证分化"
+    ],
+    [
+     "https://www.invesco.com/us/financial-products/etfs/product-detail?audienceType=Investor&ticker=RSP",
+     "Invesco · RSP",
+     "等权方法、费用与产品资料"
+    ]
+   ]
+  },
+  "36": {
+   "eyebrow": "Energy cash-flow toll road",
+   "subtitle": "美国中游：用管道与储运现金流参与能源高位",
+   "role": "补充XLE的上游利润弹性，降低组合对单日油价涨跌的敏感度",
+   "rationale": "能源供应风险仍会影响利率和权益估值，单日油价又容易被谈判消息快速反转。AMLP持有美国中游MLP，主要收入来自运输、储存与处理，现金流更依赖吞吐量和合同结构。基金规模约122亿美元，过去一年价格上涨约12%。适合等待回撤，不适合在油价新闻冲高时追入。",
+   "why": "现金流机制清楚、规模充足、与XLE互补；税务结构和分派可持续性需要持续监测。",
+   "macro": "能源风险溢价快速变化时，上游生产商与中游基础设施的盈利路径会分化。",
+   "chain": [
+    "美国能源产量与出口维持 → 管道吞吐量获得支撑",
+    "长期合同与费率 → 现金流对现货油价敏感度较低",
+    "分派稳定 → 总回报更多来自现金收益",
+    "分派下调或资本开支失控 → 观点失效"
+   ],
+   "fit": "提供可见分派与独立止损，能把能源观点从单一方向拆成现金流与价格两个部分。",
+   "risk": "MLP税务结构、递延税项和利率敏感度会影响ETF净值；能源需求下降仍会传导到吞吐量。",
+   "position": "初始1.5%，上限3%",
+   "take": "$59–61分批；分派稳定时保留核心仓",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97287",
+     "WISBURG · 商品日报",
+     "能源供应与商品定价"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777915",
+     "华尔街见闻 · 油价回落",
+     "新闻驱动的风险溢价反转"
+    ],
+    [
+     "https://www.alpsfunds.com/exchange-traded-funds/amlp",
+     "ALPS · AMLP",
+     "中游策略、分派、费用与约122亿美元规模"
+    ]
+   ]
+  },
+  "37": {
+   "eyebrow": "Floating-rate carry",
+   "subtitle": "优先贷款：政策利率高位时获取浮息收益，同时控制久期",
+   "role": "介于现金+与高收益债之间的收益工具，只在信用质量稳定时使用",
+   "rationale": "美国增长仍有韧性，政策转向宽松的证据有限，浮息优先贷款可以把高短端利率转成票息。BKLN持有大型机构杠杆贷款，久期低于传统债券。价格线过去一年小幅下跌，但派息没有计入图表，因此持有期总回报高于价格变化。信用利差偏薄时，必须把贷款折价、违约和回收率放在收益率之前。",
+   "why": "浮息机制适配高利率基准情景，信用补偿仍不宽，等待回撤后再进入。",
+   "macro": "经济韧性支撑借款人现金流，高政策利率又提高利息负担；这条线索需要同时观察收益与违约。",
+   "chain": [
+    "政策利率高位 → 浮息贷款票息保持",
+    "经济保持增长 → 企业偿债现金流较稳定",
+    "信用利差偏薄 → 新增仓位需要价格折让",
+    "违约与回收率恶化 → 票息无法覆盖损失"
+   ],
+   "fit": "收益来源可拆解，价格、利差和违约都能设置监控；适合小仓位等待型配置。",
+   "risk": "底层借款人杠杆高、流动性弱，ETF价格稳定无法代表信用风险消失。",
+   "position": "初始1%，上限2%",
+   "take": "以票息为主；总回报达到6%–8%且利差继续压缩时减仓",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97284",
+     "WISBURG · 债券 / 信用",
+     "信用补偿、融资成本与违约风险"
+    ],
+    [
+     "https://www.invesco.com/us/en/financial-products/etfs/invesco-senior-loan-etf.html",
+     "Invesco · BKLN",
+     "优先贷款指数、收益与产品结构"
+    ]
+   ]
+  },
+  "38": {
+   "eyebrow": "Defensive earnings",
+   "subtitle": "大型医疗：用现金流与需求刚性降低AI单一主题集中度",
+   "role": "补充XBI与Janus生物科技持仓，侧重成熟盈利和防守现金流",
+   "rationale": "当前市场需要验证收入、利润和自由现金流，医疗板块提供较少依赖AI资本开支的盈利来源。XLV覆盖药企、医疗器械、服务与保险，规模约418亿美元，过去一年价格上涨约19.1%。它不能替代已有的生物科技alpha仓位，作用是降低组合对高估值科技与早期研发风险的共同敏感度。",
+   "why": "行业盈利来源分散、工具流动性高，当前涨幅较大，等待回撤后配置。",
+   "macro": "AI融资供给上升和长端利率偏高，会放大高估值资产波动；医疗现金流提供不同的盈利路径。",
+   "chain": [
+    "医疗需求较稳定 → 收入对经济周期敏感度较低",
+    "成熟药企与器械现金流 → 降低融资依赖",
+    "多子行业组合 → 分散单一临床与监管风险",
+    "盈利上修扩散 → 才提高仓位"
+   ],
+   "fit": "与现有XBI和Janus角色区分清楚，进入和退出都可以用行业盈利修正验证。",
+   "risk": "药价政策、保险赔付和专利到期会造成行业内部大幅分化，指数仍可能被少数权重股拖累。",
+   "position": "初始2%，上限4%",
+   "take": "$174–178分批；若盈利上修持续则保留一半",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97289",
+     "WISBURG · 美国日报",
+     "现金流、融资成本与权益分化"
+    ],
+    [
+     "https://www.ssga.com/uk/en_gb/institutional/etfs/state-street-health-care-select-sector-spdr-etf-xlv",
+     "State Street · XLV",
+     "持仓、费用与约418亿美元规模"
+    ]
+   ]
+  },
+  "39": {
+   "eyebrow": "AI financing repricing",
+   "subtitle": "科技投资级新券：只买现金流覆盖充分的新发行让利",
+   "role": "把AI资本开支从权益故事转成债券供给与融资成本交易",
+   "rationale": "Meta再融资120亿美元显示AI资本开支正从内部现金流延伸到信用市场。新增债券供给可能让现金流强、评级稳定的科技发行人提供新券让利。这个交易想法需要主动公募或可直接交易的新券组合，重点筛选3至7年期、投资级评级和自由现金流覆盖。发行人选择比行业标签更重要。",
+   "why": "最新72小时证据直接指向科技债供给，产品和份额仍需Olive映射，因此列为B级。",
+   "macro": "AI投资继续支撑增长，融资结构同时变重。债券市场会更早反映资本开支回报与现金流压力。",
+   "chain": [
+    "AI资本开支扩大 → 科技公司增加债券发行",
+    "供给集中到来 → 新券相对二级债出现让利",
+    "现金流强的发行人 → 可以承受更高利息负担",
+    "资本开支回报恶化 → 利差扩大并触发退出"
+   ],
+   "fit": "有明确票息、利差和现金流覆盖条件；下单前必须完成发行人级别筛选。",
+   "risk": "新券让利可能很快被市场吃掉；久期、并购和回购会改变原有信用质量。",
+   "position": "组合1%–3%；单一发行人不超过0.75%",
+   "take": "利差收窄20–30bp后分批；现金流改善时保留到期收益",
+   "sources": [
+    [
+     "https://wallstreetcn.com/articles/3777847",
+     "华尔街见闻 · Meta再融资",
+     "120亿美元发行验证AI债券供给"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777887",
+     "华尔街见闻 · AI与债券定价",
+     "资本开支回报如何进入信用利差"
+    ],
+    [
+     "https://omen.wisburg.com/documents/97284",
+     "WISBURG · 债券 / 信用",
+     "科技债供给与信用分化"
+    ]
+   ]
+  },
+  "40": {
+   "eyebrow": "Small-budget convexity",
+   "subtitle": "尾部保护：用受控损耗覆盖油价、利率与地缘消息的跳变",
+   "role": "只使用小预算，覆盖股债同时承压或新闻驱动的非线性回撤",
+   "rationale": "过去三天油价与政策概率可以在数小时内大幅重定价，风险资产又处在估值和信用补偿偏薄的位置。尾部保护的价值来自危机阶段的非线性收益，日常成本则是持续损耗。该交易想法暂不指定产品，Olive映射时需要核对危机捕获率、三个月成本、流动性和底层期权授权。",
+   "why": "组合需要凸性研究，但产品差异很大且长期损耗明显，当前只列C级。",
+   "macro": "能源、利率和地缘消息相互传导时，传统股债分散可能减弱，保护工具必须用真实危机期数据验证。",
+   "chain": [
+    "新闻冲击 → 油价与利率跳变",
+    "估值与信用补偿偏薄 → 风险资产回撤放大",
+    "期权凸性 → 危机阶段提供非线性收益",
+    "平稳期持续损耗 → 保护预算必须预先封顶"
+   ],
+   "fit": "先限定预算，再选择工具；收益目标是减少组合尾部损失，不能用单月alpha衡量。",
+   "risk": "波动率买贵、期限错配和基金反应滞后都会让保护失效，长期持有也会侵蚀收益。",
+   "position": "三个月成本预算不超过组合0.50%",
+   "take": "组合回撤被对冲50%以上时分批兑现；冲击消退后恢复预算",
+   "sources": [
+    [
+     "https://omen.wisburg.com/documents/97284",
+     "WISBURG · 债券 / 信用",
+     "油价、真实利率与信用尾部风险"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777830",
+     "华尔街见闻 · 布油突破100美元",
+     "供应冲击的上行情景"
+    ],
+    [
+     "https://wallstreetcn.com/articles/3777915",
+     "华尔街见闻 · 油价快速回落",
+     "新闻变化引发风险溢价反转"
+    ]
+   ]
+  }
+ },
+ "chartData": {
+  "IEF": {
+   "values": [
+    94.9,
+    96.15,
+    96.46,
+    96.85,
+    97.5,
+    96.16,
+    95.94,
+    97.99,
+    95.44,
+    94.98,
+    94.65,
+    94.57,
+    93.03
+   ],
+   "returnPct": -1.8,
+   "vol": 4.9,
+   "drawdown": -5.2,
+   "start": "2025-07",
+   "middle": "2026-01"
+  },
+  "USMV": {
+   "values": [
+    93.18,
+    95.33,
+    94.16,
+    94.99,
+    97.81,
+    92.74,
+    94.64,
+    96.6,
+    96.46,
+    96.95
+   ],
+   "returnPct": 2.9,
+   "vol": 8.6,
+   "drawdown": -6.8
+  },
+  "PDBC": {
+   "values": [
+    13.58,
+    13.75,
+    13.25,
+    14.52,
+    14.92,
+    17.32,
+    18.53,
+    17.62,
+    15.88,
+    17.95
+   ],
+   "returnPct": 35.8,
+   "vol": 19.3,
+   "drawdown": -16.6
+  },
+  "RSP": {
+   "values": [
+    187.93,
+    191.53,
+    191.56,
+    198.08,
+    204.97,
+    191.92,
+    203.44,
+    208.83,
+    212.77,
+    213.57
+   ],
+   "returnPct": 13.8,
+   "vol": 11.7,
+   "drawdown": -8.2
+  },
+  "AMLP": {
+   "values": [
+    46.64,
+    47.66,
+    47.02,
+    50.03,
+    52.04,
+    52.64,
+    54.12,
+    51.6,
+    51.85,
+    54.99
+   ],
+   "returnPct": 12,
+   "vol": 13,
+   "drawdown": -10.8
+  },
+  "BKLN": {
+   "values": [
+    20.9,
+    20.92,
+    21,
+    20.74,
+    20.21,
+    20.41,
+    20.58,
+    20.47,
+    20.37,
+    20.39
+   ],
+   "returnPct": -2.5,
+   "vol": 3.3,
+   "drawdown": -4
+  },
+  "XLV": {
+   "values": [
+    144.25,
+    157.65,
+    154.8,
+    154.74,
+    160.2,
+    146.61,
+    145.99,
+    149.47,
+    158.66,
+    162.57
+   ],
+   "returnPct": 19.1,
+   "vol": 15.7,
+   "drawdown": -10.8
+  }
+ }
+}

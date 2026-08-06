@@ -1,0 +1,368 @@
+"""IdeaGen40 command line.
+
+The daily cycle, in order:
+
+    ideagen doctor                  # OpenD / Wisburg / DB liveness
+    ideagen ingest                  # Wisburg -> documents
+    ideagen olive-ingest <file>     # Olive shelf snapshot -> instruments + navs
+    ideagen prices                  # Futu -> prices
+    ideagen score                   # D/A/B/N/M/C -> themes
+    ideagen brief                   # -> data/briefings/briefing_<date>.json
+    <generator writes data/batches/batch_<date>.json per prompts/idea_generation.md>
+    ideagen ingest-batch <file>     # validate + store + place orders
+    ideagen mark                    # advance both books to the last closed session
+    ideagen monitor                 # alerts
+    ideagen report                  # console attribution
+    ideagen dashboard               # -> web/index.html
+
+`ideagen daily` runs everything except the generation step, which needs the agent.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from . import (analytics, briefing, config, db, ideas as ideas_mod, lexicon,
+               monitor, paper, report as report_mod, scoring, seed, universe)
+from .sources import futu_px, olive, wisburg
+
+
+def _as_of(args) -> date:
+    if getattr(args, "as_of", None):
+        return date.fromisoformat(args.as_of)
+    return config.today_hkt()
+
+
+def _con():
+    return db.init()
+
+
+# ---------------------------------------------------------------- commands
+def cmd_doctor(args) -> int:
+    con = _con()
+    print("IdeaGen40 doctor")
+    print(f"  db            {config.DB_PATH}")
+    ok = True
+
+    h = futu_px.health()
+    print(f"  futu opend    {'OK' if h['ok'] else 'FAIL'}  "
+          f"{h.get('probe', '')} {h.get('last', '')} {h.get('error', '')}")
+    print(f"                last closed session US={futu_px.complete_through('US')} "
+          f"HK={futu_px.complete_through('HK')}")
+    ok &= h["ok"]
+
+    try:
+        w = wisburg.Wisburg()
+        info = w.initialize()
+        print(f"  wisburg       OK  {info.get('serverInfo', {})}  tools={len(w.tools())}")
+    except Exception as e:  # noqa: BLE001
+        print(f"  wisburg       FAIL  {e}")
+        ok = False
+
+    cv = analytics.coverage(con)
+    print(f"  corpus        {cv['documents']['n']} docs / {cv['documents']['days']} days "
+          f"({cv['documents']['a']} → {cv['documents']['b']})")
+    print(f"  prices        {cv['prices']['codes']} codes / {cv['prices']['bars']} bars "
+          f"(last {cv['prices']['last']})")
+    print(f"  navs          {cv['navs']['keys']} keys / {cv['navs']['rows']} points "
+          f"(last {cv['navs']['last']})")
+    blocked = futu_px.quota_blocked(con)
+    if blocked:
+        print(f"  quota blocked {len(blocked)}: {', '.join(sorted(blocked))}")
+    print(f"  registry      {len(universe.ALL)} instruments "
+          f"({len([i for i in universe.ALL if i.kind == 'listed'])} listed)")
+    print(f"  themes        {len(lexicon.THEMES)} in dictionary v{lexicon.LEXICON_VERSION}")
+    print(f"  books         {', '.join(config.BOOKS)}")
+    print(f"\n  {'READY' if ok else 'NOT READY — fix the FAILs above'}")
+    return 0 if ok else 1
+
+
+def cmd_ingest(args) -> int:
+    con = _con()
+    as_of = _as_of(args)
+    print(f"ingest wisburg  as_of={as_of}  lookback={args.lookback}d")
+    rep = wisburg.ingest(con, as_of, lookback_days=args.lookback,
+                         fetch_bodies=args.bodies)
+    print(f"  total in-window {rep['total']}, new {rep['new']}, "
+          f"errors {len(rep['errors'])}")
+    return 0
+
+
+def cmd_olive_ingest(args) -> int:
+    con = _con()
+    raw = (sys.stdin.read() if args.file == "-"
+           else Path(args.file).read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = raw                      # olive._as_list handles wrapped text
+    rep = olive.ingest(con, payload, as_of=_as_of(args))
+    print(json.dumps({k: v for k, v in rep.items() if k != "snapshot"},
+                     ensure_ascii=False))
+    return 0
+
+
+def cmd_prices(args) -> int:
+    con = _con()
+    universe.sync_registry(con)
+    end = _as_of(args)
+    start = end - timedelta(days=args.days)
+    extra = [r["futu_code"] for r in db.q(
+        con, "SELECT DISTINCT futu_code FROM ideas WHERE futu_code IS NOT NULL")]
+    codes = universe.priceable_codes(extra + lexicon.all_indicators())
+    print(f"prices  {len(codes)} codes  {start} → {end}")
+    rep = futu_px.sync(con, codes, start, end, verbose=args.verbose,
+                       retry_blocked=args.retry_blocked)
+    print(f"  fetched {rep['fetched']} codes, {rep['rows']} rows")
+    if rep["errors"]:
+        for k, v in list(rep["errors"].items())[:10]:
+            print(f"  ! {k}: {v[:90]}")
+    return 0
+
+
+def cmd_score(args) -> int:
+    con = _con()
+    scoring.score_day(con, _as_of(args))
+    return 0
+
+
+def cmd_brief(args) -> int:
+    con = _con()
+    briefing.build(con, _as_of(args))
+    return 0
+
+
+def cmd_seed(args) -> int:
+    con = _con()
+    universe.sync_registry(con)
+    bid, rows, rep = seed.import_pack(con)
+    universe.sync_registry(con)
+    if args.trade:
+        for b in config.BOOKS:
+            paper.reset_book(con, b)
+            paper.open_batch(con, bid, b)
+    return 0 if rep["pass"] else 1
+
+
+def cmd_verify_seed(args) -> int:
+    con = _con()
+    print(json.dumps(seed.verify_worksheet(con), ensure_ascii=False, indent=1))
+    return 0
+
+
+def cmd_ingest_batch(args) -> int:
+    con = _con()
+    payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    as_of = date.fromisoformat(payload.get("as_of") or _as_of(args).isoformat())
+    bid, rows, rep = ideas_mod.build_batch(con, payload, as_of,
+                                           generator=args.generator)
+    s = rep["summary"]
+    print(f"batch {bid}  n={s['n']}  grades={s['grades']}  kinds={s['kinds']}  "
+          f"horizons={s['horizons']}")
+    print(f"validation pass={rep['pass']}  errors={rep['n_errors']}  "
+          f"warnings={rep['n_warnings']}")
+    for c in rep["checks"]:
+        if not c["ok"]:
+            print(f"  [{c['severity']}] {c['check']}: "
+                  f"{json.dumps(c['detail'], ensure_ascii=False)[:200]}")
+    if not rep["pass"]:
+        print("\nbatch stored as draft; not traded. Fix and re-ingest.")
+        return 1
+    if args.trade:
+        # Persist the batch's own transmission / signal registry.
+        rows_t = [{"as_of": as_of.isoformat(), "transmission_id": t["id"],
+                   "theme_id": t.get("theme_id"), "label": t.get("label")}
+                  for t in payload.get("transmissions", [])]
+        rows_s = [{"as_of": as_of.isoformat(), "signal_id": s2["id"],
+                   "theme_id": s2.get("theme_id"),
+                   "transmission_id": s2.get("transmission_id"),
+                   "asset": s2.get("asset"), "direction": s2.get("direction", "↑"),
+                   "horizon": s2.get("horizon", "1个月"), "gate": s2.get("gate"),
+                   "price_indicator": (lexicon.THEME_BY_ID[s2["theme_id"]].price_indicator
+                                       if s2.get("theme_id") in lexicon.THEME_BY_ID
+                                       else None)}
+                  for s2 in payload.get("signals", [])]
+        with db.tx(con):
+            db.upsert_many(con, "transmissions", rows_t, ["as_of", "transmission_id"])
+            db.upsert_many(con, "signals", rows_s, ["as_of", "signal_id"])
+        for b in config.BOOKS:
+            paper.open_batch(con, bid, b)
+    return 0
+
+
+def cmd_mark(args) -> int:
+    con = _con()
+    end = args.to or futu_px.complete_through("US")
+    for b in config.BOOKS:
+        first = db.q1(con, "SELECT MIN(placed_d) d FROM orders WHERE book_id=?", (b,))
+        start = args.since or (first["d"] if first and first["d"] else end)
+        paper.run(con, b, start, end)
+    return 0
+
+
+def cmd_monitor(args) -> int:
+    con = _con()
+    monitor.run(con, args.on)
+    return 0
+
+
+def cmd_settle(args) -> int:
+    con = _con()
+    analytics.settle(con, book_id=args.book)
+    return 0
+
+
+def cmd_report(args) -> int:
+    con = _con()
+    rep = analytics.print_report(con)
+    if args.json:
+        Path(args.json).write_text(json.dumps(rep, ensure_ascii=False, indent=1,
+                                              default=str), encoding="utf-8")
+        print(f"  wrote {args.json}")
+    return 0
+
+
+def cmd_dashboard(args) -> int:
+    con = _con()
+    out = report_mod.build(con, Path(args.out) if args.out else None)
+    print(f"  dashboard → {out}")
+    return 0
+
+
+def cmd_daily(args) -> int:
+    """Everything a cron can do without the generator."""
+    con = _con()
+    as_of = _as_of(args)
+    run_id = f"R{config.now_hkt().strftime('%Y%m%dT%H%M%S')}"
+    stages: list[dict] = []
+    db.upsert(con, "runs", {"run_id": run_id, "as_of": as_of.isoformat(),
+                            "started_at": config.now_hkt().isoformat(),
+                            "status": "running", "stages": stages}, ["run_id"])
+
+    def stage(name, fn):
+        t0 = config.now_hkt()
+        try:
+            fn()
+            st = "ok"
+            note = None
+        except Exception as e:  # noqa: BLE001 - a broken stage must not lose the run
+            st, note = "failed", f"{type(e).__name__}: {e}"
+            print(f"  ! stage {name} failed: {note}")
+        ms = int((config.now_hkt() - t0).total_seconds() * 1000)
+        stages.append({"stage": name, "status": st, "ms": ms, "note": note})
+        con.execute("UPDATE runs SET stages=? WHERE run_id=?",
+                    (json.dumps(stages, ensure_ascii=False), run_id))
+        return st == "ok"
+
+    print(f"=== ideagen daily {as_of} run={run_id} ===")
+    print("[1/7] wisburg ingest")
+    stage("ingest", lambda: wisburg.ingest(con, as_of, lookback_days=args.lookback,
+                                           fetch_bodies=args.bodies))
+    print("[2/7] prices")
+    stage("prices", lambda: futu_px.sync(
+        con, universe.priceable_codes(lexicon.all_indicators()),
+        as_of - timedelta(days=400), as_of))
+    print("[3/7] score themes")
+    stage("score", lambda: scoring.score_day(con, as_of))
+    print("[4/7] briefing pack")
+    stage("brief", lambda: briefing.build(con, as_of))
+    print("[5/7] mark books")
+    stage("mark", lambda: cmd_mark(argparse.Namespace(since=None, to=None)))
+    print("[6/7] monitor")
+    stage("monitor", lambda: monitor.run(con))
+    print("[7/7] settle + dashboard")
+    stage("settle", lambda: analytics.settle(con, book_id="naive", verbose=False))
+    stage("dashboard", lambda: report_mod.build(con))
+
+    failed = [s for s in stages if s["status"] != "ok"]
+    con.execute("UPDATE runs SET finished_at=?, status=?, stages=? WHERE run_id=?",
+                (config.now_hkt().isoformat(),
+                 "ok" if not failed else "partial",
+                 json.dumps(stages, ensure_ascii=False), run_id))
+    print(f"\n=== run {run_id} {'ok' if not failed else 'PARTIAL'} "
+          f"({len(stages) - len(failed)}/{len(stages)} stages) ===")
+    print(f"下一步：读 data/briefings/briefing_{as_of}.json，"
+          f"按 prompts/idea_generation.md 生成 40 条，然后\n"
+          f"  ideagen ingest-batch data/batches/batch_{as_of}.json")
+    return 0 if not failed else 1
+
+
+def cmd_status(args) -> int:
+    con = _con()
+    d = monitor.digest(con, args.on)
+    print(json.dumps(d, ensure_ascii=False, indent=1, default=str))
+    return 0
+
+
+# ---------------------------------------------------------------- parser
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser("ideagen", description="IdeaGen40 daily pipeline")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, help_):
+        s = sub.add_parser(name, help=help_)
+        s.set_defaults(fn=fn)
+        s.add_argument("--as-of", help="YYYY-MM-DD (default: today HKT)")
+        return s
+
+    add("doctor", cmd_doctor, "check every dependency")
+
+    s = add("ingest", cmd_ingest, "pull Wisburg corpus into documents")
+    s.add_argument("--lookback", type=int, default=config.OBSERVATION_WINDOW_DAYS)
+    s.add_argument("--bodies", type=int, default=6,
+                   help="deep-fetch N Tier1/2 items per line for N's causal depth")
+
+    s = add("olive-ingest", cmd_olive_ingest, "ingest an Olive shelf snapshot")
+    s.add_argument("file", help="JSON file, or - for stdin")
+
+    s = add("prices", cmd_prices, "sync Futu daily bars")
+    s.add_argument("--days", type=int, default=400)
+    s.add_argument("--verbose", action="store_true")
+    s.add_argument("--retry-blocked", action="store_true")
+
+    add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
+    add("brief", cmd_brief, "build the generator briefing pack")
+
+    s = add("seed", cmd_seed, "import the historical 2026-07-27 pack as batch #1")
+    s.add_argument("--trade", action="store_true", help="also open both books on it")
+
+    add("verify-seed", cmd_verify_seed, "audit the pack's odds worksheet")
+
+    s = add("ingest-batch", cmd_ingest_batch, "validate and store a generated batch")
+    s.add_argument("file")
+    s.add_argument("--generator", default="claude-code")
+    s.add_argument("--no-trade", dest="trade", action="store_false", default=True)
+
+    s = add("mark", cmd_mark, "advance both books through the sessions")
+    s.add_argument("--since")
+    s.add_argument("--to")
+
+    s = add("monitor", cmd_monitor, "generate position alerts")
+    s.add_argument("--on")
+
+    s = add("settle", cmd_settle, "write outcome rows for every idea")
+    s.add_argument("--book", default="naive")
+
+    s = add("report", cmd_report, "print the attribution report")
+    s.add_argument("--json", help="also write the full report to this path")
+
+    s = add("dashboard", cmd_dashboard, "build web/index.html")
+    s.add_argument("--out")
+
+    s = add("daily", cmd_daily, "run the whole unattended cycle")
+    s.add_argument("--lookback", type=int, default=config.OBSERVATION_WINDOW_DAYS)
+    s.add_argument("--bodies", type=int, default=6)
+
+    s = add("status", cmd_status, "compact digest as JSON")
+    s.add_argument("--on")
+
+    args = p.parse_args(argv)
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

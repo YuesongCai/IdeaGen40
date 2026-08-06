@@ -238,3 +238,28 @@ python -m ideagen.cli dashboard && open web/index.html
 
 模拟盘，非投资建议。所有成交均为规则化模拟，不涉及任何真实下单、资金划转或券商接口。
 `futu-api` 在本项目中只用于行情，交易接口从未被调用。
+
+---
+
+## 每天自动跑（macOS）
+
+用 launchd 而不是 cron，有两个实际原因：`cron` 需要 Full Disk Access；
+而 launchd 完全访问不到 `~/Downloads`（TCC 保护）——**所以安装位置是 `~/IdeaGen40`**，
+`~/Downloads/IdeaGen40` 只是一个软链。
+
+```bash
+cp scripts/com.ideagen40.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ideagen40.daily.plist
+launchctl start com.ideagen40.daily          # 立刻跑一次
+tail -f data/logs/daily.log
+```
+
+工作日 07:23 HKT 触发——美股收盘（16:15 ET）之后、港股开盘之前，
+所以当天的美股日线一定是完整的。
+
+`daily.sh` 里 python 解释器是写死绝对路径的：launchd 的 PATH 极简，
+会解析到一个没有 `requests` / `futu-api` 的 `python3`。用 `IDEAGEN_PYTHON` 可覆盖。
+
+`doctor` 只在 **OpenD 不可用**时让整个 run 退出——那种情况下盯市会算错。
+Wisburg 挂了只记 warning：ingest 阶段会在 `runs` 表里记下失败，
+其余阶段照常用磁盘上已有的数据跑完。一次网络抖动不应该让一整天的盯市和归因丢掉。

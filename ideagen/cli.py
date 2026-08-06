@@ -43,6 +43,14 @@ def _con():
 
 # ---------------------------------------------------------------- commands
 def cmd_doctor(args) -> int:
+    """Liveness check.
+
+    The exit code reflects only what the run genuinely cannot proceed without:
+    the price feed and the database. Wisburg is reported but not fatal — one
+    transient network failure there costs a day of fresh corpus, whereas aborting
+    the run also loses that day's marks, alerts and attribution, all of which are
+    computed from data already on disk.
+    """
     con = _con()
     print("IdeaGen40 doctor")
     print(f"  db            {config.DB_PATH}")
@@ -60,8 +68,8 @@ def cmd_doctor(args) -> int:
         info = w.initialize()
         print(f"  wisburg       OK  {info.get('serverInfo', {})}  tools={len(w.tools())}")
     except Exception as e:  # noqa: BLE001
-        print(f"  wisburg       FAIL  {e}")
-        ok = False
+        print(f"  wisburg       WARN  {str(e)[:150]}")
+        print("                非致命：ingest 阶段会记录失败，其余阶段照常运行")
 
     cv = analytics.coverage(con)
     print(f"  corpus        {cv['documents']['n']} docs / {cv['documents']['days']} days "
@@ -77,7 +85,7 @@ def cmd_doctor(args) -> int:
           f"({len([i for i in universe.ALL if i.kind == 'listed'])} listed)")
     print(f"  themes        {len(lexicon.THEMES)} in dictionary v{lexicon.LEXICON_VERSION}")
     print(f"  books         {', '.join(config.BOOKS)}")
-    print(f"\n  {'READY' if ok else 'NOT READY — fix the FAILs above'}")
+    print(f"\n  {'READY' if ok else 'NOT READY — OpenD 不可用，行情与盯市无法进行'}")
     return 0 if ok else 1
 
 
@@ -260,8 +268,18 @@ def cmd_daily(args) -> int:
 
     print(f"=== ideagen daily {as_of} run={run_id} ===")
     print("[1/7] wisburg ingest")
-    stage("ingest", lambda: wisburg.ingest(con, as_of, lookback_days=args.lookback,
-                                           fetch_bodies=args.bodies))
+
+    def _ingest():
+        try:
+            return wisburg.ingest(con, as_of, lookback_days=args.lookback,
+                                  fetch_bodies=args.bodies)
+        except Exception:                     # one transport retry after a pause
+            import time as _t
+            _t.sleep(20)
+            return wisburg.ingest(con, as_of, lookback_days=args.lookback,
+                                  fetch_bodies=args.bodies)
+
+    stage("ingest", _ingest)
     print("[2/7] prices")
     stage("prices", lambda: futu_px.sync(
         con, universe.priceable_codes(lexicon.all_indicators()),

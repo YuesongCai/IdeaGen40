@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ideagen40.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/yuesongcai/IdeaGen40/scripts/daily.sh</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/yuesongcai/IdeaGen40</string>
+  <!-- 07:23 HKT weekdays: after the US close (16:15 ET) and before the HK open. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>23</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/daily.log</string>
+  <key>StandardErrorPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/daily.err</string>
+  <key>RunAtLoad</key><false/>
+  <!-- If the Mac was asleep at the fire time, run as soon as it wakes. -->
+  <key>StartCalendarIntervalIgnoresSystemSleep</key><true/>
+</dict>
+</plist>

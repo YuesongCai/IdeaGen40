@@ -184,22 +184,6 @@ def cmd_ingest_batch(args) -> int:
         print("\nbatch stored as draft; not traded. Fix and re-ingest.")
         return 1
     if args.trade:
-        # Persist the batch's own transmission / signal registry.
-        rows_t = [{"as_of": as_of.isoformat(), "transmission_id": t["id"],
-                   "theme_id": t.get("theme_id"), "label": t.get("label")}
-                  for t in payload.get("transmissions", [])]
-        rows_s = [{"as_of": as_of.isoformat(), "signal_id": s2["id"],
-                   "theme_id": s2.get("theme_id"),
-                   "transmission_id": s2.get("transmission_id"),
-                   "asset": s2.get("asset"), "direction": s2.get("direction", "↑"),
-                   "horizon": s2.get("horizon", "1个月"), "gate": s2.get("gate"),
-                   "price_indicator": (lexicon.THEME_BY_ID[s2["theme_id"]].price_indicator
-                                       if s2.get("theme_id") in lexicon.THEME_BY_ID
-                                       else None)}
-                  for s2 in payload.get("signals", [])]
-        with db.tx(con):
-            db.upsert_many(con, "transmissions", rows_t, ["as_of", "transmission_id"])
-            db.upsert_many(con, "signals", rows_s, ["as_of", "signal_id"])
         for b in config.BOOKS:
             paper.open_batch(con, bid, b)
         paper.open_cohort(con, bid)      # the day's own independent book

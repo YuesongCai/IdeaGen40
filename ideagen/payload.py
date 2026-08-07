@@ -46,8 +46,67 @@ def build(con) -> dict:
         "positions": _positions(con),
         "attribution": _attribution(con),
         "cohorts": _cohorts(con),
+        "overview": None,   # filled below, needs cohorts
     }
+    out["overview"] = _overview(con, out)
     return out
+
+
+def _overview(con, pl: dict) -> dict:
+    """High-level read across every day, for the cockpit view."""
+    co = pl["cohorts"]
+    scored = [c for c in co.values() if c["sessions"] > 0 and c["excess"] is not None]
+    scored.sort(key=lambda c: c["as_of"])
+    rets = [c["cum_ret"] for c in scored]
+    exs = [c["excess"] for c in scored]
+    a = pl["attribution"] or {}
+
+    days = []
+    for d, c in sorted(co.items()):
+        b = (pl["days"].get(d) or {}).get("batch") or {}
+        rep = (pl["days"].get(d) or {}).get("report") or {}
+        th = (rep.get("themes") or [])
+        acts: dict[str, int] = {}
+        for i in b.get("ideas", []):
+            acts[i["action"]] = acts.get(i["action"], 0) + 1
+        days.append({
+            "d": d, "cum_ret": c["cum_ret"], "excess": c["excess"],
+            "spy": c["spy"], "sessions": c["sessions"],
+            "filled": c["orders"].get("filled") or 0,
+            "n_ideas": c["n_ideas"], "generator": c["generator"],
+            "max_dd": c["max_dd"], "n_open": c["n_open"],
+            "top_theme": (th[0]["label"] if th else None),
+            "top_tis": (th[0]["tis"] if th else None),
+            "narrative": b.get("narrative"),
+            "actions": acts,
+            "executable": acts.get("可执行", 0),
+            "corpus": (rep.get("corpus") or {}).get("total"),
+            "charts": len(rep.get("charts") or []),
+        })
+
+    best = max(scored, key=lambda c: c["cum_ret"]) if scored else None
+    worst = min(scored, key=lambda c: c["cum_ret"]) if scored else None
+    return {
+        "n_days": len(co), "n_scored": len(scored),
+        "n_ideas": sum(c["n_ideas"] for c in co.values()),
+        "n_filled": sum((c["orders"].get("filled") or 0) for c in co.values()),
+        "beat": sum(1 for c in scored if c["excess"] > 0),
+        "avg_ret": (sum(rets) / len(rets)) if rets else None,
+        "avg_excess": (sum(exs) / len(exs)) if exs else None,
+        "median_ret": (sorted(rets)[len(rets) // 2] if rets else None),
+        "best": ({"d": best["as_of"], "v": best["cum_ret"]} if best else None),
+        "worst": ({"d": worst["as_of"], "v": worst["cum_ret"]} if worst else None),
+        "worst_dd": (min(c["max_dd"] for c in co.values()) if co else None),
+        "idea_equal_weight": a.get("equal_weight_ret"),
+        "idea_hit": a.get("hit_rate"),
+        "idea_scored": a.get("scored"),
+        "beat_bench_rate": a.get("beat_bench_rate"),
+        "rank_rho": ((a.get("ranking") or {}).get("ev_c") or {}).get("rho_vs_realized"),
+        "skill": (a.get("calibration") or {}).get("skill_central"),
+        "corpus_total": sum((x["corpus"] or 0) for x in days),
+        "charts_total": sum(x["charts"] for x in days),
+        "days": days,
+    }
 
 
 def _cohorts(con) -> dict:

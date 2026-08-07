@@ -299,6 +299,30 @@ def build_batch(con, payload: dict, as_of: date, generator: str = "claude-code",
             "note": payload.get("note"),
         }, ["batch_id"])
         db.upsert_many(con, "ideas", store, ["idea_uid"])
+
+        # The batch's own transmission / signal registry. This lives here rather
+        # than in the CLI because every path that creates a batch needs it — the
+        # backfill went through `build_batch` directly, so its days had no signal
+        # rows and the Theme Map rendered as a flat list of themes with nothing
+        # underneath them.
+        from . import lexicon as _lex
+
+        db.upsert_many(con, "transmissions", [
+            {"as_of": as_of.isoformat(), "transmission_id": t["id"],
+             "theme_id": t.get("theme_id"), "label": t.get("label")}
+            for t in (payload.get("transmissions") or []) if t.get("id")],
+            ["as_of", "transmission_id"])
+        db.upsert_many(con, "signals", [
+            {"as_of": as_of.isoformat(), "signal_id": g["id"],
+             "theme_id": g.get("theme_id"),
+             "transmission_id": g.get("transmission_id"),
+             "asset": g.get("asset"), "direction": g.get("direction", "↑"),
+             "horizon": g.get("horizon", "1个月"), "gate": g.get("gate"),
+             "price_indicator": (_lex.THEME_BY_ID[g["theme_id"]].price_indicator
+                                 if g.get("theme_id") in _lex.THEME_BY_ID else None)}
+            for g in (payload.get("signals") or []) if g.get("id")],
+            ["as_of", "signal_id"])
+
         # The generator's macro narrative is the top of the daily report, so keep
         # it addressable by batch rather than buried in an idea's raw payload.
         # Snapshot the theme scores the batch was actually generated against.

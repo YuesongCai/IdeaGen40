@@ -27,6 +27,30 @@ from pathlib import Path
 
 from . import analytics, config, db, lexicon, monitor, payload
 
+GLOSSARY = {
+ "TIS": "Tactical Impact Score，战术冲击潜力。= 0.15·D + 0.25·A + 0.25·B + 0.35·N。回答「这个主题值不值得研究」，不回答「现在该不该买」。≥75 核心 / ≥60 重要 / ≥45 观察 / 更低是背景。",
+ "D": "讨论覆盖。这个主题在 3 日窗口里被多少条独立来源提到，对数标定到当窗口最响的主题。100 = 全场最被讨论。",
+ "A": "三日升温。讨论是不是在窗口后段变密。60% 看三天的重心偏向哪一天，40% 看当日热度在该主题自己过去 20 天分布里的百分位。高 = 正在加速。",
+ "B": "关键争议。围绕同一个预注册问题，看多和看空的观点是否都存在，以及一手/卖方/策展三层来源之间是否结论对立。高 = 还有预期差；低 = 已是共识。",
+ "N": "最新变化。30% 新事实广度 + 40% 意外程度（主题指标最大单日涨跌 ÷ 自身日波动）+ 30% 因果深度（叙事 25 / 价格 50 / 订单收入 75 / 已实现利润或政策落地 100）。高 = 真有新东西。",
+ "M": "市场验证，独立维度，不进 TIS。主题的预注册价格指标是否已经按预期方向动了。0–29 尚未定价 / 30–59 早期 / 60–79 已有确认 / 80+ 交易成熟。低 = 便宜但没人信；高 = 已经被交易过。",
+ "C": "拥挤度，v0.4 新增，独立维度。45% 60日动量百分位 + 30% 距 52 周高点 + 25% 低波动溢价（高位且安静最挤）。≥80 强制「等待回踩」并把仓位砍半。",
+ "hurdle": "持有期门槛收益（%）。= (无风险 + 流动性溢价) × 月数 ÷ 12。无风险取 Olive 美元货币基金货架的中位 7 日年化——不交易时钱真正能拿到的收益。",
+ "中心赔率": "Opportunity Ratio。= Σ概率×max(情景回报−hurdle,0) ÷ Σ概率×max(hurdle−情景回报,0)。>1 表示超过门槛的加权收益大于低于门槛的加权缺口。已扣双边成本。",
+ "保守赔率": "同上，但用保守情景（下调上涨概率与幅度、扩大下跌幅度）。v0.3 用它定 S/A/B/C 评级。",
+ "评级": "绝对评级：保守赔率≥1.5→S，≥1.0→A，中心赔率≥1.0→B，否则 C。沿用 v0.3 规则。",
+ "相对分位": "同一批 40 条内按保守赔率的四分位，Q1 最好。绝对评级会随 hurdle 口径整体漂移，这个不会。",
+ "幅度校验": "情景幅度是否落在标的自身已实现波动的 [0.35σ, 2.60σ] 内。wide = 写得太夸张，narrow = 等于没观点。只标记不否决，但会进 outcome 供事后检验。",
+ "σ_h": "标的自身已实现年化波动 × √(月数/12)，即该期限的一个标准差。情景幅度都以它为单位。",
+ "当日组合": "当天那 40 条自己成一个 1000 万美元的独立盘：等权买入、持有到期限、单独计价。每天一盘，所以哪天的想法好可以直接比。",
+ "超额": "组合收益 − SPY 同期收益。",
+ "排序能力": "Spearman ρ：引擎给的赔率排序与后来真实收益的秩相关。ρ>0 表示排序有信息，ρ≈0 表示排序没用。",
+ "Brier": "三分类（上涨/基准/下跌）概率的平方误差，越小越好。均匀先验（各 1/3）是 0.667。",
+ "技能分": "1 − Brier ÷ 0.667。>0 表示概率比瞎猜有信息，<0 表示比瞎猜还差。",
+ "溯源": "智堡是客户端渲染的 SPA，逐篇没有固定网页链接（/report/<id> 之类全返回同一个空壳），所以这里不存永久链接——猜一个等于给一条指向空页的假引用。真正的凭据是可复现的 API 检索式 + 内容 sha1，加上已验证可达的图表 URL。",
+ "生成器": "rules:v0.4 = 规则引擎（用于补齐每日历史，thesis 是模板）；claude-code = Claude 按契约手写；seed-import = 2026-07-27 的原始 PM pack。"
+}
+
 CSS = """
 :root{
   --paper:#EDF0F3; --surface:#FFFFFF; --surface-2:#F6F8FA; --sidebar:#131A24;
@@ -183,6 +207,60 @@ h1.t{font-family:var(--serif);font-size:25px;margin:0 0 6px;line-height:1.25;
 .lv-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
 .lv-info{background:var(--surface-2);color:var(--ink-3);border-color:var(--rule-strong)}
 .tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.hint{display:inline-flex;align-items:center;justify-content:center;width:13px;
+  height:13px;border-radius:50%;border:1px solid var(--rule-strong);
+  color:var(--ink-3);font-size:9px;font-weight:700;cursor:help;margin-left:3px;
+  vertical-align:1px;flex-shrink:0;font-family:var(--sans);position:relative;
+  background:var(--surface)}
+.hint:hover,.hint:focus{border-color:var(--accent);color:var(--accent);outline:none}
+.hint>span{display:none;position:absolute;bottom:150%;left:50%;
+  transform:translateX(-50%);width:min(330px,72vw);background:var(--ink);
+  color:var(--paper);padding:9px 11px;border-radius:5px;font-size:11.5px;
+  font-weight:400;line-height:1.55;z-index:80;text-align:left;cursor:auto;
+  box-shadow:0 4px 14px rgba(0,0,0,.28)}
+.hint:hover>span,.hint:focus>span{display:block}
+thead th .hint>span{bottom:auto;top:150%}
+/* ---- cockpit ---- */
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(136px,1fr));gap:10px}
+.kpi>div{background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  padding:11px 13px;box-shadow:var(--shadow)}
+.kpi .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:20px;
+  font-weight:600;line-height:1.15;letter-spacing:-.01em}
+.kpi .k{font-size:10.5px;color:var(--ink-3);display:flex;align-items:center;
+  margin-bottom:3px}
+.kpi .s{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:7px}
+.cal button{all:unset;cursor:pointer;background:var(--surface);
+  border:1px solid var(--rule);border-radius:4px;padding:9px 10px;
+  display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden}
+.cal button:hover{border-color:var(--accent)}
+.cal button[aria-current="true"]{border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent)}
+.cal button::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px}
+.cal button.up::after{background:var(--up)} .cal button.down::after{background:var(--down)}
+.cal button.flat::after{background:var(--rule-strong)}
+.cal .d{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.cal .r{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:16px;
+  font-weight:600;line-height:1.1}
+.cal .x{font-size:10px;color:var(--ink-3)}
+.cal .pend{color:var(--ink-3);font-size:11px;font-family:var(--sans)}
+
+.glossbtn{all:unset;cursor:pointer;font-size:11px;color:var(--side-ink-2);
+  padding:6px 12px;border-radius:5px;display:flex;gap:8px;align-items:center}
+.glossbtn:hover{background:rgba(255,255,255,.05);color:var(--side-ink)}
+dialog{border:1px solid var(--rule);border-radius:6px;background:var(--surface);
+  color:var(--ink);max-width:680px;width:92vw;padding:0;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog header{display:flex;justify-content:space-between;align-items:center;
+  padding:14px 18px;border-bottom:1px solid var(--rule)}
+dialog h3{margin:0;font-family:var(--serif);font-size:17px}
+dialog .body{padding:6px 18px 18px;max-height:70vh;overflow-y:auto}
+dialog dt{font-weight:600;font-size:13px;margin-top:13px;font-family:var(--mono)}
+dialog dd{margin:2px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.6}
+dialog button.x{all:unset;cursor:pointer;font-size:20px;color:var(--ink-3);
+  padding:0 4px;line-height:1}
+dialog button.x:hover{color:var(--ink)}
 
 .tw{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;
   background:var(--surface);box-shadow:var(--shadow)}
@@ -269,7 +347,7 @@ details>summary{cursor:pointer;font-size:12px;color:var(--accent);
 JS = r"""
 const P = window.__IG40__;
 const D = P.meta.dates, BOOKS = P.meta.books;
-let view = 'report', cur = P.meta.today;
+let view = 'cockpit', cur = P.meta.today;
 
 /* ------------------------------------------------------------ helpers */
 const $ = s => document.querySelector(s);
@@ -296,6 +374,16 @@ const usd = v => v === null || v === undefined ? '—'
 const sgn = v => v === null || v === undefined ? 'flat' : v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
 const day = P.days;
 const dIdx = () => D.indexOf(cur);
+const G = P.glossary || {};
+
+/* A first-time reader should not have to know what D/A/B/N mean. Every term that
+   is not self-evident gets an ⓘ next to it, hoverable and keyboard-focusable, plus
+   a full glossary in the sidebar. */
+const hint = k => G[k]
+  ? E('span', { cls: 'hint', tabindex: '0', role: 'note',
+                'aria-label': k + '：' + G[k] }, 'i', E('span', {}, G[k]))
+  : null;
+const lbl = (text, k) => E('span', {}, text, hint(k === undefined ? text : k));
 
 function relLabel(d) {
   const t = P.meta.today;
@@ -399,6 +487,127 @@ function table(cols, rows) {
   return E('div', { cls: 'tw' }, sortable(t));
 }
 
+/* ============================================================ 概览 */
+function viewCockpit() {
+  const o = P.overview;
+  const wrap = E('div');
+  wrap.append(E('h1', { cls: 't' }, '概览'));
+  wrap.append(E('p', { cls: 'lede' },
+    `${o.n_days} 天，每天 40 条，共 ${o.n_ideas} 条想法、${o.n_filled} 条真的成交了。`
+    + '每天那一批自己成一个独立组合，所以下面每一格就是「那天的想法到今天为止怎么样」。'));
+
+  const kpi = (k, v, cls, sub, gk) => E('div', {},
+    E('div', { cls: 'k' }, k, gk ? hint(gk) : null),
+    E('div', { cls: 'v ' + (cls || '') }, v),
+    sub ? E('div', { cls: 's' }, sub) : null);
+
+  wrap.append(sec('到目前为止', '样本还短，这些数字是口径正确的证据，不是结论',
+    E('div', { cls: 'kpi' },
+      kpi('跑赢 SPY 的天数', `${o.beat} / ${o.n_scored}`,
+          o.beat * 2 >= o.n_scored ? 'up' : 'down',
+          `平均超额 ${pc(o.avg_excess)}`, '超额'),
+      kpi('每日组合平均收益', pc(o.avg_ret), sgn(o.avg_ret),
+          `中位 ${pc(o.median_ret)}`),
+      kpi('最好的一天', pc(o.best && o.best.v), sgn(o.best && o.best.v),
+          o.best && o.best.d),
+      kpi('最差的一天', pc(o.worst && o.worst.v), sgn(o.worst && o.worst.v),
+          o.worst && o.worst.d),
+      kpi('最大回撤', pc(o.worst_dd), 'down', '所有组合里最深的一次'),
+      kpi('想法等权收益', pc(o.idea_equal_weight), sgn(o.idea_equal_weight),
+          `${o.idea_scored} 条可评分 · 胜率 ${pcu(o.idea_hit, 0)}`),
+      kpi('跑赢基准比例', pcu(o.beat_bench_rate, 0), null, '逐条 vs SPY'),
+      kpi('排序能力 ρ', n2(o.rank_rho, 3), sgn(o.rank_rho),
+          '中心期望回报 vs 实际', '排序能力'),
+      kpi('概率技能分', n2(o.skill, 3), sgn(o.skill),
+          '> 0 优于瞎猜', '技能分'),
+      kpi('语料', o.corpus_total.toLocaleString(),
+          null, `条来源 · ${o.charts_total} 张图表`))));
+
+  /* ---- calendar ---- */
+  const cal = E('div', { cls: 'cal' });
+  for (const x of o.days) {
+    const pend = x.sessions === 0;
+    cal.append(E('button', {
+      cls: pend ? 'flat' : sgn(x.cum_ret),
+      'aria-current': x.d === cur ? 'true' : 'false',
+      title: `${x.d}\n${x.top_theme || ''}\n成交 ${x.filled}/${x.n_ideas}`,
+      on: { click: () => { cur = x.d; setView('book'); } },
+    },
+      E('span', { cls: 'd' }, x.d.slice(5)),
+      pend ? E('span', { cls: 'pend' }, '未成交')
+           : E('span', { cls: 'r ' + sgn(x.cum_ret) }, pc(x.cum_ret)),
+      E('span', { cls: 'x' }, pend ? `${x.n_ideas} 条已下单`
+          : `vs SPY ${pc(x.excess)}`),
+      E('span', { cls: 'x' }, `${x.sessions} 天 · ${x.filled} 成交`)));
+  }
+  wrap.append(sec('收益日历', '点任意一天跳到那天的组合；底部色条 红=涨 绿=跌', cal));
+
+  /* ---- bars ---- */
+  wrap.append(sec('每日组合收益', '同一口径下逐日对比，虚线是各自区间的 SPY',
+    E('figure', { cls: 'panel' }, barChart(o.days),
+      E('figcaption', {},
+        '每根柱子是那一天 40 条想法组成的独立组合到今天为止的收益；'
+        + '灰点是同期 SPY。柱子低于灰点＝跑输指数。'))));
+
+  /* ---- per-day rationale ---- */
+  wrap.append(sec('每天在赌什么', '当天的主线与执行口径，一行一天',
+    table([{ h: '日期' }, { h: lbl('生成器') }, { h: '当日冲击最高的主题' },
+           { h: lbl('TIS'), n: 1 }, { h: '可直接执行', n: 1 },
+           { h: '收益', n: 1 }, { h: lbl('超额'), n: 1 }, { h: '主线' }],
+      [...o.days].reverse().map(x => [
+        { el: E('a', { href: '#book/' + x.d,
+                       on: { click: e => { e.preventDefault(); cur = x.d; setView('book'); } } },
+            x.d) },
+        { el: E('span', { cls: 'tag' },
+            x.generator.startsWith('rules') ? '规则'
+              : x.generator.startsWith('seed') ? '原始 pack' : 'Claude') },
+        x.top_theme || '—',
+        { v: x.top_tis, t: n2(x.top_tis, 1) },
+        { v: x.executable, t: x.executable },
+        { v: x.cum_ret, cls: sgn(x.cum_ret), t: pc(x.cum_ret) },
+        { v: x.excess, cls: sgn(x.excess), t: pc(x.excess) },
+        { el: E('span', { cls: 'small' }, x.narrative || '—') }]))));
+
+  return wrap;
+}
+
+function barChart(days) {
+  const W = 1160, H = 210, PL = 48, PR = 14, PT = 12, PB = 34;
+  const iw = W - PL - PR, ih = H - PT - PB;
+  const vals = days.flatMap(x => [x.cum_ret || 0, x.spy || 0]);
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = Math.max((hi - lo) * .14, .002); lo -= pad; hi += pad;
+  const Y = v => PT + (1 - (v - lo) / (hi - lo)) * ih;
+  const bw = Math.min(46, iw / Math.max(days.length, 1) * .58);
+  const X = i => PL + (i + .5) * (iw / Math.max(days.length, 1));
+  let g = '';
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + (hi - lo) * k / 4, y = Y(v), z = Math.abs(v) < 1e-9;
+    g += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${PL + iw}" y2="${y.toFixed(1)}"
+      stroke="var(--${z ? 'rule-strong' : 'rule'})" stroke-width="${z ? 1 : .6}"/>
+      <text x="${PL - 7}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" font-size="10"
+      font-family="var(--mono)" fill="var(--ink-3)">${(v * 100).toFixed(1)}%</text>`;
+  }
+  days.forEach((x, i) => {
+    const v = x.cum_ret || 0, y0 = Y(0), y1 = Y(v);
+    const col = v > 0 ? 'var(--up)' : v < 0 ? 'var(--down)' : 'var(--rule-strong)';
+    g += `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}"
+      width="${bw.toFixed(1)}" height="${Math.max(Math.abs(y1 - y0), 1).toFixed(1)}"
+      fill="${col}" rx="1.5"/>`;
+    if (x.spy !== null && x.spy !== undefined)
+      g += `<circle cx="${X(i).toFixed(1)}" cy="${Y(x.spy).toFixed(1)}" r="2.6"
+        fill="var(--ink-3)"/>`;
+    g += `<text x="${X(i).toFixed(1)}" y="${H - 19}" text-anchor="middle" font-size="9.5"
+      font-family="var(--mono)" fill="var(--ink-3)">${x.d.slice(5)}</text>`;
+    g += `<text x="${X(i).toFixed(1)}" y="${H - 7}" text-anchor="middle" font-size="9"
+      font-family="var(--mono)" fill="${col}">${(v * 100).toFixed(1)}</text>`;
+  });
+  const box = document.createElement('div');
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="每日组合收益">${g}</svg>`;
+  return box.firstElementChild;
+}
+
 /* ============================================================ 日报 */
 function viewReport(dd) {
   const wrap = E('div');
@@ -436,11 +645,13 @@ function viewReport(dd) {
   /* ---- theme table ---- */
   if (r) {
     const cols = [
-      { h: '宏观主题 · 预注册关键结果' }, { h: '冲击潜力', n: 1 },
-      { h: '因子', nosort: 1 }, { h: 'D', n: 1 }, { h: 'A', n: 1 },
-      { h: 'B', n: 1 }, { h: 'N', n: 1 },
-      { h: '入价程度 M', n: 1 }, { h: '拥挤度 C', n: 1 },
-      { h: '主要争议' }, { h: '条目', n: 1 }, { h: '分级' }];
+      { h: '宏观主题 · 预注册关键结果' },
+      { h: lbl('冲击潜力', 'TIS'), n: 1 },
+      { h: '因子', nosort: 1 },
+      { h: lbl('D'), n: 1 }, { h: lbl('A'), n: 1 },
+      { h: lbl('B'), n: 1 }, { h: lbl('N'), n: 1 },
+      { h: lbl('入价程度 M', 'M'), n: 1 }, { h: lbl('拥挤度 C', 'C'), n: 1 },
+      { h: lbl('主要争议', 'B') }, { h: '条目', n: 1 }, { h: '分级' }];
     const rows = r.themes.map(t => [
       { el: E('div', {}, E('strong', {}, t.label),
           E('div', { cls: 'small muted' }, t.key_question)) },
@@ -458,7 +669,7 @@ function viewReport(dd) {
       { v: t.n_items, t: t.n_items },
       { el: E('div', {}, E('span', { cls: 'pill t-' + t.tier }, t.tier),
           t.confidence !== 'ok' ? E('div', { cls: 'tag' }, '低置信') : null) }]);
-    wrap.append(sec('六个宏观主题，冲击与入价并列',
+    wrap.append(sec(E('span', {}, '宏观主题打分', hint('TIS')),
       'TIS = 0.15·D + 0.25·A + 0.25·B + 0.35·N（沿用 v0.3 权重）；M 与 C 是独立维度，不进 TIS。柱状图依次为 D / A / B / N',
       table(cols, rows)));
   }
@@ -591,10 +802,11 @@ function themeMap(r, b) {
 
 function ideaTable(b) {
   const cols = [{ h: '#', n: 1 }, { h: '工具' }, { h: '主题' }, { h: '期限' },
-    { h: '动作' }, { h: '评级' }, { h: '中心赔率', n: 1 }, { h: '保守赔率', n: 1 },
-    { h: 'hurdle', n: 1 }, { h: '参考价', n: 1 }, { h: '进场', n: 1 },
+    { h: '动作' }, { h: lbl('评级') }, { h: lbl('中心赔率'), n: 1 },
+    { h: lbl('保守赔率'), n: 1 },
+    { h: lbl('hurdle'), n: 1 }, { h: '参考价', n: 1 }, { h: '进场', n: 1 },
     { h: '止损', n: 1 }, { h: '止盈', n: 1 }, { h: '仓位', n: 1 },
-    { h: '幅度校验' }, { h: '已实现', n: 1 }, { h: '超额', n: 1 }];
+    { h: lbl('幅度校验') }, { h: '已实现', n: 1 }, { h: lbl('超额'), n: 1 }];
   return table(cols, b.ideas.map(i => [
     { v: i.rank, t: i.rank },
     { el: E('div', {}, E('strong', { cls: 'mono' }, i.tool),
@@ -646,7 +858,7 @@ function viewBook(dd) {
   const wrap = E('div');
   const co = (P.cohorts || {})[cur];
 
-  wrap.append(E('h1', { cls: 't' }, `${cur} 当日组合`));
+  wrap.append(E('h1', { cls: 't' }, `${cur} 当日组合`, hint('当日组合')));
   wrap.append(E('p', { cls: 'lede' },
     '当天那 40 条自己成一个独立的盘：等权买入、持有到期限、单独计价。'
     + '每天一盘，所以哪天的想法好、哪天的差，可以直接比。'));
@@ -696,9 +908,9 @@ function viewBook(dd) {
   const rows = Object.values(P.cohorts).sort((a, b) => a.as_of < b.as_of ? 1 : -1);
   wrap.append(sec('每天一览', 
     `${rows.length} 天，每天一个独立组合。这是「30 天后回来看」的那张表`,
-    table([{ h: '日期' }, { h: '生成器' }, { h: '条', n: 1 }, { h: '成交', n: 1 },
+    table([{ h: '日期' }, { h: lbl('生成器') }, { h: '条', n: 1 }, { h: '成交', n: 1 },
            { h: '持有(交易日)', n: 1 }, { h: '收益', n: 1 }, { h: 'SPY 同期', n: 1 },
-           { h: '超额', n: 1 }, { h: '最大回撤', n: 1 }, { h: '在场', n: 1 }],
+           { h: lbl('超额'), n: 1 }, { h: '最大回撤', n: 1 }, { h: '在场', n: 1 }],
       rows.map(c => [
         { el: E('a', { href: '#book/' + c.as_of,
                        on: { click: e => { e.preventDefault(); go(c.as_of); } },
@@ -763,18 +975,23 @@ function viewBook(dd) {
           row('胜率', pcu(a.hit_rate, 0)),
           row('超额均值', pc(a.excess_mean), sgn(a.excess_mean)),
           row('跑赢基准', pcu(a.beat_bench_rate, 0))),
-        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '排序能力 ρ'),
+        E('div', { cls: 'panel' },
+          E('div', { cls: 'eyebrow' }, '排序能力 ρ', hint('排序能力')),
           E('p', { cls: 'small muted', style: 'margin:3px 0 9px' },
             '赔率排序是否预测了真实收益。ρ > 0 表示有效。'),
           ...Object.values(rk).map(v =>
             row(v.label, n2(v.rho_vs_realized, 3), sgn(v.rho_vs_realized)))),
-        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '概率校准'),
+        E('div', { cls: 'panel' },
+          E('div', { cls: 'eyebrow' }, '概率校准', hint('Brier')),
           E('p', { cls: 'small muted', style: 'margin:3px 0 9px' },
             '技能分 = 1 − Brier ÷ 均匀先验；> 0 表示优于瞎猜。'),
           row('Brier 中心 / 保守',
             `${n2(cal.brier_central, 3)} / ${n2(cal.brier_conservative, 3)}`),
-          row('技能分', `${n2(cal.skill_central, 3)} / ${n2(cal.skill_conservative, 3)}`,
-            sgn(cal.skill_central)),
+          E('div', { cls: 'row' },
+            E('span', {}, '技能分', hint('技能分')),
+            E('span', { cls: sgn(cal.skill_central) },
+              `${n2(cal.skill_central, 3)} / ${n2(cal.skill_conservative, 3)}`)),
+
           row('情景实现', Object.entries(cal.scenario_realised_pct || {})
             .map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · ') || '—')))));
 
@@ -848,11 +1065,26 @@ const row = (k, v, cls) => E('div', { cls: 'row' },
   E('span', {}, k), E('span', { cls: cls || '' }, v));
 const sec = (h, sub, ...body) => E('section', { cls: 'sec' },
   E('h2', {}, h), sub ? E('p', { cls: 'sub' }, sub) : null, ...body);
+function glossary() {
+  const dl = E('dl', {});
+  for (const [k, v] of Object.entries(G)) {
+    dl.append(E('dt', {}, k));
+    dl.append(E('dd', {}, v));
+  }
+  const dlg = E('dialog', { id: 'gloss' },
+    E('header', {}, E('h3', {}, '名词表'),
+      E('button', { cls: 'x', 'aria-label': '关闭',
+                    on: { click: () => dlg.close() } }, '×')),
+    E('div', { cls: 'body' }, dl));
+  return dlg;
+}
 
 /* ============================================================ shell */
 function render() {
   const dd = day[cur];
-  $('#view').replaceChildren(view === 'report' ? viewReport(dd) : viewBook(dd));
+  $('#view').replaceChildren(
+    view === 'cockpit' ? viewCockpit()
+      : view === 'report' ? viewReport(dd) : viewBook(dd));
   document.querySelectorAll('.nav button').forEach(b =>
     b.setAttribute('aria-current', b.dataset.view === view ? 'page' : 'false'));
   document.querySelectorAll('.datelist button').forEach(b =>
@@ -893,13 +1125,15 @@ document.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea')) return;
   if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+  else if (e.key === '0') setView('cockpit');
   else if (e.key === '1') setView('report');
   else if (e.key === '2') setView('book');
 });
 
 (function boot() {
-  const m = /^#(report|book)\/(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
+  const m = /^#(cockpit|report|book)\/(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
   if (m && day[m[2]]) { view = m[1]; cur = m[2]; }
+  else if (location.hash === '#cockpit') view = 'cockpit';
   $('#prev').addEventListener('click', () => step(-1));
   $('#next').addEventListener('click', () => step(1));
   document.querySelectorAll('.nav button').forEach(b =>
@@ -912,6 +1146,8 @@ document.addEventListener('keydown', e => {
       E('span', { cls: 'dot' + (has ? '' : ' none'),
                   title: has ? '有想法批次' : '仅打分' })));
   }
+  document.body.append(glossary());
+  $('#openGloss').addEventListener('click', () => $('#gloss').showModal());
   render();
 })();
 """
@@ -930,6 +1166,7 @@ def build(con, out: Path | None = None, artifact: bool = False,
     pl = payload.build(con)
     pl["meta"]["embed_images"] = (config.EMBED_IMAGES_LOCAL if embed_images is None
                                   else bool(embed_images))
+    pl["glossary"] = GLOSSARY
     out = out or (config.WEB / "index.html")
     data = json.dumps(pl, ensure_ascii=False, separators=(",", ":"), default=str)
 
@@ -943,10 +1180,14 @@ def build(con, out: Path | None = None, artifact: bool = False,
     </div>
 
     <nav class="nav">
-      <button data-view="report" aria-current="page">
+      <button data-view="cockpit" aria-current="page">
+        <span class="ic">▤</span>概览<span class="k">0</span></button>
+      <button data-view="report" aria-current="false">
         <span class="ic">◈</span>日报<span class="k">1</span></button>
       <button data-view="book" aria-current="false">
         <span class="ic">◱</span>组合<span class="k">2</span></button>
+      <button class="glossbtn" id="openGloss" type="button">
+        <span class="ic">?</span>名词表</button>
     </nav>
 
     <div class="side-sec">
@@ -961,7 +1202,8 @@ def build(con, out: Path | None = None, artifact: bool = False,
 
     <div class="side-foot">
       <span class="kbd">←</span> <span class="kbd">→</span> 换日期 ·
-      <span class="kbd">1</span> <span class="kbd">2</span> 换视图<br><br>
+      <span class="kbd">0</span> <span class="kbd">1</span> <span class="kbd">2</span> 换视图<br>
+      不确定的名词旁边都有 <span class="kbd">i</span><br><br>
       方法论 v{m['methodology']} · 词典 v{m['lexicon']}<br>
       行情至 US {m['px_through'].get('US', '')} / HK {m['px_through'].get('HK', '')}<br>
       生成 {m['generated_at'][:16].replace('T', ' ')} HKT<br><br>

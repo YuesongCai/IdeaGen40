@@ -521,3 +521,44 @@ class TestDashboardRender(unittest.TestCase):
         for tag in ("<!doctype", "<html", "<head>", "<body>"):
             self.assertNotIn(tag, s.lower())
         self.assertTrue(s.startswith("<title>"))
+
+
+class TestCohortMarking(unittest.TestCase):
+    """Every past day's cohort must track today's prices, not its own entry day."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.con = db.init()
+        cls.last = futu_px.complete_through("US")
+
+    def test_every_cohort_is_marked_to_the_last_closed_session(self):
+        for bk in paper.cohort_books(self.con):
+            n = db.q1(self.con, "SELECT COUNT(*) n FROM positions WHERE book_id=?",
+                      (bk,))["n"]
+            if not n:
+                continue          # orders placed, session not closed yet
+            mx = db.q1(self.con, "SELECT MAX(d) d FROM mtm WHERE book_id=?", (bk,))["d"]
+            self.assertEqual(mx, self.last, bk)
+
+    def test_a_cohort_holds_only_its_own_day(self):
+        for bk in paper.cohort_books(self.con):
+            as_of = {r["as_of"] for r in db.q(
+                self.con, "SELECT DISTINCT i.as_of FROM positions p "
+                          "JOIN ideas i ON i.idea_uid=p.idea_uid WHERE p.book_id=?",
+                (bk,))}
+            self.assertLessEqual(len(as_of), 1, f"{bk} mixes vintages: {as_of}")
+
+    def test_mark_covers_cohorts(self):
+        import inspect
+
+        from ideagen import cli
+
+        self.assertIn("all_books", inspect.getsource(cli.cmd_mark))
+
+    def test_horizon_exit_dates_are_in_the_future_or_closed(self):
+        for r in db.q(self.con, "SELECT status, closed_d, horizon_end, exit_reason "
+                                "FROM positions WHERE horizon_end IS NOT NULL"):
+            if r["status"] == "closed" and r["exit_reason"] == "horizon":
+                self.assertGreaterEqual(r["closed_d"], r["horizon_end"])
+            elif r["status"] == "open":
+                self.assertGreater(r["horizon_end"], self.last)

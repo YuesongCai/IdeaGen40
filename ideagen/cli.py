@@ -155,6 +155,7 @@ def cmd_seed(args) -> int:
         for b in config.BOOKS:
             paper.reset_book(con, b)
             paper.open_batch(con, bid, b)
+        paper.open_cohort(con, bid)
     return 0 if rep["pass"] else 1
 
 
@@ -201,16 +202,27 @@ def cmd_ingest_batch(args) -> int:
             db.upsert_many(con, "signals", rows_s, ["as_of", "signal_id"])
         for b in config.BOOKS:
             paper.open_batch(con, bid, b)
+        paper.open_cohort(con, bid)      # the day's own independent book
     return 0
 
 
 def cmd_mark(args) -> int:
+    """Advance every book to the last closed session.
+
+    Cohorts are included on purpose. Each past day's cohort must be re-marked at
+    today's prices — opening 2026-07-28 tomorrow should show 2026-07-28's entries
+    against tomorrow's closes, and positions leaving the book as their horizons
+    arrive. Marking only the commingled books would freeze every cohort.
+    """
     con = _con()
     end = args.to or futu_px.complete_through("US")
-    for b in config.BOOKS:
+    books = paper.all_books(con)
+    for b in books:
         first = db.q1(con, "SELECT MIN(placed_d) d FROM orders WHERE book_id=?", (b,))
         start = args.since or (first["d"] if first and first["d"] else end)
-        paper.run(con, b, start, end)
+        paper.run(con, b, start, end, verbose=not config.is_cohort(b))
+    n_co = sum(1 for b in books if config.is_cohort(b))
+    print(f"  marked {len(books)} books ({n_co} 个当日组合) 至 {end}")
     return 0
 
 
@@ -365,7 +377,7 @@ def cmd_daily(args) -> int:
     stage("score", lambda: scoring.score_day(con, as_of))   # skips a traded date
     print("[4/8] briefing pack")
     stage("brief", lambda: briefing.build(con, as_of))
-    print("[5/8] mark books")
+    print("[5/8] mark books (含每日组合)")
     stage("mark", lambda: cmd_mark(argparse.Namespace(since=None, to=None)))
     print("[6/8] monitor")
     stage("monitor", lambda: monitor.run(con))

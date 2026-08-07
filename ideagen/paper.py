@@ -205,9 +205,17 @@ def size_batch(con, book_id: str, rows: list[dict], equity: float) -> dict[str, 
             continue
         live.append(r)
 
+    # A book cannot spend cash it does not have. Without this, a commingled book
+    # receiving a fresh 40-idea batch every day allocates full equity each time and
+    # silently levers up — it reached 825% gross before this was enforced. The
+    # cohort books are unaffected (one batch each), but the constraint is real for
+    # any book, so it is applied to all of them.
+    cash_now = _cash_on(con, book_id, _last_marked(con, book_id), spec["capital"])
+    budget = max(0.0, cash_now)
+
     notional: dict[str, float] = {}
     if spec["sizing"] == "equal":
-        per = equity / max(len(live), 1)
+        per = min(equity, budget) / max(len(live), 1)
         for r in live:
             notional[r["idea_uid"]] = per
     else:
@@ -224,11 +232,21 @@ def size_batch(con, book_id: str, rows: list[dict], equity: float) -> dict[str, 
             theme_used[th] = theme_used.get(th, 0.0) + w
             notional[r["idea_uid"]] = w * equity
         gross = sum(notional.values())
-        cap = config.MAX_GROSS_EXPOSURE * equity
+        cap = min(config.MAX_GROSS_EXPOSURE * equity, budget)
         if gross > cap and gross > 0:
             scale = cap / gross
             notional = {k: v * scale for k, v in notional.items()}
-    return {"notional": notional, "skipped": skipped, "n_live": len(live)}
+    total = sum(notional.values())
+    if total > budget and total > 0:
+        scale = budget / total
+        notional = {k: v * scale for k, v in notional.items()}
+    return {"notional": notional, "skipped": skipped, "n_live": len(live),
+            "cash_budget": round(budget, 2), "allocated": round(sum(notional.values()), 2)}
+
+
+def _last_marked(con, book_id: str) -> str:
+    r = db.q1(con, "SELECT MAX(d) d FROM equity WHERE book_id=?", (book_id,))
+    return (r["d"] if r and r["d"] else config.today_hkt().isoformat())
 
 
 # ---------------------------------------------------------------- open

@@ -299,6 +299,23 @@ def build_batch(con, payload: dict, as_of: date, generator: str = "claude-code",
             "note": payload.get("note"),
         }, ["batch_id"])
         db.upsert_many(con, "ideas", store, ["idea_uid"])
+        # The generator's macro narrative is the top of the daily report, so keep
+        # it addressable by batch rather than buried in an idea's raw payload.
+        # Snapshot the theme scores the batch was actually generated against.
+        # A later `score` run on the same date legitimately sees more corpus and
+        # produces different numbers; without this snapshot the daily report would
+        # show a narrative frozen at generation time above a table that has since
+        # moved underneath it.
+        themes_at_gen = [dict(r) for r in db.q(
+            con, "SELECT * FROM themes WHERE as_of=?", (as_of.isoformat(),))]
+        db.kv_set(con, f"batch_meta:{batch_id}", {
+            "macro_narrative": payload.get("macro_narrative"),
+            "note": payload.get("note"),
+            "pack_sha": payload.get("pack_sha"),
+            "transmissions": payload.get("transmissions") or [],
+            "signals": payload.get("signals") or [],
+            "themes_at_generation": themes_at_gen,
+        })
     return batch_id, rows, report
 
 

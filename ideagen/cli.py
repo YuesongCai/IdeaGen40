@@ -136,7 +136,7 @@ def cmd_prices(args) -> int:
 
 def cmd_score(args) -> int:
     con = _con()
-    scoring.score_day(con, _as_of(args))
+    scoring.score_day(con, _as_of(args), force=args.force)
     return 0
 
 
@@ -293,7 +293,7 @@ def cmd_daily(args) -> int:
         con, universe.priceable_codes(lexicon.all_indicators()),
         as_of - timedelta(days=400), as_of))
     print("[3/7] score themes")
-    stage("score", lambda: scoring.score_day(con, as_of))
+    stage("score", lambda: scoring.score_day(con, as_of))   # skips a traded date
     print("[4/7] briefing pack")
     stage("brief", lambda: briefing.build(con, as_of))
     print("[5/7] mark books")
@@ -350,7 +350,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--verbose", action="store_true")
     s.add_argument("--retry-blocked", action="store_true")
 
-    add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
+    s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
+    s.add_argument("--force", action="store_true",
+                   help="re-score even if a batch was already traded against this date")
     add("brief", cmd_brief, "build the generator briefing pack")
 
     s = add("seed", cmd_seed, "import the historical 2026-07-27 pack as batch #1")

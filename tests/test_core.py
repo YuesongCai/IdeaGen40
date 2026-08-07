@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ideagen import analytics, config, db, ideas, lexicon, paper, scoring
@@ -409,3 +410,94 @@ class TestHorizonEnd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestPayload(unittest.TestCase):
+    """The dashboard payload must stay renderable for every stored date."""
+
+    @classmethod
+    def setUpClass(cls):
+        from ideagen import payload
+        cls.con = db.init()
+        cls.pl = payload.build(cls.con)
+
+    def test_every_date_has_a_day_entry(self):
+        for d in self.pl["meta"]["dates"]:
+            self.assertIn(d, self.pl["days"])
+
+    def test_a_day_may_lack_a_report_or_a_batch_without_breaking(self):
+        for d, v in self.pl["days"].items():
+            self.assertTrue(v["report"] is None or "themes" in v["report"], d)
+            self.assertTrue(v["batch"] is None or "ideas" in v["batch"], d)
+
+    def test_frozen_scoring_wins_when_a_batch_exists(self):
+        for d, v in self.pl["days"].items():
+            if v["batch"] and v["batch"].get("themes_at_generation"):
+                self.assertTrue(v["report"]["frozen_at_generation"], d)
+
+    def test_max_drawdown_is_never_positive(self):
+        for d, v in self.pl["days"].items():
+            for bk, b in v["books"].items():
+                if b.get("max_dd") is not None:
+                    self.assertLessEqual(b["max_dd"], 0, f"{d}/{bk}")
+
+    def test_evidence_carries_no_body_excerpt(self):
+        """The page is public; only titles and metadata may travel with it."""
+        for d, v in self.pl["days"].items():
+            for e in (v["report"] or {}).get("evidence", []):
+                self.assertNotIn("excerpt", e, d)
+                self.assertLessEqual(len(e.get("title") or ""), 220, d)
+
+    def test_positions_include_unfilled_orders(self):
+        kinds = {p["kind"] for p in self.pl["positions"]}
+        self.assertIn("order", kinds)
+
+
+class TestScoringGuard(unittest.TestCase):
+    def test_refuses_to_rescore_a_traded_date(self):
+        con = mem()
+        as_of = date(2026, 8, 6)
+        db.upsert(con, "batches", {
+            "batch_id": "B", "as_of": as_of.isoformat(),
+            "generated_at": "2026-08-06T10:00:00+08:00", "generator": "t",
+            "methodology": "0.4", "n_ideas": 40, "status": "traded"}, ["batch_id"])
+        db.upsert(con, "themes", {
+            "as_of": as_of.isoformat(), "theme_id": "AI-CAPEX", "label": "x",
+            "tis": 50.0}, ["as_of", "theme_id"])
+        res = scoring.score_day(con, as_of, verbose=False)
+        self.assertTrue(res.get("skipped"))
+        # ...and proceeds when forced
+        res = scoring.score_day(con, as_of, verbose=False, force=True)
+        self.assertFalse(res.get("skipped"))
+
+
+class TestDashboardRender(unittest.TestCase):
+    def test_builds_a_self_contained_page_with_no_external_requests(self):
+        import re
+        import tempfile
+
+        from ideagen import report
+
+        con = db.init()
+        with tempfile.TemporaryDirectory() as td:
+            out = report.build(con, Path(td) / "index.html")
+            s = out.read_text(encoding="utf-8")
+        self.assertGreater(len(s), 50_000)
+        for bad in ("http://", "src=", "@import", "cdn."):
+            self.assertNotIn(bad, s.replace("http://www.w3.org/2000/svg", ""))
+        self.assertIn("window.__IG40__", s)
+        self.assertIn('data-theme="dark"', s)
+        self.assertIn("prefers-color-scheme", s)
+
+    def test_artifact_mode_omits_the_document_wrapper(self):
+        import tempfile
+
+        from ideagen import report
+
+        con = db.init()
+        with tempfile.TemporaryDirectory() as td:
+            out = report.build(con, Path(td) / "a.html", artifact=True)
+            s = out.read_text(encoding="utf-8")
+        for tag in ("<!doctype", "<html", "<head>", "<body>"):
+            self.assertNotIn(tag, s.lower())
+        self.assertTrue(s.startswith("<title>"))

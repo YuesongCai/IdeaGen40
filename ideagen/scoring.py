@@ -453,8 +453,28 @@ def theme_tier(tis: float) -> str:
 
 
 def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
-              verbose: bool = True) -> dict:
-    """Score every dictionary theme for `as_of` and persist to `themes`."""
+              verbose: bool = True, force: bool = False) -> dict:
+    """Score every dictionary theme for `as_of` and persist to `themes`.
+
+    Refuses to overwrite a scoring that a traded batch was generated against,
+    unless `force`. Re-scoring the same date later legitimately sees more corpus,
+    but the batch's macro narrative was written against the earlier numbers — a
+    silent overwrite leaves the daily report arguing from figures that are no
+    longer on the page. Pass `force=True` to accept that and re-score anyway; the
+    batch keeps its own snapshot either way.
+    """
+    traded = db.q1(con, "SELECT batch_id FROM batches WHERE as_of=? AND status='traded'",
+                   (as_of.isoformat(),))
+    if traded and not force:
+        existing = db.q1(con, "SELECT COUNT(*) n FROM themes WHERE as_of=?",
+                         (as_of.isoformat(),))["n"]
+        if existing:
+            if verbose:
+                print(f"  skip scoring {as_of}: batch {traded['batch_id']} already "
+                      f"traded against it (use --force to re-score)")
+            return {"as_of": as_of.isoformat(), "skipped": True,
+                    "reason": f"batch {traded['batch_id']} already traded",
+                    "themes": []}
     ev = collect_evidence(con, as_of, days)
     counting = {tid: len([e for e in items if e["tier"] in config.COUNTING_TIERS])
                 for tid, items in ev["per_theme"].items()}

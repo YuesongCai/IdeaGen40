@@ -263,3 +263,74 @@ tail -f data/logs/daily.log
 `doctor` 只在 **OpenD 不可用**时让整个 run 退出——那种情况下盯市会算错。
 Wisburg 挂了只记 warning：ingest 阶段会在 `runs` 表里记下失败，
 其余阶段照常用磁盘上已有的数据跑完。一次网络抖动不应该让一整天的盯市和归因丢掉。
+
+---
+
+## 看板怎么打开
+
+三种方式，按「随时能看」的程度排：
+
+**① localhost（推荐，永远最新）**
+
+```bash
+python -m ideagen.cli serve          # http://127.0.0.1:8765
+```
+
+`/` 每次刷新都从数据库重新生成，所以打开就是当前状态，不需要先跑 `dashboard`。
+另外两个端点：`/api/status`（紧凑摘要）、`/api/report`（完整归因 JSON）。
+
+已装成常驻服务（`KeepAlive`，开机自启）：
+
+```bash
+cp scripts/com.ideagen40.serve.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ideagen40.serve.plist
+```
+
+**② Claude Artifact（私有链接，手机也能开）**
+
+```bash
+python -m ideagen.cli dashboard --artifact --out web/artifact.html
+```
+
+再用 Artifact 工具以 `url` 参数更新到同一个链接（链接存在 `data/artifact_url.txt`）。
+默认私有，需要更新时由 Claude 会话推一次。
+
+**③ GitHub Pages（公开，默认关闭）**
+
+```bash
+scripts/publish_pages.sh
+```
+
+⚠️ **这会把完整持仓明细发布到公开可索引的 URL** ——
+每一条 idea、每个成交价、每个在场仓位。
+本仓库是 public，所以脚本刻意需要手动输 `yes` 确认，
+并且**没有**接进每日自动流程。想公开又不想全网可见，先把 repo 转私有。
+
+---
+
+## 每天怎么跑
+
+分成两半：
+
+**自动的一半 —— 不需要你管。** launchd 工作日 07:23 HKT 跑
+`ingest → prices → score → brief → mark → monitor → settle → dashboard`。
+语料、行情、打分、盯市、告警、归因、看板全部自动更新。
+
+**需要 Claude 的一半 —— 每天约 5 分钟。** 两件事必须有一个本地 Claude 会话：
+
+1. **Olive 货架快照** —— Olive 只能走 MCP，cron 进程连不上
+2. **生成当天 40 条** —— 这是你选的方案（每天 Claude 弄）
+
+装了一个 slash command，打一下就跑完这两件事并发飞书汇报：
+
+```
+/ideagen-daily
+```
+
+定义在 `~/.claude/commands/ideagen-daily.md`，五步：Olive 快照 → `daily` →
+按契约生成 40 条 → `ingest-batch` 校验下单 → 盯市报告 + 飞书 DM。
+
+**为什么不能全自动**：云端 scheduled agent 连不上本机的 Futu OpenD 和本地数据库，
+Olive MCP 在 headless 环境也不可用。所以生成这一步必须是本地会话。
+漏一天的代价：当天没有新批次（已有仓位照常盯市），
+Olive 基金 NAV 序列断一天且无法回补。

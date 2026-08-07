@@ -14,6 +14,7 @@ The daily cycle, in order:
     ideagen monitor                 # alerts
     ideagen report                  # console attribution
     ideagen dashboard               # -> web/index.html
+    ideagen serve                   # localhost dashboard, rebuilt on every refresh
 
 `ideagen daily` runs everything except the generation step, which needs the agent.
 """
@@ -27,7 +28,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import (analytics, briefing, config, db, ideas as ideas_mod, lexicon,
-               monitor, paper, report as report_mod, scoring, seed, universe)
+               monitor, paper, report as report_mod, scoring, seed, serve as serve_mod,
+               universe)
 from .sources import futu_px, olive, wisburg
 
 
@@ -236,8 +238,14 @@ def cmd_report(args) -> int:
 
 def cmd_dashboard(args) -> int:
     con = _con()
-    out = report_mod.build(con, Path(args.out) if args.out else None)
+    out = report_mod.build(con, Path(args.out) if args.out else None,
+                           artifact=args.artifact)
     print(f"  dashboard → {out}")
+    return 0
+
+
+def cmd_serve(args) -> int:
+    serve_mod.serve(port=args.port, open_browser=args.open)
     return 0
 
 
@@ -370,6 +378,12 @@ def main(argv: list[str] | None = None) -> int:
 
     s = add("dashboard", cmd_dashboard, "build web/index.html")
     s.add_argument("--out")
+    s.add_argument("--artifact", action="store_true",
+                   help="body-only markup for the Claude Artifact publisher")
+
+    s = add("serve", cmd_serve, "serve the dashboard on localhost, rebuilt per request")
+    s.add_argument("--port", type=int, default=serve_mod.DEFAULT_PORT)
+    s.add_argument("--open", action="store_true", help="open a browser too")
 
     s = add("daily", cmd_daily, "run the whole unattended cycle")
     s.add_argument("--lookback", type=int, default=config.OBSERVATION_WINDOW_DAYS)

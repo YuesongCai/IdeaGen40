@@ -714,7 +714,13 @@ SECTIONS = [
 ]
 
 
-def build(con, out: Path | None = None) -> Path:
+def build(con, out: Path | None = None, artifact: bool = False) -> Path:
+    """Render the dashboard.
+
+    `artifact=True` emits body-only markup (a <title>, the <style>, the content,
+    the <script>) with no document wrapper, which is what the Artifact publisher
+    expects — it supplies the doctype/html/head/body itself.
+    """
     rep = analytics.full_report(con)
     dg = monitor.digest(con)
     out = out or (config.WEB / "index.html")
@@ -803,11 +809,16 @@ def build(con, out: Path | None = None) -> Path:
   </footer>
 </div>"""
 
-    doc = f"""<!doctype html>
+    title = "IdeaGen40 · 战术交易想法实盘模拟"
+    if artifact:
+        doc = (f"<title>{title}</title>\n<style>{CSS}</style>\n"
+               f"{body}\n<script>{JS}</script>")
+    else:
+        doc = f"""<!doctype html>
 <html lang="zh-Hans"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>IdeaGen40 · 战术交易想法实盘模拟</title>
+<title>{title}</title>
 <style>{CSS}</style>
 </head><body>{body}<script>{JS}</script></body></html>"""
 

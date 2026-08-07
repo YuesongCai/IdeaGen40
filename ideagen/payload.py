@@ -45,7 +45,55 @@ def build(con) -> dict:
         "curves": _curves(con),
         "positions": _positions(con),
         "attribution": _attribution(con),
+        "cohorts": _cohorts(con),
     }
+    return out
+
+
+def _cohorts(con) -> dict:
+    """One independent book per batch: that day's 40 ideas and nothing else.
+
+    This is the vintage read. The two commingled books answer "what would this do
+    to the account"; a single blended curve cannot say whether 2026-08-05's ideas
+    were any good, because every vintage is mixed into it. After 30 days there are
+    30 of these to compare side by side.
+    """
+    from . import paper
+
+    out: dict[str, Any] = {}
+    for bk in paper.cohort_books(con):
+        batch_id = bk.split(":", 1)[1]
+        b = db.q1(con, "SELECT as_of, n_ideas, generator FROM batches WHERE batch_id=?",
+                  (batch_id,))
+        if not b:
+            continue
+        eq = [dict(r) for r in db.q(
+            con, "SELECT d,cash,mv,equity,cum_ret,ret_d,drawdown,gross,n_open "
+                 "FROM equity WHERE book_id=? ORDER BY d", (bk,))]
+        if not eq:
+            continue
+        first, last = eq[0], eq[-1]
+        spy = analytics.benchmark_return(con, config.BENCHMARKS["SPY"],
+                                        first["d"], last["d"])
+        mdd = min((e["drawdown"] or 0) for e in eq)
+        pos = [dict(r) for r in db.q(
+            con, "SELECT COUNT(*) n, SUM(status='open') open_n, "
+                 "SUM(status='closed') closed_n FROM positions WHERE book_id=?", (bk,))][0]
+        ords = db.q1(con, "SELECT COUNT(*) n, SUM(status='filled') filled, "
+                          "SUM(status='pending') pending, SUM(status='expired') expired "
+                          "FROM orders WHERE book_id=?", (bk,))
+        out[b["as_of"]] = {
+            "book": bk, "batch_id": batch_id, "as_of": b["as_of"],
+            "n_ideas": b["n_ideas"], "generator": b["generator"],
+            "sessions": len(eq) - 1,
+            "equity": last["equity"], "cum_ret": last["cum_ret"],
+            "ret_d": last["ret_d"], "gross": last["gross"],
+            "n_open": last["n_open"], "max_dd": mdd,
+            "spy": spy,
+            "excess": (last["cum_ret"] - spy) if spy is not None else None,
+            "positions": dict(pos), "orders": dict(ords),
+            "curve": [[e["d"], e["cum_ret"]] for e in eq],
+        }
     return out
 
 
@@ -143,6 +191,7 @@ def _report(con, d: str, frozen: list[dict] | None = None) -> dict | None:
                      >= config.THEME_TIER_THRESHOLDS["watch"]][:config.MAX_REPORT_THEMES],
         "corpus": corpus,
         "evidence": _evidence(con, d),
+        "charts": _charts(con, d),
     }
 
 
@@ -169,19 +218,58 @@ def _corpus(con, d: str) -> dict:
 
 
 def _evidence(con, d: str) -> list[dict]:
-    """Citation trail: the highest-signal items in the window, metadata only."""
+    """Citation trail for the window.
+
+    Each entry carries the reproducible retrieval call and the content hash rather
+    than a permalink: Wisburg is a client-rendered SPA with no per-document
+    canonical URL, so a guessed link would be a citation that resolves to nothing.
+    Verified asset URLs travel alongside, because those *are* checkable.
+    """
     from datetime import timedelta
 
     wd = [(date.fromisoformat(d) - timedelta(days=i)).isoformat()
           for i in range(config.OBSERVATION_WINDOW_DAYS - 1, -1, -1)]
-    rows = db.q(con, "SELECT doc_id,line,tier,title,institution,published_d,url "
-                     "FROM documents WHERE published_d IN (%s) "
-                     "ORDER BY tier ASC, body_chars DESC LIMIT ?"
+    rows = db.q(con, "SELECT doc_id,line,category,source_id,tier,title,institution,"
+                     "published_at,published_d,ingested_at,content_hash,retrieval,"
+                     "body_chars FROM documents WHERE published_d IN (%s) "
+                     "AND line<>'images' ORDER BY tier ASC, body_chars DESC LIMIT ?"
                 % ",".join("?" * len(wd)), [*wd, MAX_EVIDENCE])
-    return [{"doc_id": r["doc_id"],
-             "line": config.SOURCE_LINES.get(r["line"], {}).get("label", r["line"]),
-             "tier": r["tier"], "d": r["published_d"], "title": r["title"],
-             "institution": r["institution"], "url": r["url"]} for r in rows]
+    out = []
+    for r in rows:
+        assets = [dict(a) for a in db.q(
+            con, "SELECT url,kind,reachable,bytes,content_type FROM assets "
+                 "WHERE doc_id=? AND reachable=1", (r["doc_id"],))]
+        out.append({
+            "doc_id": r["doc_id"],
+            "line": config.SOURCE_LINES.get(r["line"], {}).get("label", r["line"]),
+            "tier": r["tier"], "category": r["category"],
+            "source_id": r["source_id"], "d": r["published_d"],
+            "published_at": r["published_at"], "ingested_at": r["ingested_at"],
+            "title": r["title"], "institution": r["institution"],
+            "retrieval": r["retrieval"], "hash": (r["content_hash"] or "")[:12],
+            "chars": r["body_chars"], "assets": assets,
+        })
+    return out
+
+
+def _charts(con, d: str) -> list[dict]:
+    """Wisburg's own charts for the window, with their published interpretation.
+
+    框架 §11.1 requires a report to embed four original Wisburg charts. These are
+    those charts: real CDN URLs, HEAD-verified, each with the platform's written
+    reading of what the chart shows.
+    """
+    from datetime import timedelta
+
+    wd = [(date.fromisoformat(d) - timedelta(days=i)).isoformat()
+          for i in range(config.OBSERVATION_WINDOW_DAYS - 1, -1, -1)]
+    rows = db.q(con,
+                "SELECT a.url,a.caption,a.title,a.published_d,a.reachable,a.bytes,"
+                "a.content_type,a.checked_at,a.doc_id,d.retrieval,d.published_at "
+                "FROM assets a JOIN documents d ON d.doc_id=a.doc_id "
+                "WHERE a.kind='chart' AND a.published_d IN (%s) AND a.reachable=1 "
+                "ORDER BY a.published_d DESC" % ",".join("?" * len(wd)), wd)
+    return [dict(r) for r in rows]
 
 
 def _batch(con, d: str) -> dict | None:

@@ -47,6 +47,8 @@ class Item:
     institution: str | None
     meta: dict
     sections: dict | None = None
+    assets: list[str] | None = None
+    retrieval: str | None = None
 
     @property
     def body_is_deep(self) -> bool:
@@ -265,6 +267,9 @@ def _extract_page(data: Any) -> tuple[list[dict], str | None, bool]:
     if data is None:
         return [], None, False
     if isinstance(data, str):
+        # the chart library answers in its own shape
+        if "\n  image: " in data or data.lstrip().startswith("title:"):
+            return parse_images_page(data)
         return _parse_text_page(data)
     if isinstance(data, list):
         return [x for x in data if isinstance(x, dict)], None, False
@@ -319,6 +324,70 @@ def _parse_text_page(text: str) -> tuple[list[dict], str | None, bool]:
     if cur:
         nodes.append(cur)
     return nodes, cursor, bool(cursor and nodes)
+
+
+_IMG_TITLE = re.compile(r"^title:\s*(?P<t>.+?)\s*$")
+_IMG_URL = re.compile(r"^\s+image:\s*(?P<u>https?://\S+)")
+
+
+def parse_images_page(text: str) -> tuple[list[dict], str | None, bool]:
+    """`list-images` uses its own shape:
+
+        title: 莱茵河水位创历史新低
+          date: 2026-08-06T20:04:25+08:00
+          image: https://rocks.wisburg.com/<hash>.jpg
+          <the platform's written interpretation of the chart>
+
+    There is no numeric id, so the image URL hash is the stable identity.
+    """
+    body, _, tail = text.partition(_PAGE_SEP)
+    cm = _CURSOR.search(tail)
+    cursor = cm.group("cur") if cm else None
+    nodes: list[dict] = []
+    cur: dict | None = None
+    for raw in body.splitlines():
+        m = _IMG_TITLE.match(raw)
+        if m:
+            if cur:
+                nodes.append(cur)
+            cur = {"title": m.group("t").strip(), "publishedAt": None,
+                   "summary": "", "image": None}
+            continue
+        if cur is None:
+            continue
+        mu = _IMG_URL.match(raw)
+        if mu:
+            cur["image"] = mu.group("u")
+            continue
+        dm = _DATE_LN.match(raw)
+        if dm:
+            cur["publishedAt"] = dm.group("ts")
+            continue
+        if raw.startswith((" ", "\t")):
+            cur["summary"] = (cur["summary"] + "\n" + raw.strip()).strip()
+    if cur:
+        nodes.append(cur)
+    for n in nodes:
+        if n.get("image"):
+            n["id"] = int(hashlib.sha1(n["image"].encode()).hexdigest()[:12], 16)
+    return [n for n in nodes if n.get("image")], cursor, bool(cursor and nodes)
+
+
+# Asset URLs embedded in report bodies and chart items. These are the only
+# externally verifiable references the corpus exposes.
+_ASSET_URL = re.compile(r"https?://[A-Za-z0-9.\-]+/[^\s)\]\"'，。；、]+"
+                        r"\.(?:jpg|jpeg|png|gif|webp|svg)", re.I)
+
+
+def extract_assets(text: str) -> list[str]:
+    from .. import config as _cfg
+
+    out: list[str] = []
+    for u in _ASSET_URL.findall(text or ""):
+        host = u.split("/", 3)[2] if "://" in u else ""
+        if host in _cfg.ASSET_HOSTS and u not in out:
+            out.append(u)
+    return out
 
 
 # The detail tool answers with a full markdown document. These headings are
@@ -397,21 +466,47 @@ def _normalise(line: str, spec: dict, node: dict) -> Item | None:
         sid = int(sid) if sid is not None else None
     except (TypeError, ValueError):
         sid = None
+    from .. import lexicon as _lex
+
+    blob = " ".join(filter(None, (str(title or ""), summary, body[:1500])))
+    assets = extract_assets(blob)
+    if node.get("image"):
+        assets = [node["image"], *[a for a in assets if a != node["image"]]]
+
+    # A reproducible retrieval receipt. The platform is a client-rendered SPA with
+    # no per-document canonical web URL — probing /article/<id>, /report/<id> and
+    # friends all return the same 200 shell — so a guessed permalink would be a
+    # citation that looks authoritative and resolves to nothing. The honest handle
+    # is the API call that returns the document, recorded verbatim.
+    cat = spec.get("category")
+    if sid is None:
+        receipt = f"{spec['tool']}(...)  # no numeric id; identity = content_hash"
+    elif line == "articles":
+        receipt = f"get-article-detail(id={sid})"
+    elif line == "images":
+        receipt = f"list-images(query=...)  # identity = image URL"
+    elif cat:
+        receipt = f"get-report-detail(id={sid}, category=\"{cat}\")"
+    else:
+        receipt = f"{spec['tool']}(...)  id={sid}"
+
     return Item(
         line=line,
-        category=spec.get("category"),
+        category=cat,
         tier=spec["tier"],
         source_id=sid,
         title=_strip_html(str(title or summary[:80])),
         published_at=_norm_ts(_pick(node, "published")),
-        url=_pick(node, "url"),
+        url=_pick(node, "url") or (assets[0] if line == "images" else None),
         summary=summary,
         body=body[:60_000],
         institution=(str(_pick(node, "institution"))[:120]
-                     if _pick(node, "institution") else None),
+                     if _pick(node, "institution") else _lex.institution_of(blob)),
         meta={k: v for k, v in node.items()
               if k not in ("content", "body", "html", "markdown", "fullText")
               and isinstance(v, (str, int, float, bool, type(None)))},
+        assets=assets,
+        retrieval=receipt,
     )
 
 
@@ -530,6 +625,8 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
                                                  if isinstance(v, (int, float, str))
                                                  and k.startswith("n_")}}
                         it.sections = sec
+                        found = extract_assets(md)
+                        it.assets = list(dict.fromkeys([*(it.assets or []), *found]))
                 except Exception as e:  # noqa: BLE001 - detail is best-effort
                     report.setdefault("detail_errors", {})[it.doc_id] = str(e)[:120]
 
@@ -540,10 +637,26 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
             "institution": i.institution, "published_at": i.published_at,
             "published_d": i.published_d, "ingested_at": now, "url": i.url,
             "summary": i.summary, "body": i.body, "body_chars": len(i.body),
-            "content_hash": i.content_hash,
-            "meta": {**i.meta, **({"sections": i.sections} if i.sections else {})},
+            "content_hash": i.content_hash, "retrieval": i.retrieval,
+            "meta": {**i.meta, **({"sections": i.sections} if i.sections else {}),
+                     **({"n_assets": len(i.assets)} if i.assets else {})},
         } for i in keep]
         db.upsert_many(con, "documents", rows, ["doc_id"])
+
+        asset_rows = []
+        for i in keep:
+            for u in (i.assets or []):
+                asset_rows.append({
+                    "asset_id": hashlib.sha1(u.encode()).hexdigest(),
+                    "doc_id": i.doc_id, "url": u,
+                    "kind": "chart" if i.line == "images" else "figure",
+                    "host": u.split("/", 3)[2] if "://" in u else None,
+                    "caption": (i.summary or "")[:2000] if i.line == "images" else None,
+                    "title": i.title, "published_d": i.published_d,
+                })
+        if asset_rows:
+            db.upsert_many(con, "assets", asset_rows, ["asset_id"])
+            report["assets"] = report.get("assets", 0) + len(asset_rows)
         after = con.execute("SELECT COUNT(*) c FROM documents").fetchone()["c"]
 
         report["lines"][line] = {"fetched": len(items), "in_window": len(keep),
@@ -558,3 +671,131 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
 
     db.kv_set(con, f"ingest:{as_of.isoformat()}", report)
     return report
+
+
+# ---------------------------------------------------------------- provenance
+def verify_assets(con, limit: int = 200, recheck_days: int = 14,
+                  verbose: bool = True) -> dict:
+    """HEAD every unverified asset URL so the citation trail is not aspirational.
+
+    A source link that has never been fetched is a claim, not evidence. Results
+    are recorded on the row (`reachable`, `bytes`, `content_type`, `checked_at`)
+    and the dashboard only embeds assets that came back OK.
+    """
+    cutoff = (config.now_hkt() - timedelta(days=recheck_days)).isoformat()
+    rows = db.q(con, "SELECT asset_id,url FROM assets "
+                     "WHERE reachable IS NULL OR checked_at < ? LIMIT ?",
+                (cutoff, limit))
+    if not rows:
+        return {"checked": 0, "ok": 0, "failed": 0}
+
+    s = requests.Session()
+    s.headers.update({"User-Agent": _UA, "Referer": "https://www.wisburg.com/"})
+    ok = bad = 0
+    now = config.now_hkt().isoformat()
+    out = []
+    for r in rows:
+        rec = {"asset_id": r["asset_id"], "checked_at": now,
+               "reachable": 0, "bytes": None, "content_type": None}
+        try:
+            h = s.head(r["url"], timeout=15, allow_redirects=True)
+            if h.status_code == 405 or (h.status_code == 200 and not h.headers.get("Content-Length")):
+                h = s.get(r["url"], timeout=25, stream=True)
+                h.close()
+            if h.status_code == 200:
+                rec["reachable"] = 1
+                rec["bytes"] = int(h.headers.get("Content-Length") or 0) or None
+                rec["content_type"] = (h.headers.get("Content-Type") or "")[:80]
+                ok += 1
+            else:
+                bad += 1
+        except Exception:  # noqa: BLE001 - an unreachable asset is a finding
+            bad += 1
+        out.append(rec)
+    for rec in out:
+        con.execute("UPDATE assets SET reachable=?, bytes=?, content_type=?, "
+                    "checked_at=? WHERE asset_id=?",
+                    (rec["reachable"], rec["bytes"], rec["content_type"],
+                     rec["checked_at"], rec["asset_id"]))
+    if verbose:
+        print(f"  verified {len(out)} assets: {ok} reachable, {bad} unreachable")
+    return {"checked": len(out), "ok": ok, "failed": bad}
+
+
+def provenance(con, doc_id: str) -> dict | None:
+    """The full chain for one document: what it is, how to re-fetch it, its assets."""
+    r = db.q1(con, "SELECT * FROM documents WHERE doc_id=?", (doc_id,))
+    if not r:
+        return None
+    spec = config.SOURCE_LINES.get(r["line"], {})
+    return {
+        "doc_id": r["doc_id"], "line": r["line"],
+        "line_label": spec.get("label", r["line"]),
+        "tier": r["tier"], "category": r["category"], "source_id": r["source_id"],
+        "title": r["title"], "institution": r["institution"],
+        "published_at": r["published_at"], "ingested_at": r["ingested_at"],
+        "content_hash": r["content_hash"], "body_chars": r["body_chars"],
+        "retrieval": r["retrieval"],
+        "assets": [dict(a) for a in db.q(
+            con, "SELECT url,kind,host,title,caption,reachable,bytes,content_type,"
+                 "checked_at FROM assets WHERE doc_id=?", (doc_id,))],
+    }
+
+
+def source_audit(con) -> dict:
+    """How well can the corpus actually be traced back? Reported, not assumed."""
+    d = db.q1(con, "SELECT COUNT(*) n, SUM(retrieval IS NOT NULL) receipt, "
+                   "SUM(institution IS NOT NULL) inst, "
+                   "SUM(content_hash IS NOT NULL) hash, "
+                   "SUM(published_at IS NOT NULL) ts, "
+                   "SUM(body_chars>1000) deep FROM documents")
+    a = db.q1(con, "SELECT COUNT(*) n, SUM(reachable=1) ok, SUM(reachable=0) bad, "
+                   "SUM(reachable IS NULL) unchecked, COUNT(DISTINCT doc_id) docs "
+                   "FROM assets")
+    by_line = [dict(r) for r in db.q(
+        con, "SELECT d.line, COUNT(DISTINCT d.doc_id) docs, "
+             "SUM(d.retrieval IS NOT NULL) receipt, "
+             "SUM(d.institution IS NOT NULL) inst, "
+             "(SELECT COUNT(*) FROM assets a WHERE a.doc_id IN "
+             " (SELECT doc_id FROM documents x WHERE x.line=d.line)) assets "
+             "FROM documents d GROUP BY d.line ORDER BY docs DESC")]
+
+    # Do the ideas' citations resolve? Three outcomes, kept apart on purpose:
+    #   resolved  cites a doc_id that is in the corpus
+    #   prose     a free-text attribution ("State Street / YFinance") — the
+    #             historical pack's own convention, unverifiable by construction
+    #   dangling  has doc_id shape but is not in the corpus — the only real defect
+    ref_shape = re.compile(r"^(" + "|".join(map(re.escape, config.SOURCE_LINES)) + r"):")
+    per_batch: dict[str, dict[str, int]] = {}
+    for r in db.q(con, "SELECT batch_id, sources FROM ideas"):
+        b = per_batch.setdefault(r["batch_id"],
+                                 {"resolved": 0, "prose": 0, "dangling": 0})
+        for sid in (db.jl(r["sources"], []) or []):
+            sid = str(sid)
+            if not ref_shape.match(sid):
+                b["prose"] += 1
+            elif db.q1(con, "SELECT 1 FROM documents WHERE doc_id=?", (sid,)):
+                b["resolved"] += 1
+            else:
+                b["dangling"] += 1
+    tot = {"resolved": 0, "prose": 0, "dangling": 0}
+    for v in per_batch.values():
+        for k in tot:
+            tot[k] += v[k]
+    ideas_no_src = db.q1(con, "SELECT COUNT(*) n FROM ideas "
+                              "WHERE sources IS NULL OR sources IN ('[]','')")["n"]
+    px = db.q1(con, "SELECT COUNT(*) n, SUM(src IS NOT NULL) src FROM prices")
+    nav = db.q1(con, "SELECT COUNT(*) n, SUM(src IS NOT NULL) src FROM navs")
+
+    return {
+        "documents": dict(d), "assets": dict(a), "by_line": by_line,
+        "citations": {**tot, "total": sum(tot.values()),
+                      "by_batch": per_batch,
+                      "ideas_without_source": ideas_no_src},
+        "prices": dict(px), "navs": dict(nav),
+        "note": ("Wisburg is a client-rendered SPA with no per-document canonical "
+                 "web URL — /article/<id>, /report/<id> and friends all return the "
+                 "same 200 shell — so no permalink is stored. Ground truth is the "
+                 "reproducible API call in `retrieval` plus `content_hash`, and the "
+                 "verified asset URLs in `assets`."),
+    }

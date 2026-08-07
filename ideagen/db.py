@@ -37,11 +37,34 @@ CREATE TABLE IF NOT EXISTS documents (
     body          TEXT,
     body_chars    INTEGER DEFAULT 0,
     content_hash  TEXT,                  -- dedupe across lines
+    retrieval     TEXT,                  -- the exact MCP call that reproduces this
     meta          TEXT                   -- JSON
 );
 CREATE INDEX IF NOT EXISTS ix_doc_pub  ON documents(published_d);
 CREATE INDEX IF NOT EXISTS ix_doc_line ON documents(line, published_d);
 CREATE INDEX IF NOT EXISTS ix_doc_hash ON documents(content_hash);
+
+-- Assets referenced by a document: chart images from the Wisburg chart library
+-- and figures embedded inside report bodies. These are the only externally
+-- verifiable URLs the corpus exposes — the platform is a client-rendered SPA with
+-- no per-document canonical web URL, so a guessed permalink would be a false
+-- citation. Ground truth is therefore (line, category, source_id) + content_hash
+-- for the text, and these URLs for the figures.
+CREATE TABLE IF NOT EXISTS assets (
+    asset_id   TEXT PRIMARY KEY,          -- sha1(url)
+    doc_id     TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    kind       TEXT,                      -- chart | figure
+    host       TEXT,
+    caption    TEXT,
+    title      TEXT,
+    published_d TEXT,
+    reachable  INTEGER,                   -- 1 ok, 0 checked and failed, NULL unchecked
+    checked_at TEXT,
+    bytes      INTEGER,
+    content_type TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_assets_doc ON assets(doc_id);
 
 -- ============================================================ runs
 CREATE TABLE IF NOT EXISTS runs (

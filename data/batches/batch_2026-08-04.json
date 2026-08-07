@@ -1,0 +1,2605 @@
+{
+ "schema": "ideagen40/batch/1",
+ "as_of": "2026-08-04",
+ "pack_sha": "4751419eec3e642fd2af8606c540faec425da90b97b3b53807503a9ddcdb2f20",
+ "note": "规则化生成（rules:v0.4）。",
+ "macro_narrative": "今天没有「证据厚 + 价格未反映」的组合，冲击最高的是 日本政策与汇率重置，但价格已经在动，所以全部等确认。要回避追高的是 盈利兑现与质量分化、日本政策与汇率重置——降级为等回踩、仓位砍半。40 条：13 条一个月，2 条可直接执行，其余等回踩或突破。规则引擎生成，用于补齐每日历史。",
+ "transmissions": [
+  {
+   "id": "JAPAN-RESET-TR",
+   "theme_id": "JAPAN-RESET",
+   "label": "未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价"
+  },
+  {
+   "id": "INFLATION-TR",
+   "theme_id": "INFLATION",
+   "label": "未来1–6个月，核心通胀能否维持在央行目标附近而不再加速"
+  },
+  {
+   "id": "POLICY-PATH-TR",
+   "theme_id": "POLICY-PATH",
+   "label": "未来1–6个月，主要央行能否在不加息的前提下维持或放松政策"
+  },
+  {
+   "id": "CHINA-POLICY-TR",
+   "theme_id": "CHINA-POLICY",
+   "label": "未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流"
+  },
+  {
+   "id": "COMMODITY-CYCLE-TR",
+   "theme_id": "COMMODITY-CYCLE",
+   "label": "未来1–6个月，铜与工业金属的供给约束能否推动战略补库"
+  },
+  {
+   "id": "EARNINGS-QUALITY-TR",
+   "theme_id": "EARNINGS-QUALITY",
+   "label": "未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证"
+  },
+  {
+   "id": "AI-MONETISATION-TR",
+   "theme_id": "AI-MONETISATION",
+   "label": "未来1–6个月，AI相关软件与安全支出能否转化为自由现金流"
+  },
+  {
+   "id": "CREDIT-STRESS-TR",
+   "theme_id": "CREDIT-STRESS",
+   "label": "未来1–6个月，信用利差能否在再融资高峰中不显著走阔"
+  },
+  {
+   "id": "EUROPE-FISCAL-TR",
+   "theme_id": "EUROPE-FISCAL",
+   "label": "未来1–6个月，欧洲财政与电网投资能否从预算转为订单"
+  },
+  {
+   "id": "TERM-PREMIUM-TR",
+   "theme_id": "TERM-PREMIUM",
+   "label": "未来1–6个月，长端收益率能否在财政供给压力下停止上行"
+  },
+  {
+   "id": "GEOPOLITICS-TR",
+   "theme_id": "GEOPOLITICS",
+   "label": "未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出"
+  },
+  {
+   "id": "ENERGY-SUPPLY-TR",
+   "theme_id": "ENERGY-SUPPLY",
+   "label": "未来1–6个月，原油与天然气供给中断能否维持实现价格与现金流"
+  },
+  {
+   "id": "HOUSING-RATES-TR",
+   "theme_id": "HOUSING-RATES",
+   "label": "未来1–6个月，按揭利率与住宅活动能否停止恶化"
+  },
+  {
+   "id": "AI-POWER-TR",
+   "theme_id": "AI-POWER",
+   "label": "未来1–6个月，电力与电网供给约束能否转化为设备与公用事业的收入"
+  },
+  {
+   "id": "AI-CAPEX-TR",
+   "theme_id": "AI-CAPEX",
+   "label": "未来1–6个月，AI订单与现金流能否覆盖资本开支与融资成本"
+  },
+  {
+   "id": "DOLLAR-FX-TR",
+   "theme_id": "DOLLAR-FX",
+   "label": "未来1–6个月，美元能否在利差收窄下停止升值"
+  }
+ ],
+ "signals": [
+  {
+   "id": "JAPAN-RESET-1M-X",
+   "theme_id": "JAPAN-RESET",
+   "transmission_id": "JAPAN-RESET-TR",
+   "asset": "日本股票",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "JAPAN-RESET-6M-X",
+   "theme_id": "JAPAN-RESET",
+   "transmission_id": "JAPAN-RESET-TR",
+   "asset": "日本出口股（对冲汇率）",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "INFLATION-1M-X",
+   "theme_id": "INFLATION",
+   "transmission_id": "INFLATION-TR",
+   "asset": "美国通胀保值债",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "INFLATION-6M-X",
+   "theme_id": "INFLATION",
+   "transmission_id": "INFLATION-TR",
+   "asset": "美国短久期通胀保值债",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "POLICY-PATH-1M-X",
+   "theme_id": "POLICY-PATH",
+   "transmission_id": "POLICY-PATH-TR",
+   "asset": "美国长久期国债",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "POLICY-PATH-6M-X",
+   "theme_id": "POLICY-PATH",
+   "transmission_id": "POLICY-PATH-TR",
+   "asset": "美国中久期国债",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "CHINA-POLICY-1M-X",
+   "theme_id": "CHINA-POLICY",
+   "transmission_id": "CHINA-POLICY-TR",
+   "asset": "中国股票",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "CHINA-POLICY-6M-X",
+   "theme_id": "CHINA-POLICY",
+   "transmission_id": "CHINA-POLICY-TR",
+   "asset": "中国互联网平台",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "COMMODITY-CYCLE-1M-X",
+   "theme_id": "COMMODITY-CYCLE",
+   "transmission_id": "COMMODITY-CYCLE-TR",
+   "asset": "铜矿股",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "COMMODITY-CYCLE-6M-X",
+   "theme_id": "COMMODITY-CYCLE",
+   "transmission_id": "COMMODITY-CYCLE-TR",
+   "asset": "铜价格",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "EARNINGS-QUALITY-1M-X",
+   "theme_id": "EARNINGS-QUALITY",
+   "transmission_id": "EARNINGS-QUALITY-TR",
+   "asset": "美股质量因子",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "EARNINGS-QUALITY-6M-X",
+   "theme_id": "EARNINGS-QUALITY",
+   "transmission_id": "EARNINGS-QUALITY-TR",
+   "asset": "美股等权/广度",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "AI-MONETISATION-1M-X",
+   "theme_id": "AI-MONETISATION",
+   "transmission_id": "AI-MONETISATION-TR",
+   "asset": "软件股",
+   "direction": "↑",
+   "horizon": "1个月"
+  },
+  {
+   "id": "AI-MONETISATION-6M-X",
+   "theme_id": "AI-MONETISATION",
+   "transmission_id": "AI-MONETISATION-TR",
+   "asset": "网络安全股",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "CREDIT-STRESS-6M-X",
+   "theme_id": "CREDIT-STRESS",
+   "transmission_id": "CREDIT-STRESS-TR",
+   "asset": "美元高收益债",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "EUROPE-FISCAL-6M-X",
+   "theme_id": "EUROPE-FISCAL",
+   "transmission_id": "EUROPE-FISCAL-TR",
+   "asset": "德国股票",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "TERM-PREMIUM-6M-X",
+   "theme_id": "TERM-PREMIUM",
+   "transmission_id": "TERM-PREMIUM-TR",
+   "asset": "区域银行",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "GEOPOLITICS-6M-X",
+   "theme_id": "GEOPOLITICS",
+   "transmission_id": "GEOPOLITICS-TR",
+   "asset": "国防军工",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "ENERGY-SUPPLY-6M-X",
+   "theme_id": "ENERGY-SUPPLY",
+   "transmission_id": "ENERGY-SUPPLY-TR",
+   "asset": "能源生产商",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "HOUSING-RATES-6M-X",
+   "theme_id": "HOUSING-RATES",
+   "transmission_id": "HOUSING-RATES-TR",
+   "asset": "美国房地产",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "AI-POWER-6M-X",
+   "theme_id": "AI-POWER",
+   "transmission_id": "AI-POWER-TR",
+   "asset": "电力公用事业",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "AI-CAPEX-6M-X",
+   "theme_id": "AI-CAPEX",
+   "transmission_id": "AI-CAPEX-TR",
+   "asset": "全球半导体股",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "AI-CAPEX-6M-REIT",
+   "theme_id": "AI-CAPEX",
+   "transmission_id": "AI-CAPEX-TR",
+   "asset": "数据中心REIT",
+   "direction": "↑",
+   "horizon": "6个月"
+  },
+  {
+   "id": "DOLLAR-FX-6M-X",
+   "theme_id": "DOLLAR-FX",
+   "transmission_id": "DOLLAR-FX-TR",
+   "asset": "美元指数",
+   "direction": "↑",
+   "horizon": "6个月"
+  }
+ ],
+ "ideas": [
+  {
+   "id": 1,
+   "instrument_key": "EWJ",
+   "tool": "EWJ",
+   "tool_desc": "日本股票",
+   "theme_id": "JAPAN-RESET",
+   "theme": "日本政策与汇率重置",
+   "signal_id": "JAPAN-RESET-1M-X",
+   "asset": "日本股票",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "小仓试错",
+   "ref_price": 92.91,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     32,
+     45,
+     23
+    ],
+    "r": [
+     8.17,
+     2.01,
+     -6.6
+    ]
+   },
+   "conservative": {
+    "p": [
+     26,
+     46,
+     28
+    ],
+    "r": [
+     5.31,
+     1.01,
+     -8.24
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98986",
+    "feed:98919"
+   ],
+   "view": "日本政策与汇率重置：TIS 75.6，入价 M 92（交易成熟），拥挤 C 52（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 EWJ 表达（日本股票），现价 92.91，距 52 周高点 -4.7%，60 日动量 13 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.EWJ 与标的自身价格共同验证；σ=6.72%，上行 1.22σ，下行 0.98σ。",
+   "risk": "最可能错在：未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价的答案转向，或 US.EWJ 与本条方向持续背离。",
+   "role": "日本政策与汇率重置 · 日本股票",
+   "entry_lo": 86.0459,
+   "entry_hi": 90.414,
+   "take_lo": 99.3598,
+   "take_hi": 100.498,
+   "stop_px": 82.9258
+  },
+  {
+   "id": 2,
+   "instrument_key": "DXJ",
+   "tool": "DXJ",
+   "tool_desc": "日本出口股（对冲汇率）",
+   "theme_id": "JAPAN-RESET",
+   "theme": "日本政策与汇率重置",
+   "signal_id": "JAPAN-RESET-6M-X",
+   "asset": "日本出口股（对冲汇率）",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 170.68,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     32,
+     45,
+     23
+    ],
+    "r": [
+     16.16,
+     3.99,
+     -13.05
+    ]
+   },
+   "conservative": {
+    "p": [
+     26,
+     46,
+     28
+    ],
+    "r": [
+     10.51,
+     1.99,
+     -16.32
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98986",
+    "feed:98919"
+   ],
+   "view": "日本政策与汇率重置：TIS 75.6，入价 M 92（交易成熟），拥挤 C 52（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 DXJ 表达（日本出口股（对冲汇率）），现价 170.68，距 52 周高点 -5.1%，60 日动量 9 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.EWJ 与标的自身价格共同验证；σ=13.29%，上行 1.22σ，下行 0.98σ。",
+   "risk": "最可能错在：未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价的答案转向，或 US.EWJ 与本条方向持续背离。",
+   "role": "日本政策与汇率重置 · 日本出口股（对冲汇率）",
+   "entry_lo": 160.4909,
+   "entry_hi": 166.9749,
+   "take_lo": 194.1314,
+   "take_hi": 198.2698,
+   "stop_px": 155.8595
+  },
+  {
+   "id": 3,
+   "instrument_key": "FXY",
+   "tool": "FXY",
+   "tool_desc": "日元",
+   "theme_id": "JAPAN-RESET",
+   "theme": "日本政策与汇率重置",
+   "signal_id": "JAPAN-RESET-1M-X",
+   "asset": "日元",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "小仓试错",
+   "ref_price": 58.5,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     32,
+     45,
+     23
+    ],
+    "r": [
+     2.56,
+     0.63,
+     -2.07
+    ]
+   },
+   "conservative": {
+    "p": [
+     26,
+     46,
+     28
+    ],
+    "r": [
+     1.66,
+     0.32,
+     -2.58
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98986",
+    "feed:98919"
+   ],
+   "view": "日本政策与汇率重置：TIS 75.6，入价 M 92（交易成熟），拥挤 C 52（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 FXY 表达（日元），现价 58.5，距 52 周高点 -7.5%，60 日动量 90 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.EWJ 与标的自身价格共同验证；σ=2.10%，上行 1.22σ，下行 0.98σ。",
+   "risk": "最可能错在：未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价的答案转向，或 US.EWJ 与本条方向持续背离。",
+   "role": "日本政策与汇率重置 · 日元",
+   "entry_lo": 57.1459,
+   "entry_hi": 58.0076,
+   "take_lo": 59.7724,
+   "take_hi": 59.9969,
+   "stop_px": 56.5304
+  },
+  {
+   "id": 4,
+   "instrument_key": "TIP",
+   "tool": "TIP",
+   "tool_desc": "美国通胀保值债",
+   "theme_id": "INFLATION",
+   "theme": "通胀路径与再加速风险",
+   "signal_id": "INFLATION-1M-X",
+   "asset": "美国通胀保值债",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 106.86,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     1.22,
+     0.3,
+     -1.01
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     0.79,
+     0.15,
+     -1.26
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98903",
+    "feed:99080"
+   ],
+   "view": "通胀路径与再加速风险：TIS 73.6，入价 M 51（早期验证），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速。既不便宜也不挤，等价格给个确认再进。用 TIP 表达（美国通胀保值债），现价 106.86，距 52 周高点 -1.4%，60 日动量 2 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.TIP 与标的自身价格共同验证；σ=1.01%，上行 1.21σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速的答案转向，或 US.TIP 与本条方向持续背离。",
+   "role": "通胀路径与再加速风险 · 美国通胀保值债",
+   "entry_lo": 105.6716,
+   "entry_hi": 106.4279,
+   "take_lo": 107.9666,
+   "take_hi": 108.1618,
+   "stop_px": 105.1314
+  },
+  {
+   "id": 5,
+   "instrument_key": "STIP",
+   "tool": "STIP",
+   "tool_desc": "美国短久期通胀保值债",
+   "theme_id": "INFLATION",
+   "theme": "通胀路径与再加速风险",
+   "signal_id": "INFLATION-6M-X",
+   "asset": "美国短久期通胀保值债",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 100.6,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     1.44,
+     0.36,
+     -1.2
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     0.94,
+     0.18,
+     -1.49
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98903",
+    "feed:99080"
+   ],
+   "view": "通胀路径与再加速风险：TIS 73.6，入价 M 51（早期验证），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速。既不便宜也不挤，等价格给个确认再进。用 STIP 表达（美国短久期通胀保值债），现价 100.6，距 52 周高点 -0.3%，60 日动量 5 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.TIP 与标的自身价格共同验证；σ=1.20%，上行 1.21σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速的答案转向，或 US.TIP 与本条方向持续背离。",
+   "role": "通胀路径与再加速风险 · 美国短久期通胀保值债",
+   "entry_lo": 100.0596,
+   "entry_hi": 100.4035,
+   "take_lo": 101.8324,
+   "take_hi": 102.0498,
+   "stop_px": 99.814
+  },
+  {
+   "id": 6,
+   "instrument_key": "PDBC",
+   "tool": "PDBC",
+   "tool_desc": "广义商品篮子",
+   "theme_id": "INFLATION",
+   "theme": "通胀路径与再加速风险",
+   "signal_id": "INFLATION-1M-X",
+   "asset": "广义商品篮子",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 17.25,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     7.62,
+     1.9,
+     -6.33
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     4.95,
+     0.95,
+     -7.91
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98903",
+    "feed:99080"
+   ],
+   "view": "通胀路径与再加速风险：TIS 73.6，入价 M 51（早期验证），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速。既不便宜也不挤，等价格给个确认再进。用 PDBC 表达（广义商品篮子），现价 17.25，距 52 周高点 -9.0%，60 日动量 8 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.TIP 与标的自身价格共同验证；σ=6.33%，上行 1.21σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速的答案转向，或 US.TIP 与本条方向持续背离。",
+   "role": "通胀路径与再加速风险 · 广义商品篮子",
+   "entry_lo": 16.0498,
+   "entry_hi": 16.8136,
+   "take_lo": 18.3675,
+   "take_hi": 18.5648,
+   "stop_px": 15.5043
+  },
+  {
+   "id": 7,
+   "instrument_key": "DBC",
+   "tool": "DBC",
+   "tool_desc": "广义商品篮子",
+   "theme_id": "INFLATION",
+   "theme": "通胀路径与再加速风险",
+   "signal_id": "INFLATION-6M-X",
+   "asset": "广义商品篮子",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 28.88,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     18.8,
+     4.68,
+     -15.6
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     12.22,
+     2.34,
+     -19.5
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98903",
+    "feed:99080"
+   ],
+   "view": "通胀路径与再加速风险：TIS 73.6，入价 M 51（早期验证），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速。既不便宜也不挤，等价格给个确认再进。用 DBC 表达（广义商品篮子），现价 28.88，距 52 周高点 -9.2%，60 日动量 8 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.TIP 与标的自身价格共同验证；σ=15.60%，上行 1.21σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速的答案转向，或 US.TIP 与本条方向持续背离。",
+   "role": "通胀路径与再加速风险 · 广义商品篮子",
+   "entry_lo": 26.857,
+   "entry_hi": 28.1444,
+   "take_lo": 33.494,
+   "take_hi": 34.3083,
+   "stop_px": 25.9375
+  },
+  {
+   "id": 8,
+   "instrument_key": "TLT",
+   "tool": "TLT",
+   "tool_desc": "美国长久期国债",
+   "theme_id": "POLICY-PATH",
+   "theme": "央行政策路径与流动性",
+   "signal_id": "POLICY-PATH-1M-X",
+   "asset": "美国长久期国债",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 82.19,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     3.22,
+     0.81,
+     -2.69
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     2.09,
+     0.4,
+     -3.36
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98842",
+    "feed:98882"
+   ],
+   "view": "央行政策路径与流动性：TIS 71.8，入价 M 76（已有确认），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，主要央行能否在不加息的前提下维持或放松政策。既不便宜也不挤，等价格给个确认再进。用 TLT 表达（美国长久期国债），现价 82.19，距 52 周高点 -7.5%，60 日动量 7 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.IEF 与标的自身价格共同验证；σ=2.69%，上行 1.20σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，主要央行能否在不加息的前提下维持或放松政策的答案转向，或 US.IEF 与本条方向持续背离。",
+   "role": "央行政策路径与流动性 · 美国长久期国债",
+   "entry_lo": 79.7569,
+   "entry_hi": 81.3052,
+   "take_lo": 84.4367,
+   "take_hi": 84.8332,
+   "stop_px": 78.651
+  },
+  {
+   "id": 9,
+   "instrument_key": "IEF",
+   "tool": "IEF",
+   "tool_desc": "美国中久期国债",
+   "theme_id": "POLICY-PATH",
+   "theme": "央行政策路径与流动性",
+   "signal_id": "POLICY-PATH-6M-X",
+   "asset": "美国中久期国债",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 92.82,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     4.2,
+     1.05,
+     -3.51
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     2.73,
+     0.53,
+     -4.38
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98842",
+    "feed:98882"
+   ],
+   "view": "央行政策路径与流动性：TIS 71.8，入价 M 76（已有确认），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，主要央行能否在不加息的前提下维持或放松政策。既不便宜也不挤，等价格给个确认再进。用 IEF 表达（美国中久期国债），现价 92.82，距 52 周高点 -3.5%，60 日动量 13 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.IEF 与标的自身价格共同验证；σ=3.51%，上行 1.20σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，主要央行能否在不加息的前提下维持或放松政策的答案转向，或 US.IEF 与本条方向持续背离。",
+   "role": "央行政策路径与流动性 · 美国中久期国债",
+   "entry_lo": 91.3559,
+   "entry_hi": 92.2876,
+   "take_lo": 96.1317,
+   "take_hi": 96.7162,
+   "stop_px": 90.6903
+  },
+  {
+   "id": 10,
+   "instrument_key": "MBB",
+   "tool": "MBB",
+   "tool_desc": "美国机构按揭证券",
+   "theme_id": "POLICY-PATH",
+   "theme": "央行政策路径与流动性",
+   "signal_id": "POLICY-PATH-1M-X",
+   "asset": "美国机构按揭证券",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 92.72,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     45,
+     24
+    ],
+    "r": [
+     1.67,
+     0.42,
+     -1.4
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     46,
+     29
+    ],
+    "r": [
+     1.09,
+     0.21,
+     -1.74
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98842",
+    "feed:98882"
+   ],
+   "view": "央行政策路径与流动性：TIS 71.8，入价 M 76（已有确认），拥挤 C 57（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，主要央行能否在不加息的前提下维持或放松政策。既不便宜也不挤，等价格给个确认再进。用 MBB 表达（美国机构按揭证券），现价 92.72，距 52 周高点 -2.3%，60 日动量 5 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.IEF 与标的自身价格共同验证；σ=1.40%，上行 1.20σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，主要央行能否在不加息的前提下维持或放松政策的答案转向，或 US.IEF 与本条方向持续背离。",
+   "role": "央行政策路径与流动性 · 美国机构按揭证券",
+   "entry_lo": 91.2939,
+   "entry_hi": 92.2014,
+   "take_lo": 94.0368,
+   "take_hi": 94.2692,
+   "stop_px": 90.6457
+  },
+  {
+   "id": 11,
+   "instrument_key": "MCHI",
+   "tool": "MCHI",
+   "tool_desc": "中国股票",
+   "theme_id": "CHINA-POLICY",
+   "theme": "中国政策与内需信用",
+   "signal_id": "CHINA-POLICY-1M-X",
+   "asset": "中国股票",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 55.9,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     46,
+     23
+    ],
+    "r": [
+     6.97,
+     1.79,
+     -5.88
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     47,
+     28
+    ],
+    "r": [
+     4.53,
+     0.89,
+     -7.36
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99012",
+    "feed:98898"
+   ],
+   "view": "中国政策与内需信用：TIS 67.1，入价 M 55（早期验证），拥挤 C 53（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流。既不便宜也不挤，等价格给个确认再进。用 MCHI 表达（中国股票），现价 55.9，距 52 周高点 -15.4%，60 日动量 50 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.MCHI 与标的自身价格共同验证；σ=5.96%，上行 1.17σ，下行 0.99σ。",
+   "risk": "最可能错在：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流的答案转向，或 US.MCHI 与本条方向持续背离。",
+   "role": "中国政策与内需信用 · 中国股票",
+   "entry_lo": 52.2339,
+   "entry_hi": 54.5669,
+   "take_lo": 59.2117,
+   "take_hi": 59.7961,
+   "stop_px": 50.5675
+  },
+  {
+   "id": 12,
+   "instrument_key": "KWEB",
+   "tool": "KWEB",
+   "tool_desc": "中国互联网平台",
+   "theme_id": "CHINA-POLICY",
+   "theme": "中国政策与内需信用",
+   "signal_id": "CHINA-POLICY-6M-X",
+   "asset": "中国互联网平台",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 28.74,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     46,
+     23
+    ],
+    "r": [
+     25.52,
+     6.55,
+     -21.55
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     47,
+     28
+    ],
+    "r": [
+     16.59,
+     3.27,
+     -26.93
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99012",
+    "feed:98898"
+   ],
+   "view": "中国政策与内需信用：TIS 67.1，入价 M 55（早期验证），拥挤 C 53（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流。既不便宜也不挤，等价格给个确认再进。用 KWEB 表达（中国互联网平台），现价 28.74，距 52 周高点 -29.7%，60 日动量 74 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.MCHI 与标的自身价格共同验证；σ=21.83%，上行 1.17σ，下行 0.99σ。",
+   "risk": "最可能错在：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流的答案转向，或 US.MCHI 与本条方向持续背离。",
+   "role": "中国政策与内需信用 · 中国互联网平台",
+   "entry_lo": 25.9226,
+   "entry_hi": 27.7155,
+   "take_lo": 34.974,
+   "take_hi": 36.0741,
+   "stop_px": 24.642
+  },
+  {
+   "id": 13,
+   "instrument_key": "00700",
+   "tool": "00700",
+   "tool_desc": "中国互联网平台",
+   "theme_id": "CHINA-POLICY",
+   "theme": "中国政策与内需信用",
+   "signal_id": "CHINA-POLICY-1M-X",
+   "asset": "中国互联网平台",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 490.4,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     46,
+     23
+    ],
+    "r": [
+     14.71,
+     3.77,
+     -12.42
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     47,
+     28
+    ],
+    "r": [
+     9.56,
+     1.89,
+     -15.52
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99012",
+    "feed:98898"
+   ],
+   "view": "中国政策与内需信用：TIS 67.1，入价 M 55（早期验证），拥挤 C 53（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流。既不便宜也不挤，等价格给个确认再进。用 00700 表达（中国互联网平台），现价 490.4，距 52 周高点 -27.6%，60 日动量 83 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.MCHI 与标的自身价格共同验证；σ=12.58%，上行 1.17σ，下行 0.99σ。",
+   "risk": "最可能错在：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流的答案转向，或 US.MCHI 与本条方向持续背离。",
+   "role": "中国政策与内需信用 · 中国互联网平台",
+   "entry_lo": 422.5325,
+   "entry_hi": 465.7209,
+   "take_lo": 551.7059,
+   "take_hi": 562.5246,
+   "stop_px": 391.6837
+  },
+  {
+   "id": 14,
+   "instrument_key": "02800",
+   "tool": "02800",
+   "tool_desc": "香港大盘股",
+   "theme_id": "CHINA-POLICY",
+   "theme": "中国政策与内需信用",
+   "signal_id": "CHINA-POLICY-6M-X",
+   "asset": "香港大盘股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 26.46,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     46,
+     23
+    ],
+    "r": [
+     15.79,
+     4.05,
+     -13.33
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     47,
+     28
+    ],
+    "r": [
+     10.27,
+     2.03,
+     -16.67
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99012",
+    "feed:98898"
+   ],
+   "view": "中国政策与内需信用：TIS 67.1，入价 M 55（早期验证），拥挤 C 53（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流。既不便宜也不挤，等价格给个确认再进。用 02800 表达（香港大盘股），现价 26.46，距 52 周高点 -5.9%，60 日动量 56 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.MCHI 与标的自身价格共同验证；σ=13.51%，上行 1.17σ，下行 0.99σ。",
+   "risk": "最可能错在：未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流的答案转向，或 US.MCHI 与本条方向持续背离。",
+   "role": "中国政策与内需信用 · 香港大盘股",
+   "entry_lo": 24.8547,
+   "entry_hi": 25.8763,
+   "take_lo": 30.0119,
+   "take_hi": 30.6387,
+   "stop_px": 24.1251
+  },
+  {
+   "id": 15,
+   "instrument_key": "COPX",
+   "tool": "COPX",
+   "tool_desc": "铜矿股",
+   "theme_id": "COMMODITY-CYCLE",
+   "theme": "金属与战略补库",
+   "signal_id": "COMMODITY-CYCLE-1M-X",
+   "asset": "铜矿股",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 79.36,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     48,
+     21
+    ],
+    "r": [
+     17.48,
+     4.62,
+     -14.06
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     49,
+     26
+    ],
+    "r": [
+     11.36,
+     2.31,
+     -17.57
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98830",
+    "feed:99070"
+   ],
+   "view": "金属与战略补库：TIS 60.8，入价 M 60（已有确认），拥挤 C 32（不拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，铜与工业金属的供给约束能否推动战略补库。既不便宜也不挤，等价格给个确认再进。用 COPX 表达（铜矿股），现价 79.36，距 52 周高点 -20.4%，60 日动量 14 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.COPX 与标的自身价格共同验证；σ=15.41%，上行 1.13σ，下行 0.91σ。",
+   "risk": "最可能错在：未来1–6个月，铜与工业金属的供给约束能否推动战略补库的答案转向，或 US.COPX 与本条方向持续背离。",
+   "role": "金属与战略补库 · 铜矿股",
+   "entry_lo": 65.9055,
+   "entry_hi": 74.4675,
+   "take_lo": 91.1498,
+   "take_hi": 93.2304,
+   "stop_px": 59.7898
+  },
+  {
+   "id": 16,
+   "instrument_key": "CPER",
+   "tool": "CPER",
+   "tool_desc": "铜价格",
+   "theme_id": "COMMODITY-CYCLE",
+   "theme": "金属与战略补库",
+   "signal_id": "COMMODITY-CYCLE-6M-X",
+   "asset": "铜价格",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 39.64,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     48,
+     21
+    ],
+    "r": [
+     22.98,
+     6.08,
+     -18.48
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     49,
+     26
+    ],
+    "r": [
+     14.94,
+     3.04,
+     -23.1
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98830",
+    "feed:99070"
+   ],
+   "view": "金属与战略补库：TIS 60.8，入价 M 60（已有确认），拥挤 C 32（不拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，铜与工业金属的供给约束能否推动战略补库。既不便宜也不挤，等价格给个确认再进。用 CPER 表达（铜价格），现价 39.64，距 52 周高点 -2.8%，60 日动量 34 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.COPX 与标的自身价格共同验证；σ=20.27%，上行 1.13σ，下行 0.91σ。",
+   "risk": "最可能错在：未来1–6个月，铜与工业金属的供给约束能否推动战略补库的答案转向，或 US.COPX 与本条方向持续背离。",
+   "role": "金属与战略补库 · 铜价格",
+   "entry_lo": 36.0325,
+   "entry_hi": 38.3282,
+   "take_lo": 47.3833,
+   "take_hi": 48.7497,
+   "stop_px": 34.3927
+  },
+  {
+   "id": 17,
+   "instrument_key": "MOO",
+   "tool": "MOO",
+   "tool_desc": "农业产业链",
+   "theme_id": "COMMODITY-CYCLE",
+   "theme": "金属与战略补库",
+   "signal_id": "COMMODITY-CYCLE-1M-X",
+   "asset": "农业产业链",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 80.98,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     31,
+     48,
+     21
+    ],
+    "r": [
+     4.87,
+     1.29,
+     -3.92
+    ]
+   },
+   "conservative": {
+    "p": [
+     25,
+     49,
+     26
+    ],
+    "r": [
+     3.17,
+     0.64,
+     -4.9
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98830",
+    "feed:99070"
+   ],
+   "view": "金属与战略补库：TIS 60.8，入价 M 60（已有确认），拥挤 C 32（不拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，铜与工业金属的供给约束能否推动战略补库。既不便宜也不挤，等价格给个确认再进。用 MOO 表达（农业产业链），现价 80.98，距 52 周高点 -6.4%，60 日动量 20 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.COPX 与标的自身价格共同验证；σ=4.30%，上行 1.13σ，下行 0.91σ。",
+   "risk": "最可能错在：未来1–6个月，铜与工业金属的供给约束能否推动战略补库的答案转向，或 US.COPX 与本条方向持续背离。",
+   "role": "金属与战略补库 · 农业产业链",
+   "entry_lo": 77.153,
+   "entry_hi": 79.5884,
+   "take_lo": 84.3335,
+   "take_hi": 84.9253,
+   "stop_px": 75.4135
+  },
+  {
+   "id": 18,
+   "instrument_key": "QUAL",
+   "tool": "QUAL",
+   "tool_desc": "美股质量因子",
+   "theme_id": "EARNINGS-QUALITY",
+   "theme": "盈利兑现与质量分化",
+   "signal_id": "EARNINGS-QUALITY-1M-X",
+   "asset": "美股质量因子",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 221.74,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     46,
+     26
+    ],
+    "r": [
+     3.8,
+     1.02,
+     -3.66
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     47,
+     31
+    ],
+    "r": [
+     2.47,
+     0.51,
+     -4.57
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99090",
+    "feed:98785"
+   ],
+   "view": "盈利兑现与质量分化：TIS 58.3，入价 M 99（交易成熟），拥挤 C 80（高度拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证。价格已在自身一年分布的极值附近，只等回踩，仓位砍半。用 QUAL 表达（美股质量因子），现价 221.74，距 52 周高点 -0.1%，60 日动量 71 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.QUAL 与标的自身价格共同验证；σ=3.39%，上行 1.12σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证的答案转向，或 US.QUAL 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "盈利兑现与质量分化 · 美股质量因子",
+   "entry_lo": 213.4784,
+   "entry_hi": 218.7358,
+   "take_lo": 228.8964,
+   "take_hi": 230.1593,
+   "stop_px": 209.7231
+  },
+  {
+   "id": 19,
+   "instrument_key": "RSP",
+   "tool": "RSP",
+   "tool_desc": "美股等权/广度",
+   "theme_id": "EARNINGS-QUALITY",
+   "theme": "盈利兑现与质量分化",
+   "signal_id": "EARNINGS-QUALITY-6M-X",
+   "asset": "美股等权/广度",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 217.11,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     46,
+     26
+    ],
+    "r": [
+     8.7,
+     2.33,
+     -8.38
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     47,
+     31
+    ],
+    "r": [
+     5.65,
+     1.16,
+     -10.47
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99090",
+    "feed:98785"
+   ],
+   "view": "盈利兑现与质量分化：TIS 58.3，入价 M 99（交易成熟），拥挤 C 80（高度拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证。价格已在自身一年分布的极值附近，只等回踩，仓位砍半。用 RSP 表达（美股等权/广度），现价 217.11，距 52 周高点 -0.5%，60 日动量 77 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.QUAL 与标的自身价格共同验证；σ=7.76%，上行 1.12σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证的答案转向，或 US.QUAL 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "盈利兑现与质量分化 · 美股等权/广度",
+   "entry_lo": 209.5451,
+   "entry_hi": 214.3591,
+   "take_lo": 233.1611,
+   "take_hi": 235.9936,
+   "stop_px": 206.1065
+  },
+  {
+   "id": 20,
+   "instrument_key": "USMV",
+   "tool": "USMV",
+   "tool_desc": "美股低波动",
+   "theme_id": "EARNINGS-QUALITY",
+   "theme": "盈利兑现与质量分化",
+   "signal_id": "EARNINGS-QUALITY-1M-X",
+   "asset": "美股低波动",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "等待回踩",
+   "ref_price": 98.27,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     46,
+     26
+    ],
+    "r": [
+     2.93,
+     0.78,
+     -2.82
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     47,
+     31
+    ],
+    "r": [
+     1.9,
+     0.39,
+     -3.53
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99090",
+    "feed:98785"
+   ],
+   "view": "盈利兑现与质量分化：TIS 58.3，入价 M 99（交易成熟），拥挤 C 80（高度拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证。价格已在自身一年分布的极值附近，只等回踩，仓位砍半。用 USMV 表达（美股低波动），现价 98.27，距 52 周高点 -1.1%，60 日动量 99 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.QUAL 与标的自身价格共同验证；σ=2.61%，上行 1.12σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证的答案转向，或 US.QUAL 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "盈利兑现与质量分化 · 美股低波动",
+   "entry_lo": 95.4474,
+   "entry_hi": 97.2436,
+   "take_lo": 100.715,
+   "take_hi": 101.1465,
+   "stop_px": 94.1644
+  },
+  {
+   "id": 21,
+   "instrument_key": "SPLV",
+   "tool": "SPLV",
+   "tool_desc": "美股低波动",
+   "theme_id": "EARNINGS-QUALITY",
+   "theme": "盈利兑现与质量分化",
+   "signal_id": "EARNINGS-QUALITY-6M-X",
+   "asset": "美股低波动",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 76.21,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     46,
+     26
+    ],
+    "r": [
+     10.73,
+     2.87,
+     -10.34
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     47,
+     31
+    ],
+    "r": [
+     6.98,
+     1.44,
+     -12.93
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99090",
+    "feed:98785"
+   ],
+   "view": "盈利兑现与质量分化：TIS 58.3，入价 M 99（交易成熟），拥挤 C 80（高度拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证。价格已在自身一年分布的极值附近，只等回踩，仓位砍半。用 SPLV 表达（美股低波动），现价 76.21，距 52 周高点 -3.3%，60 日动量 82 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.QUAL 与标的自身价格共同验证；σ=9.57%，上行 1.12σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证的答案转向，或 US.QUAL 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "盈利兑现与质量分化 · 美股低波动",
+   "entry_lo": 72.9332,
+   "entry_hi": 75.0184,
+   "take_lo": 83.1627,
+   "take_hi": 84.3896,
+   "stop_px": 71.4438
+  },
+  {
+   "id": 22,
+   "instrument_key": "IGV",
+   "tool": "IGV",
+   "tool_desc": "软件股",
+   "theme_id": "AI-MONETISATION",
+   "theme": "AI商业化与软件现金流",
+   "signal_id": "AI-MONETISATION-1M-X",
+   "asset": "软件股",
+   "direction": "↑",
+   "horizon": "1个月",
+   "action": "小仓试错",
+   "ref_price": 97.42,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     29,
+     47,
+     24
+    ],
+    "r": [
+     10.77,
+     2.94,
+     -9.89
+    ]
+   },
+   "conservative": {
+    "p": [
+     23,
+     48,
+     29
+    ],
+    "r": [
+     7.0,
+     1.47,
+     -12.36
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99057",
+    "feed:98904"
+   ],
+   "view": "AI商业化与软件现金流：TIS 54.2，入价 M 100（交易成熟），拥挤 C 59（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，AI相关软件与安全支出能否转化为自由现金流。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 IGV 表达（软件股），现价 97.42，距 52 周高点 -17.4%，60 日动量 86 百分位。规则引擎生成。",
+   "fit": "1个月内由预注册指标 US.IGV 与标的自身价格共同验证；σ=9.81%，上行 1.10σ，下行 1.01σ。",
+   "risk": "最可能错在：未来1–6个月，AI相关软件与安全支出能否转化为自由现金流的答案转向，或 US.IGV 与本条方向持续背离。",
+   "role": "AI商业化与软件现金流 · 软件股",
+   "entry_lo": 86.909,
+   "entry_hi": 93.5978,
+   "take_lo": 106.3381,
+   "take_hi": 107.9119,
+   "stop_px": 82.1313
+  },
+  {
+   "id": 23,
+   "instrument_key": "CIBR",
+   "tool": "CIBR",
+   "tool_desc": "网络安全股",
+   "theme_id": "AI-MONETISATION",
+   "theme": "AI商业化与软件现金流",
+   "signal_id": "AI-MONETISATION-6M-X",
+   "asset": "网络安全股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 93.91,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     29,
+     47,
+     24
+    ],
+    "r": [
+     25.58,
+     6.99,
+     -23.48
+    ]
+   },
+   "conservative": {
+    "p": [
+     23,
+     48,
+     29
+    ],
+    "r": [
+     16.63,
+     3.49,
+     -29.35
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99057",
+    "feed:98904"
+   ],
+   "view": "AI商业化与软件现金流：TIS 54.2，入价 M 100（交易成熟），拥挤 C 59（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，AI相关软件与安全支出能否转化为自由现金流。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 CIBR 表达（网络安全股），现价 93.91，距 52 周高点 -2.1%，60 日动量 88 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.IGV 与标的自身价格共同验证；σ=23.30%，上行 1.10σ，下行 1.01σ。",
+   "risk": "最可能错在：未来1–6个月，AI相关软件与安全支出能否转化为自由现金流的答案转向，或 US.IGV 与本条方向持续背离。",
+   "role": "AI商业化与软件现金流 · 网络安全股",
+   "entry_lo": 84.0855,
+   "entry_hi": 90.3374,
+   "take_lo": 114.3281,
+   "take_hi": 117.9313,
+   "stop_px": 79.6198
+  },
+  {
+   "id": 24,
+   "instrument_key": "USHY",
+   "tool": "USHY",
+   "tool_desc": "美元高收益债",
+   "theme_id": "CREDIT-STRESS",
+   "theme": "信用供给与再融资压力",
+   "signal_id": "CREDIT-STRESS-6M-X",
+   "asset": "美元高收益债",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 36.68,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     47,
+     25
+    ],
+    "r": [
+     2.47,
+     0.69,
+     -2.38
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     48,
+     30
+    ],
+    "r": [
+     1.61,
+     0.35,
+     -2.97
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98954",
+    "am:98976"
+   ],
+   "view": "信用供给与再融资压力：TIS 50.0，入价 M 98（交易成熟），拥挤 C 67（偏拥挤）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，信用利差能否在再融资高峰中不显著走阔。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 USHY 表达（美元高收益债），现价 36.68，距 52 周高点 -0.2%，60 日动量 23 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.USHY 与标的自身价格共同验证；σ=2.30%，上行 1.07σ，下行 1.03σ。",
+   "risk": "最可能错在：未来1–6个月，信用利差能否在再融资高峰中不显著走阔的答案转向，或 US.USHY 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。该主题当日低置信。",
+   "role": "信用供给与再融资压力 · 美元高收益债",
+   "entry_lo": 36.3011,
+   "entry_hi": 36.5422,
+   "take_lo": 37.451,
+   "take_hi": 37.5871,
+   "stop_px": 36.1289
+  },
+  {
+   "id": 25,
+   "instrument_key": "HYG",
+   "tool": "HYG",
+   "tool_desc": "美元高收益债",
+   "theme_id": "CREDIT-STRESS",
+   "theme": "信用供给与再融资压力",
+   "signal_id": "CREDIT-STRESS-6M-X",
+   "asset": "美元高收益债",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 79.31,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     47,
+     25
+    ],
+    "r": [
+     2.73,
+     0.76,
+     -2.62
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     48,
+     30
+    ],
+    "r": [
+     1.77,
+     0.38,
+     -3.28
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98954",
+    "am:98976"
+   ],
+   "view": "信用供给与再融资压力：TIS 50.0，入价 M 98（交易成熟），拥挤 C 67（偏拥挤）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，信用利差能否在再融资高峰中不显著走阔。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 HYG 表达（美元高收益债），现价 79.31，距 52 周高点 -0.3%，60 日动量 19 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.USHY 与标的自身价格共同验证；σ=2.54%，上行 1.07σ，下行 1.03σ。",
+   "risk": "最可能错在：未来1–6个月，信用利差能否在再融资高峰中不显著走阔的答案转向，或 US.USHY 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。该主题当日低置信。",
+   "role": "信用供给与再融资压力 · 美元高收益债",
+   "entry_lo": 78.4059,
+   "entry_hi": 78.9812,
+   "take_lo": 81.1496,
+   "take_hi": 81.4743,
+   "stop_px": 77.995
+  },
+  {
+   "id": 26,
+   "instrument_key": "EWG",
+   "tool": "EWG",
+   "tool_desc": "德国股票",
+   "theme_id": "EUROPE-FISCAL",
+   "theme": "欧洲财政与电气化投资",
+   "signal_id": "EUROPE-FISCAL-6M-X",
+   "asset": "德国股票",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 43.38,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     27,
+     47,
+     26
+    ],
+    "r": [
+     14.18,
+     4.01,
+     -14.44
+    ]
+   },
+   "conservative": {
+    "p": [
+     21,
+     48,
+     31
+    ],
+    "r": [
+     9.21,
+     2.01,
+     -18.05
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98949",
+    "am:98967"
+   ],
+   "view": "欧洲财政与电气化投资：TIS 47.3，入价 M 96（交易成熟），拥挤 C 80（高度拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，欧洲财政与电网投资能否从预算转为订单。价格已在自身一年分布的极值附近，只等回踩，仓位砍半。用 EWG 表达（德国股票），现价 43.38，距 52 周高点 -0.9%，60 日动量 63 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.EWG 与标的自身价格共同验证；σ=13.37%，上行 1.06σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，欧洲财政与电网投资能否从预算转为订单的答案转向，或 US.EWG 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。该主题当日低置信。",
+   "role": "欧洲财政与电气化投资 · 德国股票",
+   "entry_lo": 40.7748,
+   "entry_hi": 42.4327,
+   "take_lo": 48.607,
+   "take_hi": 49.5294,
+   "stop_px": 39.5906
+  },
+  {
+   "id": 27,
+   "instrument_key": "EZU",
+   "tool": "EZU",
+   "tool_desc": "欧元区股票",
+   "theme_id": "EUROPE-FISCAL",
+   "theme": "欧洲财政与电气化投资",
+   "signal_id": "EUROPE-FISCAL-6M-X",
+   "asset": "欧元区股票",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 70.23,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     27,
+     47,
+     26
+    ],
+    "r": [
+     14.55,
+     4.12,
+     -14.83
+    ]
+   },
+   "conservative": {
+    "p": [
+     21,
+     48,
+     31
+    ],
+    "r": [
+     9.46,
+     2.06,
+     -18.54
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98949",
+    "am:98967"
+   ],
+   "view": "欧洲财政与电气化投资：TIS 47.3，入价 M 96（交易成熟），拥挤 C 80（高度拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，欧洲财政与电网投资能否从预算转为订单。价格已在自身一年分布的极值附近，只等回踩，仓位砍半。用 EZU 表达（欧元区股票），现价 70.23，距 52 周高点 -0.1%，60 日动量 45 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.EWG 与标的自身价格共同验证；σ=13.73%，上行 1.06σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，欧洲财政与电网投资能否从预算转为订单的答案转向，或 US.EWG 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。该主题当日低置信。",
+   "role": "欧洲财政与电气化投资 · 欧元区股票",
+   "entry_lo": 65.8995,
+   "entry_hi": 68.6553,
+   "take_lo": 78.9185,
+   "take_hi": 80.4518,
+   "stop_px": 63.9311
+  },
+  {
+   "id": 28,
+   "instrument_key": "KRE",
+   "tool": "KRE",
+   "tool_desc": "区域银行",
+   "theme_id": "TERM-PREMIUM",
+   "theme": "期限溢价与财政供给",
+   "signal_id": "TERM-PREMIUM-6M-X",
+   "asset": "区域银行",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 77.06,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     29,
+     48,
+     23
+    ],
+    "r": [
+     14.9,
+     4.25,
+     -13.63
+    ]
+   },
+   "conservative": {
+    "p": [
+     23,
+     49,
+     28
+    ],
+    "r": [
+     9.69,
+     2.12,
+     -17.04
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98842",
+    "images:245006108367759"
+   ],
+   "view": "期限溢价与财政供给：TIS 46.0，入价 M 90（交易成熟），拥挤 C 47（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，长端收益率能否在财政供给压力下停止上行。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 KRE 表达（区域银行），现价 77.06，距 52 周高点 -1.3%，60 日动量 72 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.TLT 与标的自身价格共同验证；σ=14.15%，上行 1.05σ，下行 0.96σ。",
+   "risk": "最可能错在：未来1–6个月，长端收益率能否在财政供给压力下停止上行的答案转向，或 US.TLT 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "期限溢价与财政供给 · 区域银行",
+   "entry_lo": 72.1626,
+   "entry_hi": 75.2791,
+   "take_lo": 86.8212,
+   "take_hi": 88.5438,
+   "stop_px": 69.9365
+  },
+  {
+   "id": 29,
+   "instrument_key": "KBE",
+   "tool": "KBE",
+   "tool_desc": "美国银行股",
+   "theme_id": "TERM-PREMIUM",
+   "theme": "期限溢价与财政供给",
+   "signal_id": "TERM-PREMIUM-6M-X",
+   "asset": "美国银行股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 70.52,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     29,
+     48,
+     23
+    ],
+    "r": [
+     13.89,
+     3.96,
+     -12.7
+    ]
+   },
+   "conservative": {
+    "p": [
+     23,
+     49,
+     28
+    ],
+    "r": [
+     9.03,
+     1.98,
+     -15.88
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98842",
+    "images:245006108367759"
+   ],
+   "view": "期限溢价与财政供给：TIS 46.0，入价 M 90（交易成熟），拥挤 C 47（中性）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，长端收益率能否在财政供给压力下停止上行。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 KBE 表达（美国银行股），现价 70.52，距 52 周高点 -1.3%，60 日动量 74 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.TLT 与标的自身价格共同验证；σ=13.19%，上行 1.05σ，下行 0.96σ。",
+   "risk": "最可能错在：未来1–6个月，长端收益率能否在财政供给压力下停止上行的答案转向，或 US.TLT 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "期限溢价与财政供给 · 美国银行股",
+   "entry_lo": 66.342,
+   "entry_hi": 69.0007,
+   "take_lo": 78.8472,
+   "take_hi": 80.3167,
+   "stop_px": 64.4429
+  },
+  {
+   "id": 30,
+   "instrument_key": "ITA",
+   "tool": "ITA",
+   "tool_desc": "国防军工",
+   "theme_id": "GEOPOLITICS",
+   "theme": "地缘冲突与国防补库",
+   "signal_id": "GEOPOLITICS-6M-X",
+   "asset": "国防军工",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 246.08,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     27,
+     48,
+     25
+    ],
+    "r": [
+     18.87,
+     5.38,
+     -19.03
+    ]
+   },
+   "conservative": {
+    "p": [
+     21,
+     49,
+     30
+    ],
+    "r": [
+     12.27,
+     2.69,
+     -23.79
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98912",
+    "feed:98798"
+   ],
+   "view": "地缘冲突与国防补库：TIS 45.9，入价 M 99（交易成熟），拥挤 C 75（偏拥挤）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 ITA 表达（国防军工），现价 246.08，距 52 周高点 -2.1%，60 日动量 73 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.ITA 与标的自身价格共同验证；σ=17.94%，上行 1.05σ，下行 1.06σ。",
+   "risk": "最可能错在：未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出的答案转向，或 US.ITA 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "地缘冲突与国防补库 · 国防军工",
+   "entry_lo": 226.2548,
+   "entry_hi": 238.8708,
+   "take_lo": 285.556,
+   "take_hi": 292.5224,
+   "stop_px": 217.2434
+  },
+  {
+   "id": 31,
+   "instrument_key": "PPA",
+   "tool": "PPA",
+   "tool_desc": "国防军工",
+   "theme_id": "GEOPOLITICS",
+   "theme": "地缘冲突与国防补库",
+   "signal_id": "GEOPOLITICS-6M-X",
+   "asset": "国防军工",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 179.14,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     27,
+     48,
+     25
+    ],
+    "r": [
+     18.24,
+     5.2,
+     -18.4
+    ]
+   },
+   "conservative": {
+    "p": [
+     21,
+     49,
+     30
+    ],
+    "r": [
+     11.86,
+     2.6,
+     -23.0
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98912",
+    "feed:98798"
+   ],
+   "view": "地缘冲突与国防补库：TIS 45.9，入价 M 99（交易成熟），拥挤 C 75（偏拥挤）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 PPA 表达（国防军工），现价 179.14，距 52 周高点 -3.7%，60 日动量 64 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.ITA 与标的自身价格共同验证；σ=17.34%，上行 1.05σ，下行 1.06σ。",
+   "risk": "最可能错在：未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出的答案转向，或 US.ITA 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "地缘冲突与国防补库 · 国防军工",
+   "entry_lo": 165.1894,
+   "entry_hi": 174.067,
+   "take_lo": 206.9188,
+   "take_hi": 211.821,
+   "stop_px": 158.8482
+  },
+  {
+   "id": 32,
+   "instrument_key": "XLE",
+   "tool": "XLE",
+   "tool_desc": "能源生产商",
+   "theme_id": "ENERGY-SUPPLY",
+   "theme": "能源供给与运输风险",
+   "signal_id": "ENERGY-SUPPLY-6M-X",
+   "asset": "能源生产商",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "可执行",
+   "ref_price": 58.79,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     48,
+     24
+    ],
+    "r": [
+     17.16,
+     4.92,
+     -16.46
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     49,
+     29
+    ],
+    "r": [
+     11.15,
+     2.46,
+     -20.57
+    ]
+   },
+   "pos_init": 1.4,
+   "pos_max": 2.8,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98989",
+    "feed:98820"
+   ],
+   "view": "能源供给与运输风险：TIS 44.8，入价 M 9（尚未定价），拥挤 C 58（中性）→ 可执行",
+   "thesis": "赌的是：未来1–6个月，原油与天然气供给中断能否维持实现价格与现金流。证据够厚而价格还没反映，可以直接买。用 XLE 表达（能源生产商），现价 58.79，距 52 周高点 -6.7%，60 日动量 40 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.XLE 与标的自身价格共同验证；σ=16.41%，上行 1.05σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，原油与天然气供给中断能否维持实现价格与现金流的答案转向，或 US.XLE 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "能源供给与运输风险 · 能源生产商",
+   "entry_lo": 57.0181,
+   "entry_hi": 59.1838,
+   "take_lo": 67.3655,
+   "take_hi": 68.8788,
+   "stop_px": 52.4898
+  },
+  {
+   "id": 33,
+   "instrument_key": "XOP",
+   "tool": "XOP",
+   "tool_desc": "石油天然气勘探生产",
+   "theme_id": "ENERGY-SUPPLY",
+   "theme": "能源供给与运输风险",
+   "signal_id": "ENERGY-SUPPLY-6M-X",
+   "asset": "石油天然气勘探生产",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "可执行",
+   "ref_price": 174.28,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     48,
+     24
+    ],
+    "r": [
+     21.31,
+     6.11,
+     -20.43
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     49,
+     29
+    ],
+    "r": [
+     13.85,
+     3.06,
+     -25.54
+    ]
+   },
+   "pos_init": 1.4,
+   "pos_max": 2.8,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98989",
+    "feed:98820"
+   ],
+   "view": "能源供给与运输风险：TIS 44.8，入价 M 9（尚未定价），拥挤 C 58（中性）→ 可执行",
+   "thesis": "赌的是：未来1–6个月，原油与天然气供给中断能否维持实现价格与现金流。证据够厚而价格还没反映，可以直接买。用 XOP 表达（石油天然气勘探生产），现价 174.28，距 52 周高点 -8.0%，60 日动量 43 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.XLE 与标的自身价格共同验证；σ=20.37%，上行 1.05σ，下行 1.00σ。",
+   "risk": "最可能错在：未来1–6个月，原油与天然气供给中断能否维持实现价格与现金流的答案转向，或 US.XLE 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "能源供给与运输风险 · 石油天然气勘探生产",
+   "entry_lo": 167.758,
+   "entry_hi": 175.7293,
+   "take_lo": 205.8443,
+   "take_hi": 211.4144,
+   "stop_px": 151.0907
+  },
+  {
+   "id": 34,
+   "instrument_key": "IYR",
+   "tool": "IYR",
+   "tool_desc": "美国房地产",
+   "theme_id": "HOUSING-RATES",
+   "theme": "利率敏感部门与住宅周期",
+   "signal_id": "HOUSING-RATES-6M-X",
+   "asset": "美国房地产",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 105.23,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     27,
+     48,
+     25
+    ],
+    "r": [
+     11.85,
+     3.4,
+     -11.68
+    ]
+   },
+   "conservative": {
+    "p": [
+     21,
+     49,
+     30
+    ],
+    "r": [
+     7.7,
+     1.7,
+     -14.6
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98823",
+    "ib:98823"
+   ],
+   "view": "利率敏感部门与住宅周期：TIS 44.4，入价 M 80（已有确认），拥挤 C 66（偏拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，按揭利率与住宅活动能否停止恶化。既不便宜也不挤，等价格给个确认再进。用 IYR 表达（美国房地产），现价 105.23，距 52 周高点 -2.7%，60 日动量 51 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.IYR 与标的自身价格共同验证；σ=11.35%，上行 1.04σ，下行 1.03σ。",
+   "risk": "最可能错在：未来1–6个月，按揭利率与住宅活动能否停止恶化的答案转向，或 US.IYR 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "利率敏感部门与住宅周期 · 美国房地产",
+   "entry_lo": 99.8672,
+   "entry_hi": 103.2799,
+   "take_lo": 115.8274,
+   "take_hi": 117.6976,
+   "stop_px": 97.4295
+  },
+  {
+   "id": 35,
+   "instrument_key": "XLU",
+   "tool": "XLU",
+   "tool_desc": "电力公用事业",
+   "theme_id": "AI-POWER",
+   "theme": "供电瓶颈与电网扩张",
+   "signal_id": "AI-POWER-6M-X",
+   "asset": "电力公用事业",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 44.36,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     49,
+     23
+    ],
+    "r": [
+     12.17,
+     3.51,
+     -11.55
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     50,
+     28
+    ],
+    "r": [
+     7.91,
+     1.76,
+     -14.44
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99037",
+    "ib:98923"
+   ],
+   "view": "供电瓶颈与电网扩张：TIS 43.4，入价 M 58（早期验证），拥挤 C 53（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，电力与电网供给约束能否转化为设备与公用事业的收入。既不便宜也不挤，等价格给个确认再进。用 XLU 表达（电力公用事业），现价 44.36，距 52 周高点 -6.4%，60 日动量 25 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.XLU 与标的自身价格共同验证；σ=11.71%，上行 1.04σ，下行 0.99σ。",
+   "risk": "最可能错在：未来1–6个月，电力与电网供给约束能否转化为设备与公用事业的收入的答案转向，或 US.XLU 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "供电瓶颈与电网扩张 · 电力公用事业",
+   "entry_lo": 42.0264,
+   "entry_hi": 43.5114,
+   "take_lo": 48.9493,
+   "take_hi": 49.7592,
+   "stop_px": 40.9656
+  },
+  {
+   "id": 36,
+   "instrument_key": "PAVE",
+   "tool": "PAVE",
+   "tool_desc": "电网与工程基础设施",
+   "theme_id": "AI-POWER",
+   "theme": "供电瓶颈与电网扩张",
+   "signal_id": "AI-POWER-6M-X",
+   "asset": "电网与工程基础设施",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 57.54,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     28,
+     49,
+     23
+    ],
+    "r": [
+     17.03,
+     4.92,
+     -16.16
+    ]
+   },
+   "conservative": {
+    "p": [
+     22,
+     50,
+     28
+    ],
+    "r": [
+     11.07,
+     2.46,
+     -20.2
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:99037",
+    "ib:98923"
+   ],
+   "view": "供电瓶颈与电网扩张：TIS 43.4，入价 M 58（早期验证），拥挤 C 53（中性）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，电力与电网供给约束能否转化为设备与公用事业的收入。既不便宜也不挤，等价格给个确认再进。用 PAVE 表达（电网与工程基础设施），现价 57.54，距 52 周高点 -4.6%，60 日动量 4 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.XLU 与标的自身价格共同验证；σ=16.39%，上行 1.04σ，下行 0.99σ。",
+   "risk": "最可能错在：未来1–6个月，电力与电网供给约束能否转化为设备与公用事业的收入的答案转向，或 US.XLU 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "供电瓶颈与电网扩张 · 电网与工程基础设施",
+   "entry_lo": 53.3047,
+   "entry_hi": 55.9999,
+   "take_lo": 65.8692,
+   "take_hi": 67.3391,
+   "stop_px": 51.3795
+  },
+  {
+   "id": 37,
+   "instrument_key": "SMH",
+   "tool": "SMH",
+   "tool_desc": "全球半导体股",
+   "theme_id": "AI-CAPEX",
+   "theme": "AI资本开支与融资",
+   "signal_id": "AI-CAPEX-6M-X",
+   "asset": "全球半导体股",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 545.46,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     30,
+     50,
+     20
+    ],
+    "r": [
+     40.02,
+     11.71,
+     -33.5
+    ]
+   },
+   "conservative": {
+    "p": [
+     24,
+     51,
+     25
+    ],
+    "r": [
+     26.01,
+     5.86,
+     -41.88
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98913",
+    "images:222800295611962"
+   ],
+   "view": "AI资本开支与融资：TIS 40.9，入价 M 99（交易成熟），拥挤 C 16（不拥挤）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，AI订单与现金流能否覆盖资本开支与融资成本。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 SMH 表达（全球半导体股），现价 545.46，距 52 周高点 -18.8%，60 日动量 1 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.SMH 与标的自身价格共同验证；σ=39.05%，上行 1.02σ，下行 0.86σ。",
+   "risk": "最可能错在：未来1–6个月，AI订单与现金流能否覆盖资本开支与融资成本的答案转向，或 US.SMH 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "AI资本开支与融资 · 全球半导体股",
+   "entry_lo": 449.8184,
+   "entry_hi": 510.6813,
+   "take_lo": 731.0148,
+   "take_hi": 763.7598,
+   "stop_px": 406.345
+  },
+  {
+   "id": 38,
+   "instrument_key": "DLR",
+   "tool": "DLR",
+   "tool_desc": "数据中心REIT",
+   "theme_id": "AI-CAPEX",
+   "theme": "AI资本开支与融资",
+   "signal_id": "AI-CAPEX-6M-REIT",
+   "asset": "数据中心REIT",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "小仓试错",
+   "ref_price": 191.22,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     30,
+     50,
+     20
+    ],
+    "r": [
+     26.22,
+     7.67,
+     -21.95
+    ]
+   },
+   "conservative": {
+    "p": [
+     24,
+     51,
+     25
+    ],
+    "r": [
+     17.04,
+     3.84,
+     -27.44
+    ]
+   },
+   "pos_init": 0.7,
+   "pos_max": 1.4,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "feed:98913",
+    "images:222800295611962"
+   ],
+   "view": "AI资本开支与融资：TIS 40.9，入价 M 99（交易成熟），拥挤 C 16（不拥挤）→ 小仓试错",
+   "thesis": "赌的是：未来1–6个月，AI订单与现金流能否覆盖资本开支与融资成本。已经被充分交易，只留观察仓，等回撤或找没补涨的第二层。用 DLR 表达（数据中心REIT），现价 191.22，距 52 周高点 -7.8%，60 日动量 28 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.SMH 与标的自身价格共同验证；σ=25.58%，上行 1.02σ，下行 0.86σ。",
+   "risk": "最可能错在：未来1–6个月，AI订单与现金流能否覆盖资本开支与融资成本的答案转向，或 US.SMH 与本条方向持续背离。证据几乎一边倒，可能是共识而非预期差。",
+   "role": "AI资本开支与融资 · 数据中心REIT",
+   "entry_lo": 169.2536,
+   "entry_hi": 183.2322,
+   "take_lo": 233.8374,
+   "take_hi": 241.3581,
+   "stop_px": 159.2688
+  },
+  {
+   "id": 39,
+   "instrument_key": "UUP",
+   "tool": "UUP",
+   "tool_desc": "美元指数",
+   "theme_id": "DOLLAR-FX",
+   "theme": "美元与跨境资本流动",
+   "signal_id": "DOLLAR-FX-6M-X",
+   "asset": "美元指数",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 28.17,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     26,
+     48,
+     26
+    ],
+    "r": [
+     3.59,
+     1.06,
+     -3.81
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     49,
+     31
+    ],
+    "r": [
+     2.33,
+     0.53,
+     -4.76
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "am:98976",
+    "archive:99043"
+   ],
+   "view": "美元与跨境资本流动：TIS 38.9，入价 M 50（早期验证），拥挤 C 79（偏拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，美元能否在利差收窄下停止升值。既不便宜也不挤，等价格给个确认再进。用 UUP 表达（美元指数），现价 28.17，距 52 周高点 -1.5%，60 日动量 83 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.UUP 与标的自身价格共同验证；σ=3.54%，上行 1.01σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，美元能否在利差收窄下停止升值的答案转向，或 US.UUP 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。该主题当日低置信。",
+   "role": "美元与跨境资本流动 · 美元指数",
+   "entry_lo": 27.7226,
+   "entry_hi": 28.0073,
+   "take_lo": 29.0287,
+   "take_hi": 29.1802,
+   "stop_px": 27.5193
+  },
+  {
+   "id": 40,
+   "instrument_key": "FXE",
+   "tool": "FXE",
+   "tool_desc": "欧元",
+   "theme_id": "DOLLAR-FX",
+   "theme": "美元与跨境资本流动",
+   "signal_id": "DOLLAR-FX-6M-X",
+   "asset": "欧元",
+   "direction": "↑",
+   "horizon": "6个月",
+   "action": "等待回踩",
+   "ref_price": 106.19,
+   "ref_price_d": "2026-08-03",
+   "central": {
+    "p": [
+     26,
+     48,
+     26
+    ],
+    "r": [
+     3.49,
+     1.03,
+     -3.71
+    ]
+   },
+   "conservative": {
+    "p": [
+     20,
+     49,
+     31
+    ],
+    "r": [
+     2.27,
+     0.52,
+     -4.63
+    ]
+   },
+   "pos_init": 1.05,
+   "pos_max": 2.1,
+   "entry_src": "formula",
+   "take_src": "formula",
+   "stop_src": "formula",
+   "sources": [
+    "am:98976",
+    "archive:99043"
+   ],
+   "view": "美元与跨境资本流动：TIS 38.9，入价 M 50（早期验证），拥挤 C 79（偏拥挤）→ 等待回踩",
+   "thesis": "赌的是：未来1–6个月，美元能否在利差收窄下停止升值。既不便宜也不挤，等价格给个确认再进。用 FXE 表达（欧元），现价 106.19，距 52 周高点 -4.4%，60 日动量 12 百分位。规则引擎生成。",
+   "fit": "6个月内由预注册指标 US.UUP 与标的自身价格共同验证；σ=3.44%，上行 1.01σ，下行 1.08σ。",
+   "risk": "最可能错在：未来1–6个月，美元能否在利差收窄下停止升值的答案转向，或 US.UUP 与本条方向持续背离。而且已经偏挤，回撤没缓冲。证据几乎一边倒，可能是共识而非预期差。该主题当日低置信。",
+   "role": "美元与跨境资本流动 · 欧元",
+   "entry_lo": 104.5492,
+   "entry_hi": 105.5933,
+   "take_lo": 109.3391,
+   "take_hi": 109.8948,
+   "stop_px": 103.8034
+  }
+ ]
+}

@@ -53,6 +53,37 @@ def _oid(*parts: Any) -> str:
     return hashlib.sha1("|".join(str(p) for p in parts).encode()).hexdigest()[:16]
 
 
+def book_spec(book_id: str) -> dict:
+    """Spec for any book, including the per-batch cohort books."""
+    if config.is_cohort(book_id):
+        return config.COHORT_SPEC
+    return config.BOOKS[book_id]
+
+
+def ensure_cohort(con, batch_id: str) -> str:
+    """Register (idempotently) the independent book for one day's batch."""
+    bid = config.cohort_book(batch_id)
+    as_of = db.q1(con, "SELECT as_of FROM batches WHERE batch_id=?", (batch_id,))
+    label = f"{as_of['as_of']} 当日组合" if as_of else config.COHORT_SPEC["label"]
+    db.upsert(con, "books", {
+        "book_id": bid, "label": label, "descr": config.COHORT_SPEC["desc"],
+        "capital": config.COHORT_SPEC["capital"],
+        "sizing": config.COHORT_SPEC["sizing"],
+        "entry": config.COHORT_SPEC["entry"],
+        "created_at": config.now_hkt().isoformat()}, ["book_id"])
+    return bid
+
+
+def cohort_books(con) -> list[str]:
+    return [r["book_id"] for r in db.q(
+        con, "SELECT book_id FROM books WHERE book_id LIKE ? ORDER BY book_id",
+        (config.COHORT_PREFIX + "%",))]
+
+
+def all_books(con) -> list[str]:
+    return [*config.BOOKS, *cohort_books(con)]
+
+
 def _cost_bps(code: str, kind: str) -> float:
     market = futu_px.market_of(code) if kind == "listed" else "FUND"
     spec = config.COSTS.get(market, config.COSTS["US"])
@@ -105,6 +136,15 @@ def sessions_between(con, start: str, end: str, market: str = "US") -> list[str]
         (ref, start, end))]
 
 
+def open_cohort(con, batch_id: str, verbose: bool = False) -> dict:
+    """Open the batch's own independent book and mark it forward to today."""
+    bid = ensure_cohort(con, batch_id)
+    rep = open_batch(con, batch_id, bid, verbose=verbose)
+    b = db.q1(con, "SELECT as_of FROM batches WHERE batch_id=?", (batch_id,))
+    run(con, bid, b["as_of"], futu_px.complete_through("US"), verbose=verbose)
+    return rep
+
+
 # ---------------------------------------------------------------- marking
 def mark_price(con, idea: dict, d: str) -> dict | None:
     """Current mark for an idea's instrument, in its own currency."""
@@ -152,7 +192,7 @@ def _currency(con, idea: dict) -> str:
 # ---------------------------------------------------------------- sizing
 def size_batch(con, book_id: str, rows: list[dict], equity: float) -> dict[str, float]:
     """Target USD notional per idea, before any fill happens."""
-    spec = config.BOOKS[book_id]
+    spec = book_spec(book_id)
     live = []
     skipped: dict[str, str] = {}
     for r in rows:
@@ -203,7 +243,7 @@ def open_batch(con, batch_id: str, book_id: str, verbose: bool = True) -> dict:
 
     universe.hydrate(con)
     rows = ideas_mod.load_batch(con, batch_id)
-    spec = config.BOOKS[book_id]
+    spec = book_spec(book_id)
     equity = current_equity(con, book_id, batch["as_of"]) or spec["capital"]
     sized = size_batch(con, book_id, rows, equity)
     notional = sized["notional"]
@@ -384,7 +424,7 @@ def step(con, book_id: str, d: str, verbose: bool = False) -> dict:
     """Advance one session: fills, exits, marks, equity."""
     ev: dict[str, Any] = {"d": d, "book": book_id, "filled": [], "exits": [],
                           "expired": [], "alerts": 0}
-    spec = config.BOOKS[book_id]
+    spec = book_spec(book_id)
 
     with db.tx(con):
         # ---- 1. pending orders

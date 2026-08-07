@@ -21,7 +21,7 @@ if [ "${1:-}" != "--yes" ]; then
   [ "$ans" = "yes" ] || { echo "已取消"; exit 1; }
 fi
 
-"$PYBIN" -m ideagen.cli dashboard
+"$PYBIN" -m ideagen.cli dashboard --public
 TMP="$(mktemp -d)"
 cp web/index.html "$TMP/index.html"
 cp web/report.json "$TMP/report.json"

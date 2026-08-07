@@ -29,7 +29,16 @@ MAX_EVIDENCE_PER_THEME = 14
 MAX_HEADLINES = 60
 
 
-def build(con, as_of: date, verbose: bool = True) -> dict:
+def build(con, as_of: date, verbose: bool = True,
+          price_asof: "datetime | None" = None) -> dict:
+    """Build the pack for `as_of`.
+
+    `price_asof` is the wall-clock moment the pack is supposed to have been built
+    at. It exists for the backfill: `complete_through()` evaluated at *now* would
+    hand a 2026-07-28 pack the 2026-08-06 close, which is exactly the look-ahead
+    `validate_batch`'s `ref_price_not_future` check exists to catch. Passing that
+    day's own generation time reproduces what a live run would have seen.
+    """
     themes = [dict(r) for r in db.q(
         con, "SELECT * FROM themes WHERE as_of=? ORDER BY tis DESC", (as_of.isoformat(),))]
     if not themes:
@@ -48,7 +57,8 @@ def build(con, as_of: date, verbose: bool = True) -> dict:
     selected = selected[:config.MAX_REPORT_THEMES]
 
     universe.hydrate(con)
-    px_cut = {m: futu_px.complete_through(m) for m in config.PRICEABLE_MARKETS}
+    px_cut = {m: futu_px.complete_through(m, now=price_asof)
+              for m in config.PRICEABLE_MARKETS}
     catalogue = universe.catalogue(con)
     markable = [c for c in catalogue if c["markable"]]
 

@@ -27,9 +27,9 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import (analytics, briefing, config, db, ideas as ideas_mod, lexicon,
-               monitor, paper, report as report_mod, scoring, seed, serve as serve_mod,
-               universe)
+from . import (analytics, backfill, briefing, config, db, generator,
+               ideas as ideas_mod, lexicon, monitor, paper, report as report_mod,
+               scoring, seed, serve as serve_mod, universe)
 from .sources import futu_px, olive, wisburg
 
 
@@ -239,8 +239,77 @@ def cmd_report(args) -> int:
 def cmd_dashboard(args) -> int:
     con = _con()
     out = report_mod.build(con, Path(args.out) if args.out else None,
-                           artifact=args.artifact)
+                           artifact=args.artifact,
+                           embed_images=(False if args.public else None))
     print(f"  dashboard → {out}")
+    return 0
+
+
+def cmd_backfill(args) -> int:
+    con = _con()
+    rep = backfill.run(con, date.fromisoformat(args.start),
+                       date.fromisoformat(args.end),
+                       ingest=not args.no_ingest, fetch_bodies=args.bodies)
+    for b in db.q(con, "SELECT batch_id FROM batches WHERE status='traded'"):
+        paper.open_cohort(con, b["batch_id"])
+    report_mod.build(con)
+    return 0 if not rep["failed"] else 1
+
+
+def cmd_generate(args) -> int:
+    con = _con()
+    as_of = _as_of(args)
+    payload = generator.generate(con, as_of)
+    if args.trade:
+        bid = f"B{as_of.isoformat().replace('-', '')}"
+        _, rows, val = ideas_mod.build_batch(con, payload, as_of,
+                                             generator=generator.GENERATOR,
+                                             batch_id=bid)
+        print(f"batch {bid} pass={val['pass']} errors={val['n_errors']}")
+        if val["pass"]:
+            for b in config.BOOKS:
+                paper.open_batch(con, bid, b)
+            paper.open_cohort(con, bid)
+    return 0
+
+
+def cmd_sources(args) -> int:
+    """Provenance audit: can every claim be traced back, and does the trail hold?"""
+    con = _con()
+    if args.verify:
+        wisburg.verify_assets(con, limit=args.limit)
+    if args.doc:
+        print(json.dumps(wisburg.provenance(con, args.doc), ensure_ascii=False,
+                         indent=1))
+        return 0
+    a = wisburg.source_audit(con)
+    d, ast, c = a["documents"], a["assets"], a["citations"]
+    print("溯源审计")
+    print(f"  语料      {d['n']:,} 条")
+    print(f"    可复现检索式 {d['receipt']:,} ({d['receipt']/max(d['n'],1)*100:.0f}%)"
+          f"   内容哈希 {d['hash']:,} (100%)"
+          f"   发布时间 {d['ts']:,} (100%)")
+    print(f"    具名机构     {d['inst']:,} ({d['inst']/max(d['n'],1)*100:.0f}%)"
+          f"   已深取正文 {d['deep']:,}")
+    print(f"  资产      {ast['n']} 个图表/插图，覆盖 {ast['docs']} 篇")
+    print(f"    已验证可达   {ast['ok']}   不可达 {ast['bad']}   未验证 {ast['unchecked']}")
+    print(f"  引用      共 {c['total']} 条")
+    print(f"    可解析到语料 {c['resolved']}   散文式归属 {c['prose']}"
+          f"   悬空引用 {c['dangling']}")
+    if c["dangling"]:
+        print(f"    ⚠ {c['dangling']} 条引用有 doc_id 形状但不在语料库里——这是真缺陷")
+    for b, v in c["by_batch"].items():
+        print(f"      {b}: resolved={v['resolved']} prose={v['prose']} "
+              f"dangling={v['dangling']}")
+    print(f"  行情      {a['prices']['n']:,} 根日线，全部带 src 标记 "
+          f"({a['prices']['src']:,})")
+    print(f"  NAV       {a['navs']['n']} 个观测，全部带 src 标记 ({a['navs']['src']})")
+    print(f"\n  分线")
+    for r in a["by_line"]:
+        lbl = config.SOURCE_LINES.get(r["line"], {}).get("label", r["line"])
+        print(f"    {lbl:<10} docs={r['docs']:<5} 检索式={r['receipt']:<5} "
+              f"机构={r['inst']:<5} 资产={r['assets']}")
+    print(f"\n  {a['note']}")
     return 0
 
 
@@ -275,7 +344,7 @@ def cmd_daily(args) -> int:
         return st == "ok"
 
     print(f"=== ideagen daily {as_of} run={run_id} ===")
-    print("[1/7] wisburg ingest")
+    print("[1/8] wisburg ingest")
 
     def _ingest():
         try:
@@ -288,19 +357,21 @@ def cmd_daily(args) -> int:
                                   fetch_bodies=args.bodies)
 
     stage("ingest", _ingest)
-    print("[2/7] prices")
+    print("[2/8] prices")
     stage("prices", lambda: futu_px.sync(
         con, universe.priceable_codes(lexicon.all_indicators()),
         as_of - timedelta(days=400), as_of))
-    print("[3/7] score themes")
+    print("[3/8] score themes")
     stage("score", lambda: scoring.score_day(con, as_of))   # skips a traded date
-    print("[4/7] briefing pack")
+    print("[4/8] briefing pack")
     stage("brief", lambda: briefing.build(con, as_of))
-    print("[5/7] mark books")
+    print("[5/8] mark books")
     stage("mark", lambda: cmd_mark(argparse.Namespace(since=None, to=None)))
-    print("[6/7] monitor")
+    print("[6/8] monitor")
     stage("monitor", lambda: monitor.run(con))
-    print("[7/7] settle + dashboard")
+    print("[7/8] verify source assets")
+    stage("verify-assets", lambda: wisburg.verify_assets(con, limit=120))
+    print("[8/8] settle + dashboard")
     stage("settle", lambda: analytics.settle(con, book_id="naive", verbose=False))
     stage("dashboard", lambda: report_mod.build(con))
 
@@ -382,6 +453,23 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--out")
     s.add_argument("--artifact", action="store_true",
                    help="body-only markup for the Claude Artifact publisher")
+    s.add_argument("--public", action="store_true",
+                   help="public build: link Wisburg charts instead of embedding them")
+
+    s = add("backfill", cmd_backfill, "build one report + 40-idea batch per session")
+    s.add_argument("--start", required=True)
+    s.add_argument("--end", required=True)
+    s.add_argument("--no-ingest", action="store_true")
+    s.add_argument("--bodies", type=int, default=4)
+
+    s = add("generate", cmd_generate, "rule-based batch for one date")
+    s.add_argument("--no-trade", dest="trade", action="store_false", default=True)
+
+    s = add("sources", cmd_sources, "provenance audit: trace every claim back")
+    s.add_argument("--verify", action="store_true",
+                   help="HEAD unverified asset URLs before reporting")
+    s.add_argument("--limit", type=int, default=200)
+    s.add_argument("--doc", help="print the full chain for one doc_id")
 
     s = add("serve", cmd_serve, "serve the dashboard on localhost, rebuilt per request")
     s.add_argument("--port", type=int, default=serve_mod.DEFAULT_PORT)

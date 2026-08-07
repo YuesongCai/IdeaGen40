@@ -46,7 +46,7 @@ def run(con, d: str | None = None, verbose: bool = True) -> dict:
     d = d or futu_px.complete_through("US")
     alerts: list[dict] = []
 
-    for book_id in config.BOOKS:
+    for book_id in config.BOOKS:   # cohorts are marked but not alerted on
         for pos in paper.positions(con, book_id, status="open"):
             alerts.extend(_check_position(con, book_id, pos, d))
         for pos in paper.positions(con, book_id, status="closed"):
@@ -64,7 +64,7 @@ def run(con, d: str | None = None, verbose: bool = True) -> dict:
             alerts.append({
                 "alert_id": _aid("dd", book_id, d), "book_id": book_id, "d": d,
                 "level": "action", "kind": "drawdown", "idea_uid": None, "code": None,
-                "message": f"{config.BOOKS[book_id]['label']} 回撤 "
+                "message": f"{paper.book_spec(book_id)['label']} 回撤 "
                            f"{eq['drawdown']*100:.2f}%，权益 ${eq['equity']:,.0f}",
             })
 

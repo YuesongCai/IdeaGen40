@@ -101,6 +101,11 @@ SOURCE_LINES: dict[str, dict] = {
     "company": {"tool": "list-company-reports", "category": "company", "tier": 1, "label": "企业研究"},
     "ec": {"tool": "list-earning-calls", "category": "ec", "tier": 1, "label": "电话会纪要"},
     "archive": {"tool": "list-archive-reports", "category": "archive", "tier": 1, "label": "政策文献"},
+    # The chart library. Every item carries a real, fetchable image URL plus the
+    # platform's own written interpretation of it — the only externally verifiable
+    # asset the corpus exposes, and the source for 框架 §11.1's requirement that a
+    # report embed four original Wisburg charts.
+    "images": {"tool": "list-images", "category": None, "tier": 3, "label": "数据图表"},
 }
 COUNTING_TIERS = (2, 3)   # feeds D and A
 FACT_TIERS = (1, 2)       # feeds N causal depth
@@ -115,6 +120,7 @@ INGEST_LIMITS = {
     "company": 60,
     "ec": 40,
     "archive": 30,
+    "images": 40,
 }
 
 # ---------------------------------------------------------------- futu
@@ -177,12 +183,45 @@ COSTS = {
     "FUND": {"commission_bps": 0.0, "slippage_bps": 0.0, "entry_load_bps": 0.0},
 }
 
+# Asset hosts the corpus serves figures from. Anything outside this set is not
+# treated as a Wisburg asset.
+ASSET_HOSTS = ("rocks.wisburg.com", "doctext.wisburg.com", "img.wisburg.com")
+
+# Chart images are hotlinked from Wisburg's CDN. The locally-served dashboard
+# embeds them; the public GitHub Pages build shows title, interpretation and the
+# source URL as a link instead, because republishing a subscription service's
+# charts on an indexable page is a different act from viewing them locally.
+EMBED_IMAGES_LOCAL = True
+EMBED_IMAGES_PUBLIC = False
+
 BENCHMARKS = {
     "SPY": "US.SPY",
     "ACWI": "US.ACWI",
     "AGG": "US.AGG",
     "60/40": None,   # synthesised from ACWI/AGG
 }
+
+# Per-day cohort books. The two commingled books answer "what would this do to
+# the account"; they cannot answer "were 2026-08-05's ideas any good", because a
+# single blended curve mixes every vintage together. Each batch therefore also
+# gets its own independent book: equal-weight across that day's markable ideas,
+# bought at the first fillable close, held to horizon. That is the cleanest read
+# of one day's idea quality, and after 30 days there are 30 of them to compare.
+COHORT_PREFIX = "c:"
+COHORT_CAPITAL = 10_000_000.0
+COHORT_SPEC = {
+    "label": "当日组合", "desc": "当天 40 条等权买入、持有至期限，独立计价",
+    "capital": COHORT_CAPITAL, "sizing": "equal", "entry": "market_close",
+}
+
+
+def cohort_book(batch_id: str) -> str:
+    return f"{COHORT_PREFIX}{batch_id}"
+
+
+def is_cohort(book_id: str) -> bool:
+    return book_id.startswith(COHORT_PREFIX)
+
 
 BOOKS = {
     "disciplined": {

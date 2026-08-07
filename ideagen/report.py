@@ -489,19 +489,70 @@ function viewReport(dd) {
             list.map(ideaCard)))))));
   }
 
+  /* ---- charts ---- */
+  if (r && r.charts && r.charts.length) wrap.append(sec(
+    `原始图表 · ${r.charts.length} 张`,
+    '智堡图表库当窗口的图，附平台自己的解读。每个 URL 都做过 HEAD 验证，下方给出字节数与 content-type',
+    E('div', { cls: 'grid g2' }, r.charts.slice(0, 8).map(chartCard))));
+
   /* ---- evidence ---- */
-  if (r && r.evidence.length) wrap.append(sec('来源底稿',
-    `窗口内信号最高的 ${r.evidence.length} 条（Tier 1 一手优先）。只列标题与机构，正文留在本地 briefing`,
-    table([{ h: 'doc_id' }, { h: 'T', n: 1 }, { h: '日期' }, { h: '来源线' },
-           { h: '机构' }, { h: '标题' }],
+  if (r && r.evidence.length) wrap.append(sec('来源底稿 · 溯源链',
+    `窗口内信号最高的 ${r.evidence.length} 条（Tier 1 一手优先）。` +
+    '智堡是客户端渲染的 SPA，没有逐篇的固定网页链接，所以这里记的是**可复现的 API 检索式**加内容哈希，而不是猜一个会指向空页的永久链接',
+    table([{ h: 'doc_id' }, { h: 'T', n: 1 }, { h: '发布' }, { h: '来源线' },
+           { h: '机构' }, { h: '标题' }, { h: '可复现检索式' },
+           { h: 'sha1', nosort: 1 }, { h: '正文', n: 1 }, { h: '图', n: 1 }],
       r.evidence.map(e => [
         { el: E('span', { cls: 'tag' }, e.doc_id) },
-        { v: e.tier, t: 'T' + e.tier }, e.d, e.line,
-        e.institution || '—',
-        { el: e.url ? E('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.title)
-                    : E('span', {}, e.title) }]))));
+        { v: e.tier, t: 'T' + e.tier },
+        { v: e.published_at, cls: 'small',
+          t: (e.published_at || e.d || '').slice(0, 16).replace('T', ' ') },
+        e.line, e.institution || '—',
+        { el: E('span', {}, e.title) },
+        { el: E('code', { cls: 'tag' }, e.retrieval || '—') },
+        { el: E('span', { cls: 'tag' }, e.hash) },
+        { v: e.chars, t: e.chars ? e.chars.toLocaleString() : '—' },
+        { v: (e.assets || []).length,
+          el: (e.assets || []).length
+            ? E('span', {}, ...e.assets.map((a, i) =>
+                E('a', { href: a.url, target: '_blank', rel: 'noopener',
+                         cls: 'tag', title: `${a.content_type} · ${a.bytes} bytes` },
+                  (i ? ' ' : '') + '图' + (i + 1))))
+            : E('span', { cls: 'muted' }, '—') }]))));
+
+  if (r) wrap.append(E('div', { cls: 'note' },
+    E('b', {}, '溯源口径　'),
+    '每条 idea 的 sources 指向上表的 doc_id；每篇文档记录了 ' +
+    '(来源线, category, source_id) 三元组、可复现的 API 检索式、内容 sha1、' +
+    '发布时间与入库时间；每张图表记录真实 CDN URL 并做过可达性验证。' +
+    '行情每根日线带 src=futu:qfq，NAV 每个观测带 src=olive:<货架>。' +
+    '跑 `ideagen sources` 可看完整审计，`ideagen sources --doc <doc_id>` 看单篇的链。'));
 
   return wrap;
+}
+
+function chartCard(c) {
+  const meta = E('div', { cls: 'small muted', style: 'margin-top:6px' },
+    `${c.published_d} · ${(c.bytes / 1024).toFixed(0)}KB · ${c.content_type} · `,
+    E('a', { href: c.url, target: '_blank', rel: 'noopener' }, '原图'),
+    ' · 已验证可达 ',
+    E('span', { cls: 'tag' }, (c.checked_at || '').slice(0, 10)));
+  const head = E('div', {},
+    E('div', { style: 'font-weight:600;font-size:13px' }, c.title),
+    E('div', { cls: 'small muted', style: 'margin:1px 0 8px' },
+      '来源 智堡图表库 · ' + c.doc_id));
+  const art = E('article', { cls: 'panel' }, head);
+  if (P.meta.embed_images) {
+    art.append(E('img', { src: c.url, alt: c.title, loading: 'lazy',
+      style: 'width:100%;height:auto;border:1px solid var(--rule);border-radius:3px' }));
+  } else {
+    art.append(E('div', { cls: 'note', style: 'margin:0' },
+      '公开发布版本不内嵌订阅服务的图片，点上方「原图」在智堡查看。'));
+  }
+  if (c.caption) art.append(E('p', { cls: 'small', style: 'margin:8px 0 0;color:var(--ink-2)' },
+    c.caption.length > 340 ? c.caption.slice(0, 340) + '…' : c.caption));
+  art.append(meta);
+  return art;
 }
 
 function fbars(t) {
@@ -593,97 +644,135 @@ const lv = (k, v) => E('div', {}, E('span', {}, k), E('span', {}, v));
 /* ============================================================ 组合 */
 function viewBook(dd) {
   const wrap = E('div');
-  wrap.append(E('h1', { cls: 't' }, 'Paper Portfolio'));
+  const co = (P.cohorts || {})[cur];
+
+  wrap.append(E('h1', { cls: 't' }, `${cur} 当日组合`));
   wrap.append(E('p', { cls: 'lede' },
-    '两个组合共用同一批 idea，差别只在执行。两条线的差额就是仓位管理的贡献；组合与 SPY 的差额就是选股加择时的贡献。'));
+    '当天那 40 条自己成一个独立的盘：等权买入、持有到期限、单独计价。'
+    + '每天一盘，所以哪天的想法好、哪天的差，可以直接比。'));
 
-  /* ---- verdict cards ---- */
-  const cards = Object.entries(dd.books).map(([id, v]) => {
-    const meta = BOOKS[id];
-    return E('div', { cls: 'panel' },
-      E('div', { cls: 'eyebrow' }, id),
-      E('div', { style: 'font-family:var(--serif);font-weight:600;font-size:14px' }, meta.label),
-      E('div', { cls: 'small muted', style: 'margin:2px 0 9px;min-height:32px' }, meta.desc),
-      E('div', { cls: 'big ' + sgn(v.cum_ret) }, pc(v.cum_ret)),
+  if (!co) {
+    wrap.append(E('div', { cls: 'empty' },
+      cur + ' 没有批次，所以没有当日组合。'));
+    return wrap;
+  }
+
+  /* ---- today's cohort ---- */
+  const o = co.orders, pp = co.positions;
+  const notYet = (o.filled || 0) === 0 && (o.pending || 0) > 0;
+
+  wrap.append(E('div', { cls: 'grid g2', style: 'margin-bottom:20px' },
+    E('div', { cls: 'panel' },
+      E('div', { cls: 'eyebrow' }, `${co.batch_id} · ${co.generator}`),
+      E('div', { cls: 'big ' + sgn(co.cum_ret) }, pc(co.cum_ret)),
       E('div', { cls: 'small muted', style: 'margin:3px 0 10px' },
-        `${usd(v.equity)} · 至 ${v.d}`),
-      row('SPY 同期', pc(v.spy)),
-      row('超额 vs SPY', pc(v.excess), sgn(v.excess)),
-      row('最大回撤', pc(v.max_dd), 'down'),
-      row('净敞口 / 在场', `${pcu(v.gross, 0)} / ${v.n_open}`),
-      row('现金 / 持仓', `${usd(v.cash)} / ${usd(v.mv)}`));
-  });
-  wrap.append(E('div', { cls: 'grid g2', style: 'margin-bottom:26px' }, cards));
-
-  /* ---- curve ---- */
-  const cs = {};
-  for (const k of Object.keys(P.curves))
-    cs[k] = P.curves[k].filter(p => p[0] <= cur).map(p => [p[0], p[1]]);
-  wrap.append(sec('净值曲线', '累计收益，含双边成本与闲置现金的货币基金收益',
+        notYet
+          ? `${co.n_ideas} 条已下单，等 ${cur} 美股收盘成交`
+          : `${usd(co.equity)} · 持有 ${co.sessions} 个交易日`),
+      row('SPY 同期', pc(co.spy)),
+      row('超额 vs SPY', pc(co.excess), sgn(co.excess)),
+      row('最大回撤', pc(co.max_dd), 'down'),
+      row('成交 / 下单', `${o.filled || 0} / ${o.n || 0}`),
+      row('在场 / 已平', `${pp.open_n || 0} / ${pp.closed_n || 0}`)),
     E('figure', { cls: 'panel' },
+      E('div', { cls: 'eyebrow', style: 'margin-bottom:6px' }, '当日组合净值'),
+      co.curve.length > 1
+        ? lineChart({ [cur]: co.curve }, { h: 168, w: 560 })
+        : E('div', { cls: 'note', style: 'margin:0' },
+            '还没有成交，所以还没有净值曲线。批次已下单，等这一天的收盘价到位后自动成交。'))));
+
+  /* ---- this day's holdings ---- */
+  const held = P.positions.filter(x => x.book === co.book && x.kind !== 'order');
+  if (held.length) {
+    wrap.append(sec('当日持仓', `${held.length} 个仓位，全部来自 ${cur} 这一批想法`,
+      posTable(held)));
+  }
+  const ords = P.positions.filter(x => x.book === co.book && x.kind === 'order'
+    && x.status !== 'filled');
+  if (ords.length) wrap.append(sec('未成交',
+    '进场条件没被触及，或这一天的收盘价还没到位', orderTable(ords)));
+
+  /* ---- every day, side by side ---- */
+  const rows = Object.values(P.cohorts).sort((a, b) => a.as_of < b.as_of ? 1 : -1);
+  wrap.append(sec('每天一览', 
+    `${rows.length} 天，每天一个独立组合。这是「30 天后回来看」的那张表`,
+    table([{ h: '日期' }, { h: '生成器' }, { h: '条', n: 1 }, { h: '成交', n: 1 },
+           { h: '持有(交易日)', n: 1 }, { h: '收益', n: 1 }, { h: 'SPY 同期', n: 1 },
+           { h: '超额', n: 1 }, { h: '最大回撤', n: 1 }, { h: '在场', n: 1 }],
+      rows.map(c => [
+        { el: E('a', { href: '#book/' + c.as_of,
+                       on: { click: e => { e.preventDefault(); go(c.as_of); } },
+                       style: c.as_of === cur ? 'font-weight:700' : '' }, c.as_of) },
+        { el: E('span', { cls: 'tag' },
+            c.generator.startsWith('rules') ? '规则' :
+            c.generator.startsWith('seed') ? '原始 pack' : 'Claude') },
+        { v: c.n_ideas, t: c.n_ideas },
+        { v: c.orders.filled || 0, t: c.orders.filled || 0 },
+        { v: c.sessions, t: c.sessions },
+        { v: c.cum_ret, cls: sgn(c.cum_ret), t: pc(c.cum_ret) },
+        { v: c.spy, t: pc(c.spy) },
+        { v: c.excess, cls: sgn(c.excess), t: pc(c.excess) },
+        { v: c.max_dd, cls: 'down', t: pc(c.max_dd) },
+        { v: c.n_open, t: c.n_open }]))));
+
+  const scored = rows.filter(c => c.sessions > 0 && c.excess !== null);
+  if (scored.length >= 2) {
+    const beat = scored.filter(c => c.excess > 0).length;
+    const avg = scored.reduce((a, c) => a + c.excess, 0) / scored.length;
+    wrap.append(E('div', { cls: 'note', style: 'margin:-16px 0 30px' },
+      E('b', {}, '到目前　'),
+      `${scored.length} 天里有 ${beat} 天跑赢 SPY，平均超额 ${pc(avg)}。`
+      + (scored.length < 20 ? '样本还太短，不能下结论。' : '')));
+  }
+
+  /* ---- commingled books, demoted ---- */
+  wrap.append(E('details', {},
+    E('summary', {}, '混合账户口径（所有天的想法放进同一个盘）'),
+    E('p', { cls: 'small muted', style: 'margin:6px 0 12px' },
+      '这两个盘把每天的想法累加进同一个账户，回答的是「这套流程对账户净值做了什么」，'
+      + '不是「某一天的想法好不好」。两者差额是仓位管理的贡献。'),
+    E('div', { cls: 'grid g2' }, Object.entries(dd.books).map(([id, v]) => {
+      const meta = BOOKS[id];
+      return E('div', { cls: 'panel' },
+        E('div', { cls: 'eyebrow' }, meta.label),
+        E('div', { cls: 'big sm ' + sgn(v.cum_ret) }, pc(v.cum_ret)),
+        E('div', { cls: 'small muted', style: 'margin:2px 0 9px' }, meta.desc),
+        row('SPY 同期', pc(v.spy)),
+        row('超额 vs SPY', pc(v.excess), sgn(v.excess)),
+        row('最大回撤', pc(v.max_dd), 'down'),
+        row('净敞口 / 在场', `${pcu(v.gross, 0)} / ${v.n_open}`));
+    })),
+    E('figure', { cls: 'panel', style: 'margin-top:12px' },
       E('div', { cls: 'legend' },
         ...[['守纪律组合', 'var(--accent)'], ['无脑全买组合', 'var(--up)'],
             ['SPY', 'var(--ink-3)'], ['ACWI', 'var(--down)']].map(([n, c]) =>
           E('span', {}, E('b', { style: `background:${c}` }), n))),
-      lineChart(cs),
-      E('figcaption', {}, `截至 ${cur}。虚线为基准。`))));
-
-  /* ---- holdings ---- */
-  for (const bk of Object.keys(BOOKS)) {
-    const held = P.positions.filter(p => p.book === bk && p.kind !== 'order'
-      && p.opened_d && p.opened_d <= cur);
-    const open = held.filter(p => p.status === 'open' || (p.closed_d && p.closed_d > cur));
-    const closed = held.filter(p => p.status === 'closed' && p.closed_d <= cur);
-    if (!held.length) continue;
-    wrap.append(sec(`${BOOKS[bk].label} · 持仓`,
-      `在场 ${open.length} · 已平 ${closed.length}`,
-      posTable([...open, ...closed])));
-  }
-
-  /* ---- pending / expired orders ---- */
-  const ords = P.positions.filter(p => p.kind === 'order' && p.as_of <= cur);
-  if (ords.length) wrap.append(sec('未成交订单',
-    '进场区间没被触及的 idea。钱留在现金里按货币基金收益计息——这些「没买到」也是结果的一部分',
-    table([{ h: '组合' }, { h: '工具' }, { h: '主题' }, { h: '期限' }, { h: '动作' },
-           { h: '类型' }, { h: '区间 / 触发', n: 1 }, { h: '参考价', n: 1 },
-           { h: '计划金额', n: 1 }, { h: '挂单日' }, { h: '失效日' }, { h: '状态' }],
-      ords.map(o => [
-        BOOKS[o.book].label, { el: E('strong', { cls: 'mono' }, o.tool) },
-        o.theme, o.horizon, o.action,
-        { el: E('span', { cls: 'tag' }, o.order_kind) },
-        { v: o.band_hi ?? o.trigger, cls: 'small',
-          t: o.band_lo ? `${n2(o.band_lo)}–${n2(o.band_hi)}`
-            : o.trigger ? `>${n2(o.trigger)}` : '收盘' },
-        { v: o.ref_price, t: n2(o.ref_price) },
-        { v: o.notional, t: usd(o.notional) },
-        o.placed_d, o.expire_d || '—',
-        { el: E('span', { cls: 'pill ' + (o.status === 'pending' ? 'lv-info' : 'lv-warn') },
-            o.status === 'pending' ? '待成交' : '已失效') }]))));
+      lineChart(Object.fromEntries(Object.entries(P.curves).map(
+        ([k, v]) => [k, v.filter(x => x[0] <= cur).map(x => [x[0], x[1]])]))))));
 
   /* ---- skill ---- */
   const a = P.attribution;
   if (a && a.scored) {
     const rk = a.ranking, cal = a.calibration;
-    wrap.append(sec('so far 如何', `${a.scored}/${a.n} 条可评分（${a.unmarkable} 条无法盯市，${a.too_fresh} 条持有期不足 1 个交易日）`,
+    wrap.append(sec('想法层面能力（跨全部天）',
+      `${a.scored}/${a.n} 条可评分（${a.unmarkable} 条无法盯市，${a.too_fresh} 条持有期不足 1 天）`,
       E('div', { cls: 'grid g3' },
-        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '想法层面 · 等权'),
+        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '等权收益'),
           E('div', { cls: 'big sm ' + sgn(a.equal_weight_ret) }, pc(a.equal_weight_ret)),
-          E('div', { cls: 'small muted', style: 'margin:2px 0 9px' }, '剔除仓位规模影响'),
-          row('中位收益', pc(a.median_ret)),
+          row('中位', pc(a.median_ret)),
           row('胜率', pcu(a.hit_rate, 0)),
           row('超额均值', pc(a.excess_mean), sgn(a.excess_mean)),
           row('跑赢基准', pcu(a.beat_bench_rate, 0))),
-        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '排序能力 · Spearman ρ'),
+        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '排序能力 ρ'),
           E('p', { cls: 'small muted', style: 'margin:3px 0 9px' },
-            '引擎给的赔率排序是否预测了真实收益。ρ > 0 表示排序有效。'),
+            '赔率排序是否预测了真实收益。ρ > 0 表示有效。'),
           ...Object.values(rk).map(v =>
             row(v.label, n2(v.rho_vs_realized, 3), sgn(v.rho_vs_realized)))),
-        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '概率校准 · Brier'),
+        E('div', { cls: 'panel' }, E('div', { cls: 'eyebrow' }, '概率校准'),
           E('p', { cls: 'small muted', style: 'margin:3px 0 9px' },
-            '技能分 = 1 − Brier ÷ 均匀先验；> 0 表示优于「三分之一各一」。'),
+            '技能分 = 1 − Brier ÷ 均匀先验；> 0 表示优于瞎猜。'),
           row('Brier 中心 / 保守',
             `${n2(cal.brier_central, 3)} / ${n2(cal.brier_conservative, 3)}`),
-          row('均匀基线', n2(cal.brier_uniform_baseline, 3)),
           row('技能分', `${n2(cal.skill_central, 3)} / ${n2(cal.skill_conservative, 3)}`,
             sgn(cal.skill_central)),
           row('情景实现', Object.entries(cal.scenario_realised_pct || {})
@@ -706,7 +795,6 @@ function viewBook(dd) {
       }))));
   }
 
-  /* ---- alerts ---- */
   if (dd.alerts.length) wrap.append(sec('当日告警',
     '止损临近 / 主题前提被价格否定 / 拥挤度跳升 / 临近到期',
     E('div', { cls: 'panel', style: 'padding:0' },
@@ -716,6 +804,22 @@ function viewBook(dd) {
   return wrap;
 }
 
+function orderTable(list) {
+  return table([{ h: '工具' }, { h: '主题' }, { h: '期限' }, { h: '动作' },
+                { h: '类型' }, { h: '区间 / 触发', n: 1 }, { h: '参考价', n: 1 },
+                { h: '计划金额', n: 1 }, { h: '状态' }],
+    list.map(o => [
+      { el: E('strong', { cls: 'mono' }, o.tool) }, o.theme, o.horizon, o.action,
+      { el: E('span', { cls: 'tag' }, o.order_kind) },
+      { v: o.band_hi ?? o.trigger, cls: 'small',
+        t: o.band_lo ? `${n2(o.band_lo)}–${n2(o.band_hi)}`
+          : o.trigger ? `>${n2(o.trigger)}` : '收盘' },
+      { v: o.ref_price, t: n2(o.ref_price) },
+      { v: o.notional, t: usd(o.notional) },
+      { el: E('span', { cls: 'pill ' + (o.status === 'pending' ? 'lv-info' : 'lv-warn') },
+          o.status === 'pending' ? '待成交' : '已失效') }]));
+}
+
 function posTable(list) {
   const cols = [{ h: '工具' }, { h: '代码' }, { h: '主题' }, { h: '期限' },
     { h: '评级' }, { h: '建仓日' }, { h: '成本价', n: 1 }, { h: '现价', n: 1 },
@@ -723,7 +827,7 @@ function posTable(list) {
     { h: '止损', n: 1 }, { h: '止盈', n: 1 }, { h: '到期日' }, { h: '状态' }];
   return table(cols, list.map(p => [
     { el: E('div', {}, E('strong', { cls: 'mono' }, p.tool),
-        E('div', { cls: 'small muted' }, p.view ? p.view.slice(0, 30) : '')) },
+        E('div', { cls: 'small muted' }, p.desc || '')) },
     { el: E('span', { cls: 'tag' }, p.code) },
     p.theme, p.horizon,
     { el: E('span', { cls: 'pill g-' + p.grade }, p.grade) },
@@ -757,9 +861,26 @@ function render() {
   $('#reld').textContent = relLabel(cur);
   $('#prev').disabled = dIdx() <= 0;
   $('#next').disabled = dIdx() >= D.length - 1;
-  const b = dd.books[Object.keys(BOOKS)[0]];
+  // the sidebar shows *this day's* cohort — a cumulative blend across days would
+  // answer a question nobody asked
+  const co = (P.cohorts || {})[cur];
+  const ss = $('#sidestats');
+  ss.replaceChildren();
+  if (co) {
+    ss.append(E('div', { cls: 'sidestat' }, E('span', {}, '当日收益'),
+      E('b', { cls: sgn(co.cum_ret) }, pc(co.cum_ret))));
+    ss.append(E('div', { cls: 'sidestat' }, E('span', {}, 'SPY 同期'),
+      E('b', {}, pc(co.spy))));
+    ss.append(E('div', { cls: 'sidestat' }, E('span', {}, '超额'),
+      E('b', { cls: sgn(co.excess) }, pc(co.excess))));
+    ss.append(E('div', { cls: 'sidestat' }, E('span', {}, '持有'),
+      E('b', {}, co.sessions + ' 天')));
+  } else {
+    ss.append(E('div', { cls: 'sidestat' },
+      E('span', { cls: 'muted' }, '这天没有批次'), E('b', {}, '—')));
+  }
   $('#topkv').textContent = dd.batch
-    ? `${dd.batch.n} 条想法 · ${dd.batch.status}`
+    ? `${dd.batch.n} 条想法 · ${dd.batch.generator.startsWith('rules') ? '规则生成' : dd.batch.generator.startsWith('seed') ? '原始 pack' : 'Claude 生成'}`
     : (dd.report ? '仅打分，无批次' : '无数据');
   history.replaceState(null, '', `#${view}/${cur}`);
   window.scrollTo({ top: 0 });
@@ -791,22 +912,24 @@ document.addEventListener('keydown', e => {
       E('span', { cls: 'dot' + (has ? '' : ' none'),
                   title: has ? '有想法批次' : '仅打分' })));
   }
-  const last = day[P.meta.today].books;
-  const ss = $('#sidestats');
-  for (const [id, v] of Object.entries(last))
-    ss.append(E('div', { cls: 'sidestat' },
-      E('span', {}, BOOKS[id].label.replace('组合', '')),
-      E('b', { cls: sgn(v.cum_ret) }, pc(v.cum_ret))));
-  const sp = Object.values(last)[0];
-  if (sp) ss.append(E('div', { cls: 'sidestat' },
-    E('span', {}, 'SPY 同期'), E('b', {}, pc(sp.spy))));
   render();
 })();
 """
 
 
-def build(con, out: Path | None = None, artifact: bool = False) -> Path:
+def build(con, out: Path | None = None, artifact: bool = False,
+          embed_images: bool | None = None) -> Path:
+    """Render the dashboard.
+
+    `embed_images` decides whether Wisburg chart images are hotlinked into the
+    page. Locally that is just viewing them; on the public GitHub Pages build it
+    would republish a subscription service's charts at an indexable URL, so the
+    public build shows the title, the platform's interpretation and a link
+    instead. Defaults to `config.EMBED_IMAGES_LOCAL`.
+    """
     pl = payload.build(con)
+    pl["meta"]["embed_images"] = (config.EMBED_IMAGES_LOCAL if embed_images is None
+                                  else bool(embed_images))
     out = out or (config.WEB / "index.html")
     data = json.dumps(pl, ensure_ascii=False, separators=(",", ":"), default=str)
 
@@ -827,7 +950,7 @@ def build(con, out: Path | None = None, artifact: bool = False) -> Path:
     </nav>
 
     <div class="side-sec">
-      <h4>组合 · 至今</h4>
+      <h4>当日组合</h4>
       <div id="sidestats"></div>
     </div>
 

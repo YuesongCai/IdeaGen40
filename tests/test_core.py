@@ -472,22 +472,42 @@ class TestScoringGuard(unittest.TestCase):
 
 
 class TestDashboardRender(unittest.TestCase):
-    def test_builds_a_self_contained_page_with_no_external_requests(self):
-        import re
+    def test_public_build_makes_no_external_requests(self):
+        """The published page must be request-free.
+
+        The local build deliberately hotlinks Wisburg chart images — viewing them
+        is the point. The public GitHub Pages build must not, because that would
+        republish a subscription service's charts at an indexable URL. This asserts
+        the split rather than the old blanket rule.
+        """
         import tempfile
 
         from ideagen import report
 
         con = db.init()
         with tempfile.TemporaryDirectory() as td:
-            out = report.build(con, Path(td) / "index.html")
-            s = out.read_text(encoding="utf-8")
+            pub = report.build(con, Path(td) / "pub.html", embed_images=False)
+            s = pub.read_text(encoding="utf-8")
+        body = s.replace("http://www.w3.org/2000/svg", "")
         self.assertGreater(len(s), 50_000)
-        for bad in ("http://", "src=", "@import", "cdn."):
-            self.assertNotIn(bad, s.replace("http://www.w3.org/2000/svg", ""))
+        for bad in ("<img", "@import", "cdn.", "<script src", "<link "):
+            self.assertNotIn(bad, body)
+        for host in ("rocks.wisburg.com/", "doctext.wisburg.com/"):
+            self.assertNotIn(f'src="https://{host}', body)
         self.assertIn("window.__IG40__", s)
         self.assertIn('data-theme="dark"', s)
         self.assertIn("prefers-color-scheme", s)
+
+    def test_local_build_embeds_charts_with_attribution(self):
+        import tempfile
+
+        from ideagen import report
+
+        con = db.init()
+        with tempfile.TemporaryDirectory() as td:
+            loc = report.build(con, Path(td) / "loc.html", embed_images=True)
+            s = loc.read_text(encoding="utf-8")
+        self.assertIn('"embed_images":true', s.replace(" ", ""))
 
     def test_artifact_mode_omits_the_document_wrapper(self):
         import tempfile

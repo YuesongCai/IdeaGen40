@@ -396,21 +396,21 @@ def _corpus(con, d: str) -> dict:
         reach = themes_mod.candidates(con, date.fromisoformat(d), limit=6)
     except Exception:
         reach = None
-    # The counting pool this day was actually *scored* against, versus what the
-    # window holds now. The historical corpus was ingested in one pass while the
-    # backfill was already scoring days, so the earliest days were scored against
-    # a partly-filled corpus: 2026-07-27 saw 370 counting items where the window
-    # now holds 497, and 2026-08-07 saw 988 against 1,688. Re-scoring would move
-    # those factor scores — and would also detach them from the pack the ideas
-    # were actually generated from, which is why `score_day` refuses by default.
-    # Recording the gap is the honest alternative to silently overwriting it.
-    scored_pool = None
-    row = db.q1(con, "SELECT factors FROM themes WHERE as_of=? LIMIT 1", (d,))
-    if row:
-        scored_pool = ((db.jl(row["factors"], {}) or {}).get("D") or {}).get("pool")
+    # Which replay produced this day, and whether its ideas were authored or
+    # generated. Recorded because the whole record was rebuilt once, forwards, on
+    # 2026-08-08; before that the days had been assembled incrementally and two
+    # defects followed (a batch replaced under live positions, and the earliest
+    # days scored before `ingest` had deep-fetched some of their full text).
+    replay_at, authored = None, False
+    kv = db.q1(con, "SELECT k FROM kv WHERE k LIKE 'replay:%' ORDER BY k DESC LIMIT 1")
+    if kv:
+        replay_at = "2026-08-08"
+    b = db.q1(con, "SELECT generator FROM batches WHERE as_of=?", (d,))
+    if b:
+        authored = not str(b["generator"] or "").startswith("rules:")
 
     return {"window": wd, "total": sum(by_day.values()), "by_day": by_day,
-            "scored_pool": scored_pool,
+            "replay": replay_at, "authored": authored,
             "by_line": dict(sorted(by_line.items(), key=lambda kv: -kv[1])),
             "by_tier": by_tier,
             "reach": None if not reach else {

@@ -1,7 +1,7 @@
 {
  "schema": "ideagen40/batch/1",
  "as_of": "2026-08-06",
- "pack_sha": "d5727ae28db9e26ebf8a87cbfc631f2e8aabaf79565bee6206f83579728f5336",
+ "pack_sha": "ca777f3dc30019dddee83b372ce17d3754d6f575d092b72c134c32117ed39a61",
  "note": "规则化生成（rules:v0.4）。",
  "macro_narrative": "可以直接买的是 AI商业化与软件现金流——证据够厚而价格还没反映。要回避追高的是 盈利兑现与质量分化、金属与战略补库——降级为等回踩、仓位砍半。40 条：13 条一个月，8 条可直接执行，其余等回踩或突破。规则引擎生成，用于补齐每日历史。",
  "transmissions": [

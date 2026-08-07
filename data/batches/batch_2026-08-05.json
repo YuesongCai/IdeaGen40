@@ -1,7 +1,7 @@
 {
  "schema": "ideagen40/batch/1",
  "as_of": "2026-08-05",
- "pack_sha": "3c34cc3b0b2396a909d01ca2403cbbf76d5fe8efedd1d2577feac2043985753c",
+ "pack_sha": "1d18f3b1c1a8fd44dfa20d468ccd2524c9386d3ae6a6e365179396fb68777ad8",
  "note": "规则化生成（rules:v0.4）。",
  "macro_narrative": "可以直接买的是 能源供给与运输风险——证据够厚而价格还没反映。要回避追高的是 盈利兑现与质量分化、地缘冲突与国防补库——降级为等回踩、仓位砍半。40 条：13 条一个月，2 条可直接执行，其余等回踩或突破。规则引擎生成，用于补齐每日历史。",
  "transmissions": [

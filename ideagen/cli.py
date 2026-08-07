@@ -30,8 +30,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import (analytics, backfill, briefing, config, db, generator,
-               ideas as ideas_mod, lexicon, monitor, paper, report as report_mod,
-               scoring, seed, serve as serve_mod, themes, universe)
+               ideas as ideas_mod, lexicon, monitor, paper, replay,
+               report as report_mod, scoring, seed, serve as serve_mod, themes,
+               universe)
 from .sources import futu_px, olive, wisburg
 
 
@@ -146,6 +147,14 @@ def cmd_brief(args) -> int:
     con = _con()
     briefing.build(con, _as_of(args))
     return 0
+
+
+def cmd_replay(args) -> int:
+    """Rebuild the whole record once, forwards, from the complete corpus."""
+    con = _con()
+    r = replay.run(con, date.fromisoformat(args.start), date.fromisoformat(args.end),
+                   verbose=not args.quiet)
+    return 0 if not r["failed"] else 1
 
 
 def cmd_rebuild_batch(args) -> int:
@@ -529,6 +538,12 @@ def main(argv: list[str] | None = None) -> int:
     s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
+    s = add("replay", cmd_replay,
+            "rebuild scores/packs/batches/trades for a range, in as-of order")
+    s.add_argument("--start", required=True)
+    s.add_argument("--end", required=True)
+    s.add_argument("--quiet", action="store_true")
+
     s = add("rebuild-batch", cmd_rebuild_batch,
             "re-trade a batch whose positions disagree with its ideas")
     s.add_argument("batch_id")

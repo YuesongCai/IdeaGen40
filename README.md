@@ -96,6 +96,8 @@ Olive 只给最新 NAV，不给历史，所以这是唯一的办法，也无法�
 ## 全部命令
 
 ```
+replay          一次性按 as-of 顺序重建整段记录（分数/pack/批次/成交/盯市）
+rebuild-batch   重新成交某个批次（持仓与想法标的不一致时用）
 doctor          检查 OpenD / Wisburg / 数据覆盖，不通过会明确告诉你缺什么
 ingest          拉 Wisburg 8 条线，按日分页，落 documents
 olive-ingest    吃一份 Olive 货架快照 → instruments + navs

@@ -1037,3 +1037,63 @@ class TestBatchReplaceIntegrity(unittest.TestCase):
         con = db.init()
         bad = ideas.instrument_mismatches(con)
         self.assertEqual(bad, [], f"{len(bad)} positions disagree with their idea")
+
+
+class TestCohortInception(unittest.TestCase):
+    """Each cohort's curve must start the day its own batch was placed.
+
+    The replay originally stepped every book returned by `paper.all_books` on
+    every day. Cohort *registrations* live in the `books` table, which
+    `reset_book` does not clear, so a re-run saw all ten cohorts from the first
+    replayed day and gave each an equity row from that day. Every cohort then
+    reported the same 8-session holding period and the same +3.99% SPY
+    comparison — including 2026-08-07, which has no fills at all and was
+    showing a +0.13% return over a period it did not exist for.
+    """
+
+    def test_live_cohorts_start_when_their_batch_was_placed(self):
+        con = db.init()
+        for bk in paper.cohort_books(con):
+            first_order = db.q1(con, "SELECT MIN(placed_d) d FROM orders "
+                                     "WHERE book_id=?", (bk,))
+            first_equity = db.q1(con, "SELECT MIN(d) d FROM equity "
+                                      "WHERE book_id=?", (bk,))
+            if not (first_order and first_order["d"] and first_equity):
+                continue
+            self.assertGreaterEqual(
+                first_equity["d"], _prev_session(con, first_order["d"]),
+                f"{bk} has equity before its first order was placed")
+
+    def test_holding_periods_are_not_all_identical(self):
+        """A shared holding period across every vintage is the symptom to catch."""
+        con = db.init()
+        spans = []
+        for bk in paper.cohort_books(con):
+            n = db.q1(con, "SELECT COUNT(*) n FROM equity WHERE book_id=?", (bk,))["n"]
+            if n:
+                spans.append(n)
+        if len(spans) < 3:
+            self.skipTest("not enough cohorts yet")
+        self.assertGreater(len(set(spans)), 1,
+                           f"every cohort spans {spans[0]} rows; they were "
+                           f"marked from a shared start date rather than their own")
+
+    def test_a_cohort_with_no_fills_reports_no_return(self):
+        con = db.init()
+        for bk in paper.cohort_books(con):
+            filled = db.q1(con, "SELECT COUNT(*) n FROM positions WHERE book_id=?",
+                           (bk,))["n"]
+            if filled:
+                continue
+            last = db.q1(con, "SELECT cum_ret FROM equity WHERE book_id=? "
+                              "ORDER BY d DESC LIMIT 1", (bk,))
+            if last and last["cum_ret"] is not None:
+                self.assertAlmostEqual(
+                    last["cum_ret"], 0.0, places=6,
+                    msg=f"{bk} has no positions but reports a return")
+
+
+def _prev_session(con, d: str) -> str:
+    r = db.q1(con, "SELECT d FROM prices WHERE code='US.SPY' AND d<? "
+                   "ORDER BY d DESC LIMIT 1", (d,))
+    return r["d"] if r else d

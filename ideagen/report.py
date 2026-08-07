@@ -971,29 +971,30 @@ function viewReport(dd) {
             E('span', {}, k + ' 层'), E('span', {}, n.toLocaleString()))),
           ...Object.entries(c.by_line).map(([k, n]) => E('div', {},
             E('span', {}, k), E('span', {}, n.toLocaleString())))),
-        poolNote(c),
+        provenanceNote(c),
         reachBlock(c.reach),
         E('p', { cls: 'hintline' }, G['溯源']))));
   }
   return wrap;
 }
 
-/* ---- was this day scored against the corpus it now shows? ----
-   The historical corpus arrived in one ingest while the backfill was already
-   scoring days, so the earliest days were scored against a partly-filled
-   window. Re-scoring them would move the factors and also detach them from the
-   pack the ideas were generated from, so the gap is reported instead. */
-function poolNote(c) {
-  if (!c.scored_pool || !c.total) return null;
-  const gap = c.total - c.scored_pool;
-  if (gap <= Math.max(20, c.scored_pool * 0.05)) return null;
+/* ---- provenance of this day's numbers ----
+   The whole record was rebuilt by one replay on 2026-08-08, forwards, so every
+   day's scores, pack, ideas, orders and marks derive from the same corpus and
+   the same code. Before that the days had been assembled incrementally, and two
+   defects followed from it: one batch was replaced under live positions (see the
+   correction note in the methodology doc), and the earliest days had been scored
+   before `ingest` had deep-fetched some of their full text, which changes theme
+   matching because it reads title + summary + body. */
+function provenanceNote(c) {
+  if (!c.replay) return null;
   return E('p', { cls: 'small', style: 'margin:10px 0 0' },
-    E('span', { cls: 'tag' }, '语料口径'),
+    E('span', { cls: 'tag' }, '重建口径'),
     E('span', { cls: 'muted' },
-      `　当日打分时的计票池 ${c.scored_pool.toLocaleString()} 条，`
-      + `该窗口现在有 ${c.total.toLocaleString()} 条。`
-      + '差额来自历史语料是一次性灌入的，而回填在灌的过程中就已开始打分。'
-      + '未重跑：重跑会让分数与当天实际生成想法所依据的 pack 脱钩。'));
+      `　本日分数与批次由 ${c.replay} 的一次性重放按 as-of 顺序重建，`
+      + '与全部其他日期同源同码。'
+      + (c.authored ? '当日想法为人工撰写，仅重新成交，未重新生成。'
+                    : '当日想法由规则引擎依当日 pack 重新生成。')));
 }
 
 /* ---- how much of the corpus the theme dictionary can even name ----

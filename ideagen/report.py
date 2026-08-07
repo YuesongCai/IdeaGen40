@@ -769,6 +769,9 @@ function viewCockpit() {
         '每根柱子是那一天 40 条想法组成的独立组合到今天为止的收益；'
         + '灰点是同期 SPY。柱子低于灰点＝跑输指数。'))));
 
+  /* ---- the theme dictionary itself ---- */
+  wrap.append(dictionaryBlock());
+
   /* ---- per-day rationale ---- */
   wrap.append(sec('每天在赌什么', '当天的主线与执行口径，一行一天',
     table([{ h: '日期' }, { h: lbl('生成器') },
@@ -976,6 +979,81 @@ function viewReport(dd) {
         E('p', { cls: 'hintline' }, G['溯源']))));
   }
   return wrap;
+}
+
+/* ---- the theme dictionary, independent of any one day ----
+   The as-of rule hides a newly registered theme from every earlier date, which
+   is correct and also means the discovery mechanism has no visible surface until
+   a later day exists. A theme registered on a Saturday appears nowhere until the
+   next session. This block is where the registry, its dates, and the candidates
+   still awaiting judgement are legible regardless of which day is selected. */
+function dictionaryBlock() {
+  const D = P.dictionary;
+  if (!D) return null;
+  const pend = D.themes.filter(t => t.pending);
+  const body = E('div');
+
+  if (pend.length) {
+    body.append(E('div', { cls: 'panel note', style: 'margin-bottom:12px' },
+      E('p', { cls: 'small', style: 'margin:0' },
+        E('strong', {}, `${pend.length} 个主题已注册但还没有出现在任何一天上。`),
+        E('span', { cls: 'muted' },
+          `　它们的注册日晚于页面最新日期 ${D.newest_page_date}，`
+          + '而打分只允许使用注册日 ≤ 当日的主题——'
+          + '这是防止「事后挑一个已经涨完的东西定义成主题」的规则，'
+          + '代价就是新主题要等到下一个交易日才会露面。'),
+        hint('新主题'))));
+  }
+
+  const cols = [{ h: '主题', cls: 'wrap' }, { h: '来源' }, { h: '注册日' },
+                { h: lbl('M 指标', 'M') }, { h: '同义词', n: 1 },
+                { h: '已打分天数', n: 1 }, { h: '最后一次打分' },
+                { h: '预注册关键结果', cls: 'prose', nosort: 1 }];
+  const rows = D.themes.map(t => [
+    { el: E('div', {}, E('strong', {}, t.label),
+        t.origin === 'discovered' ? E('span', { cls: 'tag new' }, '新') : null,
+        E('div', { cls: 'small muted' }, t.id)) },
+    { el: E('span', { cls: 'tag' }, t.origin === 'seed' ? '种子' : '语料发现') },
+    t.registered_d,
+    { el: E('code', {}, t.indicator) },
+    { v: t.n_terms, t: t.n_terms },
+    { v: t.days_scored, t: t.days_scored || (t.pending ? '待生效' : 0) },
+    t.last_scored || '—',
+    t.key_question,
+  ]);
+  body.append(table(cols, rows));
+
+  const c = D.candidates;
+  if (c) {
+    const inner = E('div');
+    inner.append(E('p', { cls: 'small muted', style: 'margin:0 0 8px' },
+      `${c.as_of} 的语料里，字典能命名 `,
+      E('strong', {}, c.coverage_pct + '%'),
+      `，${c.unmatched.toLocaleString()} 条命中不到任何主题。`
+      + `下面是从那部分里挖出、且已过准入门槛（≥${c.gates.min_docs}篇 · `
+      + `≥${c.gates.min_institutions}家机构 · ≥${c.gates.min_days}天 · `
+      + `lift ≥${c.gates.min_lift}）的候选。候选不是主题：公司名、研报栏目名、`
+      + '泛词碎片都会漏进来，要靠人判定它是否命名了一个可交易的分歧。'));
+    if (c.items.length) {
+      inner.append(table(
+        [{ h: '候选词簇', cls: 'wrap' }, { h: '篇数', n: 1 },
+         { h: '机构数', n: 1 }, { h: '跨天', n: 1 }, { h: 'lift', n: 1 }],
+        c.items.map(x => [
+          x.terms.join(' · '),
+          { v: x.n_docs, t: x.n_docs }, { v: x.n_institutions, t: x.n_institutions },
+          { v: x.n_days, t: x.n_days }, { v: x.lift, t: n2(x.lift, 2) }])));
+    } else {
+      inner.append(E('p', { cls: 'small muted' }, '当日没有候选过门槛。'));
+    }
+    body.append(E('details', { style: 'margin-top:12px' },
+      E('summary', {}, '待判定的候选主题'),
+      E('div', { cls: 'panel', style: 'margin-top:8px' }, inner)));
+  }
+
+  return sec(E('span', {}, '主题字典', hint('字典覆盖')),
+    `${D.n_seed} 条种子（代码内冻结）+ ${D.n_discovered} 条从语料发现（只能追加）`
+    + '。打分只用注册日 ≤ 当日的主题',
+    body);
 }
 
 /* ---- provenance of this day's numbers ----

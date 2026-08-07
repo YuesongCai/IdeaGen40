@@ -1097,3 +1097,56 @@ def _prev_session(con, d: str) -> str:
     r = db.q1(con, "SELECT d FROM prices WHERE code='US.SPY' AND d<? "
                    "ORDER BY d DESC LIMIT 1", (d,))
     return r["d"] if r else d
+
+
+class TestDictionaryIsVisible(unittest.TestCase):
+    """A registered theme must be findable even before it can be scored.
+
+    The as-of rule hides a theme from every date earlier than its registration,
+    which is correct — and the first cut of theme discovery shipped with no other
+    surface, so two themes registered on a Saturday appeared literally nowhere on
+    the page. The mechanism looked like it had done nothing. The registry, the
+    registration dates, and the reason a theme is not yet scoreable all have to be
+    legible independently of which day is selected.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from ideagen import payload, report
+        con = db.init()
+        cls.pl = payload.build(con)
+        cls.html = report.render(cls.pl) if hasattr(report, "render") else None
+
+    def test_payload_carries_the_registry(self):
+        D = self.pl.get("dictionary")
+        self.assertIsNotNone(D, "payload has no dictionary block")
+        self.assertEqual(len(D["themes"]), len(lexicon.THEMES))
+        for t in D["themes"]:
+            for k in ("id", "label", "origin", "registered_d", "indicator",
+                      "days_scored", "pending"):
+                self.assertIn(k, t)
+
+    def test_a_theme_registered_after_the_last_page_date_is_marked_pending(self):
+        D = self.pl["dictionary"]
+        last = D["newest_page_date"]
+        if not last:
+            self.skipTest("no dates yet")
+        for t in D["themes"]:
+            self.assertEqual(t["pending"], t["registered_d"] > last,
+                             f"{t['id']} pending flag disagrees with its date")
+
+    def test_discovered_themes_are_counted_separately(self):
+        D = self.pl["dictionary"]
+        self.assertEqual(D["n_seed"] + D["n_discovered"], len(D["themes"]))
+        self.assertEqual(
+            D["n_discovered"],
+            sum(1 for t in lexicon.THEMES if t.origin == "discovered"))
+
+    def test_the_page_renders_the_dictionary_and_explains_pending(self):
+        src = Path("ideagen/report.py").read_text(encoding="utf-8")
+        self.assertIn("function dictionaryBlock", src)
+        self.assertIn("dictionaryBlock()", src)
+        # The explanation is the whole point: without it a reader sees a theme
+        # listed with no scores and concludes the feature is broken.
+        self.assertIn("已注册但还没有出现在任何一天上", src)
+        self.assertIn("待生效", src)

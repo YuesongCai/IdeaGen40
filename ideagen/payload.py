@@ -46,6 +46,7 @@ def build(con) -> dict:
         "curves": _curves(con),
         "positions": _positions(con),
         "attribution": _attribution(con),
+        "dictionary": _dictionary(con, dates),
         "cohorts": _cohorts(con),
         "overview": None,   # filled below, needs cohorts
     }
@@ -108,6 +109,53 @@ def _overview(con, pl: dict) -> dict:
         "charts_total": sum(x["charts"] for x in days),
         "days": days,
     }
+
+
+def _dictionary(con, dates: list[str]) -> dict:
+    """The theme registry itself, independent of any single day.
+
+    Needed because the as-of rule makes newly registered themes invisible on
+    every page date earlier than their registration, which is correct and also
+    means the mechanism has no visible surface at all until a later day exists.
+    A theme registered on a Saturday shows up nowhere until the next session —
+    so the registry, its dates, and the candidates still awaiting judgement are
+    surfaced here instead of only appearing implicitly inside a day.
+    """
+    last = dates[-1] if dates else None
+    reg = []
+    for t in lexicon.THEMES:
+        scored = db.q1(con, "SELECT COUNT(*) n, MAX(as_of) last FROM themes "
+                            "WHERE theme_id=?", (t.id,))
+        reg.append({
+            "id": t.id, "label": t.label, "origin": t.origin,
+            "registered_d": t.registered_d,
+            "indicator": t.price_indicator, "related": list(t.related),
+            "key_question": t.key_question, "n_terms": len(t.terms),
+            "days_scored": scored["n"] if scored else 0,
+            "last_scored": scored["last"] if scored else None,
+            # A theme registered after the newest page date cannot appear on any
+            # day shown — this is the field that explains "why do I only see the
+            # original topics".
+            "pending": bool(last and t.registered_d > last),
+        })
+    reg.sort(key=lambda r: (r["registered_d"], r["id"]))
+
+    cands = None
+    if last:
+        try:
+            c = themes_mod.candidates(con, date.fromisoformat(last), limit=6)
+            cands = {"as_of": c["as_of"], "coverage_pct": c["coverage_pct"],
+                     "unmatched": c["unmatched"], "gates": c["gates"],
+                     "items": [{"terms": x["terms"][:6], "n_docs": x["n_docs"],
+                                "n_institutions": x["n_institutions"],
+                                "n_days": x["n_days"], "lift": x["max_lift"]}
+                               for x in c["candidates"]]}
+        except Exception:
+            cands = None
+    return {"themes": reg, "n_seed": sum(1 for r in reg if r["origin"] == "seed"),
+            "n_discovered": sum(1 for r in reg if r["origin"] == "discovered"),
+            "n_pending": sum(1 for r in reg if r["pending"]),
+            "newest_page_date": last, "candidates": cands}
 
 
 def _cohorts(con) -> dict:

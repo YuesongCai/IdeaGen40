@@ -2,7 +2,7 @@
 
 <callout emoji="🏁" background-color="light-blue" border-color="blue">
 <p><b>一句话</b>：把「每天读投研、出 40 条战术交易想法」这件事，做成一个每天真的下单、真的盯市、真的记结果的系统，从而让「这些想法值不值钱」变成一个<b>有答案</b>的问题。</p>
-<p>已上线：工作日 07:23 HKT 自动跑；2026-07-27 起每个交易日一批 40 条，共 10 批 400 条想法、343 条真实成交；语料 5,836 条全部可溯源；91 个测试。</p>
+<p>已上线：工作日 07:23 HKT 自动跑；2026-07-27 起每个交易日一批 40 条，共 10 批 400 条想法、343 条真实成交；语料 5,836 条全部可溯源；主题字典可从语料自我扩张；108 个测试。</p>
 <p>看板 https://yuesongcai.github.io/IdeaGen40/ ｜ 代码 https://github.com/YuesongCai/IdeaGen40</p>
 </callout>
 
@@ -145,15 +145,77 @@ flowchart LR
 
 <hr/>
 
-<h1>五、方法论 v0.4</h1>
+<h1>五、方法论 v0.4.1</h1>
 
 <callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>核心判断：</b>v0.3 的问题不是想错了，而是<b>很多规则在它自己的数据口径下无法被执行、或者无法被检验</b>。14 项改动，全部围绕这一点。</p>
+<p><b>核心判断：</b>v0.3 的问题不是想错了，而是<b>很多规则在它自己的数据口径下无法被执行、或者无法被检验</b>。15 项改动，全部围绕这一点。</p>
 </callout>
 
-<h2>最要紧的六项</h2>
+<h2>最要紧的七项</h2>
 
-<h3>① D 和 A 是退化的查表，不是连续变量</h3>
+<h3>① 主题集合被当成可以提前想全的东西</h3>
+
+<p>这是最根本的一条,也是最晚被发现的一条。原设计把 16 个主题冻结在代码里。冻结「关键问题」和「价格指标」是<b>对的</b>——否则 M 因子会自己验证自己。但它顺带假设了主题的<b>集合</b>可以提前穷举。</p>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>拿语料一量,这个假设直接崩了:</b></p>
+<table>
+<tr><th background-color="light-gray">语料总量</th><th background-color="light-gray">16 条主题能命名</th><th background-color="light-gray">匹配不到任何主题</th></tr>
+<tr><td>5,836 条</td><td>3,148 条（54%）</td><td><span text-color="red">2,688 条（46%）</span></td></tr>
+</table>
+<p>盲区里不是噪声。抽样可见:<b>GLP-1 与医保准入解锁处方量、韩国从工业化到国际化的科技股重估、人形机器人与美国保护主义、光收发器进口禁令、黄金与韩国央行重启购金、拉美宏观、电信资本开支、动量与质量因子轮动</b>。全部有具名机构、有多天覆盖,<b>全部无法被打分,因此无法产出任何一条想法。</b></p>
+<p>而最糟的一点是:<b>固定字典报不出这个数。它把自己的盲区变成了看不见的东西。</b></p>
+</callout>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>v0.4.1:</b>字典拆成两半——<b>16 条种子</b>(代码内,冻结) + <b>只能追加的注册表</b> <code>themes/registry.jsonl</code>。每天从零匹配语料里机械挖候选,由生成器判定哪些真的是主题。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart TD
+  C["当天语料"] --> M{"能被已注册主题命名?"}
+  M -->|"是 · 54%"| S["正常打分 D/A/B/N/M/C"]
+  M -->|"否 · 46%"| U["零匹配池"]
+  U --> P["挖短语<br/>CJK 2-6元字组 + ASCII词元"]
+  P --> G["门槛<br/>≥8篇 · ≥4机构 · ≥3天 · lift≥2.0"]
+  G --> X["极大化合并<br/>丢掉共享≥80%文档的碎片"]
+  X --> N2["判定套话<br/>字符覆盖率≥60%即拒"]
+  N2 --> K["共现聚类<br/>Jaccard≥0.34 · 聚类后≥10篇"]
+  K --> J{"生成器语义判定<br/>是一个可交易的分歧吗?"}
+  J -->|"是"| R["注册<br/>盖上今天的日期"]
+  J -->|"否 · 公司名/栏目名/泛词"| D2["丢弃"]
+  R --> S
+</whiteboard>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>唯一真正重要的规则:注册日不可回填。</b></p>
+<p><code>registered_d</code> 必须等于注册当天,而 <code>all_themes(as_of)</code> 只返回 <code>registered_d ≤ as_of</code> 的主题。</p>
+<p>没有这条,「主题发现」就是<b>事后挑一个已经涨完的东西定义成主题,然后为自己排序准确而自豪</b>——这是所有回看错误里最难被发现、也最能自我欺骗的一种。有了它,今天注册的主题只能从今天起打分,永远拿不到它没有做过的判断的功劳。</p>
+<p>这条纪律<b>已经抓到过一次真实泄漏</b>:候选挖掘的同义词压制用的是「全部」注册主题而不是 as-of 主题集,于是 SPACE-ECONOMY 在 08-08 注册的那一刻,08-07 的重放就不再把 spacex 当候选了——历史运行看起来像是早就发现了它当时还没看到的东西。</p>
+</callout>
+
+<callout emoji="ℹ️" background-color="light-blue" border-color="blue">
+<p><b>两个实现细节,都是踩过坑才定下来的:</b></p>
+<ul>
+<li><b>顺序是承重的。</b>先过滤套话会删掉父短语「维持买入评级」,让碎片「持买入评」变成孤儿、看起来像高 lift 的新词。第一版就是这样让它连续四天登上候选榜首。必须<b>先极大化合并、再判定套话</b>。</li>
+<li><b>候选不等于主题,这是设计上的分工。</b>机械挖掘只能说「这些文档在讲一个字典没有词的东西」;公司名(小米集团)、研报栏目名(skynomad)、泛词碎片(下一)一定会漏进来,语义判断留给生成器。</li>
+</ul>
+</callout>
+
+<p>2026-08-08 已注册的两条:</p>
+
+<table>
+<tr><th background-color="light-gray">id</th><th background-color="light-gray">主题</th><th background-color="light-gray">关键问题</th><th background-color="light-gray">主指标</th><th background-color="light-gray">证据</th></tr>
+<tr><td><code>FACTOR-ROTATION</code></td><td>因子轮动与拥挤交易解除</td><td>从动量与 AI 拥挤交易向价值与防御的轮动能否延续</td><td><code>US.VLUE</code></td><td>11 篇 / 10 家 / 3 天 / lift 2.30</td></tr>
+<tr><td><code>SPACE-ECONOMY</code></td><td>商业航天与卫星产业化</td><td>商业航天订单与首批财报能否支撑估值扩张</td><td><code>US.XAR</code></td><td>16 篇 / 9 家 / 4 天 / lift 6.03</td></tr>
+</table>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>冷启动是已知代价,不是 bug。</b>新主题没有自己的 20 天历史,A 的强度项算不出来,当天标 <code>cold_start</code>。这个标记进归因分档,<b>所以「发现的主题是不是系统性更差」是一个可以被测量的问题</b>,而不是一个看不见的问题。</p>
+<p><b>字典覆盖率</b>(当前约 54%)每天显示在看板语料折叠区、<code>ideagen sources</code> 与 <code>ideagen theme-candidates</code>。这个数字下降就说明发现机制跟不上语料了。</p>
+</callout>
+
+<h3>② D 和 A 是退化的查表，不是连续变量</h3>
 
 <p>v0.3：<code>D = 100 × 提及主题的独立日报数 ÷ 窗口有效日报总数</code>。核心来源是每天一份的智堡首页日报，3 日窗口 → <b>分母恒为 3</b>。</p>
 
@@ -171,7 +233,7 @@ flowchart LR
 <p>实测效果：D 跨主题 21→100，A 0→95，B 3.5→69，N 15→97.5，全部连续可区分。</p>
 </callout>
 
-<h3>② N 里权重最大的子项长期是 NA</h3>
+<h3>③ N 里权重最大的子项长期是 NA</h3>
 
 <p>「意外程度」（占 N 的 40%）要求 <code>|实际 − 一致预期| ÷ 过去两年同类预测误差标准差</code>。语料从不同时给出这三个数。按 §12「任一因子缺失时按剩余权重归一化」，结果是：</p>
 
@@ -183,7 +245,7 @@ flowchart LR
 <p><b>v0.4：</b>改用<b>可观测代理</b>——主题预注册价格指标在窗口内的最大单日涨跌幅 ÷ 自身 60 日日波动。分档表沿用 v0.3（z＜0.5→20 … ≥2→100），每天都算得出来。语料若真给出 actual-vs-consensus，则覆盖代理值。</p>
 </callout>
 
-<h3>③ 情景不可伪证</h3>
+<h3>④ 情景不可伪证</h3>
 
 <p>v0.4 要求上下行幅度落在标的<b>自身已实现波动</b>的区间内：</p>
 
@@ -194,11 +256,11 @@ k_down = |R_down| ÷ σ_h
 
 <p>一个月期的想法不能写「+30% 上涨」而标的月波动只有 4%（k=7.5，属于幻想），也不能写「+0.5%」（k=0.12，属于没有观点）。超出就标 <code>wide</code> / <code>narrow</code>，不否决，但写进 outcome 供事后检验。</p>
 
-<h3>④ 不计成本</h3>
+<h3>⑤ 不计成本</h3>
 
 <p>v0.3 全文没有提到佣金、滑点、借券。v0.4 双边计入（美股往返 0.08%，港股 0.15%），<b>在算赔率之前</b>从三个情景回报里扣掉——一条边比自己价差还薄的 idea 不会再评成好赔率。</p>
 
-<h3>⑤ 没有拥挤度</h3>
+<h3>⑥ 没有拥挤度</h3>
 
 <p>v0.3 里一个主题可以 TIS 90 分，而它的表达工具正处在 1 年动量极值，模型不会反对。新增独立因子 <b>C</b>：</p>
 
@@ -210,7 +272,7 @@ k_down = |R_down| ÷ σ_h
 <p><b>C ≥ 80 强制「等待回踩」并把仓位砍半。</b>实测当天 USMV 的 60 日动量百分位是 100.0（一年最高），系统就此发出了 crowding_spike 告警。</p>
 </callout>
 
-<h3>⑥ 从不记录结果</h3>
+<h3>⑦ 从不记录结果</h3>
 
 <p>v0.4 为每条 idea 落一条 outcome，<b>包括从未成交的那些的反事实收益</b>，然后输出排序 ρ、Brier 校准与技能分、以及按评级/期限/主题/拥挤度/幅度校验的分档。</p>
 
@@ -407,6 +469,9 @@ flowchart TD
 <tr><td>7</td><td><b>情景波动带、拥挤度分段、四因子权重都还是先验值</b></td><td>本身就是待校准参数，现在只是「看起来合理」</td></tr>
 <tr><td>8</td><td><b>图表挂到主题是关键词匹配</b></td><td>图表库无主题标签；双词命中算可信，单词命中标「弱匹配」让读者折扣</td></tr>
 <tr><td>9</td><td>A 股无行情权限；OpenD 历史 K 线有滚动 30 天不同标的额度（已用满 90 个）</td><td>中国主题只能用离岸与港股表达；宇宙扩张受限，被挡标的自动标为不可盯市</td></tr>
+<tr><td>10</td><td><b>主题发现的候选精度约一半</b>。机械挖掘是字符 n-gram + 词频 lift，不是语义理解</td><td>公司名、栏目名、泛词碎片会漏进候选，靠生成器逐个否掉。而<b>漏判（该注册却没注册）比误判更难发现</b>——没有任何指标会为此报警</td></tr>
+<tr><td>11</td><td><b>发现窗口 5 天、打分窗口 3 天，两者不同步</b></td><td>主题可能在刚要冷下去时才被注册：FACTOR-ROTATION 注册当日在 3 日窗口里就是 0 条证据。休眠机制会自我纠正，代价是白占几天配额</td></tr>
+<tr><td>12</td><td><b>新主题的价格指标只是「可定价宇宙里最近的代理」</b></td><td>SPACE-ECONOMY 用 <code>US.XAR</code>（航空国防）表达商业航天，更贴的 ARKX 不在可定价宇宙里。M 因子会因此偏钝</td></tr>
 </table>
 
 <hr/>
@@ -426,8 +491,9 @@ timeline
   2027-01-27 : 起点批次 30 条 6 个月期到期
 </whiteboard>
 
-<h2>30 天后要做的四件事</h2>
+<h2>30 天后要做的五件事</h2>
 
+<checkbox done="false">按 <code>origin</code> 与 <code>cold_start</code> 分档，看<b>语料发现的主题是不是系统性差于种子主题</b>。这是新增机制唯一的验收标准；如果发现的主题一致更差，说明门槛该收紧或候选判定该更严</checkbox>
 <checkbox done="false">用 outcome <b>校准四因子权重</b>，替掉 0.15/0.25/0.25/0.35 这组先验值</checkbox>
 <checkbox done="false">测 <b>N 的意外程度与 M 的相关系数</b>，决定要不要把它从 N 里剔除</checkbox>
 <checkbox done="false">决定<b>评级用中心赔率还是保守赔率</b>——目前两者排序能力接近（+0.215 vs +0.223），需要更长样本</checkbox>

@@ -29,3 +29,9 @@ if ! "$PYBIN" -m ideagen.cli doctor; then
 fi
 
 "$PYBIN" -m ideagen.cli daily
+
+# Publish the refreshed dashboard to GitHub Pages. Non-fatal: a push failure must
+# not mark the whole run failed, since the marks and attribution already landed.
+if ! scripts/publish_pages.sh --yes; then
+  echo "WARN: gh-pages publish failed; local dashboard is still current"
+fi

@@ -5,17 +5,21 @@
 # is a public repository, so anything pushed to the gh-pages branch is served at a
 # public, indexable URL: every idea, every fill price, every open position.
 #
-# It is deliberately NOT wired into the daily run. Run it by hand when you want a
-# public snapshot, or make the repo private first:
+# The owner asked for a public URL explicitly, so the daily run calls this with
+# --yes. To stop publishing, remove the publish-pages stage from scripts/daily.sh,
+# or make the repository private:
 #     gh repo edit YuesongCai/IdeaGen40 --visibility private --accept-visibility-change-consequences
 #
-# Usage:  scripts/publish_pages.sh
+# Usage:  scripts/publish_pages.sh [--yes]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PYBIN="${IDEAGEN_PYTHON:-/Library/Frameworks/Python.framework/Versions/3.12/bin/python3}"
 
-read -r -p "这会把完整持仓明细发布到公开 URL。继续？输入 yes： " ans
-[ "$ans" = "yes" ] || { echo "已取消"; exit 1; }
+# --yes skips the prompt (used by the daily run). Interactive callers still get it.
+if [ "${1:-}" != "--yes" ]; then
+  read -r -p "这会把完整持仓明细发布到公开 URL。继续？输入 yes： " ans
+  [ "$ans" = "yes" ] || { echo "已取消"; exit 1; }
+fi
 
 "$PYBIN" -m ideagen.cli dashboard
 TMP="$(mktemp -d)"

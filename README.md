@@ -295,16 +295,26 @@ python -m ideagen.cli dashboard --artifact --out web/artifact.html
 再用 Artifact 工具以 `url` 参数更新到同一个链接（链接存在 `data/artifact_url.txt`）。
 默认私有，需要更新时由 Claude 会话推一次。
 
-**③ GitHub Pages（公开，默认关闭）**
+**③ GitHub Pages —— https://yuesongcai.github.io/IdeaGen40/**
+
+打开就能看，不需要本机在跑。每日流程跑完会自动推一次，所以它跟 localhost 同步。
 
 ```bash
-scripts/publish_pages.sh
+scripts/publish_pages.sh          # 手动推一次（会问你确认）
+scripts/publish_pages.sh --yes    # 跳过确认，每日流程用的就是这个
 ```
 
-⚠️ **这会把完整持仓明细发布到公开可索引的 URL** ——
-每一条 idea、每个成交价、每个在场仓位。
-本仓库是 public，所以脚本刻意需要手动输 `yes` 确认，
-并且**没有**接进每日自动流程。想公开又不想全网可见，先把 repo 转私有。
+同时提供 https://yuesongcai.github.io/IdeaGen40/report.json ——
+页面上每个数字都在里面。
+
+⚠️ **这是公开、可被搜索引擎索引的 URL**，内容包括每一条 idea、每个成交价、
+每个在场仓位。要收回去：把 publish-pages 那段从 `scripts/daily.sh` 删掉，
+或者把仓库转私有（Pages 会随之变成需要登录）：
+
+```bash
+gh repo edit YuesongCai/IdeaGen40 --visibility private \
+  --accept-visibility-change-consequences
+```
 
 ---
 

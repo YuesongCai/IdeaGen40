@@ -562,3 +562,99 @@ class TestCohortMarking(unittest.TestCase):
                 self.assertGreaterEqual(r["closed_d"], r["horizon_end"])
             elif r["status"] == "open":
                 self.assertGreater(r["horizon_end"], self.last)
+
+
+class TestFrontEndInvariants(unittest.TestCase):
+    """Guard the CSS/JS contract.
+
+    Twice during development a string-replace patch silently missed its anchor and
+    dropped a rule instead of adding one — the tooltip ended up clipped inside a
+    scroll container, and long prose stretched rows to 240px. These assertions make
+    that class of failure loud.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from ideagen import report
+        cls.css = report.CSS
+        cls.js = report.JS
+        cls.gloss = report.GLOSSARY
+
+    # ---- tooltip must escape every clipping context ----
+    def test_tooltip_is_a_body_level_fixed_layer(self):
+        self.assertIn("#tip{", self.css)
+        self.assertIn("position:fixed", self.css.split("#tip{")[1][:200])
+        self.assertIn("document.body.append(TIP)", self.js)
+
+    def test_tooltip_is_not_a_child_of_the_hint(self):
+        """An absolutely-positioned child of .hint gets clipped by .tw's overflow."""
+        block = self.css.split(".hint{")[1].split("}")[0]
+        self.assertNotIn("position:relative", block)
+        self.assertNotIn(".hint>span{", self.css)
+
+    def test_tooltip_is_clamped_to_the_viewport(self):
+        self.assertIn("window.innerWidth - b.width", self.js)
+        self.assertIn("r.bottom + 9", self.js)      # flips below when no room above
+
+    def test_hint_click_does_not_sort_its_column(self):
+        self.assertIn("e.stopPropagation()", self.js)
+
+    # ---- table layout ----
+    def test_wide_tables_scroll_instead_of_squeezing(self):
+        self.assertIn("min-width:max-content", self.css)
+        self.assertIn("overflow-x:auto", self.css)
+
+    def test_cells_do_not_wrap_unless_they_opt_in(self):
+        body = self.css.split("tbody td{")[1].split("}")[0]
+        self.assertIn("white-space:nowrap", body)
+        for rule in ("td.wrap{", "td.prose{"):
+            self.assertIn(rule, self.css)
+        prose = self.css.split("td.prose{")[1].split("}")[0]
+        self.assertIn("white-space:normal", prose)
+        self.assertIn("min-width", prose)
+
+    def test_long_prose_is_clamped_and_kept_in_the_title(self):
+        self.assertIn("-webkit-line-clamp:3", self.css)
+        self.assertIn("title: cell && cell.title", self.js)
+
+    def test_headers_do_not_create_a_stacking_context_inside_a_scroller(self):
+        head = self.css.split("thead th{")[1].split("}")[0]
+        self.assertNotIn("position:sticky", head)
+
+    # ---- sorting ----
+    def test_blank_cells_sort_last_in_both_directions(self):
+        self.assertIn("xb ? 1 : -1", self.js)
+
+    # ---- themes / a11y ----
+    def test_both_themes_are_defined_for_every_token_block(self):
+        for sel in ('@media (prefers-color-scheme: dark)',
+                    ':root[data-theme="dark"]', ':root[data-theme="light"]'):
+            self.assertIn(sel, self.css)
+
+    def test_reduced_motion_is_respected(self):
+        self.assertIn("prefers-reduced-motion", self.css)
+
+    def test_hints_are_keyboard_reachable(self):
+        self.assertIn("tabindex: '0'", self.js)
+
+    # ---- glossary ----
+    def test_every_hinted_term_exists_in_the_glossary(self):
+        import re
+
+        used = set(re.findall(r"hint\('([^']+)'\)", self.js))
+        used |= {m[1] or m[0] for m in re.findall(r"lbl\('([^']+)'(?:,\s*'([^']+)')?\)", self.js)}
+        missing = {t for t in used if t not in self.gloss}
+        self.assertFalse(missing, f"hinted but undefined: {missing}")
+
+    def test_glossary_covers_the_factor_letters(self):
+        for k in ("TIS", "D", "A", "B", "N", "M", "C", "hurdle",
+                  "中心赔率", "保守赔率", "技能分", "排序能力"):
+            self.assertIn(k, self.gloss)
+            self.assertGreater(len(self.gloss[k]), 20, k)
+
+    # ---- three views ----
+    def test_all_three_views_route(self):
+        for v in ("cockpit", "report", "book"):
+            self.assertIn(f"'{v}'", self.js)
+        self.assertIn("viewCockpit", self.js)
+        self.assertIn("#(cockpit|report|book)", self.js)

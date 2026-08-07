@@ -188,6 +188,14 @@ h1.t{font-family:var(--serif);font-size:25px;margin:0 0 6px;line-height:1.25;
 .big.sm{font-size:20px}
 .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
 .muted{color:var(--ink-3)} .small{font-size:11.5px}
+/* Cells opt in to wrapping; everything else stays on one line and the wrapper
+   scrolls. `prose` additionally clamps to three lines so one long narrative cannot
+   make the row hundreds of pixels tall — the full text sits on the td's title. */
+td.prose{white-space:normal;max-width:560px;min-width:320px}
+td.prose>span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden}
+td.wrap{white-space:normal;max-width:250px;min-width:140px}
+td.wrap .small,td.prose .small{white-space:normal}
 .row{display:flex;justify-content:space-between;gap:10px;font-size:12px;
   padding:4px 0;border-top:1px dotted var(--rule)}
 .row:first-of-type{border-top:none}
@@ -207,19 +215,24 @@ h1.t{font-family:var(--serif);font-size:25px;margin:0 0 6px;line-height:1.25;
 .lv-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
 .lv-info{background:var(--surface-2);color:var(--ink-3);border-color:var(--rule-strong)}
 .tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
-.hint{display:inline-flex;align-items:center;justify-content:center;width:13px;
-  height:13px;border-radius:50%;border:1px solid var(--rule-strong);
-  color:var(--ink-3);font-size:9px;font-weight:700;cursor:help;margin-left:3px;
-  vertical-align:1px;flex-shrink:0;font-family:var(--sans);position:relative;
-  background:var(--surface)}
-.hint:hover,.hint:focus{border-color:var(--accent);color:var(--accent);outline:none}
-.hint>span{display:none;position:absolute;bottom:150%;left:50%;
-  transform:translateX(-50%);width:min(330px,72vw);background:var(--ink);
-  color:var(--paper);padding:9px 11px;border-radius:5px;font-size:11.5px;
-  font-weight:400;line-height:1.55;z-index:80;text-align:left;cursor:auto;
-  box-shadow:0 4px 14px rgba(0,0,0,.28)}
-.hint:hover>span,.hint:focus>span{display:block}
-thead th .hint>span{bottom:auto;top:150%}
+/* The ⓘ marker. The bubble itself is NOT a child: table wrappers use
+   overflow-x:auto and sticky headers create their own stacking contexts, so an
+   absolutely-positioned child gets clipped and truncated. A single fixed-position
+   layer appended to the document body, placed by JS, escapes all of them. */
+.hint{display:inline-flex;align-items:center;justify-content:center;width:14px;
+  height:14px;border-radius:50%;border:1px solid var(--rule-strong);
+  color:var(--ink-3);font-size:9px;font-weight:700;cursor:help;margin-left:4px;
+  vertical-align:1px;flex-shrink:0;font-family:var(--sans);
+  background:var(--surface);line-height:1}
+.hint:hover,.hint:focus-visible{border-color:var(--accent);color:var(--accent);
+  outline:none}
+#tip{position:fixed;z-index:9999;max-width:min(360px,86vw);background:var(--ink);
+  color:var(--paper);padding:10px 12px;border-radius:6px;font-size:12px;
+  line-height:1.6;box-shadow:0 6px 22px rgba(0,0,0,.32);pointer-events:none;
+  opacity:0;visibility:hidden;transition:opacity .09s ease;font-weight:400;
+  font-family:var(--sans);text-align:left}
+#tip.on{opacity:1;visibility:visible}
+#tip b{color:#fff;display:block;margin-bottom:2px;font-family:var(--mono)}
 /* ---- cockpit ---- */
 .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(136px,1fr));gap:10px}
 .kpi>div{background:var(--surface);border:1px solid var(--rule);border-radius:4px;
@@ -231,6 +244,7 @@ thead th .hint>span{bottom:auto;top:150%}
 .kpi .s{font-size:10.5px;color:var(--ink-3);margin-top:2px}
 
 .cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:7px}
+@media (max-width:520px){.cal{grid-template-columns:repeat(auto-fill,minmax(88px,1fr))}}
 .cal button{all:unset;cursor:pointer;background:var(--surface);
   border:1px solid var(--rule);border-radius:4px;padding:9px 10px;
   display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden}
@@ -264,8 +278,13 @@ dialog button.x:hover{color:var(--ink)}
 
 .tw{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;
   background:var(--surface);box-shadow:var(--shadow)}
-table{border-collapse:collapse;width:100%;font-size:12.5px}
-thead th{position:sticky;top:0;background:var(--surface-2);text-align:left;
+/* Dense blotters have up to 17 columns. Letting the browser squeeze them makes
+   cells wrap one character per line and rows 240px tall; the wrapper already has
+   overflow-x:auto, so the table should keep its natural width and scroll. */
+table{border-collapse:collapse;width:100%;min-width:max-content;font-size:12.5px}
+/* No position:sticky here: inside an overflow-x container it pins to the wrapper,
+   not the viewport, which just adds a stacking context for no benefit. */
+thead th{background:var(--surface-2);text-align:left;
   padding:8px 10px;border-bottom:1px solid var(--rule-strong);font-weight:600;
   font-size:10.5px;letter-spacing:.04em;color:var(--ink-2);white-space:nowrap;
   cursor:pointer;user-select:none}
@@ -273,7 +292,8 @@ thead th:hover{color:var(--accent)}
 thead th[data-nosort]{cursor:default}
 thead th[data-sort="asc"]::after{content:" ▲";font-size:8px}
 thead th[data-sort="desc"]::after{content:" ▼";font-size:8px}
-tbody td{padding:7px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--rule);vertical-align:top;
+  white-space:nowrap}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:var(--surface-2)}
 td.n,th.n{text-align:right;font-family:var(--mono);
@@ -372,6 +392,11 @@ const n2 = (v, nd = 2) => v === null || v === undefined ? '—'
 const usd = v => v === null || v === undefined ? '—'
   : '$' + Math.round(v).toLocaleString('en-US');
 const sgn = v => v === null || v === undefined ? 'flat' : v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
+/* A drawdown is never positive, so a signed "+0.00%" reads wrong, and zero must
+   not be tinted as if it were a loss. */
+const dd = v => (v === null || v === undefined) ? '—'
+  : (v === 0 ? '0.00%' : (v * 100).toFixed(2) + '%');
+const ddCls = v => (v ? 'down' : 'flat');
 const day = P.days;
 const dIdx = () => D.indexOf(cur);
 const G = P.glossary || {};
@@ -379,10 +404,46 @@ const G = P.glossary || {};
 /* A first-time reader should not have to know what D/A/B/N mean. Every term that
    is not self-evident gets an ⓘ next to it, hoverable and keyboard-focusable, plus
    a full glossary in the sidebar. */
-const hint = k => G[k]
-  ? E('span', { cls: 'hint', tabindex: '0', role: 'note',
-                'aria-label': k + '：' + G[k] }, 'i', E('span', {}, G[k]))
-  : null;
+let TIP = null;
+function tipEl() {
+  if (!TIP) { TIP = E('div', { id: 'tip', role: 'tooltip' }); document.body.append(TIP); }
+  return TIP;
+}
+function showTip(anchor, term, text) {
+  const t = tipEl();
+  t.replaceChildren(E('b', {}, term), document.createTextNode(text));
+  t.classList.add('on');
+  const r = anchor.getBoundingClientRect(), b = t.getBoundingClientRect();
+  const M = 8;
+  let x = r.left + r.width / 2 - b.width / 2;
+  x = Math.max(M, Math.min(x, window.innerWidth - b.width - M));
+  // above by default; flip below when there is not enough room
+  let y = r.top - b.height - 9;
+  if (y < M) y = r.bottom + 9;
+  t.style.left = x + 'px';
+  t.style.top = y + 'px';
+}
+function hideTip() { if (TIP) TIP.classList.remove('on'); }
+window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+window.addEventListener('resize', hideTip);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
+
+const hint = k => {
+  if (!G[k]) return null;
+  const el = E('span', { cls: 'hint', tabindex: '0', role: 'button',
+                         'aria-label': k + '：' + G[k] }, 'i');
+  const show = () => showTip(el, k, G[k]);
+  el.addEventListener('mouseenter', show);
+  el.addEventListener('focus', show);
+  el.addEventListener('mouseleave', hideTip);
+  el.addEventListener('blur', hideTip);
+  // a header cell sorts on click; the ⓘ must not also sort it
+  el.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); show(); });
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); show(); }
+  });
+  return el;
+};
 const lbl = (text, k) => E('span', {}, text, hint(k === undefined ? text : k));
 
 function relLabel(d) {
@@ -460,10 +521,17 @@ function sortable(tbl) {
       tbl.querySelectorAll('thead th').forEach(o => delete o.dataset.sort);
       th.dataset.sort = dir;
       const tb = tbl.tBodies[0], rows = [...tb.rows];
+      const BLANK = /^(—|-|\s*)$/;
       rows.sort((a, b) => {
         const g = r => { const c = r.cells[i]; return c.dataset.v ?? c.textContent.trim(); };
-        const x = g(a), y = g(b), xn = parseFloat(x), yn = parseFloat(y);
-        const c = (!isNaN(xn) && !isNaN(yn)) ? xn - yn : String(x).localeCompare(String(y), 'zh');
+        const x = g(a), y = g(b);
+        // empty cells always sink, whichever direction is active
+        const xb = x === 'null' || BLANK.test(x), yb = y === 'null' || BLANK.test(y);
+        if (xb !== yb) return xb ? 1 : -1;
+        if (xb && yb) return 0;
+        const xn = parseFloat(x), yn = parseFloat(y);
+        const c = (!isNaN(xn) && !isNaN(yn)) ? xn - yn
+          : String(x).localeCompare(String(y), 'zh');
         return dir === 'asc' ? c : -c;
       });
       rows.forEach(r => tb.appendChild(r));
@@ -481,8 +549,11 @@ function table(cols, rows) {
     E('thead', {}, E('tr', {}, cols.map(c =>
       E('th', { cls: c.n ? 'n' : '', 'data-nosort': c.nosort ? '' : null }, c.h)))),
     E('tbody', {}, rows.map(r => E('tr', {}, r.map((cell, i) =>
-      E('td', { cls: [cols[i].n ? 'n' : '', cell && cell.cls || ''].join(' ').trim(),
-                'data-v': cell && cell.v !== undefined ? cell.v : null },
+      E('td', { cls: [cols[i].n ? 'n' : '', cols[i].cls || '',
+                      cell && cell.cls || ''].join(' ').trim(),
+                title: cell && cell.title || null,
+                'data-v': cell && cell.v !== undefined && cell.v !== null
+                  ? cell.v : null },
         cell && cell.el ? cell.el : (cell && cell.t !== undefined ? cell.t : cell)))))));
   return E('div', { cls: 'tw' }, sortable(t));
 }
@@ -512,7 +583,7 @@ function viewCockpit() {
           o.best && o.best.d),
       kpi('最差的一天', pc(o.worst && o.worst.v), sgn(o.worst && o.worst.v),
           o.worst && o.worst.d),
-      kpi('最大回撤', pc(o.worst_dd), 'down', '所有组合里最深的一次'),
+      kpi('最大回撤', dd(o.worst_dd), ddCls(o.worst_dd), '所有组合里最深的一次'),
       kpi('想法等权收益', pc(o.idea_equal_weight), sgn(o.idea_equal_weight),
           `${o.idea_scored} 条可评分 · 胜率 ${pcu(o.idea_hit, 0)}`),
       kpi('跑赢基准比例', pcu(o.beat_bench_rate, 0), null, '逐条 vs SPY'),
@@ -551,9 +622,11 @@ function viewCockpit() {
 
   /* ---- per-day rationale ---- */
   wrap.append(sec('每天在赌什么', '当天的主线与执行口径，一行一天',
-    table([{ h: '日期' }, { h: lbl('生成器') }, { h: '当日冲击最高的主题' },
+    table([{ h: '日期' }, { h: lbl('生成器') },
+           { h: '当日冲击最高的主题', cls: 'wrap' },
            { h: lbl('TIS'), n: 1 }, { h: '可直接执行', n: 1 },
-           { h: '收益', n: 1 }, { h: lbl('超额'), n: 1 }, { h: '主线' }],
+           { h: '收益', n: 1 }, { h: lbl('超额'), n: 1 },
+           { h: '主线', cls: 'prose', nosort: 1 }],
       [...o.days].reverse().map(x => [
         { el: E('a', { href: '#book/' + x.d,
                        on: { click: e => { e.preventDefault(); cur = x.d; setView('book'); } } },
@@ -566,7 +639,8 @@ function viewCockpit() {
         { v: x.executable, t: x.executable },
         { v: x.cum_ret, cls: sgn(x.cum_ret), t: pc(x.cum_ret) },
         { v: x.excess, cls: sgn(x.excess), t: pc(x.excess) },
-        { el: E('span', { cls: 'small' }, x.narrative || '—') }]))));
+        { title: x.narrative || '',
+          el: E('span', { cls: 'small' }, x.narrative || '—') }]))));
 
   return wrap;
 }
@@ -597,10 +671,14 @@ function barChart(days) {
     if (x.spy !== null && x.spy !== undefined)
       g += `<circle cx="${X(i).toFixed(1)}" cy="${Y(x.spy).toFixed(1)}" r="2.6"
         fill="var(--ink-3)"/>`;
-    g += `<text x="${X(i).toFixed(1)}" y="${H - 19}" text-anchor="middle" font-size="9.5"
-      font-family="var(--mono)" fill="var(--ink-3)">${x.d.slice(5)}</text>`;
-    g += `<text x="${X(i).toFixed(1)}" y="${H - 7}" text-anchor="middle" font-size="9"
-      font-family="var(--mono)" fill="${col}">${(v * 100).toFixed(1)}</text>`;
+    // with a month of days the axis cannot carry every label; thin it out
+    const every = days.length > 22 ? 3 : days.length > 14 ? 2 : 1;
+    if (i % every === 0 || i === days.length - 1)
+      g += `<text x="${X(i).toFixed(1)}" y="${H - 19}" text-anchor="middle" font-size="9.5"
+        font-family="var(--mono)" fill="var(--ink-3)">${x.d.slice(5)}</text>`;
+    if (days.length <= 22)
+      g += `<text x="${X(i).toFixed(1)}" y="${H - 7}" text-anchor="middle" font-size="9"
+        font-family="var(--mono)" fill="${col}">${(v * 100).toFixed(1)}</text>`;
   });
   const box = document.createElement('div');
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
@@ -645,13 +723,14 @@ function viewReport(dd) {
   /* ---- theme table ---- */
   if (r) {
     const cols = [
-      { h: '宏观主题 · 预注册关键结果' },
+      { h: '宏观主题 · 预注册关键结果', cls: 'wrap' },
       { h: lbl('冲击潜力', 'TIS'), n: 1 },
       { h: '因子', nosort: 1 },
       { h: lbl('D'), n: 1 }, { h: lbl('A'), n: 1 },
       { h: lbl('B'), n: 1 }, { h: lbl('N'), n: 1 },
       { h: lbl('入价程度 M', 'M'), n: 1 }, { h: lbl('拥挤度 C', 'C'), n: 1 },
-      { h: lbl('主要争议', 'B') }, { h: '条目', n: 1 }, { h: '分级' }];
+      { h: lbl('主要争议', 'B'), cls: 'wrap' }, { h: '条目', n: 1 },
+      { h: '分级' }];
     const rows = r.themes.map(t => [
       { el: E('div', {}, E('strong', {}, t.label),
           E('div', { cls: 'small muted' }, t.key_question)) },
@@ -678,6 +757,7 @@ function viewReport(dd) {
   if (r && b) wrap.append(sec('Theme Map',
     '宏观主题 └ 传导主线 └ 资产信号（方向｜期限）└ 交易想法与表达工具',
     E('div', { cls: 'panel tmap' }, themeMap(r, b))));
+
 
   /* ---- ideas ---- */
   if (b) {
@@ -711,7 +791,8 @@ function viewReport(dd) {
     `窗口内信号最高的 ${r.evidence.length} 条（Tier 1 一手优先）。` +
     '智堡是客户端渲染的 SPA，没有逐篇的固定网页链接，所以这里记的是**可复现的 API 检索式**加内容哈希，而不是猜一个会指向空页的永久链接',
     table([{ h: 'doc_id' }, { h: 'T', n: 1 }, { h: '发布' }, { h: '来源线' },
-           { h: '机构' }, { h: '标题' }, { h: '可复现检索式' },
+           { h: '机构' }, { h: '标题', cls: 'wrap' },
+           { h: lbl('可复现检索式', '溯源') },
            { h: 'sha1', nosort: 1 }, { h: '正文', n: 1 }, { h: '图', n: 1 }],
       r.evidence.map(e => [
         { el: E('span', { cls: 'tag' }, e.doc_id) },
@@ -883,7 +964,7 @@ function viewBook(dd) {
           : `${usd(co.equity)} · 持有 ${co.sessions} 个交易日`),
       row('SPY 同期', pc(co.spy)),
       row('超额 vs SPY', pc(co.excess), sgn(co.excess)),
-      row('最大回撤', pc(co.max_dd), 'down'),
+      row('最大回撤', dd(co.max_dd), ddCls(co.max_dd)),
       row('成交 / 下单', `${o.filled || 0} / ${o.n || 0}`),
       row('在场 / 已平', `${pp.open_n || 0} / ${pp.closed_n || 0}`)),
     E('figure', { cls: 'panel' },
@@ -924,7 +1005,7 @@ function viewBook(dd) {
         { v: c.cum_ret, cls: sgn(c.cum_ret), t: pc(c.cum_ret) },
         { v: c.spy, t: pc(c.spy) },
         { v: c.excess, cls: sgn(c.excess), t: pc(c.excess) },
-        { v: c.max_dd, cls: 'down', t: pc(c.max_dd) },
+        { v: c.max_dd, cls: ddCls(c.max_dd), t: dd(c.max_dd) },
         { v: c.n_open, t: c.n_open }]))));
 
   const scored = rows.filter(c => c.sessions > 0 && c.excess !== null);
@@ -951,7 +1032,7 @@ function viewBook(dd) {
         E('div', { cls: 'small muted', style: 'margin:2px 0 9px' }, meta.desc),
         row('SPY 同期', pc(v.spy)),
         row('超额 vs SPY', pc(v.excess), sgn(v.excess)),
-        row('最大回撤', pc(v.max_dd), 'down'),
+        row('最大回撤', dd(v.max_dd), ddCls(v.max_dd)),
         row('净敞口 / 在场', `${pcu(v.gross, 0)} / ${v.n_open}`));
     })),
     E('figure', { cls: 'panel', style: 'margin-top:12px' },
@@ -1038,8 +1119,9 @@ function orderTable(list) {
 }
 
 function posTable(list) {
-  const cols = [{ h: '工具' }, { h: '代码' }, { h: '主题' }, { h: '期限' },
-    { h: '评级' }, { h: '建仓日' }, { h: '成本价', n: 1 }, { h: '现价', n: 1 },
+  const cols = [{ h: '工具', cls: 'wrap' }, { h: '代码' }, { h: '主题', cls: 'wrap' },
+    { h: '期限' },
+    { h: lbl('评级'), n: 0 }, { h: '建仓日' }, { h: '成本价', n: 1 }, { h: '现价', n: 1 },
     { h: '投入', n: 1 }, { h: '盈亏', n: 1 }, { h: '盈亏 $', n: 1 },
     { h: '止损', n: 1 }, { h: '止盈', n: 1 }, { h: '到期日' }, { h: '状态' }];
   return table(cols, list.map(p => [

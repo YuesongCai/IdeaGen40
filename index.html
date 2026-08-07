@@ -1,0 +1,2094 @@
+<!doctype html>
+<html lang="zh-Hans"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IdeaGen40 · 战术交易想法实盘模拟</title>
+<style>
+:root{
+  --paper:#EDF0F3; --surface:#FFFFFF; --surface-2:#F6F8FA;
+  --rule:#D7DEE5; --rule-strong:#B9C4CE;
+  --ink:#161B22; --ink-2:#41505E; --ink-3:#6B7A89;
+  --accent:#1F3A6E; --accent-soft:#E4EAF4;
+  --up:#C8372B; --down:#1E8E5A; --warn:#9A6C1C; --flat:#6B7A89;
+  --up-soft:#FBEAE7; --down-soft:#E6F4EC; --warn-soft:#FBF2DF;
+  --shadow:0 1px 0 rgba(22,27,34,.04), 0 1px 3px rgba(22,27,34,.06);
+  --serif:"Songti SC","Source Han Serif SC","Noto Serif CJK SC","Songti TC",
+          Georgia,"Times New Roman",serif;
+  --sans:"PingFang SC","Hiragino Sans GB",-apple-system,BlinkMacSystemFont,
+         "Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0E1116; --surface:#161B22; --surface-2:#1C232C;
+    --rule:#2A333E; --rule-strong:#3A4552;
+    --ink:#E6EBF0; --ink-2:#B4C0CC; --ink-3:#8A97A5;
+    --accent:#7A9CD8; --accent-soft:#1B2739;
+    --up:#E05A4A; --down:#3FB97D; --warn:#D9A441; --flat:#8A97A5;
+    --up-soft:#2A1A18; --down-soft:#12291F; --warn-soft:#2A2113;
+    --shadow:0 1px 0 rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E1116; --surface:#161B22; --surface-2:#1C232C;
+  --rule:#2A333E; --rule-strong:#3A4552;
+  --ink:#E6EBF0; --ink-2:#B4C0CC; --ink-3:#8A97A5;
+  --accent:#7A9CD8; --accent-soft:#1B2739;
+  --up:#E05A4A; --down:#3FB97D; --warn:#D9A441; --flat:#8A97A5;
+  --up-soft:#2A1A18; --down-soft:#12291F; --warn-soft:#2A2113;
+  --shadow:0 1px 0 rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.4);
+}
+:root[data-theme="light"]{
+  --paper:#EDF0F3; --surface:#FFFFFF; --surface-2:#F6F8FA;
+  --rule:#D7DEE5; --rule-strong:#B9C4CE;
+  --ink:#161B22; --ink-2:#41505E; --ink-3:#6B7A89;
+  --accent:#1F3A6E; --accent-soft:#E4EAF4;
+  --up:#C8372B; --down:#1E8E5A; --warn:#9A6C1C; --flat:#6B7A89;
+  --up-soft:#FBEAE7; --down-soft:#E6F4EC; --warn-soft:#FBF2DF;
+  --shadow:0 1px 0 rgba(22,27,34,.04), 0 1px 3px rgba(22,27,34,.06);
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+     font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px 72px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---- masthead ---- */
+.masthead{border-bottom:2px solid var(--ink);margin-bottom:28px;padding:26px 0 14px}
+.mh-top{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;
+        justify-content:space-between}
+.mh-title{font-family:var(--serif);font-size:30px;line-height:1.15;margin:0;
+          letter-spacing:.01em;text-wrap:balance}
+.mh-sub{color:var(--ink-2);font-size:13px;margin:6px 0 0}
+.mh-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);
+         font-family:var(--mono)}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+         color:var(--ink-3);font-family:var(--sans);font-weight:600}
+
+/* ---- verdict ---- */
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));
+         gap:14px;margin:0 0 26px}
+.vcard{background:var(--surface);border:1px solid var(--rule);border-radius:3px;
+       padding:16px 18px;box-shadow:var(--shadow);position:relative}
+.vcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+               background:var(--accent);border-radius:3px 0 0 3px}
+.vcard.is-up::before{background:var(--up)} .vcard.is-down::before{background:var(--down)}
+.vcard h3{margin:0 0 2px;font-size:14px;font-family:var(--serif);font-weight:600}
+.vcard .desc{color:var(--ink-3);font-size:11.5px;line-height:1.5;margin:0 0 12px;
+             min-height:34px}
+.big{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:32px;
+     line-height:1;font-weight:600;letter-spacing:-.02em}
+.big.up{color:var(--up)} .big.down{color:var(--down)}
+.vrow{display:flex;justify-content:space-between;gap:10px;font-size:12px;
+      padding:4px 0;border-top:1px dotted var(--rule)}
+.vrow:first-of-type{border-top:none}
+.vrow span:first-child{color:var(--ink-3)}
+.vrow span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---- sections ---- */
+section{margin:0 0 34px;scroll-margin-top:70px}
+.sec-head{display:flex;align-items:baseline;gap:12px;
+          border-bottom:1px solid var(--rule-strong);padding-bottom:6px;margin:0 0 14px}
+.sec-head h2{font-family:var(--serif);font-size:19px;margin:0;font-weight:600}
+.sec-head p{margin:0;color:var(--ink-3);font-size:12px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:3px;
+       padding:16px 18px;box-shadow:var(--shadow)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;
+    background:var(--surface);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+thead th{position:sticky;top:0;background:var(--surface-2);text-align:left;
+         padding:8px 10px;border-bottom:1px solid var(--rule-strong);
+         font-weight:600;font-size:11px;letter-spacing:.04em;color:var(--ink-2);
+         white-space:nowrap;cursor:pointer;user-select:none}
+thead th:hover{color:var(--accent)}
+thead th[data-nosort]{cursor:default}
+thead th::after{content:"";opacity:.35;font-size:9px;margin-left:4px}
+thead th[data-sort="asc"]::after{content:"▲";opacity:.9}
+thead th[data-sort="desc"]::after{content:"▼";opacity:.9}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;
+          white-space:nowrap}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
+.muted{color:var(--ink-3)}
+.small{font-size:11px}
+.trunc{max-width:340px}
+
+/* ---- chips ---- */
+.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;
+      font-weight:600;border:1px solid transparent;white-space:nowrap;
+      font-family:var(--sans)}
+.g-S{background:var(--accent);color:var(--surface)}
+.g-A{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.g-B{background:var(--surface-2);color:var(--ink-2);border-color:var(--rule-strong)}
+.g-C{background:transparent;color:var(--ink-3);border-color:var(--rule-strong)}
+.lv-action{background:var(--up-soft);color:var(--up);border-color:var(--up)}
+.lv-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.lv-info{background:var(--surface-2);color:var(--ink-3);border-color:var(--rule-strong)}
+.tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+
+/* ---- alerts ---- */
+.alert{display:flex;gap:10px;padding:9px 12px;border-bottom:1px solid var(--rule);
+       border-left:3px solid var(--flat);align-items:flex-start}
+.alert:last-child{border-bottom:none}
+.alert.action{border-left-color:var(--up);background:var(--up-soft)}
+.alert.warn{border-left-color:var(--warn)}
+.alert .k{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);
+          min-width:132px;flex-shrink:0}
+
+/* ---- meters ---- */
+.meter{height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden;
+       border:1px solid var(--rule)}
+.meter i{display:block;height:100%;background:var(--accent)}
+.meter.hot i{background:var(--up)}
+.factors{display:flex;gap:3px;align-items:flex-end;height:26px}
+.factors i{width:9px;background:var(--accent);opacity:.85;border-radius:1px 1px 0 0;
+           display:block}
+
+/* ---- rail ---- */
+.rail{position:sticky;top:0;z-index:20;background:var(--paper);
+      border-bottom:1px solid var(--rule);margin-bottom:22px}
+.rail nav{max-width:1240px;margin:0 auto;padding:9px 20px;display:flex;gap:16px;
+          overflow-x:auto;font-size:12px}
+.rail a{color:var(--ink-3);white-space:nowrap;padding:2px 0;border-bottom:2px solid transparent}
+.rail a:hover,.rail a.on{color:var(--ink);border-bottom-color:var(--accent);
+                         text-decoration:none}
+
+figure{margin:0}
+figcaption{font-size:11.5px;color:var(--ink-3);margin-top:8px;line-height:1.5}
+svg{display:block;max-width:100%;height:auto}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);
+        margin:0 0 10px}
+.legend b{display:inline-block;width:16px;height:2px;vertical-align:middle;
+          margin-right:5px;border-radius:1px}
+.note{background:var(--surface-2);border-left:3px solid var(--rule-strong);
+      padding:11px 14px;font-size:12px;color:var(--ink-2);border-radius:0 3px 3px 0}
+.note strong{color:var(--ink)}
+footer{border-top:1px solid var(--rule);margin-top:40px;padding-top:16px;
+       color:var(--ink-3);font-size:11.5px}
+@media (max-width:640px){
+  .mh-title{font-size:23px} .big{font-size:26px} .wrap{padding:0 14px 48px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head><body>
+<div class="rail"><nav><a href="#verdict">结论</a><a href="#curves">净值曲线</a><a href="#skill">想法层面能力</a><a href="#buckets">分档归因</a><a href="#batch">最新批次</a><a href="#positions">持仓明细</a><a href="#themes">宏观主题打分</a><a href="#alerts">告警</a><a href="#coverage">数据与运行</a></nav></div>
+<div class="wrap">
+  <header class="masthead">
+    <div class="mh-top">
+      <div>
+        <div class="eyebrow">IdeaGen40 · 战术交易想法实盘模拟</div>
+        <h1 class="mh-title">每天 40 条想法，真的买下去会怎样</h1>
+        <p class="mh-sub">Wisburg 多源语料 → v0.4 四因子打分 → 40 条 idea →
+          Futu / Olive 实价模拟盘 → 逐日盯市与归因</p>
+      </div>
+      <div class="mh-meta">
+        <span>方法论 v0.4</span>
+        <span>词典 v0.4.0</span>
+        <span>2 个批次</span>
+        <span>9 个交易日</span>
+        <span>生成于 2026-08-07 10:56 HKT</span>
+      </div>
+    </div>
+  </header>
+
+  <section id="verdict">
+    <div class="sec-head"><h2>结论</h2>
+      <p>同一批 idea，两种执行方式，与基准并列</p></div>
+    <div class="verdict">
+<article class="vcard is-up">
+  <div class="eyebrow">disciplined</div>
+  <h3>守纪律组合</h3>
+  <p class="desc">方法论仓位 + 进场区间限价 + 止损止盈 + 到期平仓；未触发的钱留现金</p>
+  <div class="big up">+0.40%</div>
+  <div class="small muted" style="margin:4px 0 12px">
+    $10,039,808 · 2026-07-24 → 2026-08-06 · 9 个交易日</div>
+  <div class="vrow"><span>SPY 同期</span><span>+4.01%</span></div>
+  <div class="vrow"><span>超额 vs SPY</span>
+    <span class="down">-3.61%</span></div>
+  <div class="vrow"><span>敞口匹配基准<br><span class="small muted">12% SPY + 88% 现金</span></span>
+    <span class="down">-0.18%</span></div>
+  <div class="vrow"><span>最大回撤</span><span class="down">-0.03%</span></div>
+  <div class="vrow"><span>净敞口 / 在场</span>
+    <span>13% / 15</span></div>
+  <div class="vrow"><span>成交率</span>
+    <span>24%</span></div>
+</article>
+<article class="vcard is-up">
+  <div class="eyebrow">naive</div>
+  <h3>无脑全买组合</h3>
+  <p class="desc">每条 idea 等权，生成日收盘全部市价买入，持有至期限结束</p>
+  <div class="big up">+1.80%</div>
+  <div class="small muted" style="margin:4px 0 12px">
+    $10,179,582 · 2026-07-24 → 2026-08-06 · 9 个交易日</div>
+  <div class="vrow"><span>SPY 同期</span><span>+4.01%</span></div>
+  <div class="vrow"><span>超额 vs SPY</span>
+    <span class="down">-2.21%</span></div>
+  <div class="vrow"><span>敞口匹配基准<br><span class="small muted">100% SPY + 0% 现金</span></span>
+    <span class="down">-2.21%</span></div>
+  <div class="vrow"><span>最大回撤</span><span class="down">-0.56%</span></div>
+  <div class="vrow"><span>净敞口 / 在场</span>
+    <span>100% / 23</span></div>
+  <div class="vrow"><span>成交率</span>
+    <span>36%</span></div>
+</article></div>
+  </section>
+
+  <section id="curves">
+    <div class="sec-head"><h2>净值曲线</h2><p>累计收益，含成本与现金收益</p></div>
+    
+<figure class="panel">
+  <div class="legend"><span><b style="background:var(--accent)"></b>守纪律组合</span><span><b style="background:var(--up)"></b>无脑全买组合</span><span><b style="background:var(--ink-3)"></b>SPY</span><span><b style="background:var(--down)"></b>ACWI</span></div>
+  <svg viewBox="0 0 1180 240" role="img" aria-label="累计收益曲线"><line x1="52" y1="214.0" x2="1084" y2="214.0" stroke="var(--rule)" stroke-width="0.6"/><text x="44" y="217.5" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">-2.0%</text><line x1="52" y1="174.0" x2="1084" y2="174.0" stroke="var(--rule)" stroke-width="0.6"/><text x="44" y="177.5" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">-0.6%</text><line x1="52" y1="134.0" x2="1084" y2="134.0" stroke="var(--rule)" stroke-width="0.6"/><text x="44" y="137.5" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">+0.8%</text><line x1="52" y1="94.0" x2="1084" y2="94.0" stroke="var(--rule)" stroke-width="0.6"/><text x="44" y="97.5" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">+2.3%</text><line x1="52" y1="54.0" x2="1084" y2="54.0" stroke="var(--rule)" stroke-width="0.6"/><text x="44" y="57.5" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">+3.7%</text><line x1="52" y1="14.0" x2="1084" y2="14.0" stroke="var(--rule)" stroke-width="0.6"/><text x="44" y="17.5" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">+5.1%</text><text x="52.0" y="232" text-anchor="middle" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">07-24</text><text x="625.3" y="232" text-anchor="middle" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">07-31</text><text x="1084.0" y="232" text-anchor="middle" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">08-06</text><path d="M52.0,158.2 L166.7,157.6 L281.3,158.2 L396.0,158.4 L510.7,153.7 L625.3,153.7 L740.0,151.4 L854.7,146.9 L969.3,147.0 L1084.0,146.8" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/><circle cx="1084.0" cy="146.8" r="3" fill="var(--accent)"/><path d="M52.0,158.2 L166.7,158.6 L281.3,166.8 L396.0,174.1 L510.7,146.7 L625.3,145.6 L740.0,134.8 L854.7,106.3 L969.3,108.8 L1084.0,107.0" fill="none" stroke="var(--up)" stroke-width="2" stroke-linejoin="round"/><circle cx="1084.0" cy="107.0" r="3" fill="var(--up)"/><path d="M52.0,158.2 L166.7,157.5 L281.3,150.7 L396.0,194.6 L510.7,147.5 L625.3,127.0 L740.0,86.0 L854.7,33.4 L969.3,39.3 L1084.0,44.0" fill="none" stroke="var(--ink-3)" stroke-width="1.3" stroke-dasharray="4 3" stroke-linejoin="round"/><circle cx="1084.0" cy="44.0" r="3" fill="var(--ink-3)"/><path d="M52.0,158.2 L166.7,152.4 L281.3,153.7 L396.0,191.9 L510.7,133.1 L625.3,118.9 L740.0,91.0 L854.7,41.4 L969.3,43.8 L1084.0,51.2" fill="none" stroke="var(--down)" stroke-width="1.3" stroke-dasharray="2 3" stroke-linejoin="round"/><circle cx="1084.0" cy="51.2" r="3" fill="var(--down)"/><text x="1091.0" y="47.5" font-size="10.5" font-family="var(--mono)" fill="var(--ink-3)">+4.01%</text><line x1="1088.0" y1="51.2" x2="1092.0" y2="56.0" stroke="var(--down)" stroke-width="0.7" opacity=".55"/><text x="1091.0" y="59.5" font-size="10.5" font-family="var(--mono)" fill="var(--down)">+3.76%</text><text x="1091.0" y="110.5" font-size="10.5" font-family="var(--mono)" fill="var(--up)">+1.80%</text><text x="1091.0" y="150.3" font-size="10.5" font-family="var(--mono)" fill="var(--accent)">+0.40%</text></svg>
+  <figcaption>两个组合共用同一批 idea，差别只在执行：守纪律按方法论仓位下限价单、
+  带止损止盈与到期平仓，未成交的钱留在现金并按货币基金收益计息；无脑组合在首个
+  可成交收盘价等权全买并持有到期。两条线的差额即「仓位管理」的贡献；组合与 SPY
+  的差额即「选股 + 择时」的贡献。</figcaption>
+</figure>
+  </section>
+
+  <section id="skill">
+    <div class="sec-head"><h2>想法层面能力</h2>
+      <p>剔除仓位规模后，idea 本身值不值钱；以及引擎的排序与概率是否诚实</p></div>
+    
+<div class="grid2">
+  <div class="panel">
+    <div class="eyebrow">想法层面 · 等权</div>
+    <div class="big up">+1.77%</div>
+    <div class="small muted" style="margin:4px 0 12px">
+      23/80 条可评分（19 条无法盯市）· 剔除仓位影响</div>
+    <div class="vrow"><span>中位收益</span><span>+1.24%</span></div>
+    <div class="vrow"><span>胜率</span><span>74%</span></div>
+    <div class="vrow"><span>超额均值</span>
+      <span class="down">-2.22%</span></div>
+    <div class="vrow"><span>跑赢基准比例</span>
+      <span>17%</span></div>
+  </div>
+  <div class="panel">
+    <div class="eyebrow">排序能力 · Spearman ρ</div>
+    <p class="small muted" style="margin:2px 0 10px">
+      引擎给出的赔率排序，是否预测了后来的真实收益。ρ &gt; 0 表示排序有效。</p>
+    <div class="vrow"><span>保守赔率</span><span class="up">0.126</span></div><div class="vrow"><span>中心赔率</span><span class="up">0.422</span></div><div class="vrow"><span>中心期望回报</span><span class="up">0.523</span></div>
+  </div>
+  <div class="panel">
+    <div class="eyebrow">概率校准 · Brier</div>
+    <p class="small muted" style="margin:2px 0 10px">
+      情景概率是否诚实。技能分 = 1 − Brier ÷ 均匀先验；&gt; 0 表示优于「三分之一各一」。</p>
+    <div class="vrow"><span>Brier 中心 / 保守</span>
+      <span>0.510 / 0.478</span></div>
+    <div class="vrow"><span>均匀基线</span><span>0.667</span></div>
+    <div class="vrow"><span>技能分 中心 / 保守</span>
+      <span class="up">0.235 /
+      0.284</span></div>
+    <div class="vrow"><span>情景实现分布</span><span class="small">base 96% · down 4%</span></div>
+  </div>
+</div>
+  </section>
+
+  <section id="buckets">
+    <div class="sec-head"><h2>分档归因</h2><p>哪一类 idea 在赚钱</p></div>
+    <div class="grid2">
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按绝对评级</caption>
+<thead><tr><th>绝对评级</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>B</td><td class="n">19</td>
+<td class="n up" data-v="0.020384">+2.04%</td>
+<td class="n">68%</td>
+<td class="n down" data-v="-0.01949">-1.95%</td></tr><tr><td>C</td><td class="n">3</td>
+<td class="n up" data-v="0.002279">+0.23%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.037594">-3.76%</td></tr><tr><td>S</td><td class="n">1</td>
+<td class="n up" data-v="0.012439">+1.24%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.027434">-2.74%</td></tr></tbody></table></div>
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按相对分位</caption>
+<thead><tr><th>相对分位</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>Q1</td><td class="n">3</td>
+<td class="n up" data-v="0.032734">+3.27%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.007139">-0.71%</td></tr><tr><td>Q2</td><td class="n">8</td>
+<td class="n up" data-v="0.006229">+0.62%</td>
+<td class="n">38%</td>
+<td class="n down" data-v="-0.033645">-3.36%</td></tr><tr><td>Q3</td><td class="n">8</td>
+<td class="n up" data-v="0.031291">+3.13%</td>
+<td class="n">88%</td>
+<td class="n down" data-v="-0.008582">-0.86%</td></tr><tr><td>Q4</td><td class="n">4</td>
+<td class="n up" data-v="0.002051">+0.21%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.037822">-3.78%</td></tr></tbody></table></div>
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按期限</caption>
+<thead><tr><th>期限</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>1个月</td><td class="n">9</td>
+<td class="n up" data-v="0.001077">+0.11%</td>
+<td class="n">56%</td>
+<td class="n down" data-v="-0.038796">-3.88%</td></tr><tr><td>6个月</td><td class="n">14</td>
+<td class="n up" data-v="0.028348">+2.83%</td>
+<td class="n">86%</td>
+<td class="n down" data-v="-0.011525">-1.15%</td></tr></tbody></table></div>
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按工具类型</caption>
+<thead><tr><th>工具类型</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>listed</td><td class="n">23</td>
+<td class="n up" data-v="0.017677">+1.77%</td>
+<td class="n">74%</td>
+<td class="n down" data-v="-0.022197">-2.22%</td></tr></tbody></table></div>
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按情景幅度校验</caption>
+<thead><tr><th>情景幅度校验</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>ok</td><td class="n">20</td>
+<td class="n up" data-v="0.019923">+1.99%</td>
+<td class="n">70%</td>
+<td class="n down" data-v="-0.01995">-1.99%</td></tr><tr><td>wide</td><td class="n">3</td>
+<td class="n up" data-v="0.002699">+0.27%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.037174">-3.72%</td></tr></tbody></table></div>
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按是否成交</caption>
+<thead><tr><th>是否成交</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>1</td><td class="n">23</td>
+<td class="n up" data-v="0.017677">+1.77%</td>
+<td class="n">74%</td>
+<td class="n down" data-v="-0.022197">-2.22%</td></tr></tbody></table></div>
+<div class="tw"><table data-sortable>
+<caption class="eyebrow" style="text-align:left;padding:9px 10px 0">按宏观主题</caption>
+<thead><tr><th>宏观主题</th><th class="n">n</th><th class="n">均值</th>
+<th class="n">胜率</th><th class="n">超额</th></tr></thead>
+<tbody><tr><td>AI融资</td><td class="n">6</td>
+<td class="n up" data-v="0.034056">+3.41%</td>
+<td class="n">67%</td>
+<td class="n down" data-v="-0.005817">-0.58%</td></tr><tr><td>中国资产重估</td><td class="n">3</td>
+<td class="n up" data-v="0.027445">+2.74%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.012429">-1.24%</td></tr><tr><td>久期与信用</td><td class="n">2</td>
+<td class="n up" data-v="0.008716">+0.87%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.031157">-3.12%</td></tr><tr><td>日本政策重置</td><td class="n">2</td>
+<td class="n up" data-v="0.019734">+1.97%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.020139">-2.01%</td></tr><tr><td>盈利兑现</td><td class="n">4</td>
+<td class="n up" data-v="0.020299">+2.03%</td>
+<td class="n">100%</td>
+<td class="n down" data-v="-0.019574">-1.96%</td></tr><tr><td>能源与政策</td><td class="n">6</td>
+<td class="n down" data-v="-0.003034">-0.30%</td>
+<td class="n">33%</td>
+<td class="n down" data-v="-0.042907">-4.29%</td></tr></tbody></table></div></div>
+  </section>
+
+  <section id="batch">
+    <div class="sec-head"><h2>最新批次</h2><p>逐条 idea、赔率、进出场与已实现结果</p></div>
+    
+<div class="note" style="margin-bottom:12px">
+  <strong>B20260807</strong> · as_of 2026-08-07 · 生成器 <code>claude-code</code>
+  · 40 条 · 状态 traded · 校验
+  <span class="up">通过</span>
+  （0 error / 0 warning）
+  · output_sha <code>d0f10fba2aa2</code>
+</div>
+<div class="panel" style="padding:0;margin-bottom:12px"><div class="alert"><span class="k">all checks</span><span class="small">全部通过</span></div></div>
+<div class="tw"><table data-sortable>
+<thead><tr><th class="n">#</th><th>工具</th><th>类型</th><th>主题</th><th>期限</th>
+<th>评级</th><th class="n">中心赔率</th><th class="n">保守赔率</th><th class="n">EV</th>
+<th class="n">hurdle</th><th class="n">参考价</th><th class="n">进场</th>
+<th class="n">止损</th><th>幅度校验</th><th class="n">已实现</th><th class="n">超额</th>
+<th>离场</th></tr></thead>
+<tbody><tr>
+<td class="n">1</td>
+<td><strong>XLE</strong><div class="small muted">能源生产商</div></td>
+<td><span class="tag">listed</span></td>
+<td>能源供给与运输风险</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="2.8376">2.84</td>
+<td class="n" data-v="0.9376">0.94</td>
+<td class="n" data-v="2.8842">2.88%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">57.31</td>
+<td class="n small">55.58–57.70</td>
+<td class="n small">51.15</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">2</td>
+<td><strong>COPX</strong><div class="small muted">铜矿股</div></td>
+<td><span class="tag">listed</span></td>
+<td>金属与战略补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="2.1646">2.16</td>
+<td class="n" data-v="0.7083">0.71</td>
+<td class="n" data-v="12.0083">12.01%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">86.72</td>
+<td class="n small">71.73–81.27</td>
+<td class="n small">64.92</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">3</td>
+<td><strong>CPER</strong><div class="small muted">铜价格</div></td>
+<td><span class="tag">listed</span></td>
+<td>金属与战略补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="2.3445">2.34</td>
+<td class="n" data-v="0.7011">0.70</td>
+<td class="n" data-v="6.7786">6.78%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">40.85</td>
+<td class="n small">39.34–41.19</td>
+<td class="n small">35.47</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">4</td>
+<td><strong>SMH</strong><div class="small muted">全球半导体股</div></td>
+<td><span class="tag">listed</span></td>
+<td>AI资本开支与融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="2.079">2.08</td>
+<td class="n" data-v="0.6732">0.67</td>
+<td class="n" data-v="10.966">10.97%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">569.70</td>
+<td class="n small">469.48–533.26</td>
+<td class="n small">423.93</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">5</td>
+<td><strong>EWJ</strong><div class="small muted">日本股票</div></td>
+<td><span class="tag">listed</span></td>
+<td>日本政策与汇率重置</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="2.0634">2.06</td>
+<td class="n" data-v="0.6339">0.63</td>
+<td class="n" data-v="1.5772">1.58%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">95.16</td>
+<td class="n small">92.27–95.80</td>
+<td class="n small">84.89</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">6</td>
+<td><strong>XOP</strong><div class="small muted">石油天然气勘探生产</div></td>
+<td><span class="tag">listed</span></td>
+<td>能源供给与运输风险</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="1.9379">1.94</td>
+<td class="n" data-v="0.6122">0.61</td>
+<td class="n" data-v="6.6192">6.62%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">165.19</td>
+<td class="n small">149.56–159.51</td>
+<td class="n small">142.46</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">7</td>
+<td><strong>EWT</strong><div class="small muted">台湾股票</div></td>
+<td><span class="tag">listed</span></td>
+<td>AI资本开支与融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="1.9172">1.92</td>
+<td class="n" data-v="0.6056">0.61</td>
+<td class="n" data-v="8.244">8.24%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">101.70</td>
+<td class="n small">86.97–96.34</td>
+<td class="n small">80.27</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">8</td>
+<td><strong>DXJ</strong><div class="small muted">日本出口股（对冲汇率）</div></td>
+<td><span class="tag">listed</span></td>
+<td>日本政策与汇率重置</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="1.9217">1.92</td>
+<td class="n" data-v="0.5946">0.59</td>
+<td class="n" data-v="1.3775">1.38%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">176.26</td>
+<td class="n small">165.44–172.33</td>
+<td class="n small">160.53</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">9</td>
+<td><strong>DBC</strong><div class="small muted">广义商品篮子</div></td>
+<td><span class="tag">listed</span></td>
+<td>能源供给与运输风险</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="1.8499">1.85</td>
+<td class="n" data-v="0.5922">0.59</td>
+<td class="n" data-v="1.5545">1.55%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">28.48</td>
+<td class="n small">—</td>
+<td class="n small">25.53</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">10</td>
+<td><strong>AMLP</strong><div class="small muted">能源中游基础设施</div></td>
+<td><span class="tag">listed</span></td>
+<td>能源供给与运输风险</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q1</span></td>
+<td class="n" data-v="2.2936">2.29</td>
+<td class="n" data-v="0.5892">0.59</td>
+<td class="n" data-v="4.1766">4.18%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">54.36</td>
+<td class="n small">53.25–54.61</td>
+<td class="n small">50.40</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">11</td>
+<td><strong>IGV</strong><div class="small muted">软件股</div></td>
+<td><span class="tag">listed</span></td>
+<td>AI商业化与软件现金流</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.8073">1.81</td>
+<td class="n" data-v="0.5465">0.55</td>
+<td class="n" data-v="5.9331">5.93%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">101.31</td>
+<td class="n small">90.17–97.26</td>
+<td class="n small">85.11</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">12</td>
+<td><strong>EWY</strong><div class="small muted">韩国股票</div></td>
+<td><span class="tag">listed</span></td>
+<td>AI资本开支与融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.6007">1.60</td>
+<td class="n" data-v="0.5308">0.53</td>
+<td class="n" data-v="10.8057">10.81%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">169.14</td>
+<td class="n small">124.68–152.97</td>
+<td class="n small">104.47</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">13</td>
+<td><strong>PDBC</strong><div class="small muted">广义商品篮子</div></td>
+<td><span class="tag">listed</span></td>
+<td>通胀路径与再加速风险</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.6767">1.68</td>
+<td class="n" data-v="0.5244">0.52</td>
+<td class="n" data-v="1.2904">1.29%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">16.98</td>
+<td class="n small">—</td>
+<td class="n small">15.23</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">14</td>
+<td><strong>PAVE</strong><div class="small muted">电网与工程基础设施</div></td>
+<td><span class="tag">listed</span></td>
+<td>供电瓶颈与电网扩张</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.8616">1.86</td>
+<td class="n" data-v="0.5221">0.52</td>
+<td class="n" data-v="4.4968">4.50%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">58.65</td>
+<td class="n small">56.91–59.04</td>
+<td class="n small">52.47</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">15</td>
+<td><strong>CIBR</strong><div class="small muted">网络安全股</div></td>
+<td><span class="tag">listed</span></td>
+<td>AI商业化与软件现金流</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.7668">1.77</td>
+<td class="n" data-v="0.5215">0.52</td>
+<td class="n" data-v="5.3176">5.32%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">97.57</td>
+<td class="n small">87.46–93.90</td>
+<td class="n small">82.87</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">16</td>
+<td><strong>KRE</strong><div class="small muted">区域银行</div></td>
+<td><span class="tag">listed</span></td>
+<td>期限溢价与财政供给</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.6651">1.67</td>
+<td class="n" data-v="0.5116">0.51</td>
+<td class="n" data-v="1.1364">1.14%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">77.34</td>
+<td class="n small">72.43–75.56</td>
+<td class="n small">70.20</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">17</td>
+<td><strong>OIH</strong><div class="small muted">油服设备</div></td>
+<td><span class="tag">listed</span></td>
+<td>能源供给与运输风险</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.5764">1.58</td>
+<td class="n" data-v="0.4916">0.49</td>
+<td class="n" data-v="5.1421">5.14%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">385.06</td>
+<td class="n small">346.90–371.18</td>
+<td class="n small">329.56</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">18</td>
+<td><strong>KBE</strong><div class="small muted">美国银行股</div></td>
+<td><span class="tag">listed</span></td>
+<td>期限溢价与财政供给</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.574">1.57</td>
+<td class="n" data-v="0.4715">0.47</td>
+<td class="n" data-v="0.9726">0.97%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">71.00</td>
+<td class="n small">66.80–69.47</td>
+<td class="n small">64.89</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">19</td>
+<td><strong>ITA</strong><div class="small muted">国防军工</div></td>
+<td><span class="tag">listed</span></td>
+<td>地缘冲突与国防补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.5807">1.58</td>
+<td class="n" data-v="0.4617">0.46</td>
+<td class="n" data-v="4.2268">4.23%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">252.28</td>
+<td class="n small">231.78–244.83</td>
+<td class="n small">222.47</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">20</td>
+<td><strong>SKYY</strong><div class="small muted">云计算股</div></td>
+<td><span class="tag">listed</span></td>
+<td>AI商业化与软件现金流</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q2</span></td>
+<td class="n" data-v="1.3889">1.39</td>
+<td class="n" data-v="0.4057">0.41</td>
+<td class="n" data-v="3.8112">3.81%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">153.48</td>
+<td class="n small">136.67–147.37</td>
+<td class="n small">129.03</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">21</td>
+<td><strong>GLD</strong><div class="small muted">黄金</div></td>
+<td><span class="tag">listed</span></td>
+<td>地缘冲突与国防补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.2951">1.30</td>
+<td class="n" data-v="0.3918">0.39</td>
+<td class="n" data-v="3.1935">3.19%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">389.64</td>
+<td class="n small">358.62–378.36</td>
+<td class="n small">344.53</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">22</td>
+<td><strong>02800</strong><div class="small muted">香港大盘股</div></td>
+<td><span class="tag">listed</span></td>
+<td>中国政策与内需信用</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.3935">1.39</td>
+<td class="n" data-v="0.387">0.39</td>
+<td class="n" data-v="2.2218">2.22%</td>
+<td class="n" data-v="1.072">1.07%</td>
+<td class="n">26.00</td>
+<td class="n small">24.44–25.43</td>
+<td class="n small">23.72</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0015">-0.15%</td>
+<td class="n down" data-v="-0.0015">-0.15%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">23</td>
+<td><strong>PPA</strong><div class="small muted">国防军工</div></td>
+<td><span class="tag">listed</span></td>
+<td>地缘冲突与国防补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.3391">1.34</td>
+<td class="n" data-v="0.3777">0.38</td>
+<td class="n" data-v="3.199">3.20%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">183.47</td>
+<td class="n small">168.99–178.20</td>
+<td class="n small">162.41</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">24</td>
+<td><strong>XLV</strong><div class="small muted">美国医疗保健</div></td>
+<td><span class="tag">listed</span></td>
+<td>盈利兑现与质量分化</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.4611">1.46</td>
+<td class="n" data-v="0.3618">0.36</td>
+<td class="n" data-v="2.9496">2.95%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">164.16</td>
+<td class="n small">154.41–160.62</td>
+<td class="n small">149.98</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">25</td>
+<td><strong>02840</strong><div class="small muted">黄金</div></td>
+<td><span class="tag">listed</span></td>
+<td>地缘冲突与国防补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.1991">1.20</td>
+<td class="n" data-v="0.3531">0.35</td>
+<td class="n" data-v="2.569">2.57%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">3,066.00</td>
+<td class="n small">2,848.19–2,986.80</td>
+<td class="n small">2,749.18</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0015">-0.15%</td>
+<td class="n down" data-v="-0.0015">-0.15%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">26</td>
+<td><strong>MOO</strong><div class="small muted">农业产业链</div></td>
+<td><span class="tag">listed</span></td>
+<td>金属与战略补库</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.4074">1.41</td>
+<td class="n" data-v="0.3311">0.33</td>
+<td class="n" data-v="2.5014">2.50%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">81.22</td>
+<td class="n small">79.78–81.54</td>
+<td class="n small">76.11</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">27</td>
+<td><strong>XLU</strong><div class="small muted">电力公用事业</div></td>
+<td><span class="tag">listed</span></td>
+<td>供电瓶颈与电网扩张</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.3651">1.37</td>
+<td class="n" data-v="0.3156">0.32</td>
+<td class="n" data-v="2.5822">2.58%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">43.66</td>
+<td class="n small">41.38–42.83</td>
+<td class="n small">40.35</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">28</td>
+<td><strong>MCHI</strong><div class="small muted">中国股票</div></td>
+<td><span class="tag">listed</span></td>
+<td>中国政策与内需信用</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.1939">1.19</td>
+<td class="n" data-v="0.3083">0.31</td>
+<td class="n" data-v="2.3867">2.39%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">56.01</td>
+<td class="n small">52.34–54.68</td>
+<td class="n small">50.67</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">29</td>
+<td><strong>QUAL</strong><div class="small muted">美股质量因子</div></td>
+<td><span class="tag">listed</span></td>
+<td>盈利兑现与质量分化</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.3287">1.33</td>
+<td class="n" data-v="0.2906">0.29</td>
+<td class="n" data-v="2.3078">2.31%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">224.83</td>
+<td class="n small">216.27–221.72</td>
+<td class="n small">212.38</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">30</td>
+<td><strong>RSP</strong><div class="small muted">美股等权/广度</div></td>
+<td><span class="tag">listed</span></td>
+<td>盈利兑现与质量分化</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span>
+    <span class="tag">Q3</span></td>
+<td class="n" data-v="1.2194">1.22</td>
+<td class="n" data-v="0.248">0.25</td>
+<td class="n" data-v="2.0632">2.06%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">219.73</td>
+<td class="n small">211.90–216.88</td>
+<td class="n small">208.35</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">31</td>
+<td><strong>FXY</strong><div class="small muted">日元</div></td>
+<td><span class="tag">listed</span></td>
+<td>日本政策与汇率重置</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.8445">0.84</td>
+<td class="n" data-v="0.2471">0.25</td>
+<td class="n" data-v="0.19">0.19%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">58.15</td>
+<td class="n small">56.79–57.65</td>
+<td class="n small">56.17</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">32</td>
+<td><strong>TIP</strong><div class="small muted">美国通胀保值债</div></td>
+<td><span class="tag">listed</span></td>
+<td>通胀路径与再加速风险</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.5919">0.59</td>
+<td class="n" data-v="0.1231">0.12</td>
+<td class="n" data-v="0.158">0.16%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">107.00</td>
+<td class="n small">105.83–106.57</td>
+<td class="n small">105.30</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">33</td>
+<td><strong>TLT</strong><div class="small muted">美国长久期国债</div></td>
+<td><span class="tag">listed</span></td>
+<td>央行政策路径与流动性</td>
+<td>6个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.451">0.45</td>
+<td class="n" data-v="0.1114">0.11</td>
+<td class="n" data-v="0.421">0.42%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">83.00</td>
+<td class="n small">80.53–82.10</td>
+<td class="n small">79.41</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">34</td>
+<td><strong>USMV</strong><div class="small muted">美股低波动</div></td>
+<td><span class="tag">listed</span></td>
+<td>盈利兑现与质量分化</td>
+<td>6个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.5778">0.58</td>
+<td class="n" data-v="0.0791">0.08</td>
+<td class="n" data-v="1.146">1.15%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">99.69</td>
+<td class="n small">96.70–98.60</td>
+<td class="n small">95.34</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">35</td>
+<td><strong>IEF</strong><div class="small muted">美国中久期国债</div></td>
+<td><span class="tag">listed</span></td>
+<td>央行政策路径与流动性</td>
+<td>6个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.3167">0.32</td>
+<td class="n" data-v="0.0357">0.04</td>
+<td class="n" data-v="0.7468">0.75%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">93.31</td>
+<td class="n small">91.83–92.77</td>
+<td class="n small">91.16</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">36</td>
+<td><strong>MBB</strong><div class="small muted">美国机构按揭证券</div></td>
+<td><span class="tag">listed</span></td>
+<td>央行政策路径与流动性</td>
+<td>6个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.3048">0.30</td>
+<td class="n" data-v="0.0212">0.02</td>
+<td class="n" data-v="0.814">0.81%</td>
+<td class="n" data-v="1.6898">1.69%</td>
+<td class="n">93.34</td>
+<td class="n small">91.88–92.81</td>
+<td class="n small">91.21</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">37</td>
+<td><strong>STIP</strong><div class="small muted">美国短久期通胀保值债</div></td>
+<td><span class="tag">listed</span></td>
+<td>通胀路径与再加速风险</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.0991">0.10</td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="0.0701">0.07%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">100.58</td>
+<td class="n small">100.36–100.63</td>
+<td class="n small">99.81</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">38</td>
+<td><strong>USFR</strong><div class="small muted">美元浮息国债</div></td>
+<td><span class="tag">listed</span></td>
+<td>央行政策路径与流动性</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="-0.041">-0.04%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">50.40</td>
+<td class="n small">50.38–50.40</td>
+<td class="n small">50.34</td>
+<td><span class="tag">ok</span></td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="n down" data-v="-0.0008">-0.08%</td>
+<td class="small muted">not_filled(counterfactual)</td>
+</tr><tr>
+<td class="n">39</td>
+<td><strong>HK0000584752</strong><div class="small muted">cash</div></td>
+<td><span class="tag">fund</span></td>
+<td>央行政策路径与流动性</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="0.032">0.03%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">11.93</td>
+<td class="n small">11.93–11.93</td>
+<td class="n small">11.92</td>
+<td><span class="tag">na</span></td>
+<td class="n flat" data-v="-999999">—</td>
+<td class="n flat" data-v="-999999">—</td>
+<td class="small muted"></td>
+</tr><tr>
+<td class="n">40</td>
+<td><strong>HK0000921608_USGF</strong><div class="small muted">cash</div></td>
+<td><span class="tag">fund</span></td>
+<td>央行政策路径与流动性</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span>
+    <span class="tag">Q4</span></td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="0.0">0.00</td>
+<td class="n" data-v="0.032">0.03%</td>
+<td class="n" data-v="0.2816">0.28%</td>
+<td class="n">1.13</td>
+<td class="n small">1.13–1.13</td>
+<td class="n small">1.13</td>
+<td><span class="tag">na</span></td>
+<td class="n flat" data-v="-999999">—</td>
+<td class="n flat" data-v="-999999">—</td>
+<td class="small muted"></td>
+</tr></tbody></table></div>
+  </section>
+
+  <section id="positions">
+    <div class="sec-head"><h2>持仓明细</h2><p>两个组合的全部仓位与盈亏</p></div>
+    
+<div class="sec-head" style="margin-top:18px">
+  <h2 style="font-size:15px">守纪律组合</h2>
+  <p>15 个仓位</p></div>
+<div class="tw"><table data-sortable>
+<thead><tr><th>工具</th><th>代码</th><th>主题</th><th>期限</th><th>评级</th>
+<th class="n">建仓日</th><th class="n">成本价</th><th class="n">现价</th>
+<th class="n">投入</th><th class="n">盈亏</th><th class="n">止损</th><th class="n">止盈</th>
+<th class="n">到期</th><th>状态</th></tr></thead>
+<tbody><tr>
+<td><strong>DBMF</strong></td>
+<td><span class="tag">US.DBMF</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">31.28</td>
+<td class="n">30.94</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n down" data-v="-0.01094890592228424">-1.09%</td>
+<td class="n small">—</td>
+<td class="n small">—</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>DLR</strong></td>
+<td><span class="tag">US.DLR</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">195.80</td>
+<td class="n">192.56</td>
+<td class="n" data-v="56261.25">$56,261</td>
+<td class="n down" data-v="-0.01673989016632807">-1.67%</td>
+<td class="n small">—</td>
+<td class="n small">—</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>DXJ</strong></td>
+<td><span class="tag">US.DXJ</span></td>
+<td>日本政策重置</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">177.58</td>
+<td class="n">177.63</td>
+<td class="n" data-v="30006.0">$30,006</td>
+<td class="n up" data-v="0.00010684527383850005">+0.01%</td>
+<td class="n small">164.00</td>
+<td class="n small">188.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>KRE</strong></td>
+<td><span class="tag">US.KRE</span></td>
+<td>久期与信用</td>
+<td>1个月</td>
+<td><span class="pill g-S">S</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">76.02</td>
+<td class="n">76.49</td>
+<td class="n" data-v="187537.5">$187,538</td>
+<td class="n up" data-v="0.006044910215170212">+0.60%</td>
+<td class="n small">69.50</td>
+<td class="n small">82.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>MCHI</strong></td>
+<td><span class="tag">US.MCHI</span></td>
+<td>中国资产重估</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">53.98</td>
+<td class="n">55.91</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n up" data-v="0.03543903477508796">+3.54%</td>
+<td class="n small">48.00</td>
+<td class="n small">60.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>PDBC</strong></td>
+<td><span class="tag">US.PDBC</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">17.40</td>
+<td class="n">17.23</td>
+<td class="n" data-v="56261.25">$56,261</td>
+<td class="n down" data-v="-0.010166088100644814">-1.02%</td>
+<td class="n small">15.75</td>
+<td class="n small">19.50</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>STIP</strong></td>
+<td><span class="tag">US.STIP</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">100.47</td>
+<td class="n">100.55</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n up" data-v="0.0005753224118194736">+0.06%</td>
+<td class="n small">99.80</td>
+<td class="n small">103.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>URA</strong></td>
+<td><span class="tag">US.URA</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">40.01</td>
+<td class="n">43.20</td>
+<td class="n" data-v="56261.25">$56,261</td>
+<td class="n up" data-v="0.07956812956544887">+7.96%</td>
+<td class="n small">34.00</td>
+<td class="n small">47.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XLE</strong></td>
+<td><span class="tag">US.XLE</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">58.42</td>
+<td class="n">58.16</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n down" data-v="-0.0046782575357072155">-0.47%</td>
+<td class="n small">54.80</td>
+<td class="n small">64.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XOP</strong></td>
+<td><span class="tag">US.XOP</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">169.03</td>
+<td class="n">167.05</td>
+<td class="n" data-v="56261.24999999999">$56,261</td>
+<td class="n down" data-v="-0.01193372757008418">-1.19%</td>
+<td class="n small">157.00</td>
+<td class="n small">190.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>EWJ</strong></td>
+<td><span class="tag">US.EWJ</span></td>
+<td>日本政策重置</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-28</td>
+<td class="n">89.38</td>
+<td class="n">95.15</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n up" data-v="0.06436830142072475">+6.44%</td>
+<td class="n small">82.00</td>
+<td class="n small">99.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XLU</strong></td>
+<td><span class="tag">US.XLU</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-28</td>
+<td class="n">45.51</td>
+<td class="n">43.38</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n down" data-v="-0.04697465485247924">-4.70%</td>
+<td class="n small">41.80</td>
+<td class="n small">50.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>COPX</strong></td>
+<td><span class="tag">US.COPX</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-29</td>
+<td class="n">75.02</td>
+<td class="n">86.09</td>
+<td class="n" data-v="75015.0">$75,015</td>
+<td class="n up" data-v="0.1474076577072775">+14.74%</td>
+<td class="n small">65.00</td>
+<td class="n small">88.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>PAVE</strong></td>
+<td><span class="tag">US.PAVE</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-29</td>
+<td class="n">56.01</td>
+<td class="n">58.35</td>
+<td class="n" data-v="112522.5">$112,522</td>
+<td class="n up" data-v="0.041547625002379684">+4.15%</td>
+<td class="n small">50.50</td>
+<td class="n small">64.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>USMV</strong></td>
+<td><span class="tag">US.USMV</span></td>
+<td>盈利兑现</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-30</td>
+<td class="n">97.02</td>
+<td class="n">100.00</td>
+<td class="n" data-v="225045.0">$225,045</td>
+<td class="n up" data-v="0.030515587595884467">+3.05%</td>
+<td class="n small">—</td>
+<td class="n small">—</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr></tbody></table></div>
+<div class="sec-head" style="margin-top:18px">
+  <h2 style="font-size:15px">无脑全买组合</h2>
+  <p>23 个仓位</p></div>
+<div class="tw"><table data-sortable>
+<thead><tr><th>工具</th><th>代码</th><th>主题</th><th>期限</th><th>评级</th>
+<th class="n">建仓日</th><th class="n">成本价</th><th class="n">现价</th>
+<th class="n">投入</th><th class="n">盈亏</th><th class="n">止损</th><th class="n">止盈</th>
+<th class="n">到期</th><th>状态</th></tr></thead>
+<tbody><tr>
+<td><strong>03199</strong></td>
+<td><span class="tag">HK.03199</span></td>
+<td>中国资产重估</td>
+<td>6个月</td>
+<td><span class="pill g-C">C</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">120.55</td>
+<td class="n">120.80</td>
+<td class="n" data-v="434945.65347874997">$434,946</td>
+<td class="n up" data-v="0.0017381820500472918">+0.17%</td>
+<td class="n small">1.08</td>
+<td class="n small">1.46</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>AMLP</strong></td>
+<td><span class="tag">US.AMLP</span></td>
+<td>能源与政策</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">54.24</td>
+<td class="n">55.03</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.014346203242476143">+1.43%</td>
+<td class="n small">49.80</td>
+<td class="n small">59.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>BKLN</strong></td>
+<td><span class="tag">US.BKLN</span></td>
+<td>久期与信用</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">20.39</td>
+<td class="n">20.50</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.004992764067884393">+0.50%</td>
+<td class="n small">19.95</td>
+<td class="n small">—</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>CIBR</strong></td>
+<td><span class="tag">US.CIBR</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">89.12</td>
+<td class="n">96.39</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.08138558432902691">+8.14%</td>
+<td class="n small">75.00</td>
+<td class="n small">98.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>COPX</strong></td>
+<td><span class="tag">US.COPX</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">77.92</td>
+<td class="n">86.09</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.10469286685553006">+10.47%</td>
+<td class="n small">65.00</td>
+<td class="n small">88.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>DBMF</strong></td>
+<td><span class="tag">US.DBMF</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">31.28</td>
+<td class="n">30.94</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n down" data-v="-0.010948905922284348">-1.09%</td>
+<td class="n small">—</td>
+<td class="n small">—</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>DLR</strong></td>
+<td><span class="tag">US.DLR</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">195.80</td>
+<td class="n">192.56</td>
+<td class="n" data-v="434869.56652200007">$434,870</td>
+<td class="n down" data-v="-0.016739890166328104">-1.67%</td>
+<td class="n small">—</td>
+<td class="n small">—</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>DXJ</strong></td>
+<td><span class="tag">US.DXJ</span></td>
+<td>日本政策重置</td>
+<td>1个月</td>
+<td><span class="pill g-C">C</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">177.58</td>
+<td class="n">177.63</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.00010684527383840414">+0.01%</td>
+<td class="n small">164.00</td>
+<td class="n small">188.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>EWJ</strong></td>
+<td><span class="tag">US.EWJ</span></td>
+<td>日本政策重置</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">91.53</td>
+<td class="n">95.15</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.03936128745444179">+3.94%</td>
+<td class="n small">82.00</td>
+<td class="n small">99.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>KRE</strong></td>
+<td><span class="tag">US.KRE</span></td>
+<td>久期与信用</td>
+<td>1个月</td>
+<td><span class="pill g-S">S</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">75.54</td>
+<td class="n">76.49</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.012439263458063171">+1.24%</td>
+<td class="n small">69.50</td>
+<td class="n small">82.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>KWEB</strong></td>
+<td><span class="tag">US.KWEB</span></td>
+<td>中国资产重估</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">27.01</td>
+<td class="n">28.38</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.05069079276637292">+5.07%</td>
+<td class="n small">22.50</td>
+<td class="n small">31.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>MCHI</strong></td>
+<td><span class="tag">US.MCHI</span></td>
+<td>中国资产重估</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">54.27</td>
+<td class="n">55.91</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.029904989067664662">+2.99%</td>
+<td class="n small">48.00</td>
+<td class="n small">60.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>PAVE</strong></td>
+<td><span class="tag">US.PAVE</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">57.49</td>
+<td class="n">58.35</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.014729766877753382">+1.47%</td>
+<td class="n small">50.50</td>
+<td class="n small">64.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>PDBC</strong></td>
+<td><span class="tag">US.PDBC</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">17.34</td>
+<td class="n">17.23</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n down" data-v="-0.006741057263622851">-0.67%</td>
+<td class="n small">15.75</td>
+<td class="n small">19.50</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>QUAL</strong></td>
+<td><span class="tag">US.QUAL</span></td>
+<td>盈利兑现</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">217.30</td>
+<td class="n">224.97</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.03507336366198458">+3.51%</td>
+<td class="n small">199.00</td>
+<td class="n small">232.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>RSP</strong></td>
+<td><span class="tag">US.RSP</span></td>
+<td>盈利兑现</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">215.22</td>
+<td class="n">218.58</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.0153945265480397">+1.54%</td>
+<td class="n small">199.00</td>
+<td class="n small">230.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>STIP</strong></td>
+<td><span class="tag">US.STIP</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">100.39</td>
+<td class="n">100.55</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.0013669951032811432">+0.14%</td>
+<td class="n small">99.80</td>
+<td class="n small">103.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>URA</strong></td>
+<td><span class="tag">US.URA</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">40.33</td>
+<td class="n">43.20</td>
+<td class="n" data-v="434869.56652199995">$434,870</td>
+<td class="n up" data-v="0.07100012853715151">+7.10%</td>
+<td class="n small">34.00</td>
+<td class="n small">47.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>USMV</strong></td>
+<td><span class="tag">US.USMV</span></td>
+<td>盈利兑现</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">97.57</td>
+<td class="n">100.00</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.02470540232496969">+2.47%</td>
+<td class="n small">—</td>
+<td class="n small">—</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XLE</strong></td>
+<td><span class="tag">US.XLE</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">58.37</td>
+<td class="n">58.16</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n down" data-v="-0.0038255144390106034">-0.38%</td>
+<td class="n small">54.80</td>
+<td class="n small">64.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XLU</strong></td>
+<td><span class="tag">US.XLU</span></td>
+<td>AI融资</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">45.69</td>
+<td class="n">43.38</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n down" data-v="-0.050730008664356584">-5.07%</td>
+<td class="n small">41.80</td>
+<td class="n small">50.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XLV</strong></td>
+<td><span class="tag">US.XLV</span></td>
+<td>盈利兑现</td>
+<td>6个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">163.43</td>
+<td class="n">164.45</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n up" data-v="0.0060234989518904505">+0.60%</td>
+<td class="n small">151.00</td>
+<td class="n small">174.00</td>
+<td class="n small">2027-01-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr><tr>
+<td><strong>XOP</strong></td>
+<td><span class="tag">US.XOP</span></td>
+<td>能源与政策</td>
+<td>1个月</td>
+<td><span class="pill g-B">B</span></td>
+<td class="n">2026-07-27</td>
+<td class="n">169.11</td>
+<td class="n">167.05</td>
+<td class="n" data-v="434869.566522">$434,870</td>
+<td class="n down" data-v="-0.01240122994644117">-1.24%</td>
+<td class="n small">157.00</td>
+<td class="n small">190.00</td>
+<td class="n small">2026-08-27</td>
+<td><span class="pill lv-info">在场</span></td>
+</tr></tbody></table></div>
+  </section>
+
+  <section id="themes">
+    <div class="sec-head"><h2>宏观主题打分</h2>
+      <p>当日 D / A / B / N 与独立的 M（验证）、C（拥挤）</p></div>
+    
+<div class="note" style="margin-bottom:12px">
+  打分日 <strong>2026-08-07</strong>。<code>TIS = 0.15·D + 0.25·A + 0.25·B + 0.35·N</code>
+  沿用 v0.3 权重以便对比；M（市场验证）与 C（拥挤度）是独立维度，不进 TIS。
+  柱状图依次为 D / A / B / N。
+</div>
+<div class="tw"><table data-sortable>
+<thead><tr><th>宏观主题 · 预注册关键结果</th><th class="n">TIS</th><th data-nosort>因子</th>
+<th class="n">D</th><th class="n">A</th><th class="n">B</th><th class="n">N</th>
+<th class="n">M</th><th class="n">C</th><th class="n">条目</th><th class="n">来源</th>
+<th>分级</th></tr></thead>
+<tbody><tr>
+<td><strong>盈利兑现与质量分化</strong>
+    <div class="small muted trunc">未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证</div></td>
+<td class="n" data-v="62.1"><strong>62.1</strong>
+    <div class="meter"><i style="width:62%"></i></div></td>
+<td><div class="factors"><i style="height:26px" title="D=100.0"></i><i style="height:16px" title="A=62.2"></i><i style="height:8px" title="B=31.2"></i><i style="height:18px" title="N=68.0"></i></div></td>
+<td class="n" data-v="100.0">100</td>
+<td class="n" data-v="62.2">62</td>
+<td class="n" data-v="31.2">31</td>
+<td class="n" data-v="68.0">68</td>
+<td class="n" data-v="60.5">60<div class="small muted">已有确认</div></td>
+<td class="n" data-v="80.2">80<div class="small muted">高度拥挤</div></td>
+<td class="n">236</td><td class="n">226</td>
+<td><span class="pill g-A">important</span>
+    </td>
+</tr><tr>
+<td><strong>能源供给与运输风险</strong>
+    <div class="small muted trunc">未来1–6个月，原油与天然气供给中断能否维持实现价格与现金流</div></td>
+<td class="n" data-v="60.5"><strong>60.5</strong>
+    <div class="meter"><i style="width:60%"></i></div></td>
+<td><div class="factors"><i style="height:14px" title="D=53.0"></i><i style="height:12px" title="A=48.0"></i><i style="height:9px" title="B=33.5"></i><i style="height:24px" title="N=92.0"></i></div></td>
+<td class="n" data-v="53.0">53</td>
+<td class="n" data-v="48.0">48</td>
+<td class="n" data-v="33.5">34</td>
+<td class="n" data-v="92.0">92</td>
+<td class="n" data-v="77.7">78<div class="small muted">已有确认</div></td>
+<td class="n" data-v="48.0">48<div class="small muted">中性</div></td>
+<td class="n">20</td><td class="n">17</td>
+<td><span class="pill g-A">important</span>
+    </td>
+</tr><tr>
+<td><strong>金属与战略补库</strong>
+    <div class="small muted trunc">未来1–6个月，铜与工业金属的供给约束能否推动战略补库</div></td>
+<td class="n" data-v="59.1"><strong>59.1</strong>
+    <div class="meter"><i style="width:59%"></i></div></td>
+<td><div class="factors"><i style="height:9px" title="D=32.9"></i><i style="height:16px" title="A=60.1"></i><i style="height:15px" title="B=57.3"></i><i style="height:18px" title="N=71.0"></i></div></td>
+<td class="n" data-v="32.9">33</td>
+<td class="n" data-v="60.1">60</td>
+<td class="n" data-v="57.3">57</td>
+<td class="n" data-v="71.0">71</td>
+<td class="n" data-v="63.6">64<div class="small muted">已有确认</div></td>
+<td class="n" data-v="32.3">32<div class="small muted">不拥挤</div></td>
+<td class="n">8</td><td class="n">8</td>
+<td><span class="pill g-B">watch</span>
+    </td>
+</tr><tr>
+<td><strong>央行政策路径与流动性</strong>
+    <div class="small muted trunc">未来1–6个月，主要央行能否在不加息的前提下维持或放松政策</div></td>
+<td class="n" data-v="58.1"><strong>58.1</strong>
+    <div class="meter"><i style="width:58%"></i></div></td>
+<td><div class="factors"><i style="height:14px" title="D=53.0"></i><i style="height:10px" title="A=39.1"></i><i style="height:19px" title="B=71.8"></i><i style="height:17px" title="N=64.0"></i></div></td>
+<td class="n" data-v="53.0">53</td>
+<td class="n" data-v="39.1">39</td>
+<td class="n" data-v="71.8">72</td>
+<td class="n" data-v="64.0">64</td>
+<td class="n" data-v="34.9">35<div class="small muted">早期验证</div></td>
+<td class="n" data-v="52.8">53<div class="small muted">中性</div></td>
+<td class="n">20</td><td class="n">12</td>
+<td><span class="pill g-B">watch</span>
+    </td>
+</tr><tr>
+<td><strong>地缘冲突与国防补库</strong>
+    <div class="small muted trunc">未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出</div></td>
+<td class="n" data-v="57.5"><strong>57.5</strong>
+    <div class="meter"><i style="width:58%"></i></div></td>
+<td><div class="factors"><i style="height:12px" title="D=47.1"></i><i style="height:10px" title="A=37.5"></i><i style="height:15px" title="B=57.8"></i><i style="height:20px" title="N=76.0"></i></div></td>
+<td class="n" data-v="47.1">47</td>
+<td class="n" data-v="37.5">38</td>
+<td class="n" data-v="57.8">58</td>
+<td class="n" data-v="76.0">76</td>
+<td class="n" data-v="56.5">56<div class="small muted">早期验证</div></td>
+<td class="n" data-v="71.0">71<div class="small muted">偏拥挤</div></td>
+<td class="n">18</td><td class="n">17</td>
+<td><span class="pill g-B">watch</span>
+    </td>
+</tr><tr>
+<td><strong>通胀路径与再加速风险</strong>
+    <div class="small muted trunc">未来1–6个月，核心通胀能否维持在央行目标附近而不再加速</div></td>
+<td class="n" data-v="54.1"><strong>54.1</strong>
+    <div class="meter"><i style="width:54%"></i></div></td>
+<td><div class="factors"><i style="height:14px" title="D=54.0"></i><i style="height:12px" title="A=46.2"></i><i style="height:16px" title="B=60.2"></i><i style="height:14px" title="N=55.5"></i></div></td>
+<td class="n" data-v="54.0">54</td>
+<td class="n" data-v="46.2">46</td>
+<td class="n" data-v="60.2">60</td>
+<td class="n" data-v="55.5">56</td>
+<td class="n" data-v="31.6">32<div class="small muted">早期验证</div></td>
+<td class="n" data-v="55.1">55<div class="small muted">中性</div></td>
+<td class="n">21</td><td class="n">16</td>
+<td><span class="pill g-B">watch</span>
+    </td>
+</tr><tr>
+<td><strong>AI商业化与软件现金流</strong>
+    <div class="small muted trunc">未来1–6个月，AI相关软件与安全支出能否转化为自由现金流</div></td>
+<td class="n" data-v="45.0"><strong>45.0</strong>
+    <div class="meter"><i style="width:45%"></i></div></td>
+<td><div class="factors"><i style="height:12px" title="D=45.6"></i><i style="height:11px" title="A=42.7"></i><i style="height:2px" title="B=3.5"></i><i style="height:20px" title="N=76.0"></i></div></td>
+<td class="n" data-v="45.6">46</td>
+<td class="n" data-v="42.7">43</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="76.0">76</td>
+<td class="n" data-v="22.9">23<div class="small muted">尚未定价</div></td>
+<td class="n" data-v="51.8">52<div class="small muted">中性</div></td>
+<td class="n">16</td><td class="n">15</td>
+<td><span class="pill g-B">watch</span>
+    </td>
+</tr><tr>
+<td><strong>日本政策与汇率重置</strong>
+    <div class="small muted trunc">未来1–6个月，日元与日本利率能否在不触发干预的路径上重定价</div></td>
+<td class="n" data-v="44.1"><strong>44.1</strong>
+    <div class="meter"><i style="width:44%"></i></div></td>
+<td><div class="factors"><i style="height:15px" title="D=56.7"></i><i style="height:11px" title="A=43.1"></i><i style="height:11px" title="B=42.5"></i><i style="height:11px" title="N=40.5"></i></div></td>
+<td class="n" data-v="56.7">57</td>
+<td class="n" data-v="43.1">43</td>
+<td class="n" data-v="42.5">42</td>
+<td class="n" data-v="40.5">40</td>
+<td class="n" data-v="49.3">49<div class="small muted">早期验证</div></td>
+<td class="n" data-v="47.5">48<div class="small muted">中性</div></td>
+<td class="n">21</td><td class="n">16</td>
+<td><span class="pill g-C">background</span>
+    </td>
+</tr><tr>
+<td><strong>AI资本开支与融资</strong>
+    <div class="small muted trunc">未来1–6个月，AI订单与现金流能否覆盖资本开支与融资成本</div></td>
+<td class="n" data-v="39.0"><strong>39.0</strong>
+    <div class="meter"><i style="width:39%"></i></div></td>
+<td><div class="factors"><i style="height:13px" title="D=50.9"></i><i style="height:7px" title="A=26.8"></i><i style="height:2px" title="B=3.5"></i><i style="height:18px" title="N=68.0"></i></div></td>
+<td class="n" data-v="50.9">51</td>
+<td class="n" data-v="26.8">27</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="68.0">68</td>
+<td class="n" data-v="43.0">43<div class="small muted">早期验证</div></td>
+<td class="n" data-v="12.7">13<div class="small muted">不拥挤</div></td>
+<td class="n">18</td><td class="n">16</td>
+<td><span class="pill g-C">background</span>
+    </td>
+</tr><tr>
+<td><strong>供电瓶颈与电网扩张</strong>
+    <div class="small muted trunc">未来1–6个月，电力与电网供给约束能否转化为设备与公用事业的收入</div></td>
+<td class="n" data-v="38.7"><strong>38.7</strong>
+    <div class="meter"><i style="width:39%"></i></div></td>
+<td><div class="factors"><i style="height:5px" title="D=20.2"></i><i style="height:18px" title="A=67.6"></i><i style="height:2px" title="B=3.5"></i><i style="height:13px" title="N=51.0"></i></div></td>
+<td class="n" data-v="20.2">20</td>
+<td class="n" data-v="67.6">68</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="51.0">51</td>
+<td class="n" data-v="19.6">20<div class="small muted">尚未定价</div></td>
+<td class="n" data-v="43.8">44<div class="small muted">中性</div></td>
+<td class="n">3</td><td class="n">3</td>
+<td><span class="pill g-C">background</span>
+    </td>
+</tr><tr>
+<td><strong>期限溢价与财政供给</strong>
+    <div class="small muted trunc">未来1–6个月，长端收益率能否在财政供给压力下停止上行</div></td>
+<td class="n" data-v="30.5"><strong>30.5</strong>
+    <div class="meter"><i style="width:30%"></i></div></td>
+<td><div class="factors"><i style="height:9px" title="D=32.9"></i><i style="height:4px" title="A=16.9"></i><i style="height:7px" title="B=27.9"></i><i style="height:11px" title="N=41.0"></i></div></td>
+<td class="n" data-v="32.9">33</td>
+<td class="n" data-v="16.9">17</td>
+<td class="n" data-v="27.9">28</td>
+<td class="n" data-v="41.0">41</td>
+<td class="n" data-v="80.0">80<div class="small muted">交易成熟</div></td>
+<td class="n" data-v="42.7">43<div class="small muted">中性</div></td>
+<td class="n">7</td><td class="n">5</td>
+<td><span class="pill g-C">background</span>
+    </td>
+</tr><tr>
+<td><strong>中国政策与内需信用</strong>
+    <div class="small muted trunc">未来1–6个月，中国信用扩张与政策支持能否改善内需与企业现金流</div></td>
+<td class="n" data-v="27.1"><strong>27.1</strong>
+    <div class="meter"><i style="width:27%"></i></div></td>
+<td><div class="factors"><i style="height:8px" title="D=29.5"></i><i style="height:11px" title="A=41.0"></i><i style="height:2px" title="B=3.5"></i><i style="height:9px" title="N=33.0"></i></div></td>
+<td class="n" data-v="29.5">30</td>
+<td class="n" data-v="41.0">41</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="33.0">33</td>
+<td class="n" data-v="85.7">86<div class="small muted">交易成熟</div></td>
+<td class="n" data-v="52.3">52<div class="small muted">中性</div></td>
+<td class="n">6</td><td class="n">6</td>
+<td><span class="pill g-C">background</span>
+    </td>
+</tr><tr>
+<td><strong>美元与跨境资本流动</strong>
+    <div class="small muted trunc">未来1–6个月，美元能否在利差收窄下停止升值</div></td>
+<td class="n" data-v="21.8"><strong>21.8</strong>
+    <div class="meter"><i style="width:22%"></i></div></td>
+<td><div class="factors"><i style="height:5px" title="D=20.2"></i><i style="height:2px" title="A=0.0"></i><i style="height:2px" title="B=3.5"></i><i style="height:13px" title="N=51.0"></i></div></td>
+<td class="n" data-v="20.2">20</td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="51.0">51</td>
+<td class="n" data-v="32.7">33<div class="small muted">早期验证</div></td>
+<td class="n" data-v="79.0">79<div class="small muted">偏拥挤</div></td>
+<td class="n">5</td><td class="n">5</td>
+<td><span class="pill g-C">background</span>
+    </td>
+</tr><tr>
+<td><strong>利率敏感部门与住宅周期</strong>
+    <div class="small muted trunc">未来1–6个月，按揭利率与住宅活动能否停止恶化</div></td>
+<td class="n" data-v="16.6"><strong>16.6</strong>
+    <div class="meter"><i style="width:17%"></i></div></td>
+<td><div class="factors"><i style="height:2px" title="D=0.0"></i><i style="height:2px" title="A=0.0"></i><i style="height:2px" title="B=3.5"></i><i style="height:12px" title="N=44.8"></i></div></td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="44.8">45</td>
+<td class="n" data-v="6.6">7<div class="small muted">尚未定价</div></td>
+<td class="n" data-v="63.4">63<div class="small muted">偏拥挤</div></td>
+<td class="n">2</td><td class="n">2</td>
+<td><span class="pill g-C">background</span>
+    <span class="tag">低置信</span></td>
+</tr><tr>
+<td><strong>信用供给与再融资压力</strong>
+    <div class="small muted trunc">未来1–6个月，信用利差能否在再融资高峰中不显著走阔</div></td>
+<td class="n" data-v="11.7"><strong>11.7</strong>
+    <div class="meter"><i style="width:12%"></i></div></td>
+<td><div class="factors"><i style="height:3px" title="D=12.7"></i><i style="height:2px" title="A=0.0"></i><i style="height:2px" title="B=3.5"></i><i style="height:7px" title="N=25.5"></i></div></td>
+<td class="n" data-v="12.7">13</td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="3.5">4</td>
+<td class="n" data-v="25.5">26</td>
+<td class="n" data-v="61.3">61<div class="small muted">已有确认</div></td>
+<td class="n" data-v="64.6">65<div class="small muted">偏拥挤</div></td>
+<td class="n">2</td><td class="n">2</td>
+<td><span class="pill g-C">background</span>
+    <span class="tag">低置信</span></td>
+</tr><tr>
+<td><strong>欧洲财政与电气化投资</strong>
+    <div class="small muted trunc">未来1–6个月，欧洲财政与电网投资能否从预算转为订单</div></td>
+<td class="n" data-v="5.4"><strong>5.4</strong>
+    <div class="meter"><i style="width:5%"></i></div></td>
+<td><div class="factors"><i style="height:2px" title="D=0.0"></i><i style="height:2px" title="A=0.0"></i><i style="height:2px" title="B=0.0"></i><i style="height:4px" title="N=15.5"></i></div></td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="0.0">0</td>
+<td class="n" data-v="15.5">16</td>
+<td class="n" data-v="34.6">35<div class="small muted">早期验证</div></td>
+<td class="n" data-v="79.1">79<div class="small muted">偏拥挤</div></td>
+<td class="n">0</td><td class="n">0</td>
+<td><span class="pill g-C">background</span>
+    <span class="tag">低置信</span></td>
+</tr></tbody></table></div>
+  </section>
+
+  <section id="alerts">
+    <div class="sec-head"><h2>告警</h2>
+      <p>止损临近、主题前提被价格否定、拥挤度跳升、临近到期</p></div>
+    <div class="panel" style="padding:0"><div class="alert warn"><span class="k">2026-08-07 · unmarkable</span><span>HK0000921608_USGF: no instrument mapped — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-08-07 · unmarkable</span><span>HK0000584752: no instrument mapped — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-08-07 · unmarkable</span><span>HK0000921608_USGF: no instrument mapped — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-08-07 · unmarkable</span><span>HK0000584752: no instrument mapped — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert action"><span class="k">2026-08-06 · stop_proximity</span><span>STIP 距 thesis stop 仅 0.8%（现价 100.5 / 止损 99.8）</span></div><div class="alert action"><span class="k">2026-08-06 · stop_proximity</span><span>STIP 距 thesis stop 仅 0.8%（现价 100.5 / 止损 99.8）</span></div><div class="alert warn"><span class="k">2026-08-06 · crowding_spike</span><span>XLV 60日动量已进入 1 年内第 99 百分位，持有期内变成了共识交易</span></div><div class="alert warn"><span class="k">2026-08-06 · crowding_spike</span><span>USMV 60日动量已进入 1 年内第 100 百分位，持有期内变成了共识交易</span></div><div class="alert warn"><span class="k">2026-08-06 · crowding_spike</span><span>USMV 60日动量已进入 1 年内第 100 百分位，持有期内变成了共识交易</span></div><div class="alert action"><span class="k">2026-08-05 · stop_proximity</span><span>STIP 距 thesis stop 仅 0.8%（现价 100.6 / 止损 99.8）</span></div><div class="alert action"><span class="k">2026-08-05 · stop_proximity</span><span>STIP 距 thesis stop 仅 0.8%（现价 100.6 / 止损 99.8）</span></div><div class="alert warn"><span class="k">2026-08-05 · crowding_spike</span><span>XLV 60日动量已进入 1 年内第 97 百分位，持有期内变成了共识交易</span></div><div class="alert warn"><span class="k">2026-08-05 · crowding_spike</span><span>USMV 60日动量已进入 1 年内第 100 百分位，持有期内变成了共识交易</span></div><div class="alert warn"><span class="k">2026-08-05 · crowding_spike</span><span>RSP 60日动量已进入 1 年内第 87 百分位，持有期内变成了共识交易</span></div><div class="alert warn"><span class="k">2026-08-05 · crowding_spike</span><span>USMV 60日动量已进入 1 年内第 100 百分位，持有期内变成了共识交易</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>CNYB: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>ROBECO-SMART-ENERGY: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>PIMCO-GLOBAL-IG: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>PRIVATE-CREDIT-SEC: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>METI: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>MANULIFE-SEMI: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>1615-T: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>AB-MORTGAGE: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>JPM-CHINA-A-SHARE: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>SMD-AM-JAPAN: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>AQR-ADAPTIVE-MARKET-NEUTRAL: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>TAIL-PROTECTION: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>FIDELITY-CHINA-FOCUS: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>POINT72-TURION: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>AQR-DELPHI: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>GOLDEN-CHINA: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>L03028: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>CNYB: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>ROBECO-SMART-ENERGY: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>PIMCO-GLOBAL-IG: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>PRIVATE-CREDIT-SEC: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>METI: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>MANULIFE-SEMI: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>1615-T: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div><div class="alert warn"><span class="k">2026-07-27 · unmarkable</span><span>AB-MORTGAGE: no NAV observation on the Olive shelf — 不进入组合，P&amp;L 中剔除并单独披露</span></div></div>
+  </section>
+
+  <section id="coverage">
+    <div class="sec-head"><h2>数据与运行</h2><p>每天真的拉到了什么</p></div>
+    
+<div class="grid3">
+  <div class="panel"><div class="eyebrow">语料</div>
+    <div class="big">1,986</div>
+    <div class="small muted">4 个发布日 ·
+      2026-08-04 → 2026-08-07</div>
+    <div style="margin-top:10px"><div class="vrow"><span>资讯流 <span class="tag">T3</span></span><span>758 · 2026-08-07</span></div><div class="vrow"><span>投行研报 <span class="tag">T2</span></span><span>451 · 2026-08-07</span></div><div class="vrow"><span>企业研究 <span class="tag">T1</span></span><span>431 · 2026-08-07</span></div><div class="vrow"><span>电话会纪要 <span class="tag">T1</span></span><span>276 · 2026-08-07</span></div><div class="vrow"><span>市场日报 <span class="tag">T3</span></span><span>32 · 2026-08-07</span></div><div class="vrow"><span>资管研报 <span class="tag">T2</span></span><span>16 · 2026-08-07</span></div><div class="vrow"><span>政策文献 <span class="tag">T1</span></span><span>15 · 2026-08-07</span></div><div class="vrow"><span>研究文章 <span class="tag">T3</span></span><span>7 · 2026-08-07</span></div></div></div>
+  <div class="panel"><div class="eyebrow">行情</div>
+    <div class="big">90</div>
+    <div class="small muted">标的 · 24,894 根日线 ·
+      至 2026-08-06</div>
+    <div style="margin-top:10px">
+      <div class="vrow"><span>Olive NAV</span>
+        <span>17 只 / 17 点</span></div>
+      <div class="vrow"><span>打分日</span><span>2</span></div>
+      <div class="vrow"><span>额度受限</span>
+        <span>5 个标的</span></div>
+    </div></div>
+  <div class="panel"><div class="eyebrow">最近运行</div><div class="vrow"><span>R20260807T072303 · 2026-08-07</span><span class="up">ok</span></div><div class="vrow"><span>R20260807T012244 · 2026-08-07</span><span class="up">ok</span></div><div class="vrow"><span>R20260807T005425 · 2026-08-07</span><span class="up">ok</span></div></div>
+</div>
+  </section>
+
+  <footer>
+    <p>模拟盘，非投资建议。所有成交均为规则化模拟：进场按限价区间与突破次日开盘、
+    离场按收盘止损 / 盘中止盈 / 到期平仓，双边计入佣金与滑点，闲置现金按 Olive
+    货币基金货架中位 7 日年化计息。Olive 基金仅在当日有 NAV 时进入组合，
+    否则记为「已映射但不可盯市」并从 P&amp;L 中剔除。</p>
+    <p>行情 Futu OpenD（US / HK，前复权日线）· 语料 Wisburg（8 条线，Tier 1–3）·
+    产品货架 Olive / Nexus HK。</p>
+  </footer>
+</div><script>
+document.querySelectorAll('table[data-sortable]').forEach(function(t){
+  t.querySelectorAll('thead th:not([data-nosort])').forEach(function(th,i){
+    th.tabIndex=0;
+    function go(){
+      var dir = th.dataset.sort==='asc' ? 'desc':'asc';
+      t.querySelectorAll('thead th').forEach(function(o){delete o.dataset.sort;});
+      th.dataset.sort=dir;
+      var tb=t.tBodies[0], rows=Array.prototype.slice.call(tb.rows);
+      rows.sort(function(a,b){
+        var x=a.cells[i], y=b.cells[i];
+        var xv=x.dataset.v!==undefined?x.dataset.v:x.textContent.trim();
+        var yv=y.dataset.v!==undefined?y.dataset.v:y.textContent.trim();
+        var xn=parseFloat(xv), yn=parseFloat(yv);
+        var both=!isNaN(xn)&&!isNaN(yn);
+        var c = both ? xn-yn : String(xv).localeCompare(String(yv),'zh');
+        return dir==='asc'? c : -c;
+      });
+      rows.forEach(function(r){tb.appendChild(r);});
+    }
+    th.addEventListener('click',go);
+    th.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
+  });
+});
+var links=Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});
+function mark(){
+  var y=window.scrollY+120, best=0;
+  secs.forEach(function(s,i){ if(s&&s.offsetTop<=y) best=i; });
+  links.forEach(function(a,i){ a.classList.toggle('on', i===best); });
+}
+window.addEventListener('scroll',mark,{passive:true}); mark();
+</script></body></html>

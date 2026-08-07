@@ -47,6 +47,9 @@ GLOSSARY = {
  "排序能力": "Spearman ρ：引擎给的赔率排序与后来真实收益的秩相关。ρ>0 表示排序有信息，ρ≈0 表示排序没用。",
  "Brier": "三分类（上涨/基准/下跌）概率的平方误差，越小越好。均匀先验（各 1/3）是 0.667。",
  "技能分": "1 − Brier ÷ 0.667。>0 表示概率比瞎猜有信息，<0 表示比瞎猜还差。",
+ "字典覆盖": "当天语料里能被至少一个已注册主题命名的比例。主题字典最初是代码里冻结的 16 条，实测只能命名约 54% 的语料——GLP-1 与医保准入、韩国科技股重估、人形机器人、光模块出口管制、央行购金 当时都是有来源的真辩论，字典却没有词。所以字典改成「16 条种子 + 只能追加的注册表」，每天从零匹配语料里挖候选。这个数字下降就说明发现机制跟不上语料；固定主题列表按构造报不出这个数。",
+ "新主题": "从语料里发现、而非最初写死的主题。注册日不可回填，且只能给注册日及以后的日子打分——否则「发现主题」就等于事后挑一个已经涨完的东西定义成主题，再为自己排序准确而自豪。",
+ "冷启动": "注册未满 20 天的主题。A 因子的强度项要比较当日热度在该主题自己过去 20 天分布里的百分位，新主题没有这段历史，所以那一项暂时算不出来。标出来是为了让「发现的主题是不是系统性更差」变成可测量的问题。",
  "溯源": "智堡是客户端渲染的 SPA，逐篇没有固定网页链接（/report/<id> 之类全返回同一个空壳），所以这里不存永久链接——猜一个等于给一条指向空页的假引用。真正的凭据是可复现的 API 检索式 + 内容 sha1，加上已验证可达的图表 URL。",
  "生成器": "rules:v0.4 = 规则引擎（用于补齐每日历史，thesis 是模板）；claude-code = Claude 按契约手写；seed-import = 2026-07-27 的原始 PM pack。"
 }
@@ -273,6 +276,11 @@ tr.detail>td{background:var(--surface-2);padding:0;
 .lv-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
 .lv-info{background:var(--surface-2);color:var(--ink-3);border-color:var(--rule-strong)}
 .tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+/* A theme the corpus produced rather than one the author pre-imagined. Worth
+   marking on the row: it is younger than the seed set and its A intensity term
+   has no own history yet, so it is not quite like-for-like with its neighbours. */
+.tag.new{margin-left:6px;padding:0 5px;border-radius:3px;
+  background:var(--accent-soft);color:var(--accent);font-weight:600}
 /* The ⓘ marker. The bubble itself is NOT a child: table wrappers use
    overflow-x:auto and sticky headers create their own stacking contexts, so an
    absolutely-positioned child gets clipped and truncated. A single fixed-position
@@ -909,6 +917,11 @@ function viewReport(dd) {
       data: { t, ideas: ideasByTheme[t.id] || [] },
       cells: [
         { el: E('div', {}, E('strong', {}, t.label),
+            t.origin === 'discovered' ? E('span', { cls: 'tag new',
+              title: '语料发现的新主题，' + (t.registered_d || '') + ' 注册；'
+                   + '不属于最初 16 条种子，只能从注册日起打分' }, '新') : null,
+            t.cold_start ? E('span', { cls: 'tag',
+              title: '注册未满 20 天，A 的强度项还没有自身历史可比' }, '冷启动') : null,
             E('div', { cls: 'small muted' }, t.stage + ' · ' + t.crowd)) },
         { v: t.tis, el: E('div', {}, E('strong', {}, n2(t.tis, 1)),
             E('div', { cls: 'meter' + (t.tis >= 60 ? ' hot' : '') },
@@ -958,9 +971,36 @@ function viewReport(dd) {
             E('span', {}, k + ' 层'), E('span', {}, n.toLocaleString()))),
           ...Object.entries(c.by_line).map(([k, n]) => E('div', {},
             E('span', {}, k), E('span', {}, n.toLocaleString())))),
+        reachBlock(c.reach),
         E('p', { cls: 'hintline' }, G['溯源']))));
   }
   return wrap;
+}
+
+/* ---- how much of the corpus the theme dictionary can even name ----
+   Shown because it is the one number a fixed theme list cannot report about
+   itself. Everything under 100% is corpus that no idea can cite, however well
+   sourced it is. */
+function reachBlock(x) {
+  if (!x) return null;
+  const box = E('div', { style: 'margin-top:12px' });
+  box.append(E('div', { cls: 'small' },
+    E('strong', {}, '字典可命名 '),
+    E('span', { cls: x.pct >= 60 ? 'up' : (x.pct >= 45 ? '' : 'down') },
+      x.pct + '%'),
+    E('span', { cls: 'muted' },
+      `　${x.matched.toLocaleString()} / ${x.items.toLocaleString()} 条`
+      + `　按 ${x.registered} 个已注册主题　零匹配 ${x.unmatched.toLocaleString()}`),
+    hint('字典覆盖')));
+  if ((x.candidates || []).length) {
+    box.append(E('p', { cls: 'small muted', style: 'margin:8px 0 4px' },
+      '零匹配语料里出现的、字典还没有词的辩论（已过准入门槛，等人判定是否注册）：'),
+      E('div', { cls: 'kvgrid' }, ...x.candidates.map(c => E('div', {},
+        E('span', {}, c.terms.slice(0, 4).join(' · ')),
+        E('span', { cls: 'muted' },
+          `${c.n_docs}篇 / ${c.n_institutions}家 / ${c.n_days}天 / lift ${c.lift}`)))));
+  }
+  return box;
 }
 
 /* ---- what opens when you click a theme ---- */

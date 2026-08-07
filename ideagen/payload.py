@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from . import analytics, config, db, ideas as ideas_mod, lexicon, paper
+from . import themes as themes_mod
 from .sources import futu_px
 
 MAX_EVIDENCE = 40
@@ -226,6 +227,13 @@ def _report(con, d: str, frozen: list[dict] | None = None) -> dict | None:
             "direction": f.get("direction"),
             "eligible": bool(f.get("eligible")),
             "confidence": r["confidence"],
+            # Where the theme came from and how old it is. A discovered theme
+            # younger than the A baseline has no own history for the intensity
+            # term; a reader comparing it against a seed theme should be told
+            # that rather than left to infer it.
+            "origin": f.get("origin") or "seed",
+            "registered_d": f.get("registered_d"),
+            "cold_start": bool(f.get("cold_start")),
             "n_items": r["n_items"], "n_sources": r["n_sources"],
             "debate": (f.get("B") or {}).get("cross_framework_why"),
             "surprise": (f.get("N") or {}).get("surprise_src"),
@@ -381,9 +389,27 @@ def _corpus(con, d: str) -> dict:
         lbl = config.SOURCE_LINES.get(r["line"], {}).get("label", r["line"])
         by_line[lbl] = by_line.get(lbl, 0) + r["n"]
         by_tier[f"T{r['tier']}"] = by_tier.get(f"T{r['tier']}", 0) + r["n"]
+    # Dictionary reach: how much of the window any registered theme can name.
+    # Shown on the page because it is the one number that makes the theme set's
+    # blind spot visible — a fixed list cannot report it by construction.
+    try:
+        reach = themes_mod.candidates(con, date.fromisoformat(d), limit=6)
+    except Exception:
+        reach = None
     return {"window": wd, "total": sum(by_day.values()), "by_day": by_day,
             "by_line": dict(sorted(by_line.items(), key=lambda kv: -kv[1])),
-            "by_tier": by_tier}
+            "by_tier": by_tier,
+            "reach": None if not reach else {
+                "registered": reach["registered"],
+                "matched": reach["corpus_matched"],
+                "items": reach["corpus_total"],
+                "pct": reach["coverage_pct"],
+                "unmatched": reach["unmatched"],
+                "candidates": [{"terms": c["terms"][:6], "n_docs": c["n_docs"],
+                                "n_institutions": c["n_institutions"],
+                                "n_days": c["n_days"], "lift": c["max_lift"]}
+                               for c in reach["candidates"]],
+            }}
 
 
 def _evidence(con, d: str) -> list[dict]:

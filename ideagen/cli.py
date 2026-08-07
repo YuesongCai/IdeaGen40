@@ -7,6 +7,8 @@ The daily cycle, in order:
     ideagen olive-ingest <file>     # Olive shelf snapshot -> instruments + navs
     ideagen prices                  # Futu -> prices
     ideagen score                   # D/A/B/N/M/C -> themes
+    ideagen theme-candidates        # macro debates the dictionary has no word for
+    ideagen theme-register <file>   # admit one, stamped with today's date
     ideagen brief                   # -> data/briefings/briefing_<date>.json
     <generator writes data/batches/batch_<date>.json per prompts/idea_generation.md>
     ideagen ingest-batch <file>     # validate + store + place orders
@@ -29,7 +31,7 @@ from pathlib import Path
 
 from . import (analytics, backfill, briefing, config, db, generator,
                ideas as ideas_mod, lexicon, monitor, paper, report as report_mod,
-               scoring, seed, serve as serve_mod, universe)
+               scoring, seed, serve as serve_mod, themes, universe)
 from .sources import futu_px, olive, wisburg
 
 
@@ -143,6 +145,57 @@ def cmd_score(args) -> int:
 def cmd_brief(args) -> int:
     con = _con()
     briefing.build(con, _as_of(args))
+    return 0
+
+
+def cmd_theme_candidates(args) -> int:
+    """Show the macro debates today's corpus contains and the dictionary lacks."""
+    con = _con()
+    r = themes.candidates(con, _as_of(args), limit=args.limit)
+    if args.json:
+        print(json.dumps(r, ensure_ascii=False, indent=2))
+        return 0
+    print(f"  {r['as_of']}  window {r['window_days']}d  "
+          f"{r['registered']} themes registered")
+    print(f"  dictionary reach {r['coverage_pct']}% "
+          f"({r['corpus_matched']}/{r['corpus_total']} items); "
+          f"{r['unmatched']} matched nothing")
+    g = r["gates"]
+    print(f"  gates: >={g['min_docs']} docs, >={g['min_institutions']} institutions, "
+          f">={g['min_days']} days, lift >={g['min_lift']}, "
+          f"cluster >={g['min_cluster_docs']} docs")
+    if not r["candidates"]:
+        print("  no candidate clears the gates")
+        return 0
+    for i, c in enumerate(r["candidates"], 1):
+        print(f"\n  [{i}] {' · '.join(c['terms'][:8])}")
+        print(f"      {c['n_docs']} docs / {c['n_institutions']} institutions / "
+              f"{c['n_days']} days / lift {c['max_lift']} / tiers {c['tiers']}")
+        for e in c["evidence"][:5]:
+            print(f"      T{e['tier']} {e['d']} {e['institution'][:18]:<18} "
+                  f"{(e['title'] or '')[:56]}")
+    print("\n  A candidate is not a theme: these are phrase clusters, and company")
+    print("  names and report-series titles do get through. Register only the ones")
+    print("  that name a debate a trade can express:  ideagen theme-register <file>")
+    return 0
+
+
+def cmd_theme_register(args) -> int:
+    """Append discovered themes to the registry, stamped with today's date."""
+    con = _con()
+    as_of = _as_of(args)
+    raw = sys.stdin.read() if args.file == "-" else Path(args.file).read_text("utf-8")
+    rows = json.loads(raw)
+    if isinstance(rows, dict):
+        rows = [rows]
+    for row in rows:
+        t = themes.register(con, row, as_of)
+        print(f"  registered {t.id} — {t.label}  (as of {t.registered_d})")
+        print(f"      key question  {t.key_question}")
+        print(f"      indicator     {t.price_indicator}   related {list(t.related)}")
+        print(f"      synonyms      {len(t.terms)}: {' · '.join(t.terms[:8])}")
+    print(f"\n  {len(rows)} theme(s) appended to {lexicon.REGISTRY_PATH}")
+    print("  They score from today forward only. Pick them up with:  ideagen score --force")
     return 0
 
 
@@ -287,6 +340,16 @@ def cmd_sources(args) -> int:
           f"   发布时间 {d['ts']:,} (100%)")
     print(f"    具名机构     {d['inst']:,} ({d['inst']/max(d['n'],1)*100:.0f}%)"
           f"   已深取正文 {d['deep']:,}")
+    # Dictionary reach belongs in the provenance audit: an item the dictionary
+    # cannot name is an item no idea can ever cite, however well sourced it is.
+    reach = themes.candidates(con, _as_of(args), limit=3)
+    print(f"    字典可命名   {reach['corpus_matched']:,}/{reach['corpus_total']:,} "
+          f"({reach['coverage_pct']}%) 按 {reach['registered']} 个已注册主题"
+          f"   零匹配 {reach['unmatched']:,}")
+    if reach["candidates"]:
+        top = "、".join(c["terms"][0] for c in reach["candidates"])
+        print(f"    待判定候选   {len(reach['candidates'])} 个：{top}"
+              f"   (ideagen theme-candidates)")
     print(f"  资产      {ast['n']} 个图表/插图，覆盖 {ast['docs']} 篇")
     print(f"    已验证可达   {ast['ok']}   不可达 {ast['bad']}   未验证 {ast['unchecked']}")
     print(f"  引用      共 {c['total']} 条")
@@ -420,6 +483,15 @@ def main(argv: list[str] | None = None) -> int:
     s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
+    s = add("theme-candidates", cmd_theme_candidates,
+            "macro debates the dictionary has no word for")
+    s.add_argument("--limit", type=int, default=themes.MAX_CANDIDATES)
+    s.add_argument("--json", action="store_true")
+
+    s = add("theme-register", cmd_theme_register,
+            "append discovered theme(s) to themes/registry.jsonl")
+    s.add_argument("file", help="JSON object or array, or - for stdin")
+
     add("brief", cmd_brief, "build the generator briefing pack")
 
     s = add("seed", cmd_seed, "import the historical 2026-07-27 pack as batch #1")

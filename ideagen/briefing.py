@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config, db, lexicon, scoring, universe
+from . import themes as themes_mod
 from .sources import futu_px, olive
 
 MAX_EVIDENCE_PER_THEME = 14
@@ -133,8 +134,13 @@ def build(con, as_of: date, verbose: bool = True,
         "theme_dictionary": [{
             "id": t.id, "label": t.label, "key_question": t.key_question,
             "price_indicator": t.price_indicator, "related": list(t.related),
-            "exposures": list(t.exposures),
-        } for t in lexicon.THEMES],
+            "exposures": list(t.exposures), "origin": t.origin,
+            "registered_d": t.registered_d,
+        } for t in lexicon.all_themes(as_of)],
+        # Debates the dictionary has no word for. Surfaced in the pack so the
+        # generator can register the ones that carry a trade; a fixed theme list
+        # discards this slice of the corpus without ever saying so.
+        "theme_discovery": themes_mod.candidates(con, as_of),
         "headlines": headlines,
         "universe": {
             "listed_markable": [c for c in markable if c["kind"] == "listed"],

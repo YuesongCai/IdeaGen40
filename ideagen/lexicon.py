@@ -1,21 +1,43 @@
-"""Frozen theme dictionary and coding lexicons.
+"""Theme dictionary and coding lexicons.
 
-The framework requires the theme dictionary and each theme's pre-registered key
-question to be frozen *before* any price data is read (§3 of 战术宏观主题评分框架
-v0.3). Freezing it in source, under version control, is the strongest form of
-that commitment: any change to a theme's synonyms, key question or registered
-price indicator shows up as a diff with a date attached.
+The framework requires each theme's key question and price indicator to be
+registered *before* any price data is read (§3 of 战术宏观主题评分框架 v0.3).
+v0.4.1 keeps that commitment but drops a second assumption hidden inside it —
+that the *set* of themes is knowable in advance. A fixed list can only score
+the world its author already imagined, and measured against the real corpus the
+16 seed themes below left 46% of items (2,688 of 5,836) matching nothing at all:
+GLP-1 与医保准入、韩国科技股重估、人形机器人、光模块出口管制、央行购金 were all
+live, well-sourced macro debates the dictionary was structurally blind to.
 
-`price_indicator` and `related` are the M-factor pre-registration: one primary
-indicator plus up to three corroborating assets, named here and never chosen
-after the fact.
+So the dictionary has two halves:
+
+  * **Seed themes** — the 16 below, frozen in source, registered on
+    `SEED_REGISTERED_D`, before the project's first batch.
+  * **Discovered themes** — mined from the corpus by `themes.candidates()` and
+    appended to `themes/registry.jsonl`, one JSON object per line, append-only.
+
+Both halves are under version control, so any change to a theme's synonyms, key
+question or registered indicator still shows up as a dated diff. What keeps the
+second half honest is `registered_d`: `all_themes(as_of)` returns only themes
+registered on or before `as_of`, so a theme discovered today can never score a
+day it did not exist for. Without that clamp, theme discovery would be the
+purest form of hindsight available — define the theme around whatever already
+moved, then admire your own ranking of it.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
 
-LEXICON_VERSION = "0.4.0"
+LEXICON_VERSION = "0.4.1"
+
+#: The seed themes count as registered before the project's first batch.
+SEED_REGISTERED_D = "2026-07-26"
+
+REGISTRY_PATH = Path(__file__).resolve().parent.parent / "themes" / "registry.jsonl"
 
 
 @dataclass(frozen=True)
@@ -29,9 +51,12 @@ class Theme:
     default_direction: str = "↑"            # direction the key question's "yes" implies
     exposures: tuple[str, ...] = ()          # exposure labels this theme can express through
     require: tuple[str, ...] = ()            # additional term that must co-occur
+    registered_d: str = SEED_REGISTERED_D   # first day this theme may be scored
+    origin: str = "seed"                    # "seed" | "discovered"
+    provenance: tuple[str, ...] = ()        # doc_ids that justified a discovered theme
 
 
-THEMES: tuple[Theme, ...] = (
+SEED_THEMES: tuple[Theme, ...] = (
     Theme(
         id="AI-CAPEX",
         label="AI资本开支与融资",
@@ -212,7 +237,82 @@ THEMES: tuple[Theme, ...] = (
     ),
 )
 
+#: Fields a registry line may set. Anything else is a typo, not an extension.
+_REGISTRY_FIELDS = {
+    "id", "label", "key_question", "terms", "price_indicator", "related",
+    "default_direction", "exposures", "require", "registered_d", "origin",
+    "provenance",
+}
+
+
+def _theme_from_row(row: dict) -> Theme:
+    unknown = set(row) - _REGISTRY_FIELDS
+    if unknown:
+        raise ValueError(f"registry line for {row.get('id')!r} has unknown "
+                         f"fields: {sorted(unknown)}")
+    kw = dict(row)
+    for seq in ("terms", "related", "exposures", "require", "provenance"):
+        if seq in kw:
+            kw[seq] = tuple(kw[seq] or ())
+    kw.setdefault("origin", "discovered")
+    return Theme(**kw)
+
+
+def load_registry(path: Path | None = None) -> tuple[Theme, ...]:
+    """Read the append-only discovered-theme registry.
+
+    Missing file is normal — it means nothing has been discovered yet. A
+    malformed or duplicate line is not: a silently-dropped theme would look
+    exactly like a theme that never fired.
+    """
+    p = path or REGISTRY_PATH
+    if not p.exists():
+        return ()
+    out: list[Theme] = []
+    seen: set[str] = set()
+    for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{p}:{n} is not valid JSON: {exc}") from exc
+        t = _theme_from_row(row)
+        if t.id in seen or any(s.id == t.id for s in SEED_THEMES):
+            raise ValueError(f"{p}:{n} re-registers theme id {t.id!r}; the "
+                             f"registry is append-only, not editable")
+        seen.add(t.id)
+        out.append(t)
+    return tuple(out)
+
+
+#: Every theme that has ever been registered, seed or discovered. Use this for
+#: *lookups* ("what is theme X"), which have no as-of dimension, and
+#: `all_themes(as_of)` for *scoring*, which does.
+THEMES: tuple[Theme, ...] = SEED_THEMES + load_registry()
+
 THEME_BY_ID = {t.id: t for t in THEMES}
+
+
+def all_themes(as_of: date | str | None = None) -> tuple[Theme, ...]:
+    """Themes registered on or before `as_of` — the only set legal to score.
+
+    A theme registered after `as_of` is excluded even though it exists now.
+    That exclusion is the whole reason discovery is allowed at all.
+    """
+    if as_of is None:
+        return THEMES
+    d = as_of if isinstance(as_of, str) else as_of.isoformat()
+    return tuple(t for t in THEMES if t.registered_d <= d)
+
+
+def reload_registry() -> tuple[Theme, ...]:
+    """Re-read the registry after a `theme-register`. Returns the new THEMES."""
+    global THEMES, THEME_BY_ID
+    THEMES = SEED_THEMES + load_registry()
+    THEME_BY_ID = {t.id: t for t in THEMES}
+    return THEMES
 
 
 # ---------------------------------------------------------------------------
@@ -403,3 +503,15 @@ def all_indicators() -> list[str]:
         codes.add(t.price_indicator)
         codes.update(t.related)
     return sorted(codes)
+
+
+def coverage(texts_matched: int, texts_total: int) -> float | None:
+    """Share of corpus items that matched at least one registered theme.
+
+    Reported every day so the dictionary's blind spot stays visible. A falling
+    coverage number is the signal that discovery has stopped keeping up — the
+    exact failure that a fixed 16-theme list hides by construction.
+    """
+    if not texts_total:
+        return None
+    return round(100.0 * texts_matched / texts_total, 1)

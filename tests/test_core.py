@@ -15,6 +15,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ideagen import analytics, config, db, ideas, lexicon, paper, scoring
+from ideagen import themes as themes_mod
 from ideagen.sources import futu_px, wisburg
 
 
@@ -782,3 +783,177 @@ class TestInformationArchitecture(unittest.TestCase):
                      if re.match(r"^(const|let|var)\s+dd\b", ln)]
         self.assertFalse(top_level, f"top-level dd declared: {top_level}")
         self.assertIn("const ddPct = ", self.js)
+
+
+class TestThemeDiscovery(unittest.TestCase):
+    """The theme set is discovered, and discovery must not become hindsight.
+
+    A fixed 16-theme dictionary matched only 54% of the corpus, so the set has
+    to grow. Every test here guards the one property that makes growth
+    legitimate: a theme registered today may not score a day it did not exist
+    for. Without it, "discovery" is just picking the theme around whatever
+    already moved.
+    """
+
+    def test_as_of_excludes_themes_registered_later(self):
+        seeds = lexicon.all_themes(date.fromisoformat(lexicon.SEED_REGISTERED_D))
+        self.assertTrue(seeds, "seed themes must be scoreable on their own day")
+        day_before = (date.fromisoformat(lexicon.SEED_REGISTERED_D)
+                      - timedelta(days=1))
+        self.assertEqual(lexicon.all_themes(day_before), (),
+                         "no theme may score a day before it was registered")
+
+    def test_every_registered_theme_declares_a_registration_date(self):
+        for t in lexicon.THEMES:
+            self.assertTrue(t.registered_d, f"{t.id} has no registered_d")
+            date.fromisoformat(t.registered_d)          # must parse
+            self.assertIn(t.origin, ("seed", "discovered"))
+
+    def test_discovered_themes_are_not_backdated_before_the_seed(self):
+        for t in lexicon.THEMES:
+            if t.origin == "discovered":
+                self.assertGreater(t.registered_d, lexicon.SEED_REGISTERED_D,
+                                   f"{t.id} claims to predate the seed set")
+
+    def test_registration_cannot_be_backdated(self):
+        con = mem()
+        row = {"id": "TEST-BACKDATE", "label": "x",
+               "key_question": "未来1–6个月，x 能否 y", "terms": ["aaa", "bbb", "ccc", "ddd"],
+               "price_indicator": "US.SPY", "registered_d": "2026-01-01"}
+        with self.assertRaises(themes_mod.RegistrationError) as ctx:
+            themes_mod.validate(con, row, date(2026, 8, 8))
+        self.assertIn("backdated", str(ctx.exception))
+
+    def test_registration_rejects_unpriceable_indicators(self):
+        con = mem()
+        row = {"id": "TEST-UNPRICEABLE", "label": "x",
+               "key_question": "未来1–6个月，x 能否 y",
+               "terms": ["aaa", "bbb", "ccc", "ddd"],
+               "price_indicator": "US.NOPE"}
+        with self.assertRaises(themes_mod.RegistrationError) as ctx:
+            themes_mod.validate(con, row, date(2026, 8, 8))
+        self.assertIn("unpriceable", str(ctx.exception))
+
+    def test_registration_rejects_synonyms_owned_by_another_theme(self):
+        """Shared synonyms would count one document twice in D."""
+        con = mem()
+        stolen = lexicon.THEME_BY_ID["AI-CAPEX"].terms[0]
+        row = {"id": "TEST-STEAL", "label": "x",
+               "key_question": "未来1–6个月，x 能否 y",
+               "terms": [stolen, "bbb", "ccc", "ddd"],
+               "price_indicator": "US.SPY"}
+        with self.assertRaises(themes_mod.RegistrationError) as ctx:
+            themes_mod.validate(con, row, date(2026, 8, 8))
+        self.assertIn("already owned", str(ctx.exception))
+
+    def test_registration_requires_a_horizon_in_the_key_question(self):
+        con = mem()
+        row = {"id": "TEST-NOHORIZON", "label": "x",
+               "key_question": "这个主题会不会好",
+               "terms": ["aaa", "bbb", "ccc", "ddd"],
+               "price_indicator": "US.SPY"}
+        with self.assertRaises(themes_mod.RegistrationError) as ctx:
+            themes_mod.validate(con, row, date(2026, 8, 8))
+        self.assertIn("horizon", str(ctx.exception))
+
+    def test_registration_requires_enough_synonyms(self):
+        con = mem()
+        row = {"id": "TEST-THIN", "label": "x",
+               "key_question": "未来1–6个月，x 能否 y", "terms": ["aaa"],
+               "price_indicator": "US.SPY"}
+        with self.assertRaises(themes_mod.RegistrationError):
+            themes_mod.validate(con, row, date(2026, 8, 8))
+
+    def test_registry_ids_are_unique(self):
+        ids = [t.id for t in lexicon.THEMES]
+        self.assertEqual(len(ids), len(set(ids)), "duplicate theme id in registry")
+
+    def test_boilerplate_phrases_are_rejected(self):
+        for junk in ("维持买入评级", "持买入评级", "季度财报电话会", "度财报电话会",
+                     "上调目标价至", "标价下调至", "corporation", "三季度财报电",
+                     "国际", "香港", "亚太"):
+            self.assertTrue(themes_mod._noise_composite(junk),
+                            f"{junk!r} is boilerplate but was kept")
+        for real in ("spacex", "轮动", "光模块", "人形机器人", "央行购金",
+                     "glp-1", "资金流向", "电信", "稀土"):
+            self.assertFalse(themes_mod._noise_composite(real),
+                             f"{real!r} is a real topic but was filtered out")
+
+    def test_short_fragments_are_absorbed_rather_than_pattern_matched(self):
+        """The two filters have distinct jobs; neither can cover for the other.
+
+        '持买入评' is only 50% boilerplate by character coverage, so the noise
+        filter keeps it — correctly, since a 4-character window is too small to
+        judge. It dies by absorption into 维持买入评级, which shares its documents
+        and *is* rejected as boilerplate. Order is load-bearing: filtering noise
+        first deletes the parent and leaves the orphaned fragments looking like
+        novel high-lift phrases, which is exactly how the first cut of this
+        module surfaced 持买入评 as a top candidate on four separate days.
+        """
+        self.assertFalse(themes_mod._noise_composite("持买入评"))
+        docs = {"d1", "d2", "d3", "d4"}
+        kept = [{"phrase": p, "docs": set(docs), "n_docs": 4, "lift": 5.0}
+                for p in ("维持买入评级", "持买入评级", "持买入评", "买入评")]
+        surviving = [k["phrase"] for k in themes_mod._maximal(kept)]
+        self.assertEqual(surviving, ["维持买入评级"])
+        final = [p for p in surviving if not themes_mod._noise_composite(p)]
+        self.assertEqual(final, [], "boilerplate survived the full pipeline")
+
+    def test_fragments_are_absorbed_by_their_maximal_phrase(self):
+        docs = {"d1", "d2", "d3"}
+        kept = [
+            {"phrase": "人形机器人", "docs": set(docs), "n_docs": 3, "lift": 4.0},
+            {"phrase": "形机器人", "docs": set(docs), "n_docs": 3, "lift": 4.0},
+            {"phrase": "机器人", "docs": set(docs), "n_docs": 3, "lift": 4.0},
+        ]
+        out = [k["phrase"] for k in themes_mod._maximal(kept)]
+        self.assertEqual(out, ["人形机器人"])
+
+    def test_a_distinct_topic_is_not_absorbed_by_a_containing_phrase(self):
+        """Subsumption is by shared documents, not by substring alone."""
+        kept = [
+            {"phrase": "人形机器人", "docs": {"d1", "d2"}, "n_docs": 2, "lift": 4.0},
+            {"phrase": "机器人", "docs": {"d7", "d8", "d9", "d10"},
+             "n_docs": 4, "lift": 3.0},
+        ]
+        out = sorted(k["phrase"] for k in themes_mod._maximal(kept))
+        self.assertEqual(out, ["人形机器人", "机器人"])
+
+    def test_mining_suppresses_against_the_as_of_dictionary_not_todays(self):
+        """A theme registered later must not suppress its own past candidacy.
+
+        `_known_terms()` originally read the whole registry, so the moment
+        SPACE-ECONOMY was registered on 2026-08-08 a replay of 08-07 stopped
+        surfacing "spacex" — the historical run looked as though it had already
+        found a theme it had not yet seen. Suppression must be as-of too.
+        """
+        discovered = [t for t in lexicon.THEMES if t.origin == "discovered"]
+        if not discovered:
+            self.skipTest("no discovered themes registered yet")
+        t = min(discovered, key=lambda t: t.registered_d)
+        before = date.fromisoformat(t.registered_d) - timedelta(days=1)
+        terms_before = themes_mod._known_terms(before)
+        self.assertNotIn(t.terms[0].lower(), terms_before,
+                         f"{t.id}'s synonyms leak into a day before it existed")
+        self.assertIn(t.terms[0].lower(),
+                      themes_mod._known_terms(date.fromisoformat(t.registered_d)))
+
+    def test_coverage_is_reported_so_the_blind_spot_stays_visible(self):
+        self.assertEqual(lexicon.coverage(54, 100), 54.0)
+        self.assertIsNone(lexicon.coverage(0, 0))
+
+    def test_scoring_reports_dictionary_reach(self):
+        con = mem()
+        ev = scoring.collect_evidence(con, date(2026, 8, 6))
+        for k in ("registered_themes", "docs_total", "docs_matched", "coverage_pct"):
+            self.assertIn(k, ev)
+
+    def test_cold_start_themes_are_flagged_not_hidden(self):
+        """A theme younger than the A baseline has no own history to compare to.
+
+        Flagging it makes "are discovered themes worse?" a measurable question
+        instead of an invisible one.
+        """
+        src = Path("ideagen/scoring.py").read_text(encoding="utf-8")
+        self.assertIn("cold_start", src)
+        self.assertIn("config.BASELINE_WINDOW_DAYS", src)

@@ -43,8 +43,10 @@ N  最新变化
    supplied actual-vs-consensus z overrides it when present.  -> `factor_N`
 
 M  市场验证 (independent, not in TIS — unchanged in spirit)
-   Now computed against indicators frozen in `lexicon.THEMES` before any price
-   is read, so the "pre-registration" requirement is structurally enforced.
+   Computed against indicators registered before any price is read, so the
+   "pre-registration" requirement is structurally enforced. v0.4.1: the theme
+   set itself is no longer fixed — see `lexicon.all_themes`, which clamps
+   scoring to themes registered on or before the day being scored.
 
 C  拥挤度 (new, independent)
    v0.3 has no crowding measure at all: a theme can score 90 on impact while its
@@ -66,7 +68,8 @@ from datetime import date, timedelta
 from typing import Any, Iterable
 
 from . import config, db, lexicon
-from .lexicon import THEMES, Theme
+from . import themes as themes_mod
+from .lexicon import Theme, all_themes
 from .sources import futu_px
 
 MIN_STANCE_SAMPLE = 8          # v0.3 used 4; the pool is ~400x larger now
@@ -92,7 +95,9 @@ def collect_evidence(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAY
                 "FROM documents WHERE published_d IN (%s)" % ",".join("?" * len(wdays)),
                 wdays)
 
-    per_theme: dict[str, list[dict]] = {t.id: [] for t in THEMES}
+    themes = all_themes(as_of)
+    per_theme: dict[str, list[dict]] = {t.id: [] for t in themes}
+    matched_docs: set[str] = set()
     valid_by_day: dict[str, int] = {d: 0 for d in wdays}
     counting_by_day: dict[str, int] = {d: 0 for d in wdays}
     seen_content: set[str] = set()
@@ -119,10 +124,11 @@ def collect_evidence(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAY
         inst = r["institution"] or lexicon.institution_of(text)
         sig = lexicon.title_signature(r["title"] or "")
 
-        for t in THEMES:
+        for t in themes:
             hits = lexicon.match_theme(text, t)
             if hits < 1:
                 continue
+            matched_docs.add(r["doc_id"])
             # A bare keyword is not evidence: require either two distinct terms
             # or one term plus a scoreable body (框架 §5.1 counting rules).
             if hits < 2 and len(text) < 400:
@@ -156,11 +162,18 @@ def collect_evidence(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAY
                 "chars": len(text),
             })
 
+    n_docs = len({r["doc_id"] for r in rows if r["published_d"] in valid_by_day})
     return {"as_of": as_of.isoformat(), "days": wdays,
             "valid_by_day": valid_by_day, "counting_by_day": counting_by_day,
             "valid_total": sum(valid_by_day.values()),
             "counting_total": sum(counting_by_day.values()),
             "dedupe_dropped": dropped,
+            # Dictionary reach, reported every day so the blind spot stays
+            # visible. A fixed 16-theme list sat at 54% and had no way to say so.
+            "registered_themes": len(themes),
+            "docs_total": n_docs,
+            "docs_matched": len(matched_docs),
+            "coverage_pct": lexicon.coverage(len(matched_docs), n_docs),
             "per_theme": per_theme}
 
 
@@ -480,8 +493,10 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
                 for tid, items in ev["per_theme"].items()}
     max_raw = max(counting.values()) if counting else 0
 
+    dormant_ids = set(themes_mod.dormant(con, as_of))
+
     results: list[dict] = []
-    for t in THEMES:
+    for t in all_themes(as_of):
         items = ev["per_theme"][t.id]
         d, dd = factor_D(ev, t.id, max_raw)
         a, ad = factor_A(con, ev, t.id)
@@ -501,6 +516,14 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
                     and len({e["line"] for e in items}) >= 2
                     and ev["counting_total"] >= config.MIN_VALID_ITEMS)
 
+        # A's intensity term compares today's attention against the theme's own
+        # trailing distribution, so a theme registered days ago has no baseline
+        # to compare against. Flag it rather than hide it: cold-start themes are
+        # a bucket the attribution layer can test separately, and if discovered
+        # themes turn out to be systematically worse, that must be measurable.
+        age = (as_of - date.fromisoformat(t.registered_d)).days
+        cold_start = age < config.BASELINE_WINDOW_DAYS
+
         results.append({
             "as_of": as_of.isoformat(), "theme_id": t.id, "label": t.label,
             "key_question": t.key_question,
@@ -512,6 +535,9 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
                         "TIS": tmeta, "direction": direction,
                         "stage": validation_stage(m), "crowding": crowding_label(c),
                         "eligible": eligible,
+                        "origin": t.origin, "registered_d": t.registered_d,
+                        "age_days": age, "cold_start": cold_start,
+                        "dormant": t.id in dormant_ids,
                         "lexicon_version": lexicon.LEXICON_VERSION,
                         "methodology": config.METHODOLOGY_VERSION},
             "evidence": sorted(items, key=lambda e: (-e["tier"], -e["hits"]))[:60],

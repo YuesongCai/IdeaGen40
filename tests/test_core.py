@@ -957,3 +957,83 @@ class TestThemeDiscovery(unittest.TestCase):
         src = Path("ideagen/scoring.py").read_text(encoding="utf-8")
         self.assertIn("cold_start", src)
         self.assertIn("config.BASELINE_WINDOW_DAYS", src)
+
+
+class TestBatchReplaceIntegrity(unittest.TestCase):
+    """Replacing a batch must not leave positions bound to different instruments.
+
+    `idea_uid` is `<batch_id>#<local_id>`, not content-derived, so re-importing a
+    batch silently rebinds every uid to whatever instrument now sits at that
+    local id. Deleting only the ideas leaves live positions attached to uids that
+    have changed meaning, and every downstream join still succeeds.
+
+    This is not hypothetical. Restoring the authored 2026-07-27 pack over a
+    backfill-generated batch of the same id left 58 positions across three books
+    on the wrong instruments: B20260727#26 held US.URA entered at 40.33 while its
+    idea had become US.DLR, so settle marked that entry against DLR's 192.56
+    close and booked +377%. The batch mean reached +48.5% and dragged the
+    published idea-level equal-weight return from +0.96% to +5.70%. It went
+    unnoticed for ten days because nothing compared the two sides.
+    """
+
+    def _idea_and_position(self, con, pos_code, idea_code):
+        db.upsert(con, "batches", {"batch_id": "BX", "as_of": "2026-08-01",
+                                   "generated_at": "2026-08-01T07:23:00+08:00",
+                                   "generator": "test", "n_ideas": 1,
+                                   "methodology": config.METHODOLOGY_VERSION,
+                                   "output_sha": "x", "validation": {},
+                                   "status": "validated"}, ["batch_id"])
+        db.upsert(con, "ideas", {"idea_uid": "BX#1", "batch_id": "BX",
+                                 "as_of": "2026-08-01", "local_id": 1,
+                                 "tool": idea_code.split(".")[-1],
+                                 "horizon": "1个月", "horizon_months": 1,
+                                 "instrument": "listed", "hurdle": 0.3,
+                                 "futu_code": idea_code}, ["idea_uid"])
+        db.upsert(con, "positions", {"pos_id": "PX", "book_id": "naive",
+                                     "idea_uid": "BX#1", "code": pos_code,
+                                     "kind": "listed", "qty": 1, "avg_px": 1,
+                                     "cost": 1, "opened_d": "2026-08-01",
+                                     "status": "open"}, ["pos_id"])
+
+    def test_mismatch_is_detected(self):
+        con = mem()
+        self._idea_and_position(con, "US.URA", "US.DLR")
+        bad = ideas.instrument_mismatches(con)
+        self.assertEqual(len(bad), 1)
+        self.assertEqual(bad[0]["position_code"], "US.URA")
+        self.assertEqual(bad[0]["idea_code"], "US.DLR")
+
+    def test_matching_instrument_is_not_flagged(self):
+        con = mem()
+        self._idea_and_position(con, "US.DLR", "US.DLR")
+        self.assertEqual(ideas.instrument_mismatches(con), [])
+
+    def test_purge_removes_dependents_not_just_ideas(self):
+        con = mem()
+        self._idea_and_position(con, "US.URA", "US.URA")
+        db.upsert(con, "outcomes", {"idea_uid": "BX#1", "as_of": "2026-08-01"},
+                  ["idea_uid"])
+        n = ideas.purge_batch(con, "BX")
+        self.assertEqual(n["ideas"], 1)
+        self.assertEqual(n["positions"], 1)
+        self.assertEqual(n["outcomes"], 1)
+        for t in ("ideas", "positions", "outcomes"):
+            left = db.q1(con, f"SELECT COUNT(*) n FROM {t}")["n"]
+            self.assertEqual(left, 0, f"{t} still references the purged batch")
+
+    def test_settle_refuses_to_publish_mismatched_data(self):
+        """Better to fail loudly than to book a $40 entry against a $192 close."""
+        con = mem()
+        self._idea_and_position(con, "US.URA", "US.DLR")
+        with self.assertRaises(RuntimeError) as ctx:
+            analytics.settle(con, verbose=False)
+        msg = str(ctx.exception)
+        self.assertIn("US.URA", msg)
+        self.assertIn("US.DLR", msg)
+        self.assertIn("rebuild-batch", msg)
+
+    def test_live_database_has_no_mismatches(self):
+        """Regression guard on the real book, not just a synthetic fixture."""
+        con = db.init()
+        bad = ideas.instrument_mismatches(con)
+        self.assertEqual(bad, [], f"{len(bad)} positions disagree with their idea")

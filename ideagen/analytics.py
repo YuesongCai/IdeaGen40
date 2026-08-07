@@ -72,6 +72,21 @@ def settle(con, book_id: str = "naive", verbose: bool = True) -> dict:
     counterfactual close-to-close return of the instrument when it did not — so an
     unfilled idea still gets scored, and the cost of missing it is visible.
     """
+    # A position whose instrument no longer matches its idea makes every number
+    # below meaningless: `entry_px` is read off the position while `exit_px` is
+    # marked on the idea's instrument, so a rebound uid prices one asset's entry
+    # against another's close. Refuse rather than publish — see
+    # `ideas.purge_batch` for how this arose and what it cost.
+    bad = ideas_mod.instrument_mismatches(con)
+    if bad:
+        batches = sorted({b["batch_id"] for b in bad})
+        raise RuntimeError(
+            f"{len(bad)} positions disagree with their idea's instrument "
+            f"(batches: {', '.join(batches)}); e.g. {bad[0]['idea_uid']} holds "
+            f"{bad[0]['position_code']} while its idea is {bad[0]['idea_code']}. "
+            f"Settling would mark one asset's entry against another's close. "
+            f"Fix with:  ideagen rebuild-batch {batches[0]}")
+
     rows = db.q(con, "SELECT * FROM ideas ORDER BY as_of, local_id")
     bench = config.BENCHMARKS["SPY"]
     out, settled = [], 0

@@ -396,7 +396,21 @@ def _corpus(con, d: str) -> dict:
         reach = themes_mod.candidates(con, date.fromisoformat(d), limit=6)
     except Exception:
         reach = None
+    # The counting pool this day was actually *scored* against, versus what the
+    # window holds now. The historical corpus was ingested in one pass while the
+    # backfill was already scoring days, so the earliest days were scored against
+    # a partly-filled corpus: 2026-07-27 saw 370 counting items where the window
+    # now holds 497, and 2026-08-07 saw 988 against 1,688. Re-scoring would move
+    # those factor scores — and would also detach them from the pack the ideas
+    # were actually generated from, which is why `score_day` refuses by default.
+    # Recording the gap is the honest alternative to silently overwriting it.
+    scored_pool = None
+    row = db.q1(con, "SELECT factors FROM themes WHERE as_of=? LIMIT 1", (d,))
+    if row:
+        scored_pool = ((db.jl(row["factors"], {}) or {}).get("D") or {}).get("pool")
+
     return {"window": wd, "total": sum(by_day.values()), "by_day": by_day,
+            "scored_pool": scored_pool,
             "by_line": dict(sorted(by_line.items(), key=lambda kv: -kv[1])),
             "by_tier": by_tier,
             "reach": None if not reach else {

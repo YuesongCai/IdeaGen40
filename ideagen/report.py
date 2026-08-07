@@ -971,10 +971,29 @@ function viewReport(dd) {
             E('span', {}, k + ' 层'), E('span', {}, n.toLocaleString()))),
           ...Object.entries(c.by_line).map(([k, n]) => E('div', {},
             E('span', {}, k), E('span', {}, n.toLocaleString())))),
+        poolNote(c),
         reachBlock(c.reach),
         E('p', { cls: 'hintline' }, G['溯源']))));
   }
   return wrap;
+}
+
+/* ---- was this day scored against the corpus it now shows? ----
+   The historical corpus arrived in one ingest while the backfill was already
+   scoring days, so the earliest days were scored against a partly-filled
+   window. Re-scoring them would move the factors and also detach them from the
+   pack the ideas were generated from, so the gap is reported instead. */
+function poolNote(c) {
+  if (!c.scored_pool || !c.total) return null;
+  const gap = c.total - c.scored_pool;
+  if (gap <= Math.max(20, c.scored_pool * 0.05)) return null;
+  return E('p', { cls: 'small', style: 'margin:10px 0 0' },
+    E('span', { cls: 'tag' }, '语料口径'),
+    E('span', { cls: 'muted' },
+      `　当日打分时的计票池 ${c.scored_pool.toLocaleString()} 条，`
+      + `该窗口现在有 ${c.total.toLocaleString()} 条。`
+      + '差额来自历史语料是一次性灌入的，而回填在灌的过程中就已开始打分。'
+      + '未重跑：重跑会让分数与当天实际生成想法所依据的 pack 脱钩。'));
 }
 
 /* ---- how much of the corpus the theme dictionary can even name ----

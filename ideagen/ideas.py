@@ -261,6 +261,56 @@ def compute(con, raw: dict, as_of: date, batch_id: str) -> dict:
     return row
 
 
+#: Everything that hangs off an idea. Replacing a batch must remove all of it.
+_IDEA_DEPENDENTS = ("outcomes", "alerts", "trades", "orders", "positions")
+
+
+def purge_batch(con, batch_id: str) -> dict[str, int]:
+    """Delete a batch's ideas *and* everything that references them.
+
+    `idea_uid` is `<batch_id>#<local_id>`, so re-importing a batch rebinds every
+    uid to whatever instrument now sits at that local id. Deleting only the
+    ideas therefore leaves live positions pointing at uids that have silently
+    changed meaning — and nothing downstream notices, because the join on
+    `idea_uid` still succeeds.
+
+    That is not hypothetical. Restoring the authored 2026-07-27 pack over a
+    backfill-generated batch of the same id left 58 positions across three books
+    attached to the wrong instruments: `B20260727#26` held US.URA at 40.33 while
+    its idea had become US.DLR, so `settle` marked a $40 entry against a $192
+    close and booked **+377%**. That one batch dragged the published idea-level
+    equal-weight return from +0.91% to +5.70%.
+    """
+    n = {}
+    for t in _IDEA_DEPENDENTS:
+        cur = con.execute(
+            f"DELETE FROM {t} WHERE idea_uid IN "
+            f"(SELECT idea_uid FROM ideas WHERE batch_id=?)", (batch_id,))
+        n[t] = cur.rowcount
+    # mtm keys on pos_id, which the positions delete above has already orphaned.
+    n["mtm"] = con.execute(
+        "DELETE FROM mtm WHERE pos_id NOT IN (SELECT pos_id FROM positions)").rowcount
+    n["ideas"] = con.execute("DELETE FROM ideas WHERE batch_id=?",
+                             (batch_id,)).rowcount
+    return n
+
+
+def instrument_mismatches(con) -> list[dict]:
+    """Positions whose instrument disagrees with the idea that created them.
+
+    This must always be empty. It is the assertion that would have caught the
+    2026-07-27 corruption on the day it was introduced instead of ten days
+    later: a join on `idea_uid` succeeds even when the uid has been rebound to a
+    different instrument, so nothing else in the pipeline can notice.
+    """
+    return [dict(r) for r in db.q(con, """
+        SELECT p.book_id, p.idea_uid, p.code AS position_code,
+               i.futu_code AS idea_code, i.batch_id
+        FROM positions p JOIN ideas i ON i.idea_uid = p.idea_uid
+        WHERE COALESCE(p.code,'') <> COALESCE(i.futu_code,'')
+        ORDER BY i.batch_id, p.book_id, p.idea_uid""")]
+
+
 def build_batch(con, payload: dict, as_of: date, generator: str = "claude-code",
                 batch_id: str | None = None,
                 generated_at: str | None = None) -> tuple[str, list[dict], dict]:
@@ -287,7 +337,7 @@ def build_batch(con, payload: dict, as_of: date, generator: str = "claude-code",
     store = [{k: v for k, v in r.items() if k not in ("or_c_inf", "or_k_inf")}
              for r in rows]
     with db.tx(con):
-        con.execute("DELETE FROM ideas WHERE batch_id=?", (batch_id,))
+        purge_batch(con, batch_id)
         db.upsert(con, "batches", {
             "batch_id": batch_id, "as_of": as_of.isoformat(),
             "generated_at": generated_at or config.now_hkt().isoformat(),

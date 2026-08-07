@@ -474,8 +474,13 @@ def dormant(con, as_of: date, quiet_days: int = 20) -> list[str]:
     goes quiet for a month may be the most interesting thing in the book when
     it comes back.
     """
-    rows = db.q(con, "SELECT theme_id, MAX(d) AS last_d FROM themes "
-                     "WHERE d <= ? AND COALESCE(n_items,0) > 0 GROUP BY theme_id",
+    # `themes.d` is the D factor score, not a date — the scoring date column is
+    # `as_of`. Getting this wrong does not raise in SQLite, which orders numbers
+    # before strings, so `d <= '2026-08-06'` silently matched every row and
+    # MAX(d) returned a factor score posing as a date.
+    rows = db.q(con, "SELECT theme_id, MAX(as_of) AS last_d FROM themes "
+                     "WHERE as_of <= ? AND COALESCE(n_items,0) > 0 "
+                     "GROUP BY theme_id",
                 [as_of.isoformat()])
     last = {r["theme_id"]: r["last_d"] for r in rows}
     cutoff = (as_of - timedelta(days=quiet_days)).isoformat()

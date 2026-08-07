@@ -148,6 +148,52 @@ def cmd_brief(args) -> int:
     return 0
 
 
+def cmd_rebuild_batch(args) -> int:
+    """Drop a batch's orders/positions/outcomes and re-trade it from its ideas.
+
+    Needed when a batch's ideas were replaced under live positions, which
+    rebinds `<batch_id>#<local_id>` uids to different instruments. The ideas
+    themselves are kept — they are the authoritative record; only the derived
+    trading state is rebuilt.
+    """
+    con = _con()
+    bid = args.batch_id
+    n_ideas = db.q1(con, "SELECT COUNT(*) n FROM ideas WHERE batch_id=?", (bid,))["n"]
+    if not n_ideas:
+        print(f"  no such batch: {bid}")
+        return 1
+
+    before = ideas_mod.instrument_mismatches(con)
+    print(f"  {bid}: {n_ideas} ideas, "
+          f"{len([b for b in before if b['batch_id'] == bid])} mismatched positions")
+
+    with db.tx(con):
+        n = {}
+        for t in ("outcomes", "alerts", "trades", "orders", "positions"):
+            n[t] = con.execute(
+                f"DELETE FROM {t} WHERE idea_uid IN "
+                f"(SELECT idea_uid FROM ideas WHERE batch_id=?)", (bid,)).rowcount
+        n["mtm"] = con.execute(
+            "DELETE FROM mtm WHERE pos_id NOT IN "
+            "(SELECT pos_id FROM positions)").rowcount
+    print("  dropped " + "  ".join(f"{k}={v}" for k, v in n.items() if v))
+
+    for b in config.BOOKS:
+        r = paper.open_batch(con, bid, b, verbose=False)
+        print(f"  reopened {b:<14} filled={r.get('filled', 0)} "
+              f"skipped={r.get('skipped', 0)}")
+    r = paper.open_cohort(con, bid, verbose=False)
+    print(f"  reopened {config.cohort_book(bid):<14} filled={r.get('filled', 0)}")
+
+    after = ideas_mod.instrument_mismatches(con)
+    print(f"\n  mismatches: {len(before)} → {len(after)}")
+    if after:
+        print("  STILL BROKEN — do not publish; inspect before/after by hand")
+        return 1
+    print("  now re-mark and re-settle:  ideagen mark && ideagen settle")
+    return 0
+
+
 def cmd_theme_candidates(args) -> int:
     """Show the macro debates today's corpus contains and the dictionary lacks."""
     con = _con()
@@ -483,6 +529,10 @@ def main(argv: list[str] | None = None) -> int:
     s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
+    s = add("rebuild-batch", cmd_rebuild_batch,
+            "re-trade a batch whose positions disagree with its ideas")
+    s.add_argument("batch_id")
+
     s = add("theme-candidates", cmd_theme_candidates,
             "macro debates the dictionary has no word for")
     s.add_argument("--limit", type=int, default=themes.MAX_CANDIDATES)

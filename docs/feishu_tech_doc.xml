@@ -2,7 +2,7 @@
 
 <callout emoji="🏁" background-color="light-blue" border-color="blue">
 <p><b>一句话</b>：把「每天读投研、出 40 条战术交易想法」这件事，做成一个每天真的下单、真的盯市、真的记结果的系统，从而让「这些想法值不值钱」变成一个<b>有答案</b>的问题。</p>
-<p>已上线：工作日 07:23 HKT 自动跑；2026-07-27 起每个交易日一批 40 条，共 10 批 400 条想法、343 条真实成交；语料 5,836 条全部可溯源；主题字典可从语料自我扩张；108 个测试。</p>
+<p>已上线：工作日 07:23 HKT 自动跑；2026-07-27 起每个交易日一批 40 条，共 10 批 400 条想法、343 条真实成交；语料 5,836 条全部可溯源；主题字典可从语料自我扩张；113 个测试。</p>
 <p>看板 https://yuesongcai.github.io/IdeaGen40/ ｜ 代码 https://github.com/YuesongCai/IdeaGen40</p>
 </callout>
 
@@ -20,9 +20,9 @@
 
 <table>
 <tr><th background-color="light-gray">问题</th><th background-color="light-gray">用什么量</th><th background-color="light-gray">当前读数</th></tr>
-<tr><td>这些想法的<b>方向</b>对不对</td><td>等权收益、胜率、超额</td><td>等权 +7.11%，胜率 56.6%，跑赢基准 35%</td></tr>
-<tr><td>引擎给的<b>排序</b>有没有信息</td><td>赔率 vs 实际收益的 Spearman ρ</td><td>保守赔率 ρ = +0.223</td></tr>
-<tr><td>它声明的<b>概率</b>诚不诚实</td><td>三分类 Brier 与技能分</td><td>技能分 +0.31（＞0 优于瞎猜）</td></tr>
+<tr><td>这些想法的<b>方向</b>对不对</td><td>等权收益、胜率、超额</td><td>等权 +1.22%，胜率 57.1%，跑赢基准 33%</td></tr>
+<tr><td>引擎给的<b>排序</b>有没有信息</td><td>赔率 vs 实际收益的 Spearman ρ</td><td>保守赔率 ρ = +0.278</td></tr>
+<tr><td>它声明的<b>概率</b>诚不诚实</td><td>三分类 Brier 与技能分</td><td>技能分 +0.34（＞0 优于瞎猜）</td></tr>
 </table>
 
 <h2>为什么原来的流程回答不了</h2>
@@ -434,20 +434,27 @@ flowchart TD
 
 <callout emoji="❗" background-color="light-yellow" border-color="yellow">
 <p><b>最重要的一个读数：9 个有持有期的组合里只有 2 个跑赢 SPY，平均超额 −1.57%。</b></p>
-<p>方向大多对（胜率 56.6%），但幅度跑不过指数（只有 35% 逐条跑赢）。在一个八天涨 4% 的市场里，选出来的东西涨得比市场慢。</p>
+<p>方向大多对（胜率 57.1%），但幅度跑不过指数（只有 33% 逐条跑赢）。在一个八天涨 4% 的市场里，选出来的东西涨得比市场慢。</p>
+</callout>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>更正（2026-08-08）：此前发布的想法层面等权收益 +7.11% 是错的，真实值是 +1.22%。</b></p>
+<p>原因是一处数据完整性缺陷，由合作方 PM review 指出后定位：<code>idea_uid</code> 是 <code>&lt;批次号&gt;#&lt;序号&gt;</code>，不是内容派生的。当 2026-07-27 那批想法被重新导入、而引用它们的持仓没有被级联删除时，每个 uid 都被静默重新绑定到了另一个标的——<code>B20260727#26</code> 的持仓仍是 US.URA（建仓价 40.33），而它的想法已经变成 US.DLR（收盘 192.56），于是结算把一个资产的建仓价对着另一个资产的收盘价算，记出 <b>+377%</b>。3 个账本共 58 条持仓受影响，该批次均值达 +48.5%。</p>
+<p><b>只污染想法层面的指标，不影响 cohort 记账</b>——组合是按自己的持仓计价的，所以「9 个组合里 2 个跑赢 SPY、平均超额 −1.57%」这个结论从头到尾都是对的。</p>
+<p>已修：批次替换改为级联删除依赖行；新增 <code>ideas.instrument_mismatches()</code> 一致性检查；<code>settle</code> 在检测到任何不一致时<b>直接拒绝运行</b>而不是照常发布数字。这个断言本该第一天就存在——按 <code>idea_uid</code> 的 join 即使 uid 已被改绑也照样成功，所以流程里没有任何其他环节能发现它。</p>
 </callout>
 
 <h2>能力指标</h2>
 
 <table>
 <tr><th background-color="light-gray">指标</th><th background-color="light-gray">读数</th><th background-color="light-gray">怎么读</th></tr>
-<tr><td>想法等权收益</td><td><span text-color="red">+7.11%</span>（320 条可评分）</td><td>剔除仓位规模影响的纯想法读数</td></tr>
-<tr><td>胜率</td><td>56.6%</td><td>—</td></tr>
-<tr><td>跑赢基准比例</td><td><span text-color="green">35%</span></td><td>逐条 vs SPY，偏低</td></tr>
-<tr><td><b>排序能力 ρ（保守赔率）</b></td><td><span text-color="red">+0.223</span></td><td><b>ρ ＞ 0 表示引擎的排序确实有信息</b></td></tr>
-<tr><td>排序能力 ρ（中心赔率 / 中心 EV）</td><td>+0.215 / +0.153</td><td>三者接近，样本还短</td></tr>
-<tr><td><b>概率技能分</b></td><td><span text-color="red">+0.31 / +0.33</span></td><td>= 1 − Brier ÷ 0.667；<b>＞0 表示优于瞎猜</b></td></tr>
-<tr><td>1 个月 vs 6 个月</td><td>+6.94%（n=104） vs +7.19%（n=216）</td><td>目前没有显著差异</td></tr>
+<tr><td>想法等权收益</td><td><span text-color="red">+1.22%</span>（303 条有持有期）</td><td>剔除仓位规模影响的纯想法读数。中位 +0.30%</td></tr>
+<tr><td>胜率</td><td>57.1%</td><td>—</td></tr>
+<tr><td>跑赢基准比例</td><td><span text-color="green">33%</span></td><td>逐条 vs SPY，偏低；平均超额 −1.26%</td></tr>
+<tr><td><b>排序能力 ρ（保守赔率）</b></td><td><span text-color="red">+0.278</span></td><td><b>ρ ＞ 0 表示引擎的排序确实有信息</b></td></tr>
+<tr><td>排序能力 ρ（保守 k 赔率 / 中心 EV）</td><td>+0.257 / +0.209</td><td>三者接近，样本还短</td></tr>
+<tr><td><b>概率技能分</b></td><td><span text-color="red">+0.34 / +0.36</span></td><td>= 1 − Brier ÷ 0.667；<b>＞0 表示优于瞎猜</b></td></tr>
+<tr><td>1 个月 vs 6 个月</td><td>+1.49%（n=100，胜率 62%） vs +1.09%（n=203，胜率 55%）</td><td>短期略好，样本远不足以下结论</td></tr>
 </table>
 
 <hr/>
@@ -496,7 +503,7 @@ timeline
 <checkbox done="false">按 <code>origin</code> 与 <code>cold_start</code> 分档，看<b>语料发现的主题是不是系统性差于种子主题</b>。这是新增机制唯一的验收标准；如果发现的主题一致更差，说明门槛该收紧或候选判定该更严</checkbox>
 <checkbox done="false">用 outcome <b>校准四因子权重</b>，替掉 0.15/0.25/0.25/0.35 这组先验值</checkbox>
 <checkbox done="false">测 <b>N 的意外程度与 M 的相关系数</b>，决定要不要把它从 N 里剔除</checkbox>
-<checkbox done="false">决定<b>评级用中心赔率还是保守赔率</b>——目前两者排序能力接近（+0.215 vs +0.223），需要更长样本</checkbox>
+<checkbox done="false">决定<b>评级用中心赔率还是保守赔率</b>——目前两者排序能力接近（+0.257 vs +0.278），需要更长样本</checkbox>
 <checkbox done="false">检验 v0.4 三个新假设：高 C 是否真的预示跑输、<code>wide</code> 幅度校验是否真标记出更差的 idea、<code>thesis_invalidated</code> 是否真早于价格止损</checkbox>
 
 <h2>可以考虑加的</h2>

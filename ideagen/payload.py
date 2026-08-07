@@ -211,6 +211,8 @@ def _report(con, d: str, frozen: list[dict] | None = None) -> dict | None:
         trans.setdefault(t["theme_id"], []).append(
             {"id": t["transmission_id"], "label": t["label"]})
 
+    all_charts = _charts(con, d)
+
     themes = []
     for r in rows:
         f = db.jl(r["factors"], {}) or {}
@@ -232,12 +234,12 @@ def _report(con, d: str, frozen: list[dict] | None = None) -> dict | None:
             "factors": {k: f.get(k) for k in ("D", "A", "B", "N", "M", "C")},
             "signals": sigs.get(r["theme_id"], []),
             "transmissions": trans.get(r["theme_id"], []),
-            "evidence": [{"doc_id": e.get("doc_id"), "line": e.get("line"),
-                          "tier": e.get("tier"), "d": e.get("d"),
-                          "institution": e.get("institution"),
-                          "title": e.get("title"), "stance": e.get("stance"),
-                          "depth": e.get("depth"), "fact_type": e.get("fact_type")}
-                         for e in ev[:12]],
+            # Evidence and charts belong to the theme that they are evidence *for*,
+            # not to a table at the bottom of the page. The reasoning trail is
+            # assembled here so a theme row can be opened and read on its own.
+            "evidence": _theme_evidence(con, ev[:14]),
+            "charts": _match_charts(all_charts, r["theme_id"]),
+            "trail": _trail(f, r),
         })
 
     corpus = _corpus(con, d)
@@ -251,6 +253,114 @@ def _report(con, d: str, frozen: list[dict] | None = None) -> dict | None:
         "corpus": corpus,
         "evidence": _evidence(con, d),
         "charts": _charts(con, d),
+    }
+
+
+def _theme_evidence(con, ev: list[dict]) -> list[dict]:
+    """Evidence rows with their retrieval receipt and verified figures attached."""
+    out = []
+    for e in ev:
+        doc = db.q1(con, "SELECT category,source_id,retrieval,content_hash,body_chars,"
+                         "published_at FROM documents WHERE doc_id=?",
+                    (e.get("doc_id"),))
+        assets = [dict(a) for a in db.q(
+            con, "SELECT url,kind,bytes,content_type FROM assets "
+                 "WHERE doc_id=? AND reachable=1", (e.get("doc_id"),))] if doc else []
+        out.append({
+            "doc_id": e.get("doc_id"),
+            "line": config.SOURCE_LINES.get(e.get("line"), {}).get("label", e.get("line")),
+            "tier": e.get("tier"), "d": e.get("d"),
+            "institution": e.get("institution"), "title": e.get("title"),
+            "stance": e.get("stance"), "depth": e.get("depth"),
+            "fact_type": e.get("fact_type"),
+            "retrieval": (doc["retrieval"] if doc else None),
+            "hash": ((doc["content_hash"] or "")[:12] if doc else None),
+            "chars": (doc["body_chars"] if doc else None),
+            "assets": assets,
+        })
+    return out
+
+
+def _match_charts(charts: list[dict], theme_id: str) -> list[dict]:
+    """Charts whose title or caption matches this theme's frozen dictionary.
+
+    A keyword match, stated as such: the chart library carries no theme tag, so the
+    association is inferred from the same term list the factor engine counts on.
+    """
+    t = lexicon.THEME_BY_ID.get(theme_id)
+    if not t:
+        return []
+    scored = []
+    for c in charts:
+        text = (c.get("title") or "") + " " + (c.get("caption") or "")
+        hits = lexicon.match_theme(text, t)
+        if hits >= 1:
+            scored.append({**c, "match_terms": hits})
+    scored.sort(key=lambda c: -c["match_terms"])
+    # Two distinct dictionary terms is a confident match; one is often noise
+    # ("欧洲天然气储备" hit 金属与战略补库 on the word 库存 alone). Prefer the
+    # confident ones, and only fall back to single-term hits when a theme would
+    # otherwise show nothing — flagged as weak so the reader can discount them.
+    strong = [c for c in scored if c["match_terms"] >= 2]
+    if strong:
+        return [{**c, "weak": False} for c in strong[:3]]
+    return [{**c, "weak": True} for c in scored[:2]]
+
+
+def _r1(v) -> str:
+    return "—" if v is None else f"{float(v):.1f}"
+
+
+def _r2(v) -> str:
+    return "—" if v is None else f"{float(v):.2f}"
+
+
+def _pct1(v) -> str:
+    return "—" if v is None else f"{float(v)*100:+.1f}%"
+
+
+def _trail(f: dict, r) -> dict:
+    """How each factor got its number — the reasoning chain, not just the score."""
+    D, A, B, N = (f.get("D") or {}), (f.get("A") or {}), (f.get("B") or {}), (f.get("N") or {})
+    M, C = (f.get("M") or {}), (f.get("C") or {})
+    return {
+        "D": {"score": r["d"], "why": (
+            f"{D.get('raw_items', 0)} 条独立条目 / 窗口计票池 {D.get('pool', 0)} 条"
+            f"（{D.get('distinct_institutions', 0)} 家机构、"
+            f"{D.get('distinct_lines', 0)} 条来源线）；对数标定到当窗口最响的主题"
+            f"（{D.get('max_raw_in_window', 0)} 条）")},
+        "A": {"score": r["a"], "why": (
+            "三日覆盖率 " + " / ".join(f"{x*100:.2f}%" for x in (A.get("c") or []))
+            + f"；重心 {_r2(A.get('centroid'))} → 倾斜项 {_r1(A.get('tilt'))}"
+            + (f"；当日热度在自身过去 {A.get('baseline_n')} 天分布的 "
+               f"{A.get('intensity')} 百分位" if A.get("intensity") is not None
+               else f"；基线不足（{A.get('baseline_n', 0)} 天），强度项 NA，"
+                    f"已按剩余权重归一化"))},
+        "B": {"score": r["b"], "why": (
+            f"方向明确观点 {B.get('n_directional', 0)} 条"
+            f"（看多 {B.get('pos', 0)} / 看空 {B.get('neg', 0)}）"
+            f"，样本折扣 {B.get('sample_discount', '—')}"
+            f"；方向争议 {B.get('directional_debate', '—')}"
+            f"；跨框架 {B.get('cross_framework', '—')}——{B.get('cross_framework_why', '')}")},
+        "N": {"score": r["n"], "why": (
+            f"新事实广度 {N.get('breadth', '—')}"
+            f"（{N.get('distinct_pairs', 0)} 组「机构×事实类型」，"
+            f"类型 {'/'.join(N.get('fact_types') or []) or '—'}）"
+            f"；意外程度 {N.get('surprise', '—')}——{N.get('surprise_src', '')}"
+            f"；因果深度 {N.get('depth', '—')}"
+            f"（最重要三条 {N.get('depth_top3') or '—'}）")},
+        "M": {"score": r["m"], "why": (
+            f"预注册指标 {M.get('primary', '—')}；方向命中率 {_r1(M.get('hit_rate'))}"
+            f"、幅度百分位 {_r1(M.get('magnitude_pct'))}、广度 {_r1(M.get('breadth'))}"
+            f"；窗口涨跌 " + "、".join(
+                f"{k} {v*100:+.2f}%" for k, v in (M.get("moves") or {}).items()
+                if v is not None))},
+        "C": {"score": r["c"], "why": (
+            f"{C.get('primary', '—')} 的 60 日动量在 "
+            f"{_r1(C.get('mom_pct_60d'))} 百分位"
+            f"；距 52 周高点 {_pct1(C.get('dist_52w_high'))}"
+            f"；20 日波动百分位 {_r1(C.get('vol_pct_20d'))}"
+            f"（安静度 {_r1(C.get('calm_score'))}）")},
     }
 
 
@@ -353,9 +463,18 @@ def _batch(con, d: str) -> dict | None:
     narrative = narrative or meta.get("macro_narrative")
     note = meta.get("note") or b["note"]
 
+    # classification for the ideas table: the Theme Map's information belongs in
+    # the row that expresses it, not in a separate tree above it
+    sig_map = {s["signal_id"]: dict(s) for s in db.q(
+        con, "SELECT signal_id,theme_id,transmission_id,asset,direction,horizon,gate "
+             "FROM signals WHERE as_of=?", (d,))}
+    tr_map = {t["transmission_id"]: t["label"] for t in db.q(
+        con, "SELECT transmission_id,label FROM transmissions WHERE as_of=?", (d,))}
+
     ideas = []
     for r in rows:
         o = om.get(r["idea_uid"], {})
+        sg = sig_map.get(r["signal_id"] or "", {})
         pos = db.q(con, "SELECT book_id,status,avg_px,qty,cost,opened_d,closed_d,"
                         "close_px,exit_reason,realized FROM positions "
                         "WHERE idea_uid=?", (r["idea_uid"],))
@@ -365,6 +484,10 @@ def _batch(con, d: str) -> dict | None:
             "code": r["futu_code"] or r["olive_key"],
             "theme": r["theme"], "theme_id": r["theme_id"],
             "signal_id": r["signal_id"], "asset": r["asset"],
+            "signal_label": (f"{sg.get('asset')} {sg.get('direction','↑')}｜{sg.get('horizon')}"
+                             if sg else None),
+            "transmission": tr_map.get(sg.get("transmission_id") or ""),
+            "gate": sg.get("gate"),
             "horizon": r["horizon"], "horizon_months": r["horizon_months"],
             "horizon_end": ideas_mod.horizon_end(
                 date.fromisoformat(r["as_of"]), r["horizon_months"]).isoformat(),
@@ -381,6 +504,7 @@ def _batch(con, d: str) -> dict | None:
             "conservative": {"p": r["conserv_p"], "r": r["conserv_r"]},
             "view": r["view"], "thesis": r["thesis"], "fit": r["fit"],
             "risk": r["risk"], "sources": r["sources"],
+            "sources_resolved": _resolve_sources(con, r["sources"]),
             "realized": o.get("realized"), "excess": o.get("excess"),
             "sessions_held": o.get("sessions_held"),
             "exit_reason": o.get("exit_reason"),
@@ -401,6 +525,36 @@ def _batch(con, d: str) -> dict | None:
                        "summary": val.get("summary")},
         "ideas": ideas,
     }
+
+
+def _resolve_sources(con, sources) -> list[dict]:
+    """Turn an idea's doc_ids into readable, verifiable references.
+
+    The reference belongs on the idea that cites it. A citation the reader cannot
+    open is not a citation, so each one carries its title, tier, institution, the
+    API call that reproduces it, and any verified figures.
+    """
+    out = []
+    for sid in (sources or []):
+        r = db.q1(con, "SELECT doc_id,line,tier,title,institution,published_at,"
+                       "retrieval,content_hash FROM documents WHERE doc_id=?",
+                  (str(sid),))
+        if not r:
+            out.append({"doc_id": str(sid), "resolved": False,
+                        "title": str(sid), "note": "散文式归属，无法解析到语料"})
+            continue
+        assets = [dict(a) for a in db.q(
+            con, "SELECT url,kind FROM assets WHERE doc_id=? AND reachable=1",
+            (r["doc_id"],))]
+        out.append({
+            "doc_id": r["doc_id"], "resolved": True,
+            "line": config.SOURCE_LINES.get(r["line"], {}).get("label", r["line"]),
+            "tier": r["tier"], "title": r["title"],
+            "institution": r["institution"],
+            "published_at": r["published_at"], "retrieval": r["retrieval"],
+            "hash": (r["content_hash"] or "")[:12], "assets": assets,
+        })
+    return out
 
 
 def _books_on(con, d: str) -> dict:

@@ -658,3 +658,127 @@ class TestFrontEndInvariants(unittest.TestCase):
             self.assertIn(f"'{v}'", self.js)
         self.assertIn("viewCockpit", self.js)
         self.assertIn("#(cockpit|report|book)", self.js)
+
+
+class TestInformationArchitecture(unittest.TestCase):
+    """The page is three views with drill-down, not one long scroll.
+
+    These lock the structure the redesign established: sources sit under the thing
+    that cites them, classification lives in the row that expresses it, and the
+    cross-day view does not pretend to have a selected date.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from ideagen import payload, report
+        cls.js = report.JS
+        cls.css = report.CSS
+        cls.con = db.init()
+        cls.pl = payload.build(cls.con)
+
+    # ---- three views, clear division of labour ----
+    def test_cross_day_view_has_no_date_picker(self):
+        """A date control on the cockpit would imply a selection that changes nothing."""
+        self.assertIn("const crossDay = view === 'cockpit'", self.js)
+        self.assertIn("$('#datenav').hidden = crossDay", self.js)
+
+    def test_cross_day_analytics_live_in_the_cockpit_not_under_one_day(self):
+        cockpit = self.js[self.js.index("function viewCockpit"):self.js.index("function barChart")]
+        book = self.js[self.js.index("function viewBook"):self.js.index("function orderTable")]
+        self.assertIn("skillBlocks()", cockpit)
+        self.assertNotIn("skillBlocks", book)
+
+    # ---- drill-down replaces stacked sections ----
+    def test_expandable_tables_are_used_for_themes_ideas_and_positions(self):
+        self.assertIn("function expTable(", self.js)
+        for fn in ("themeDetail", "ideaDetail", "posDetail"):
+            self.assertIn(fn, self.js)
+        self.assertGreaterEqual(self.js.count("expTable(cols, rows"), 3)
+
+    def test_the_separate_theme_map_is_gone(self):
+        """Its information now lives in the ideas table's classification columns."""
+        self.assertNotIn("themeMap", self.js)
+        self.assertNotIn("function ideaCard", self.js)
+
+    def test_ideas_table_classifies_each_row(self):
+        block = self.js[self.js.index("function ideaTable("):self.js.index("function ideaDetail(")]
+        for col in ("宏观主题", "传导主线", "资产信号"):
+            self.assertIn(col, block)
+
+    def test_detail_panel_stays_inside_the_viewport(self):
+        """It spans every column, so inside a scrolling table it must be pinned."""
+        block = self.css.split("tr.detail>td{")[1].split("}")[0]
+        self.assertIn("position:sticky", block)
+        self.assertIn("left:0", block)
+        dw = self.css.split(".dw{")[1].split("}")[0]
+        self.assertIn("100vw", dw)
+
+    def test_shrinkable_grid_columns_cannot_push_the_panel_wide(self):
+        for sel in (".src>div{", ".chain>div{"):
+            block = self.css.split(sel)[1].split("}")[0]
+            self.assertIn("minmax(0,1fr)", block.replace(" ", ""))
+
+    # ---- sources sit where they are cited ----
+    def test_every_theme_carries_its_own_evidence_and_reasoning_trail(self):
+        for d, day in self.pl["days"].items():
+            rep = day.get("report")
+            if not rep:
+                continue
+            for t in rep["themes"]:
+                self.assertIn("trail", t, d)
+                self.assertEqual(set(t["trail"]), {"D", "A", "B", "N", "M", "C"}, d)
+                for k, v in t["trail"].items():
+                    self.assertTrue(v["why"], f"{d}/{t['id']}/{k}")
+                self.assertIsInstance(t["evidence"], list)
+                self.assertIsInstance(t["charts"], list)
+
+    def test_theme_evidence_carries_a_reproducible_receipt(self):
+        seen = 0
+        for day in self.pl["days"].values():
+            for t in (day.get("report") or {}).get("themes", []):
+                for e in t["evidence"]:
+                    if e.get("retrieval"):
+                        seen += 1
+                        self.assertTrue(e["hash"])
+        self.assertGreater(seen, 50)
+
+    def test_ideas_resolve_their_citations_to_readable_references(self):
+        checked = 0
+        for day in self.pl["days"].values():
+            for i in (day.get("batch") or {}).get("ideas", []):
+                for s in i.get("sources_resolved", []):
+                    checked += 1
+                    self.assertIn("resolved", s)
+                    if s["resolved"]:
+                        self.assertTrue(s["title"])
+                        self.assertTrue(s["retrieval"])
+        self.assertGreater(checked, 100)
+
+    def test_weak_chart_matches_are_labelled(self):
+        for day in self.pl["days"].values():
+            for t in (day.get("report") or {}).get("themes", []):
+                for c in t["charts"]:
+                    self.assertIn("weak", c)
+                    if not c["weak"]:
+                        self.assertGreaterEqual(c["match_terms"], 2)
+
+    def test_no_raw_float_leaks_into_the_reasoning_trail(self):
+        import re
+        for day in self.pl["days"].values():
+            for t in (day.get("report") or {}).get("themes", []):
+                for k, v in t["trail"].items():
+                    self.assertIsNone(re.search(r"\d\.\d{6,}", v["why"]),
+                                      f"{t['id']}/{k}: {v['why'][:80]}")
+
+    def test_no_two_letter_globals_shadowing_view_params(self):
+        """A top-level `dd` formatter collided with viewBook(dd) and broke the view.
+
+        A local `const dd = day[cur]` inside render() is fine — the rule is about
+        module-level names, which is where the collision came from.
+        """
+        import re
+
+        top_level = [ln for ln in self.js.splitlines()
+                     if re.match(r"^(const|let|var)\s+dd\b", ln)]
+        self.assertFalse(top_level, f"top-level dd declared: {top_level}")
+        self.assertIn("const ddPct = ", self.js)

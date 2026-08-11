@@ -1,0 +1,267 @@
+<title>打分 A / B 修订版 · 调研后</title>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>先承认一件事：上一版那 10 个打分方案没有做文献调研。</b>它们是我从第一性原理加现有代码推出来的，看起来成体系，但没有任何一条附了证据。这一版是查过之后的，每条都标了证据等级，并且<b>其中两条推荐被证据推翻了</b>。</p>
+</callout>
+
+<h2>查了什么</h2>
+
+<table>
+<tr><th background-color="light-gray">问题</th><th background-color="light-gray">为什么关键</th></tr>
+<tr><td>1 个月 horizon 到底是动量还是反转</td><td>如果是反转，整个设计的方向就是反的</td></tr>
+<tr><td>「热度」预测收益的符号是正还是负</td><td>打分 A 把最高权重给了热度</td></tr>
+<tr><td>LLM 成对比较真的优于绝对打分吗</td><td>这是我上一版的核心推荐</td></tr>
+<tr><td>LLM 报概率可靠吗、在哪个区间失效</td><td>Omega 方案完全依赖它</td></tr>
+<tr><td>对抗式批评 / 多智能体辩论有效吗</td><td>这是我上一版的第三层</td></tr>
+<tr><td>Omega 比率的已知缺陷</td><td>这是你们自己提的方案之一</td></tr>
+<tr><td>最接近我们做法的实证研究结论如何</td><td>确认这条路本身有没有人验证过</td></tr>
+</table>
+
+<hr/>
+
+<h1>一、五条对设计有实质影响的发现</h1>
+
+<h2>发现 1：一个月 horizon 在你们的宇宙里是动量，不是反转 —— 但这是两个决定共同的功劳</h2>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>Zaremba, Karathanasopoulos &amp; Long (2019), 《Short-Term Momentum (Almost) Everywhere》, Journal of International Money and Finance 63</b></p>
+<p>两个多世纪的数据，五大类资产：股指、政府债、国库券、商品、货币。结论是<b>「与股票层面的证据相反」——上个月的收益正向预测下个月</b>。这个效应不能被已有的收益预测因子（包括标准动量）解释，且在<b>高特质波动资产</b>和<b>收益离散度高的时期</b>最强。</p>
+</callout>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>而在股票层面，1 个月是经典的反转异象。</b>短期反转定义就是上月收益，标准做法是在形成期与持有期之间跳过 1 个月，专门为了把动量和短期反转隔开。另有研究指出短期反转几乎完全由<b>换手率最低的那几档股票</b>解释，而最大最流动的股票反而表现出短期<b>动量</b>。</p>
+<p><b>所以：「1 个月 horizon」和「不投个股、只用 ETF/公募」这两个决定，是共同成立的。</b>会上给出的理由是「个股噪音大、不敢投」——事实上如果保留个股，1 个月反转会正面对抗整个设计。这个决定比当时的理由更重要。</p>
+</callout>
+
+<h2>发现 2：热度的符号不能假设为正 —— 这是最大的未验证风险</h2>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>Da, Engelberg &amp; Gao (2011), 《In Search of Attention》, Journal of Finance</b></p>
+<p>用 Google 搜索量做投资者注意力代理。发现注意力上升<b>预测未来约 2 周的价格上涨，然后在一年内反转</b>。它同时解释了 IPO 首日高收益与长期跑输。</p>
+<p>其他市场的复制研究更直接：搜索量上升之后<b>是更低的超额收益</b>，即「越受关注 → 价格越偏离基本面 → 随后回归」。另有 news co-occurrence 注意力指数（NNTA）在 S&amp;P500 上给出的是<b>负向</b>收益预测。</p>
+</callout>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>三个必须讲清的区别，它们决定这条发现对我们有多致命：</b></p>
+<ul>
+<li>那些文献量的是<b>散户注意力</b>（Google 搜索、异常换手）。我们的 H 量的是<b>机构研究覆盖</b>（卖方纪要、电话会、政策文件）——是不同的构念，而且研究少得多。不能直接照搬结论，也不能假装不相关。</li>
+<li>注意力驱动的价格压力被记录在<b>约 2 周</b>，反转在一年内。<b>1 个月的持有期正好坐在这个边界上</b>——可能吃到初段压力，也可能开始吃反转。</li>
+<li>发现 1（资产类别短期动量）量的是<b>价格</b>动量，不是注意力。两者不能互相替代作为彼此的证据。</li>
+</ul>
+</callout>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>由此得到一个比原方案更好的设计，而且它是可证伪的：</b></p>
+<p><b>H 单独不是信号，「H 高 + P 低」才是。</b>高热度 + 已被定价 = Da/Engelberg/Gao 描述的过度定价与反转场景；高热度 + 未被定价 = 我们真正想赌的东西。</p>
+<p>所以 P（已定价）不该只是主题分里权重 0.20 的一项，<b>它应该和 H 组成交互项</b>。可直接检验的预测：把主题按 H×P 分四格，<b>「高 H 低 P」应当显著优于「高 H 高 P」</b>。如果测出来没差别，说明 P 没做到它该做的事；如果「高 H 高 P」反而更好，说明我们整个方向错了——这是最该先跑的一个检验。</p>
+</callout>
+
+<h2>发现 3：成对比较优于绝对打分 —— 但只在没有干扰特征的时候</h2>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>Tripathi, Wadhwa, Durrett &amp; Niekum (2025), arXiv:2504.14716, 《Pairwise or Pointwise? Evaluating Feedback Protocols for Bias in LLM-Based Evaluation》</b></p>
+<p>结论：<b>成对协议对「被干扰的评估」更脆弱</b>。当引入干扰特征（生成方能利用的伪属性）时——</p>
+<table>
+<tr><th background-color="light-gray">协议</th><th background-color="light-gray">引入干扰后判断翻转的比例</th></tr>
+<tr><td>成对比较</td><td><span text-color="red">约 35%</span></td></tr>
+<tr><td>绝对打分</td><td><span text-color="green">约 9%</span></td></tr>
+</table>
+<p>作者的建议是「按数据特征与评估目标选择协议」，即没有普遍更优的一方。另外成对比较存在<b>位置偏好</b>（偏向排在前面或后面的那个），批量排序则更不可靠。</p>
+</callout>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>这条直接打在我上一版的核心推荐上。</b>我当时写「成对比较是 LLM 最强的模式，绝对打分是最弱的」——不成立，至少不无条件成立。</p>
+<p>而且我们的场景恰好是干扰最严重的场景：<b>20 条 idea 是同一个 LLM 生成的，它的行文习惯就是系统性干扰特征</b>——更自信的措辞、更长的论述、更具体的数字、更熟悉的代码。让另一个 LLM 成对比较，实际上在比谁写得更像好想法。</p>
+</callout>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>修正后的做法（保留成对比较，但把干扰面切掉）：</b>排序时<b>只喂结构化事实，不喂 thesis 散文</b>——标的、方向、上下行幅度、σ 倍数、主题、证据条数与层级、已定价分。同时随机化左右顺序并双向各问一次，只在两次一致时采信。这样成对比较的优势保留，而 35% 那个脆弱性的来源被移除。</p>
+</callout>
+
+<h2>发现 4：LLM 报概率在高区间系统性过度自信，而且叙事式提问会让它更差</h2>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>Lu (2025), arXiv:2507.04562, 《Evaluating LLMs on Real-World Forecasting Against Expert Forecasters》</b>——464 道 Metaculus 题目</p>
+<table>
+<tr><th background-color="light-gray">对象</th><th background-color="light-gray">Brier（越低越好）</th></tr>
+<tr><td>o3</td><td>0.1352</td></tr>
+<tr><td>GPT-4.1</td><td>0.1542</td></tr>
+<tr><td>o4-mini</td><td>0.1589</td></tr>
+<tr><td>Claude 3.6 Sonnet</td><td>0.1810</td></tr>
+<tr><td>人类群体基准</td><td>0.149</td></tr>
+<tr><td><b>专家预测者（中位）</b></td><td><span text-color="green"><b>0.0225</b></span></td></tr>
+<tr><td>随机猜</td><td>0.25</td></tr>
+</table>
+<p><b>校准：</b>「模型通常过度自信，尤其是对它认为很可能发生的事件」。在低于 10% 概率的区间校准尚可；有的模型会对<b>实际发生频率只有 50%</b> 的事件给出接近确定的判断。</p>
+<p><b>叙事式提示会显著变差：</b>GPT-4.1 的 Brier 从 <b>0.1542 恶化到 0.1842</b>（差约 19%）。「模型在直接提示下比在叙事提示下表现更好。」</p>
+</callout>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>我们现在的生成器正好用的是被证实会退化的那个格式：</b>在同一次调用里既写 thesis 叙事、又给三情景概率。按这篇的结果，这个设计本身就在损害概率质量。</p>
+</callout>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>三条可以直接落地的改动：</b></p>
+<ul>
+<li><b>把「给数」和「写理由」拆成两次调用。</b>先用结构化直接提问拿概率与幅度，再另起一次生成叙述。叙述不再参与打分。</li>
+<li><b>同一条采样 5 次取中位。</b>该文对每题平均了 5 次独立预测；另有研究显示多模型集成（均值或中位）能达到与人类群体统计上不可区分的水平，<b>并降低方差与过度自信</b>。中位与均值差别不大，中位更抗离群。</li>
+<li><b>凡是模型给出高于 70% 的概率，一律不采信原值。</b>要么截断，要么改用保守分支。我们现有的「保守赔率」正好是这个作用——而且实测它的排序能力（ρ=+0.278）本来就高于中心赔率（+0.209）。<b>这条实测结果和文献是一致的，之前没意识到。</b></li>
+</ul>
+</callout>
+
+<h2>发现 5：对抗式批评平均有效，但可以造成严重反向伤害</h2>
+
+<table>
+<tr><th background-color="light-gray">证据</th><th background-color="light-gray">结论</th></tr>
+<tr><td>多智能体辩论综合结果</td><td>平均提升准确率 <b>+7.05%</b>，在 21 个设定里 19 个优于单模型</td></tr>
+<tr><td>《When collaboration fails: persuasion driven adversarial influence in multi agent LLM debate》(Scientific Reports, 2026)</td><td><b>单个精心设计的对抗智能体可以让系统整体准确率下降 10–40%，并让错误共识增加 30% 以上</b></td></tr>
+<tr><td>同类研究</td><td>辩论会<b>随轮次增加而降低</b>准确率，即使强模型数量占优</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>所以红队这一层保留，但实现方式必须限定：</b></p>
+<ul>
+<li><b>一次性独立投票，绝不多轮共识辩论。</b>轮次和共识正是准确率下降的来源。</li>
+<li><b>红队输出结构化裁决（是否否决 + 一条最可能的失效路径），不输出说服性论述。</b>叙事会同时触发发现 4 的退化和上面的说服性伤害。</li>
+<li><b>按票数机械汇总，不让它们互相看到彼此的意见。</b></li>
+</ul>
+</callout>
+
+<hr/>
+
+<h1>二、10 个方案重排 · 带证据等级</h1>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>证据等级说明：</b><b>A</b> = 有同行评议或可引用的实证支持；<b>B</b> = 有相邻领域证据，需外推；<b>C</b> = 我的推理，没有证据；<b>D</b> = 有证据<b>反对</b>。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">#</th><th background-color="light-gray">方案</th><th background-color="light-gray">等级</th><th background-color="light-gray">证据 / 反证</th><th background-color="light-gray">上一版 → 这一版</th></tr>
+<tr><td>1</td><td><b>结构化直接提问 + 5 次取中位</b>（拿 upside/downside）</td><td><span text-color="green">A</span></td><td>Lu(2025)：叙事提示使 Brier 恶化 19%；集成取中位降低方差与过度自信</td><td><b>新增，且是基础层</b></td></tr>
+<tr><td>2</td><td><b>Omega / 上下行相除</b>，阈值取货币基金收益</td><td>B</td><td>Omega 主要批评是「阈值任意且无系统定法」；我们的阈值有依据（现金机会成本），但排序对阈值敏感仍需测</td><td>不变，补上阈值论证</td></tr>
+<tr><td>3</td><td><b>波动带硬门槛</b> [0.35σ, 2.60σ]</td><td>B</td><td>把模型自报的数强制落到标的自身分布上，直接对冲发现 4 的过度自信</td><td><b>重要性上升</b></td></tr>
+<tr><td>4</td><td><b>成对 Elo 排序 —— 但只喂结构化事实</b></td><td><span text-color="green">A</span>（改造后）</td><td>成对更贴合偏好，但引入干扰后翻转 35%（绝对打分仅 9%）+ 位置偏好</td><td><b>从「最强推荐」降级为「必须先去干扰」</b></td></tr>
+<tr><td>5</td><td><b>绝对打分做交叉验证</b></td><td><span text-color="green">A</span></td><td>同上：绝对打分抗操纵性强得多（9% vs 35%）</td><td><b>新增</b>——上一版把它当成最弱选项，是错的</td></tr>
+<tr><td>6</td><td><b>红队一次性独立投票</b></td><td>B</td><td>辩论平均 +7.05%，但单个对抗者可致 −10~40%；因此限定为一次性、结构化、不互看</td><td><b>保留但实现方式改写</b></td></tr>
+<tr><td>7</td><td><b>价格动量确认门</b></td><td><span text-color="green">A</span></td><td>Zaremba 等(2019)：资产类别上月收益正向预测下月，最强于高特质波动与高离散期</td><td><b>从「极低成本的小招」升级为有文献支撑的核心门槛</b></td></tr>
+<tr><td>8</td><td><b>拥挤度惩罚 / H×P 交互</b></td><td><span text-color="green">A</span></td><td>Da/Engelberg/Gao(2011)：注意力上升后约 2 周上涨、年内反转 → 高热度已定价者应被惩罚</td><td><b>从可选项升级为必需项</b></td></tr>
+<tr><td>9</td><td><b>自一致性（同题多次，取稳定者）</b></td><td>B</td><td>与方案 1 同源（多次采样降方差），但「稳定=更好」这一步没有直接证据</td><td>降级为方案 1 的副产品，不单列</td></tr>
+<tr><td>10</td><td><b>校准加权集成</b>（按各方案自身命中率加权）</td><td>B</td><td>集成本身有证据；用实测命中率加权是标准做法但需 3 个月以上样本</td><td>不变，仍是长期层</td></tr>
+<tr><td>—</td><td><s>养蛊：10 个策略 AI 直接给，不过问</s></td><td><span text-color="red">D</span></td><td>集成本身有效，但<b>「不过问」这一点被反证</b>：无法迭代，且集成的收益来自<b>多样性</b>，不是数量——10 个高度相关的镜头只是在平均噪音</td><td><b>改为：镜头必须显式指定不同维度，并逐个记录各自命中率</b></td></tr>
+<tr><td>—</td><td><s>资产类别拆解（股票=倍数×盈利）</s></td><td><span text-color="red">D</span></td><td>没有证据说它更准，而且它把 LLM 降级为填数工具 → 变成因子模型，即会上明确不走的那条路</td><td><b>仍不推荐，理由不变</b></td></tr>
+<tr><td>—</td><td><s>组合边际贡献</s></td><td>C</td><td>与「每周互不 interconnect」冲突；无证据支持在这个频率下有效</td><td><b>撤回</b></td></tr>
+</table>
+
+<hr/>
+
+<h1>三、推荐栈 v2</h1>
+
+<whiteboard type="mermaid">
+flowchart TD
+  G["20 条 idea<br/>生成时只写论点，不给数字"] --> L0["第 0 层 · 拿数字<br/>结构化直接提问 · 采样5次取中位<br/>>70% 概率一律截断"]
+  L0 --> L1["第 1 层 · 硬门槛<br/>波动带 0.35-2.60σ<br/>+ 价格动量同向确认<br/>+ 流动性可申赎"]
+  L1 --> L2A["第 2A 层 · 成对 Elo<br/>只喂结构化事实<br/>左右双向各问一次"]
+  L1 --> L2B["第 2B 层 · 绝对打分<br/>同一份结构化事实"]
+  L2A --> AGG{"两套排序取交集<br/>分歧的送第3层"}
+  L2B --> AGG
+  AGG --> L3["第 3 层 · 红队一次性投票<br/>结构化裁决 · 不互看 · 不多轮"]
+  L3 --> TOP["前 10 进组合"]
+  L3 -.-> REJ["落选 10 条<br/>反事实收益照样结算"]
+  TOP --> M["校准层 · 3个月后<br/>按各层实测命中率调严格度"]
+  REJ --> M
+</whiteboard>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>与上一版的三处实质区别：</b></p>
+<ul>
+<li><b>多了第 0 层。</b>先把「给数字」从叙事里拆出来单独做，这是唯一有直接实验证据的改动（Brier 差 19%）。</li>
+<li><b>成对与绝对并行，取交集，而不是只用成对。</b>两者的偏误方向不同——成对怕干扰特征，绝对怕分数压缩。分歧的那些才交给红队，成本也更低。</li>
+<li><b>动量确认门与 H×P 交互从「可选」变成「必需」</b>，因为它们各自有一篇可引用的文献直接支撑，而我原来把它们当成小技巧。</li>
+</ul>
+</callout>
+
+<hr/>
+
+<h1>四、我把核心检验在自己数据上跑了 —— 结论是「现在测不出来」</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p>发现 2 给出的核心可证伪预测是「高 H 低 P 应显著优于高 H 高 P」。我没有把它留在纸上，用现有 121 个 theme-day 跑了。<b>结果不是「假设错了」，是「这个检验现在没有分辨力」</b>——这个区别很重要。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">象限</th><th background-color="light-gray">n</th><th background-color="light-gray">平均收益</th><th background-color="light-gray">中位</th><th background-color="light-gray">95% 置信区间</th><th background-color="light-gray">胜率</th></tr>
+<tr><td>高热 / 未定价</td><td>28</td><td>+1.69%</td><td>+1.64%</td><td>[+0.90%, +2.49%]</td><td>71%</td></tr>
+<tr><td>高热 / 已定价</td><td>33</td><td>+2.05%</td><td>+0.64%</td><td>[+0.79%, +3.32%]</td><td>76%</td></tr>
+<tr><td>低热 / 未定价</td><td>32</td><td>+1.94%</td><td>+0.35%</td><td>[+0.74%, +3.14%]</td><td>66%</td></tr>
+<tr><td>低热 / 已定价</td><td>28</td><td><b>+2.53%</b></td><td><b>+2.09%</b></td><td>[+1.32%, +3.74%]</td><td>75%</td></tr>
+</table>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>核心检验：高热未定价 − 高热已定价 = −0.36%，标准误 0.76%，t = −0.47，95% 区间 [−1.85%, +1.13%]。</b></p>
+<p><b>区间横跨 0，四个象限的区间彼此大幅重叠。统计上完全无法区分。</b></p>
+<p>而且均值与中位数方向相反：按均值差 −0.36%（与假设反向），按中位数差 +1.00%（与假设同向）。这种不一致意味着结果由少数离群值主导，任何方向的解读都不成立。</p>
+<p>另外持有期是 1–9 个交易日，<b>不是一个月</b>——连 horizon 都不对。</p>
+</callout>
+
+<h2>那需要多少样本才测得出来</h2>
+
+<table>
+<tr><th background-color="light-gray">想检出的差值</th><th background-color="light-gray">每象限需要 n</th><th background-color="light-gray">总 theme-day</th><th background-color="light-gray">每周 5 个主题 → 需要</th></tr>
+<tr><td>0.5%</td><td>564</td><td>2,258</td><td><span text-color="red">104 个月</span></td></tr>
+<tr><td>1.0%</td><td>141</td><td>564</td><td><span text-color="red">26 个月</span></td></tr>
+<tr><td>1.5%</td><td>63</td><td>251</td><td>12 个月</td></tr>
+<tr><td><b>2.0%</b></td><td>35</td><td>141</td><td><span text-color="green"><b>7 个月</b></span></td></tr>
+<tr><td>3.0%</td><td>16</td><td>63</td><td>3 个月</td></tr>
+</table>
+
+<callout emoji="📌" background-color="light-gray">
+<p>按观测到的 theme-day 收益标准差约 3.0%、80% power、双尾 5% 计算。<b>现有每象限 30 个样本，只能检出 ≥2.2% 的差值——比这更小的效应一律测不出来。</b></p>
+</callout>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>这对「年化 25%」的时间表意味着什么，必须说清：</b></p>
+<p>年化 25% 需要单条 idea 月度净 +1.877%。而要在统计上确认某个打分维度贡献了 <b>1 个百分点</b>的月度差异，按上表需要 <b>26 个月</b>的周度运行。</p>
+<p>也就是说：<b>组合能不能跑到 25%，会比「我们知道为什么它跑到 25%」早得多地显现出来。</b>三个月后大概能看到组合像不像样，但那时还完全无法归因到某个字母或某条打分逻辑上。</p>
+<p>诚实的结论是：<b>打分维度的验证是一件 1–2 年的事，不是一个季度的事。</b>短期内只能靠「方向 make sense + 组合整体表现」来决策，这也正好是会上「先跑组合用业绩说话」这个判断的正确性所在——因为逐因子归因在这个样本速度下根本做不到。</p>
+</callout>
+
+<hr/>
+
+<h1>五、仍然没有证据的部分</h1>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>这些是这一版仍然拍脑袋的地方，写出来是为了不假装有依据：</b></p>
+<ul>
+<li><b>20 → 10 这个比例。</b>没有任何证据说砍一半比砍 30% 或 70% 好。「先生成 20 让它自己 tiering 更好」这个直觉也没有证据。</li>
+<li><b>H / G / E / P 的权重 0.30 / 0.25 / 0.25 / 0.20。</b>纯先验值。发现 2 之后我倾向于降低 H 的独立权重、把它主要通过 H×P 交互项发挥作用，但具体数字仍是猜的。</li>
+<li><b>Elo 需要多少对比较。</b>20 条全配对 190 对太贵，随机 50 对够不够没有依据。</li>
+<li><b>「机构研究覆盖」作为热度代理的符号。</b>这是整套设计最核心的未验证假设，而现有注意力文献量的是散户注意力。这个必须靠我们自己的 outcome 来定，别的地方没有答案。</li>
+<li><b>止盈止损具体点位。</b>上一版算出「止损位置比打分更强」是算术，不是证据；到底 −3% 还是 −5% 更好没有依据。</li>
+</ul>
+</callout>
+
+<h2>最该先跑的三个检验（H×P 那条已跑，见第四节）</h2>
+
+<checkbox done="true"><b>H×P 四格检验</b>——已跑，t=−0.47，区间横跨 0，现有样本无分辨力；需要约 7 个月周度运行才能检出 2% 的差异</checkbox>
+<checkbox done="false"><b>叙事 vs 结构化 A/B：</b>同一批 idea，一次用现在的「边写边给数」，一次用拆开的两次调用，比 Brier 与排序 ρ。文献说差 19%，我们自己的数据应该能看到</checkbox>
+<checkbox done="false"><b>成对 vs 绝对一致性：</b>两套排序的重叠度有多少。若重叠很低，说明至少一套在测别的东西，此时不该急着上线任何一套</checkbox>
+
+<hr/>
+
+<h1>六、引用</h1>
+
+<table>
+<tr><th background-color="light-gray">用在哪</th><th background-color="light-gray">出处</th></tr>
+<tr><td>1 个月在资产类别上是动量</td><td>Zaremba, Karathanasopoulos &amp; Long (2019), Short-Term Momentum (Almost) Everywhere, Journal of International Money and Finance 63</td></tr>
+<tr><td>注意力上升后 2 周上涨、年内反转</td><td>Da, Engelberg &amp; Gao (2011), In Search of Attention, Journal of Finance</td></tr>
+<tr><td>成对 vs 绝对的抗干扰性</td><td>Tripathi, Wadhwa, Durrett &amp; Niekum (2025), arXiv:2504.14716</td></tr>
+<tr><td>LLM 预测 Brier、过度自信、叙事提示退化</td><td>Lu (2025), arXiv:2507.04562</td></tr>
+<tr><td>对抗智能体的反向伤害</td><td>When collaboration fails: persuasion driven adversarial influence in multi agent LLM debate, Scientific Reports (2026)</td></tr>
+<tr><td>LLM 读新闻可预测收益（最接近我们的做法）</td><td>Lopez-Lira &amp; Tang, Can ChatGPT Forecast Stock Price Movements?, 即将发表于 Journal of Financial Economics</td></tr>
+<tr><td>Omega 阈值敏感性</td><td>On the (Ab)Use of Omega? 及相关综述</td></tr>
+</table>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>关于最后一条要特别说明：</b>Lopez-Lira &amp; Tang 是最常被引用来支持「LLM 能做投研」的论文，但它测的是<b>次日收益、单只股票、新闻标题情绪</b>——horizon 和宇宙都跟我们不一样，而且它报告的强预测性集中在<b>小盘股与负面消息</b>，恰好是我们排除掉的部分。它还发现<b>随 LLM 采用率上升策略收益下降</b>。</p>
+<p>所以它<b>不能</b>被当作「我们这条路已被验证」的证据。它只证明了 LLM 读文本能提取出有价格含义的信息——这是必要条件，不是充分条件。</p>
+</callout>

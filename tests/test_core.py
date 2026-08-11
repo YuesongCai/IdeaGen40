@@ -1230,3 +1230,151 @@ class TestFundPositionsAreNotFalselyFlagged(unittest.TestCase):
         bad = ideas.instrument_mismatches(con)
         self.assertEqual(len(bad), 1)
         self.assertEqual(bad[0]["idea_code"], "HK0000584752")
+
+
+class TestPlatformPorts(unittest.TestCase):
+    """The platform layer must be usable with no cloud SDK installed.
+
+    That property is what lets the methodology change freely: if importing the
+    pipeline required TOS and psycopg, every test and every laptop would need a
+    cloud account, and the six ports would stop being a boundary.
+    """
+
+    def test_load_never_raises_even_when_nothing_is_configured(self):
+        """A missing credential must be a health failure, not a stack trace.
+
+        The first cut raised NotConfigured from `load()` when ARK_API_KEY was
+        absent, so `ideagen platform` — the one command meant to work when
+        nothing else does — crashed instead of reporting which variable to set.
+        """
+        import os
+        from ideagen import platform as P
+        keep = {k: os.environ.pop(k, None) for k in
+                ("ARK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+                 "IDEAGEN_TOS_BUCKET", "IDEAGEN_PG_DSN")}
+        try:
+            for which in ("local", "byteplus"):
+                p = P.load(platform=which)          # must not raise
+                names = {h.name for h in p.check()}
+                self.assertEqual(
+                    names, {"secrets", "state", "blobs", "inference", "cache", "events"})
+        finally:
+            for k, v in keep.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_an_unconfigured_port_reports_and_then_raises_on_use(self):
+        from ideagen.platform.base import NotConfigured, Unavailable
+        u = Unavailable("inference", "ARK_API_KEY is not set")
+        h = u.check()
+        self.assertFalse(h.ok)
+        self.assertIn("ARK_API_KEY", h.detail)
+        with self.assertRaises(NotConfigured):
+            u.complete("hello")
+
+    def test_events_do_not_gate_readiness(self):
+        """Losing monitoring must not cost a week of corpus.
+
+        The corpus for a given week cannot be re-fetched later at the depth a live
+        run would have had, so refusing to run is the more expensive failure.
+        """
+        from ideagen.platform.base import Health, Platform, Unavailable
+        from ideagen.platform.local import (FileCache, LocalBlobStore,
+                                            SqliteStateStore)
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            p = Platform(
+                name="t", blobs=LocalBlobStore(root / "b"),
+                state=SqliteStateStore(root / "s.db"),
+                inference=_AlwaysOk("inference"), cache=FileCache(root / "c"),
+                secrets=_AlwaysOk("secrets"),
+                events=Unavailable("events", "kafka down"))
+            self.assertTrue(p.ready(), "a dead event bus must not block a run")
+            p.inference = Unavailable("inference", "no key")
+            self.assertFalse(p.ready(), "a dead inference port must block a run")
+
+    def test_blobs_are_immutable(self):
+        """Replacing an artifact in place is the failure that cost this project
+        ten days of wrong numbers; the port must make it impossible."""
+        from ideagen.platform.base import PlatformError
+        from ideagen.platform.local import LocalBlobStore
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            b = LocalBlobStore(Path(td))
+            b.put("runs/x/pack.json", b"first")
+            self.assertEqual(b.get("runs/x/pack.json"), b"first")
+            with self.assertRaises(PlatformError):
+                b.put("runs/x/pack.json", b"second")
+            self.assertEqual(b.get("runs/x/pack.json"), b"first")
+
+    def test_blob_keys_cannot_escape_the_artifact_root(self):
+        from ideagen.platform.base import PlatformError
+        from ideagen.platform.local import LocalBlobStore
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            b = LocalBlobStore(Path(td) / "root")
+            with self.assertRaises(PlatformError):
+                b.put("../escaped.json", b"x")
+
+    def test_lock_excludes_a_second_holder(self):
+        """Two overlapping runs would place the same orders twice."""
+        from ideagen.platform.local import FileCache
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            c = FileCache(Path(td))
+            with c.lock("weekly") as got_first:
+                self.assertTrue(got_first)
+                with c.lock("weekly") as got_second:
+                    self.assertFalse(got_second)
+            with c.lock("weekly") as got_again:
+                self.assertTrue(got_again, "lock must release on exit")
+
+    def test_run_journal_writes_an_immutable_record(self):
+        from ideagen.platform import RunJournal
+        from ideagen.platform.base import Platform, Unavailable
+        from ideagen.platform.local import (FileCache, FileEventBus,
+                                           LocalBlobStore, SqliteStateStore)
+        import json as _j
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            p = Platform(name="t", blobs=LocalBlobStore(root / "b"),
+                         state=SqliteStateStore(root / "s.db"),
+                         inference=_AlwaysOk("inference"),
+                         events=FileEventBus(root / "e.jsonl"),
+                         cache=FileCache(root / "c"),
+                         secrets=_AlwaysOk("secrets"))
+            j = RunJournal(p, kind="weekly", as_of="2026-08-12")
+            j.step("score", themes=5)
+            j.artifact("pack.json", b'{"x":1}')
+            uri = j.close(ok=True)
+            doc = _j.loads(p.blobs.get(f"{j.prefix}/journal.json"))
+            self.assertTrue(doc["ok"])
+            self.assertEqual(doc["kind"], "weekly")
+            self.assertEqual([s["step"] for s in doc["steps"]], ["score"])
+            self.assertEqual(len(doc["artifacts"]), 1)
+            self.assertEqual(len(doc["port_health"]), 6,
+                             "the journal must record every port's health")
+            self.assertTrue(uri.endswith("journal.json"))
+
+    def test_no_module_imports_a_cloud_sdk_at_top_level(self):
+        """Cloud imports must be lazy or `platform doctor` cannot report on them."""
+        src = Path("ideagen/platform/byteplus.py").read_text(encoding="utf-8")
+        head = src.split("class ", 1)[0]
+        for sdk in ("import tos", "import psycopg", "from kafka", "import redis",
+                    "from volcengine"):
+            self.assertNotIn(sdk, head,
+                             f"{sdk!r} must be imported inside a method, not at "
+                             f"module top level")
+
+
+class _AlwaysOk:
+    """Minimal healthy port stand-in for wiring tests."""
+
+    def __init__(self, name: str):
+        self._name = name
+
+    def check(self):
+        from ideagen.platform.base import Health
+        return Health(True, self._name, "stub")

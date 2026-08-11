@@ -33,6 +33,7 @@ from . import (analytics, backfill, briefing, config, db, generator,
                ideas as ideas_mod, lexicon, monitor, paper, replay,
                report as report_mod, scoring, seed, serve as serve_mod, themes,
                universe)
+from . import platform as platform_mod
 from .sources import futu_px, olive, wisburg
 
 
@@ -155,6 +156,58 @@ def cmd_replay(args) -> int:
     r = replay.run(con, date.fromisoformat(args.start), date.fromisoformat(args.end),
                    verbose=not args.quiet)
     return 0 if not r["failed"] else 1
+
+
+
+def cmd_platform(args) -> int:
+    """Health of every platform port, plus which env vars are set.
+
+    Run this before anything else on a new machine or in a fresh sandbox. It is
+    the only command that works when nothing else does, which is the point.
+    """
+    p = platform_mod.load(platform=args.platform)
+    print(f"platform: {p.name}")
+    print()
+    worst = 0
+    for h in p.check():
+        flag = "OK  " if h.ok else "FAIL"
+        if not h.ok and h.name != "events":
+            worst = 1
+        print(f"  {h.name:<11}{flag}  {h.detail}")
+    print()
+    print(f"  ready: {p.ready()}   (events 不计入 ready：丢监控只是少看见，"
+          f"拒绝运行会丢掉这一周的语料)")
+
+    if args.env:
+        print("\n环境变量（只显示是否设置，不打印值）")
+        for row in platform_mod.env_report():
+            mark = {"env": "env ", "file": "file"}.get(row["source"], "—   ")
+            print(f"  {mark} {row['key']:<30}{row['purpose']}")
+
+    if args.probe:
+        # A real round-trip through the blob store. `check()` only proves the
+        # endpoint answers; this proves we can actually write, read back the same
+        # bytes, and that a second write to the same key is refused.
+        import json as _j
+        from datetime import datetime, timezone
+        key = f"selftest/{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+        body = _j.dumps({"probe": True, "platform": p.name}).encode()
+        print("\n产物往返自检")
+        try:
+            uri = p.blobs.put(key, body, content_type="application/json")
+            same = p.blobs.get(key) == body
+            print(f"  put  {uri}")
+            print(f"  get  字节一致: {same}")
+            try:
+                p.blobs.put(key, b"overwrite")
+                print("  不可变性 FAIL —— 覆盖成功了，不该")
+                worst = 1
+            except platform_mod.PlatformError:
+                print("  不可变性 OK  —— 二次写入被拒")
+        except Exception as e:  # noqa: BLE001
+            print(f"  FAIL {type(e).__name__}: {e}")
+            worst = 1
+    return worst
 
 
 def cmd_rebuild_batch(args) -> int:
@@ -538,6 +591,13 @@ def main(argv: list[str] | None = None) -> int:
     s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
+    s = add("platform", cmd_platform, "platform port health (run this first)")
+    s.add_argument("--platform", choices=["local", "byteplus"],
+                   help="override IDEAGEN_PLATFORM")
+    s.add_argument("--env", action="store_true", help="also list platform env vars")
+    s.add_argument("--probe", action="store_true",
+                   help="write and read back a real artifact")
+
     s = add("replay", cmd_replay,
             "rebuild scores/packs/batches/trades for a range, in as-of order")
     s.add_argument("--start", required=True)

@@ -27,3 +27,6 @@ __pycache__/
 .DS_Store
 .venv/
 venv/
+
+# Platform artifacts — run products live in TOS, not in git
+data/artifacts/

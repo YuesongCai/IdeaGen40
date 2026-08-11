@@ -1,0 +1,182 @@
+<title>IdeaGen 生产化技术方案 · BytePlus</title>
+
+<callout emoji="🏁" background-color="light-blue" border-color="blue">
+<p><b>结论先说：</b>我用你给的 AK/SK 真连上去了，不是纸面方案。已验证 TOS 可用并建好专用 bucket、适配器端到端读写通过、ModelArk 管理面通且账号可访问 <b>42 个基础模型</b>。RDS / Redis / VKE 的 API 都通但<b>实例数为 0</b>，那些是计费资源，我没有不问就开。</p>
+<p><b>方案的核心取舍：</b>你说了「可能改方向」。所以这套架构<b>把平台层和方法论层彻底分开</b>——打分怎么改、周度还是日度、宇宙放哪些标的，都不触碰平台层一行代码。</p>
+</callout>
+
+<hr/>
+
+<h1>一、已验证 vs 待办</h1>
+
+<table>
+<tr><th background-color="light-gray">服务</th><th background-color="light-gray">用途</th><th background-color="light-gray">状态</th><th background-color="light-gray">证据</th></tr>
+<tr><td><b>TOS 对象存储</b></td><td>不可变产物：语料快照、briefing pack、批次、看板、run journal</td><td><span text-color="green"><b>已验证可用</b></span></td><td>账号内原有 3 个 bucket；已创建 <code>ideagen-3003452293</code>；适配器 put/get/list/不可变性 全部通过</td></tr>
+<tr><td><b>ModelArk 推理</b></td><td>打分 A 的语义判断、20 条 idea 生成、打分 B 的排序与红队</td><td><span text-color="yellow"><b>管理面通，推理面差一步</b></span></td><td><code>ListFoundationModels</code> 返回 <b>42 个模型</b>；推理面需要 API key 或 project 绑定</td></tr>
+<tr><td><b>RDS for PostgreSQL</b></td><td>事务状态：语料、打分、idea、订单、持仓、盯市、outcome</td><td><span text-color="grey">API 通，0 实例</span></td><td>计费资源，等你确认再开</td></tr>
+<tr><td><b>Cache for Redis</b></td><td>跨沙箱运行锁（防重复下单）、MCP 响应缓存</td><td><span text-color="grey">API 通，0 实例</span></td><td>同上</td></tr>
+<tr><td><b>Message Queue for Kafka</b></td><td>run 生命周期事件流，供监控与后续 fan-out</td><td><span text-color="grey">未开</span></td><td>我试探的 API 版本号猜错了，需订正；非阻塞项</td></tr>
+<tr><td><b>VKE / AgentKit 沙箱</b></td><td>每周三跑 run 的执行环境</td><td><span text-color="yellow">AgentKit 已开通</span></td><td>账号里已有 2 个 <code>agentkit-platform-*</code> bucket；VKE 集群 0 个</td></tr>
+<tr><td><b>KMS</b></td><td>凭证托管，取代 <code>~/.ideagen.env</code></td><td><span text-color="grey">待开</span></td><td>适配器已写好，含「降级到环境变量时必须显式报告」</td></tr>
+</table>
+
+<h2>账号可用的 42 个模型（这决定推理层怎么排）</h2>
+
+<table>
+<tr><th background-color="light-gray">家族</th><th background-color="light-gray">数量</th><th background-color="light-gray">我打算用在哪</th></tr>
+<tr><td><code>deepseek</code>（r1, v3, v3-1, distill-qwen-32b…）</td><td>8</td><td><b>r1 推理模型做打分 B 的红队与排序</b>——需要慢想的那一层</td></tr>
+<tr><td><code>seed</code>（1-6, 1-6-flash, 1-8, 2-0-code…）</td><td>8</td><td><b>flash 做批量结构化取数</b>（20 条 × 5 次采样），成本敏感</td></tr>
+<tr><td><code>glm-5-2</code> / <code>kimi-k2</code> / <code>gpt-oss-120b</code></td><td>3</td><td><b>多模型集成的异质来源</b>——集成有效的前提是多样性，不是数量</td></tr>
+<tr><td><code>skylark-embedding-vision</code></td><td>1</td><td>语料向量化，供主题发现的候选聚类</td></tr>
+<tr><td>seedance / seedream / dreamina / hyper3d 等生成类</td><td>~19</td><td>与本项目无关</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>这份清单本身就是一个设计输入。</b>调研里那条「多模型集成取中位能降低方差与过度自信」的结论，之前是纸上建议——现在账号里同时有 deepseek、seed、glm、kimi 四个<b>不同厂商血统</b>的模型，异质集成可以真的做，而不是同一个模型跑五遍。</p>
+</callout>
+
+<hr/>
+
+<h1>二、架构：为什么改方向不用重写</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>你的原话是「我可能改方向」。这句话决定了架构，不是决定了功能。</b></p>
+<p>如果按常规做法把 TOS、Postgres、ModelArk 的调用散在 pipeline 各处，那么改方向时——比如打分 B 从 Omega 换成 Elo、频率从周度改回日度——每一处都要动，而且每一处都可能碰坏已经调对的东西（as-of 钳制、现金约束、盯市顺序，这三样是这个项目里花时间最久的）。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart TB
+  subgraph M["方法论层 · 会改的部分"]
+    M1["打分 A：H/G/E/P 或别的"]
+    M2["打分 B：Omega / Elo / 红队 / 还没定"]
+    M3["频率：周度 / 日度"]
+    M4["宇宙：ETF / 公募 / 私募"]
+    M5["组合规则：25% 四批滚动"]
+  end
+  subgraph P["平台层 · 六个端口 · 不会因方向改动而变"]
+    P1["BlobStore 产物"]
+    P2["StateStore 状态"]
+    P3["Inference 推理"]
+    P4["EventBus 事件"]
+    P5["Cache 缓存与锁"]
+    P6["SecretStore 凭证"]
+  end
+  subgraph L["local 适配器"]
+    L1["文件系统"]
+    L2["SQLite"]
+    L3["直连 API"]
+  end
+  subgraph B["byteplus 适配器"]
+    B1["TOS"]
+    B2["RDS PostgreSQL"]
+    B3["ModelArk"]
+    B4["MQ for Kafka"]
+    B5["Cache for Redis"]
+    B6["KMS"]
+  end
+  M --> P
+  P --> L
+  P --> B
+</whiteboard>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>六个端口就是「什么东西能活下来」的完整定义。</b>云沙箱跑完就销毁，没有经过端口写出去的东西全部消失——所以这个清单不是抽象设计，它是可审计性的边界。</p>
+<p>一个开关切换：<code>IDEAGEN_PLATFORM=local</code> 或 <code>byteplus</code>。而且<b>端口可以混搭</b>——设了 TOS 但不设 <code>IDEAGEN_PG_DSN</code>，产物就上云、状态仍留 SQLite。这是真实的迁移路径：一个端口一个端口搬，别的照常跑。逼着六个一起搬，是迁移做不完的标准死法。</p>
+</callout>
+
+<h2>三条写进端口契约的硬规则</h2>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">为什么是硬的</th><th background-color="light-gray">怎么实现</th></tr>
+<tr><td><b>产物不可变，按 run 寻址</b></td><td>这个项目已经因为「替换批次没级联删除」错了十天：58 笔持仓挂到别的标的上，结算把 40 美元建仓价对着 192 美元收盘价算，一条 idea 记出 <b>+377%</b>，把发布的等权收益从 +0.96% 抬到 +5.70%</td><td><code>put</code> 没有 overwrite 路径。TOS 先 head 再 put，本地先查文件存在。<b>已实测：重复写同一 key 抛异常</b></td></tr>
+<tr><td><b>沙箱无状态</b></td><td>沙箱销毁后本地写的东西全没</td><td>run 开始从库里拉 as-of 快照，结束把全部产物写回；沙箱里不留唯一副本</td></tr>
+<tr><td><b>跑之前先体检</b></td><td>周度 run 在第 6 步才发现数据库不可达，模型钱已经花掉了</td><td>六个端口各有 <code>check()</code>，<code>ready()</code> 全绿才开跑。<b>events 故意不计入</b>——丢监控只是少看见，拒绝运行是丢掉这一周的语料，而那一周的语料事后取不回同样深度</td></tr>
+</table>
+
+<hr/>
+
+<h1>三、为什么 scalable</h1>
+
+<callout emoji="📌" background-color="light-gray">
+<p>「scalable」在这个项目里不是指 QPS。周度跑一次、每次 5 个主题 20 条 idea，量小得可笑。真正会撑爆的是<b>另外三个维度</b>。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">会长大的维度</th><th background-color="light-gray">现在</th><th background-color="light-gray">10 倍时</th><th background-color="light-gray">架构怎么接住</th></tr>
+<tr><td><b>历史长度</b>（run 数 × 产物）</td><td>10 个 run，语料 5,836 条</td><td>2 年周度 = 104 run；语料百万级</td><td>TOS 按 <code>runs/{date}/{run_id}/</code> 分区，成本线性且极低；查询靠 Postgres 索引而非扫产物</td></tr>
+<tr><td><b>并行模型调用</b></td><td>1 次生成</td><td>20 条 × 5 次采样 × 4 个模型 = 400 次/周</td><td>ModelArk 是托管推理，并发交给它；<code>complete_many</code> 是端口方法，换成异步批量不改调用方</td></tr>
+<tr><td><b>回测重放</b></td><td>没做过真回测</td><td>2 年 × 104 周，每周完整重跑</td><td><b>这是唯一真需要横向扩的地方</b>：104 个 run 互不依赖，可以同时开 104 个沙箱。前提是 run 无状态——所以第二条硬规则是为回测服务的</td></tr>
+<tr><td><b>并发运行</b></td><td>一台笔记本，无冲突可能</td><td>定时 run + 手工重跑 + 回测同时在跑</td><td>Redis <code>SET NX EX</code> 分布式锁。<b>这是必须用 Redis 而不是文件锁的唯一理由</b>——文件锁协调不了两个沙箱，而「同一周跑两次会重复下单」是真实风险</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>一句话版本：</b>这套东西的 scale 瓶颈是<b>回测的横向重放</b>，不是在线吞吐。所以架构的重点放在「run 是一个无状态、可寻址、可重放的闭包」，而不是放在缓存和连接池上。</p>
+</callout>
+
+<hr/>
+
+<h1>四、为什么能用（不是「应该能用」）</h1>
+
+<table>
+<tr><th background-color="light-gray">主张</th><th background-color="light-gray">验证方式</th><th background-color="light-gray">结果</th></tr>
+<tr><td>TOS 凭证有效、可建 bucket</td><td><code>list_buckets</code> + <code>create_bucket</code></td><td><span text-color="green">✅ 建成 <code>ideagen-3003452293</code></span></td></tr>
+<tr><td>我写的适配器能真读写</td><td>put → get 字节比对 → exists → list</td><td><span text-color="green">✅ 往返一致</span></td></tr>
+<tr><td>不可变性真的挡得住</td><td>对同一 key 二次 put</td><td><span text-color="green">✅ 抛 PlatformError</span></td></tr>
+<tr><td>ModelArk 账号可用</td><td>AK/SK 签名调 <code>ListFoundationModels</code></td><td><span text-color="green">✅ 42 个模型</span></td></tr>
+<tr><td>SDK 签名不是我编的</td><td><code>inspect.signature</code> 内省 <code>tos.TosClientV2</code></td><td><span text-color="green">✅ <code>(ak, sk, endpoint, region)</code></span></td></tr>
+<tr><td>不装云 SDK 也能跑测试</td><td>所有云 import 都在方法内部惰性加载，并有测试断言这一点</td><td><span text-color="green">✅ 132 个测试无需任何云依赖</span></td></tr>
+<tr><td><code>load()</code> 在配置缺失时不崩</td><td>把 ARK_API_KEY 等全部移除后 load 两种平台</td><td><span text-color="green">✅ 改过一次才对</span>——第一版真的会崩，见下</td></tr>
+<tr><td>RDS / Redis / VKE 权限够</td><td><code>DescribeDBInstances</code> / <code>ListClusters</code></td><td><span text-color="yellow">API 都通，实例数 0</span></td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>写这套东西时自己踩到的一个设计错误，值得记一笔：</b>第一版 <code>load()</code> 在端口凭证缺失时<b>直接抛异常</b>。结果是 <code>ideagen platform</code>——那个「什么都不通的时候唯一还能用」的命令——自己先崩了，操作者拿到的是 stack trace 而不是「你少设了 ARK_API_KEY」这一行。</p>
+<p>体检机制的全部意义就是在这种时候还能说话，所以构造阶段抛异常是把它作废。已改为：配不出来的端口换成一个占位对象，<code>check()</code> 如实报原因，<b>真被调用时才抛</b>。这样需要它的 run 照样会失败、且失败在使用点上；不需要它的 run 正常跑。</p>
+</callout>
+
+<hr/>
+
+<h1>五、需要你决定的三件事</h1>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>1）ModelArk 推理面怎么开。</b>管理面用 AK/SK 就通了，但推理面报 <code>must set project_name when get preset endpoint token</code>。两条路：<b>(a)</b> 你在控制台点一个 API key 给我（最快，一分钟）；<b>(b)</b> 我用 AK/SK + project 绑定继续试。<b>控制台密码你给了，但我不会用——网页登录属于凭证录入，这条我不做。</b></p>
+<p><b>2）RDS PostgreSQL 和 Redis 要不要现在开。</b>这两个是计费资源。不开也能跑：状态继续留 SQLite（挂在持久卷上）、锁退化成文件锁——代价是<b>回测不能横向并行</b>、<b>多沙箱防重复下单失效</b>。我建议 Redis 先开（便宜、解决锁问题），Postgres 等回测真要并行时再开。<b>具体价格我没验证过，不编数字，你那边看控制台报价。</b></p>
+<p><b>3）执行环境用 AgentKit 沙箱还是 VKE。</b>你账号里 AgentKit 已开通、VKE 是 0 集群。AgentKit 更省事（无需管集群），VKE 更可控（能常驻 MCP 网关）。<b>而 MCP 网关必须常驻</b>——现在整条链里唯一必须人在场的就是 Olive MCP，它挡住了「无人值守跑组合」这个目标本身。所以我倾向：<b>run 用 AgentKit 沙箱，MCP 网关用一个最小的常驻服务</b>。</p>
+</callout>
+
+<hr/>
+
+<h1>六、落地顺序</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  A["✅ 已完成<br/>六端口抽象<br/>local 适配器<br/>byteplus 适配器<br/>TOS 实测通过<br/>run journal"] --> B["第 1 步 · 不花钱<br/>产物迁到 TOS<br/>platform doctor<br/>把 10 个历史 run 补成 journal"]
+  B --> C["第 2 步 · 需要 API key<br/>接通 ModelArk<br/>结构化取数 + 5次采样中位<br/>异质多模型集成"]
+  C --> D["第 3 步 · 需要你批预算<br/>Redis 锁<br/>Postgres 状态<br/>Kafka 事件"]
+  D --> E["第 4 步 · 目标态<br/>AgentKit 定时 run<br/>常驻 MCP 网关<br/>回测横向重放"]
+</whiteboard>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>第 1 步现在就能做完，不需要你任何决策、不花一分钱</b>，而且做完之后「所有东西都存下来」这个要求就已经满足了——产物在 TOS、每个 run 有不可变 journal、六端口有体检。</p>
+<p>后面三步各自被一个具体的东西卡住：API key、预算、执行环境选型。我把它们列成三个独立的口子，任何一个先解开都能单独往前走。</p>
+</callout>
+
+<hr/>
+
+<h1>七、方向改了会发生什么</h1>
+
+<table>
+<tr><th background-color="light-gray">如果你改</th><th background-color="light-gray">要动的代码</th><th background-color="light-gray">平台层</th></tr>
+<tr><td>打分 A 换一套字母</td><td><code>scoring.py</code> + <code>lexicon.py</code></td><td><span text-color="green">不动</span></td></tr>
+<tr><td>打分 B 换机制（Omega→Elo→别的）</td><td>新增一个 selector 模块</td><td><span text-color="green">不动</span></td></tr>
+<tr><td>周度改回日度、或改成双周</td><td>调度配置 + <code>replay.py</code> 的窗口</td><td><span text-color="green">不动</span></td></tr>
+<tr><td>宇宙加/减资产类别</td><td><code>universe.py</code></td><td><span text-color="green">不动</span></td></tr>
+<tr><td>组合规则改（25%→别的、加杠杆）</td><td><code>paper.py</code></td><td><span text-color="green">不动</span></td></tr>
+<tr><td>换模型厂商（ModelArk→别的）</td><td>—</td><td><span text-color="yellow">改一个 base_url</span></td></tr>
+<tr><td>换云（BytePlus→别的）</td><td>—</td><td><span text-color="yellow">新写一个适配器，约 300 行</span></td></tr>
+<tr><td>整个方法论推倒重来</td><td>方法论层全部</td><td><span text-color="green">不动，而且历史 run 全部还在</span></td></tr>
+</table>
+
+<callout emoji="📌" background-color="light-gray">
+<p>最后一行是这套架构真正的价值：<b>方法论推倒重来时，之前所有 run 的产物、语料快照、打分明细、outcome 都还在 TOS 里，可以用新方法论重放旧数据做对照。</b>而如果不做这层分离，改方向就等于丢掉历史。</p>
+</callout>

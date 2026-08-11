@@ -130,14 +130,23 @@ def settle(con, book_id: str = "naive", verbose: bool = True) -> dict:
                 realized = b[1] / a[1] - 1 - cost
                 reason = "not_filled(counterfactual)"
 
+        # The benchmark must span the position's *own* holding period, not the
+        # idea's age. A limit order that took three sessions to fill is held for
+        # a shorter window than the idea has existed, and charging it a benchmark
+        # measured from the idea date compares five days of position against
+        # eight days of index. On the `naive` book every fill lands on the idea
+        # date so this changes nothing today; on `disciplined` 36 of 119 fills are
+        # late, and the new weekly design fills later by construction.
+        bench_from = (pos["opened_d"] if pos and pos["opened_d"] else idea["as_of"])
+
         # Sessions actually elapsed. An idea generated today has none, so its
         # "return" would be nothing but the round-trip cost — including those in
         # the aggregates would drag the hit rate purely as a function of how
         # recently the batch was written.
         held = len([r2["d"] for r2 in db.q(
             con, "SELECT d FROM prices WHERE code=? AND d>? AND d<=? ORDER BY d",
-            (bench, idea["as_of"], mark_to))])
-        br = benchmark_return(con, bench, idea["as_of"], mark_to)
+            (bench, bench_from, mark_to))])
+        br = benchmark_return(con, bench, bench_from, mark_to)
         scen = _scenario_bucket(realized, idea["central_r"])
         out.append({
             "idea_uid": idea["idea_uid"], "as_of": idea["as_of"],

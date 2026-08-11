@@ -303,11 +303,16 @@ def instrument_mismatches(con) -> list[dict]:
     later: a join on `idea_uid` succeeds even when the uid has been rebound to a
     different instrument, so nothing else in the pipeline can notice.
     """
+    # Which column holds the instrument depends on its kind: a listed position
+    # carries the Futu code, a fund position carries the Olive key. Comparing
+    # every position against `futu_code` flags all 19 fund ideas as corrupt,
+    # because their `futu_code` is NULL by design — a false positive that would
+    # block `settle` on any batch holding a fund.
     return [dict(r) for r in db.q(con, """
         SELECT p.book_id, p.idea_uid, p.code AS position_code,
-               i.futu_code AS idea_code, i.batch_id
+               COALESCE(i.futu_code, i.olive_key) AS idea_code, i.batch_id
         FROM positions p JOIN ideas i ON i.idea_uid = p.idea_uid
-        WHERE COALESCE(p.code,'') <> COALESCE(i.futu_code,'')
+        WHERE COALESCE(p.code,'') <> COALESCE(i.futu_code, i.olive_key, '')
         ORDER BY i.batch_id, p.book_id, p.idea_uid""")]
 
 

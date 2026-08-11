@@ -1150,3 +1150,83 @@ class TestDictionaryIsVisible(unittest.TestCase):
         # listed with no scores and concludes the feature is broken.
         self.assertIn("已注册但还没有出现在任何一天上", src)
         self.assertIn("待生效", src)
+
+
+class TestBenchmarkWindowAlignment(unittest.TestCase):
+    """The benchmark must span the position's holding period, not the idea's age.
+
+    Raised in Jon's PM review. A limit order that takes three sessions to fill is
+    held for a shorter window than the idea has existed, so measuring its
+    benchmark from the idea date compares five days of position against eight days
+    of index and reports the difference as skill.
+
+    Currently latent rather than live: `settle` runs on the `naive` book, where
+    every fill lands on the idea date. It bites on `disciplined` (36 of 119 fills
+    are late) and by construction in the weekly design, where a batch generated
+    Wednesday morning cannot fill before Wednesday's close.
+    """
+
+    def test_benchmark_starts_at_the_fill_not_the_idea_date(self):
+        src = Path("ideagen/analytics.py").read_text(encoding="utf-8")
+        self.assertIn("bench_from", src)
+        self.assertIn('pos["opened_d"] if pos', src,
+                      "filled positions must benchmark from their own open")
+        self.assertIn("benchmark_return(con, bench, bench_from, mark_to)", src)
+        self.assertNotIn('benchmark_return(con, bench, idea["as_of"], mark_to)', src,
+                         "the idea-dated benchmark call must be gone")
+
+    def test_sessions_held_uses_the_same_window_as_the_benchmark(self):
+        """Otherwise the held count and the benchmark disagree about the period."""
+        src = Path("ideagen/analytics.py").read_text(encoding="utf-8")
+        i = src.index("bench_from = ")
+        seg = src[i:i + 1200]
+        self.assertIn("(bench, bench_from, mark_to)", seg,
+                      "sessions_held must be counted over the benchmark window")
+
+
+class TestFundPositionsAreNotFalselyFlagged(unittest.TestCase):
+    """A fund position carries an Olive key, not a Futu code.
+
+    The first cut of `instrument_mismatches` compared every position against
+    `ideas.futu_code`, which is NULL for funds by design. That flagged all 19 fund
+    ideas as corrupt and made `settle` refuse to run on any batch holding one —
+    a guard that blocks correct data is worse than no guard.
+    """
+
+    def test_a_fund_position_matching_its_olive_key_is_clean(self):
+        con = mem()
+        db.upsert(con, "batches", {
+            "batch_id": "BF", "as_of": "2026-08-01",
+            "generated_at": "2026-08-01T07:23:00+08:00", "generator": "test",
+            "n_ideas": 1, "methodology": config.METHODOLOGY_VERSION,
+            "output_sha": "x", "validation": {}, "status": "validated"}, ["batch_id"])
+        db.upsert(con, "ideas", {
+            "idea_uid": "BF#1", "batch_id": "BF", "as_of": "2026-08-01",
+            "local_id": 1, "tool": "SomeFund", "horizon": "1个月",
+            "horizon_months": 1, "instrument": "fund", "hurdle": 0.3,
+            "futu_code": None, "olive_key": "HK0000584752"}, ["idea_uid"])
+        db.upsert(con, "positions", {
+            "pos_id": "PF", "book_id": "naive", "idea_uid": "BF#1",
+            "code": "HK0000584752", "kind": "fund", "qty": 1, "avg_px": 1,
+            "cost": 1, "opened_d": "2026-08-01", "status": "open"}, ["pos_id"])
+        self.assertEqual(ideas.instrument_mismatches(con), [])
+
+    def test_a_fund_position_on_the_wrong_key_is_still_caught(self):
+        con = mem()
+        db.upsert(con, "batches", {
+            "batch_id": "BF", "as_of": "2026-08-01",
+            "generated_at": "2026-08-01T07:23:00+08:00", "generator": "test",
+            "n_ideas": 1, "methodology": config.METHODOLOGY_VERSION,
+            "output_sha": "x", "validation": {}, "status": "validated"}, ["batch_id"])
+        db.upsert(con, "ideas", {
+            "idea_uid": "BF#1", "batch_id": "BF", "as_of": "2026-08-01",
+            "local_id": 1, "tool": "SomeFund", "horizon": "1个月",
+            "horizon_months": 1, "instrument": "fund", "hurdle": 0.3,
+            "futu_code": None, "olive_key": "HK0000584752"}, ["idea_uid"])
+        db.upsert(con, "positions", {
+            "pos_id": "PF", "book_id": "naive", "idea_uid": "BF#1",
+            "code": "LU0274383776", "kind": "fund", "qty": 1, "avg_px": 1,
+            "cost": 1, "opened_d": "2026-08-01", "status": "open"}, ["pos_id"])
+        bad = ideas.instrument_mismatches(con)
+        self.assertEqual(len(bad), 1)
+        self.assertEqual(bad[0]["idea_code"], "HK0000584752")

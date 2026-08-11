@@ -1,0 +1,316 @@
+<title>IdeaGen v0.5 · 从 idea 清单到 perpetual portfolio</title>
+
+<callout emoji="🏁" background-color="light-blue" border-color="blue">
+<p><b>口径变了：</b>交付物从「每天 40 条 idea 给 PM 挑」改成「一个持续在跑的组合」。验收线是年化 25%，第一性原理是<b>我们自己愿不愿意把钱放进去</b>。</p>
+<p>本文四件事：<b>①</b> 打分 A 的共线性实测（会上三条判断里有两条数据不支持）<b>②</b> 打分 A 精简成 4 个字母 <b>③</b> 打分 B 的 10 个方案与推荐栈 <b>④</b> 生产化架构与要改的系统清单。</p>
+</callout>
+
+<hr/>
+
+<h1>一、新的运行口径</h1>
+
+<whiteboard type="mermaid">
+flowchart TD
+  W["每周三 · 读周一至周三日报"] --> T["出 5 个宏观主题<br/>打分 A"]
+  T --> I["出 20 个 tactical idea<br/>horizon 钉死 1 个月"]
+  I --> S{"打分 B<br/>选前 10"}
+  S --> P["进组合 · 占 25% · 等权"]
+  P --> R["4 批滚动<br/>第 5 周换掉第 1 周"]
+  R --> X{"到期 / 止盈 / 止损"}
+  X -->|退出| J["现金隔天买入 JPST"]
+  J --> P
+  S -.->|"落选 10 条"| O["记录但不建仓<br/>反事实收益仍然结算"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">旧（v0.4）</th><th background-color="light-gray">新（v0.5）</th></tr>
+<tr><td>频率</td><td>每个交易日</td><td><b>每周三一次</b></td></tr>
+<tr><td>主题数</td><td>16 条固定字典，每天全打分</td><td><b>收敛到 5 个</b>（6–7 为上限）</td></tr>
+<tr><td>想法数</td><td>每天 40 条全部建仓</td><td><b>生成 20 条，选 10 条建仓</b></td></tr>
+<tr><td>期限</td><td>1 个月 + 6 个月双档</td><td><b>只有 1 个月</b></td></tr>
+<tr><td>宇宙</td><td>上市标的 + 基金</td><td><b>ETF + 公募 + 私募</b>，流动性要好（UCITS 日度申赎），<b>不含个股</b></td></tr>
+<tr><td>组合结构</td><td>每日快照，无延续性</td><td><b>4 批 × 25% 滚动，稳态 40 条常年在跑，满仓</b></td></tr>
+<tr><td>闲置现金</td><td>按货币基金收益计息</td><td><b>实际买入 JPST</b></td></tr>
+<tr><td>止盈止损</td><td>有，可被 monitor 改</td><td><b>生成时定死，之后不变，无 PM agent</b></td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>为什么先生成 20 再砍一半，而不是直接生成 10：</b>让模型自己先做一轮 tiering。落选的 10 条<b>照样结算反事实收益</b>——这是打分 B 唯一可能被证伪的方式，否则永远不知道砍掉的那一半是不是更好。</p>
+</callout>
+
+<hr/>
+
+<h1>二、打分 A：先看实测，再谈精简</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>会上的三条判断，我用 196 个 theme-day 的实际打分量了一遍——两条不成立。</b>如果照会上的判断去精简，会改错地方。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">会上的判断</th><th background-color="light-gray">实测</th><th background-color="light-gray">结论</th></tr>
+<tr><td>N 和 A 重复</td><td>r = <b>0.00</b></td><td><span text-color="red">❌ 完全不成立</span>，两者正交</td></tr>
+<tr><td>「入价 M」和「拥挤 C」是一个东西</td><td>r = <b>+0.10</b></td><td><span text-color="red">❌ 数据不支持</span>，概念上都读价格，实际几乎不同向</td></tr>
+<tr><td>N 和 D 重复</td><td>r = <b>+0.52</b></td><td><span text-color="green">✅ 成立</span></td></tr>
+<tr><td>（会上没提到的）D 和 B</td><td>r = <b>+0.53</b></td><td><span text-color="green">✅ 这是最强的一对</span></td></tr>
+</table>
+
+<h2>六因子相关矩阵（196 个 theme-day）</h2>
+
+<table>
+<tr><th background-color="light-gray"></th><th background-color="light-gray">D</th><th background-color="light-gray">A</th><th background-color="light-gray">B</th><th background-color="light-gray">N</th><th background-color="light-gray">M</th><th background-color="light-gray">C</th></tr>
+<tr><td><b>D</b> 讨论覆盖</td><td>1.00</td><td>0.22</td><td><span text-color="red">0.53</span></td><td><span text-color="red">0.52</span></td><td>0.18</td><td>−0.02</td></tr>
+<tr><td><b>A</b> 三日升温</td><td>0.22</td><td>1.00</td><td>0.10</td><td>0.00</td><td>0.10</td><td>−0.12</td></tr>
+<tr><td><b>B</b> 关键争议</td><td><span text-color="red">0.53</span></td><td>0.10</td><td>1.00</td><td>0.26</td><td>0.05</td><td>−0.13</td></tr>
+<tr><td><b>N</b> 最新变化</td><td><span text-color="red">0.52</span></td><td>0.00</td><td>0.26</td><td>1.00</td><td>0.11</td><td>−0.09</td></tr>
+<tr><td><b>M</b> 市场验证</td><td>0.18</td><td>0.10</td><td>0.05</td><td>0.11</td><td>1.00</td><td>0.10</td></tr>
+<tr><td><b>C</b> 拥挤度</td><td>−0.02</td><td>−0.12</td><td>−0.13</td><td>−0.09</td><td>0.10</td><td>1.00</td></tr>
+</table>
+
+<h2>真正的问题：三个因子在数同一件事</h2>
+
+<table>
+<tr><th background-color="light-gray">因子</th><th background-color="light-gray">与「证据条数」的相关性</th><th background-color="light-gray">读作</th></tr>
+<tr><td>D 讨论覆盖</td><td><span text-color="red">+0.58</span></td><td>它<b>本身就是</b>一个计数</td></tr>
+<tr><td>N 的「新事实广度」子项</td><td><span text-color="red">+0.43</span></td><td>也是计数</td></tr>
+<tr><td>N 整体</td><td>+0.28</td><td>被广度子项拖着</td></tr>
+<tr><td>C 拥挤度</td><td>+0.22</td><td>弱</td></tr>
+<tr><td>B / A / M</td><td>+0.16 / +0.09 / +0.07</td><td>基本无关</td></tr>
+</table>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>而且权重完全失效。</b>D 的权重是四个里最小的 0.15，但 TIS 与 D 的相关性高达 <b>+0.78</b>——比与权重 0.35 的 N（+0.64）还高。</p>
+<p>原因是 D 同时和 B（0.53）、N（0.52）相关，所以它成了那个共同驱动因素（写了多少）的代理。<b>标称权重 0.15/0.25/0.25/0.35 描述的不是实际发生的事。</b></p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">因子</th><th background-color="light-gray">标称权重</th><th background-color="light-gray">实测标准差</th><th background-color="light-gray">有效拉开能力<br/>（权重×标准差）</th><th background-color="light-gray">与 TIS 相关性</th></tr>
+<tr><td>D</td><td>0.15</td><td>25.3</td><td>3.79（最低）</td><td><span text-color="red">+0.78（最高）</span></td></tr>
+<tr><td>A</td><td>0.25</td><td>28.1</td><td>7.02（最高）</td><td>+0.54</td></tr>
+<tr><td>B</td><td>0.25</td><td>28.0</td><td>6.99</td><td>+0.72</td></tr>
+<tr><td>N</td><td>0.35</td><td>18.2</td><td>6.36</td><td>+0.64</td></tr>
+</table>
+
+<h2>精简方案：4 个字母，MECE</h2>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>设计原则：</b>一个字母只回答一个问题，四个问题彼此不重叠，而且合起来就是「这个主题值不值得用一个月的动量去赌」的全部。计数类的合成一个，剩下三个交给 AI 判断。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart LR
+  H["H 热度<br/>多少人在说，在加速吗"] --> Q{"主题分<br/>= 0.30H + 0.25G<br/>+ 0.25E + 0.20(100−P)"}
+  G["G 分歧<br/>他们的方向有多不一致"] --> Q
+  E["E 实据<br/>说的东西落到哪一环了"] --> Q
+  P["P 已定价<br/>价格反映了多少（含拥挤）"] --> Q
+  Q --> TOP["取前 5 个主题"]
+  X["X 可表达<br/>有没有干净的流动工具"] -.->|"门槛，不进分数"| TOP
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">字母</th><th background-color="light-gray">一句话</th><th background-color="light-gray">吸收了旧的什么</th><th background-color="light-gray">怎么算</th><th background-color="light-gray">性质</th></tr>
+<tr><td><b>H 热度</b></td><td>这个主题现在多热，而且在加速还是降温</td><td><b>D + A + N 的广度子项</b>（三个计数合一）</td><td>热度水平（对数标定到当窗口最响主题）× 加速度（当日热度在自身 20 天分布的百分位）</td><td>机械</td></tr>
+<tr><td><b>G 分歧</b></td><td>机构之间对方向有多不一致</td><td>B</td><td><b>改为 AI 判断</b>：读完全部证据后给一个 0–100，不再用正负词表匹配</td><td>AI</td></tr>
+<tr><td><b>E 实据</b></td><td>证据落在因果链的哪一环</td><td>N 的因果深度子项</td><td>叙事 25 / 价格 50 / 订单收入 75 / 已实现利润或政策落地 100，取最强三条均值</td><td>AI</td></tr>
+<tr><td><b>P 已定价</b></td><td>价格已经反映了多少，包括拥挤</td><td><b>M + C + N 的意外程度子项</b></td><td>AI 给一个 0–100 的「已定价程度」，但必须同时看到：预注册指标的窗口内波动 z、60 日动量百分位、距 52 周高点</td><td>AI + 价格上下文</td></tr>
+<tr><td><b>X 可表达</b></td><td>有没有流动性够的工具能买</td><td>新增</td><td><b>门槛，不进分数</b>：至少一个 UCITS 日度申赎或流动 ETF 能表达，否则主题不进入 idea 生成</td><td>机械</td></tr>
+</table>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>四个字母怎么记：</b>多少人在说（H）· 他们吵得多凶（G）· 说的东西有多实（E）· 价格听懂了多少（P）。</p>
+<p><b>方向：</b>动量要的是 H 高、G 高（有分歧才有被证明对的空间）、E 高（真事不是空谈）、<b>P 低</b>（还没被定价）。所以主题分里 P 是取反的。</p>
+</callout>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>三处必须承认的取舍：</b></p>
+<ul>
+<li><b>G 和 P 从机械改成 AI 判断，就失去了确定性。</b>同一份语料两次跑不会给同一个分。代价是可复现性，换来的是会上说的那个方向——「它基于前面所有信息挤出来的 78 分」。折中：AI 必须同时输出理由和它看到的价格上下文，落库，事后可复核。</li>
+<li><b>M 和 C 实测并不重复（r=0.10），把它们合进 P 是概念上的决定，不是数据支持的。</b>合的理由是四个字母好记好解释；代价是丢掉「便宜但没人信（低 M）」和「高位且安静（高 C）」这两种不同状态的区分。如果 30 天后发现 P 的解释力弱于原来的 M、C 分开，应该拆回去。</li>
+<li><b>H 把三个计数合一，会让「写得多」这件事只算一次——这是修共线性的核心动作。</b>但它也意味着 H 的权重必须是四个里最高的，否则热度这个真正的动量信号被稀释。</li>
+</ul>
+</callout>
+
+<hr/>
+
+<h1>三、打分 B：10 个方案</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>先说清现状有多糟，因为这决定了 B 的设计约束。</b></p>
+<p>现在规则引擎给同一主题下的每条 idea <b>共用同一套三情景概率</b>：7/29 那批 40 条想法、14 个主题，概率层面只有 <b>14 个独立判断</b>。盈利质量主题下 XLV/QUAL/USMV/SPLV/RSP 五只全部是 29/46/25，各标的收益率差异<b>只来自自身波动率</b>。</p>
+<p>连带后果：S/A/B/C 评级退化——320 条规则想法里 <b>S 有 0 个、A 有 2 个</b>，实际是个两档量表。「S 比 A 好」这个命题无法检验。</p>
+<p><b>所以打分 B 的第一要求不是精确，而是能真的把 20 条拉开。</b></p>
+</callout>
+
+<h2>方案一览</h2>
+
+<table>
+<tr><th background-color="light-gray">#</th><th background-color="light-gray">方案</th><th background-color="light-gray">核心机制</th><th background-color="light-gray">成本</th><th background-color="light-gray">能否证伪</th><th background-color="light-gray">主要失效模式</th></tr>
+<tr><td>1</td><td><b>裸 Omega</b></td><td>AI 直接给 upside% 与 downside%，相除排序</td><td>极低</td><td>弱</td><td>两边同时放大，比值不变；无校准压力</td></tr>
+<tr><td>2</td><td><b>Omega + 波动带</b></td><td>同上，但上下行幅度必须落在标的自身 1 月已实现波动的 [0.35σ, 2.60σ] 内</td><td>低</td><td><span text-color="green">强</span></td><td>σ 估计本身在 regime 切换时失真</td></tr>
+<tr><td>3</td><td><b>成对锦标赛（Elo）</b></td><td>不问绝对分，只问「这两条哪个更适合一个月」，约 50 对之后按 Elo 排</td><td>中</td><td><span text-color="green">强</span></td><td>循环偏好；对顺序敏感（需随机配对）</td></tr>
+<tr><td>4</td><td><b>红队存活</b></td><td>每条派 3 个只被要求「杀掉它」的 agent，存活票数排序</td><td>中高</td><td><span text-color="green">强</span></td><td>系统性偏保守，砍掉高确信的好想法</td></tr>
+<tr><td>5</td><td><b>养蛊 / 多镜头投票</b></td><td>10 个不同视角的打分 agent 各排一次，Borda 计数取前 10</td><td>高</td><td>中</td><td>镜头之间相关，投票只是平均噪音</td></tr>
+<tr><td>6</td><td><b>动量确认门</b></td><td>语义确信度 × 价格动量是否已同向（20日 vs 60日均线）</td><td>极低</td><td><span text-color="green">强</span></td><td>系统性追高；错过反转的起点</td></tr>
+<tr><td>7</td><td><b>自一致性</b></td><td>同一条问 K 次，upside/downside 估计<b>越稳定</b>的排越前</td><td>中</td><td><span text-color="green">强</span></td><td>稳定 ≠ 正确；可能只是奖励常识</td></tr>
+<tr><td>8</td><td><b>资产类别拆解</b></td><td>股票 = Δ倍数 × Δ盈利；利率 = Δ实际 + Δ通胀预期 + Δ期限溢价；FX = Δ利差 + Δ风险溢价；商品 = Δ曲线 + Δ库存。AI 填分项，代码合成</td><td>很高</td><td><span text-color="green">最强</span></td><td><b>又在造 quant，违背立足点</b>；数据依赖重</td></tr>
+<tr><td>9</td><td><b>组合边际贡献</b></td><td>不独立打分：在已持有的 30 条基础上，贪心选最能改善<b>组合</b> Omega 的那 10 条</td><td>中</td><td>中</td><td>与「每周互不 interconnect」的设定冲突</td></tr>
+<tr><td>10</td><td><b>校准加权集成</b></td><td>上面每个方案各出一套分，按各自过去 3 个月的实际命中率加权；起步等权，逐步自调</td><td>= 各方案之和</td><td><span text-color="green">最强</span></td><td>需要至少 3 个月样本才启动；早期等于等权</td></tr>
+</table>
+
+<h2>我的推荐：三层栈，不是选一个</h2>
+
+<whiteboard type="mermaid">
+flowchart TD
+  I20["20 条 idea"] --> L1["第一层 · 硬门槛<br/>方案2 波动带 + 方案6 动量确认<br/>不合格直接出局"]
+  L1 --> L2["第二层 · 排序<br/>方案3 成对锦标赛 Elo"]
+  L2 --> L3["第三层 · 否决<br/>方案4 红队，3 票中 2 票判死则剔除"]
+  L3 --> TOP10["前 10 条进组合"]
+  L3 -.-> REJ["落选 10 条<br/>照样结算反事实收益"]
+  TOP10 --> META["方案10 · 校准层<br/>3 个月后用 outcome 调整三层的严格度"]
+  REJ --> META
+</whiteboard>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>为什么这么组：</b></p>
+<ul>
+<li><b>成对比较是 LLM 最强的模式，绝对打分是最弱的。</b>问「这两个哪个好」比问「这个值多少分」准得多，而且天然把 20 条拉开——正好治现在「概率全一样」的病。</li>
+<li><b>红队放在排序之后当否决层，不当排序层。</b>让它排序会系统性偏保守；让它否决只砍掉真的站不住的。</li>
+<li><b>波动带和动量门是硬门槛而非分数</b>，因为它们回答的是「这条 idea 合不合法」，不是「它有多好」。</li>
+<li><b>落选的 10 条必须结算。</b>没有这个，打分 B 永远无法被证伪——这是整套设计里最容易被省掉、也最不能省的一环。</li>
+</ul>
+</callout>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>明确不推荐方案 8（资产类别拆解）。</b>它是这 10 个里最严谨、最可解释的，但它把 AI 降级成一个填数的工具，做出来的东西就是个因子模型——桥水那条路，Python 就能写，而且我们赢不了。整个立足点是「语义分析做动量是只有 LLM 能做的事」，方案 8 恰好放弃了这一点。</p>
+</callout>
+
+<hr/>
+
+<h1>四、生产化：跑在字节云上</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  subgraph SCHED["调度层"]
+    CRON["每周三 07:00 HKT 触发"]
+  end
+  subgraph SANDBOX["AgentKit / Codex 云沙箱（无状态，每次新开）"]
+    A1["读语料 · 打分 A"] --> A2["生成 20 条"]
+    A2 --> A3["打分 B 三层筛选"]
+  end
+  subgraph MCP["云端 MCP 网关（常驻服务）"]
+    M1["Wisburg"]
+    M2["Olive"]
+    M3["iARK"]
+    M4["Futu 行情代理"]
+  end
+  subgraph STORE["存储层（全部落库，一律不可变）"]
+    S1[("语料 + 内容哈希")]
+    S2[("打分 + 因子明细")]
+    S3[("idea + 落选的那一半")]
+    S4[("订单 · 持仓 · 盯市")]
+    S5[("outcome + 归因")]
+    S6[("每次 run 的完整快照")]
+  end
+  subgraph SVC["服务层"]
+    V1["只读 API"]
+    V2["看板"]
+    V3["回测引擎"]
+  end
+  CRON --> SANDBOX
+  SANDBOX <--> MCP
+  MCP --> STORE
+  SANDBOX --> STORE
+  STORE --> SVC
+  V3 -.->|"重放任意历史 run"| SANDBOX
+</whiteboard>
+
+<h2>五条不能让的工程原则</h2>
+
+<table>
+<tr><th background-color="light-gray">原则</th><th background-color="light-gray">为什么</th><th background-color="light-gray">怎么落</th></tr>
+<tr><td><b>沙箱无状态，状态只在库里</b></td><td>沙箱每次新开，任何写在本地的东西下次就没了</td><td>run 开始先从库里拉 as-of 快照，结束把全部产物写回；沙箱里不留任何唯一副本</td></tr>
+<tr><td><b>MCP 常驻，不在沙箱里起</b></td><td>现在 Olive MCP 只有 Agent 会话可达，headless 跑不了——这是全自动化唯一的真障碍</td><td>把三个 MCP 包成常驻网关服务，沙箱通过内网 HTTP 调；凭证只在网关侧</td></tr>
+<tr><td><b>一切不可变，只追加</b></td><td>本项目已经因为「替换批次但没级联删除」错了十天：58 笔持仓挂到别的标的上，结算把 40 美元的建仓价对着 192 美元的收盘价算，一条 idea 记出 +377%</td><td>run 有 run_id，产物一律新增不覆盖；改口径就开新 run，旧 run 永久可查</td></tr>
+<tr><td><b>回测必须真的重跑，不能按已有主题硬拉</b></td><td>补跑历史时 AI 会偷懒——按已有 topic 硬拉，好几天结果一模一样</td><td>回测走同一条 run 路径，只把「可见语料」按 as-of 截断；<b>禁止把 topic 作为输入传进去</b></td></tr>
+<tr><td><b>as-of 是一等公民</b></td><td>回看是这类系统最容易犯、最难发现的错</td><td>每张表带 as_of；取数一律走 as-of 视图；已经踩到并修过的两处：价格按收盘钳制、主题注册日不可回填</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>最该先解决的一件工程事：把 Olive / iARK MCP 变成常驻可调用的服务。</b>现在整条链里唯一必须人在场的就是这一步，它挡住了「无人值守跑组合」这个目标本身。其余（存储、调度、回测、看板）都是已经能做的事。</p>
+</callout>
+
+<hr/>
+
+<h1>五、按今天的意见，系统要改什么</h1>
+
+<table>
+<tr><th background-color="light-gray">优先级</th><th background-color="light-gray">改什么</th><th background-color="light-gray">现状</th></tr>
+<tr><td>P0</td><td><b>基准窗口对齐</b>：晚于 idea 日期才成交的仓位，SPY 基准仍从 idea 日期起算，持仓期与基准期不一致</td><td>纯 bug，直接影响所有超额数字</td></tr>
+<tr><td>P0</td><td><b>周度 run + 25% 四批滚动 + JPST</b>：现有引擎是日度、第一天就买满、后面的 idea 塞不进去（无脑盘现金耗尽后停止接新批次）</td><td>组合结构性问题</td></tr>
+<tr><td>P0</td><td><b>规则回填样本降级</b>：320 条规则想法明确标为「管线测试数据」，不参与能力结论；能力指标只用真正逐条生成的批次</td><td>否则「40 条只有 14 个判断」会一直污染结论</td></tr>
+<tr><td>P1</td><td><b>打分 A 换成 H/G/E/P + X 门槛</b>，主题数从 16 全打分收敛到出 5 个</td><td>共线性已实测，见第二节</td></tr>
+<tr><td>P1</td><td><b>打分 B 三层栈</b> + 落选 10 条的反事实结算</td><td>见第三节</td></tr>
+<tr><td>P1</td><td><b>证据链要 specific</b>：现在会出现讲 A 的事引 B 的料</td><td>每条 idea 的引用必须能解析到具体文档，且文档内容要与该 idea 的主题实际相关（现在只校验可解析，不校验相关）</td></tr>
+<tr><td>P2</td><td><b>宇宙收进 ETF / 公募 / 私募，去掉个股</b>；同时接通基金的期限计价</td><td>货架 61 只里只有 17 只货币基金可盯市，其余 44 只（含 16 只公募和一批主题策略）NAV 拿不到，400 条想法里 19 条基金<b>一条都没建成仓</b></td></tr>
+<tr><td>P2</td><td><b>期限统一为 1 个月</b>，去掉 6 个月档</td><td>现有 203 条是 6 个月期</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>关于基金那条，有一个我此前说错的地方要更正：</b>我一直说「Olive 只给最新 NAV、拿不到历史、补不回来」。实测 <code>get_fund_nav_chart</code> 存在——逐日序列确实不返回（服务端聚合掉了），但它给标准区间的 <code>periodReturn</code>、近 7 天、区间最高最低带日期。</p>
+<p>这足够<b>按期限给基金仓位计价</b>——而新口径的期限恰好钉死一个月。所以「基金不可盯市」的准确说法是「不能逐日盯市，但能按期限计价」。代价是基金仓位没有中间曲线，需要决定它是否进逐日权益曲线（我的建议：不进，单独列，不伪造中间过程）。</p>
+</callout>
+
+<hr/>
+
+<h1>六、把年化 25% 倒推成设计约束</h1>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>先算清楚要求有多高，再决定打分 B 要多复杂。</b>组合满仓等权，所以组合月度收益就等于单条 idea 的月度平均净收益：</p>
+<p>年化 25% → 月度 <b>+1.877%</b> → 扣往返成本 0.08% → 毛收益 <b>+1.957%</b>。</p>
+<p><b>这个门槛比想象的低得多。</b></p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">赢时赚</th><th background-color="light-gray">输时亏</th><th background-color="light-gray">赔率</th><th background-color="light-gray">需要胜率</th><th background-color="light-gray"></th></tr>
+<tr><td>+5%</td><td>−5%</td><td>1.00</td><td><span text-color="red">69.6%</span></td><td>做不到</td></tr>
+<tr><td>+6%</td><td>−4%</td><td>1.50</td><td>59.6%</td><td>略高于实测</td></tr>
+<tr><td>+6%</td><td>−3%</td><td>2.00</td><td>55.1%</td><td><span text-color="green">实测 57.1% 已经够</span></td></tr>
+<tr><td>+8%</td><td>−5%</td><td>1.60</td><td>53.5%</td><td><span text-color="green">够</span></td></tr>
+<tr><td>+8%</td><td>−4%</td><td>2.00</td><td>49.6%</td><td><span text-color="green">很宽裕</span></td></tr>
+<tr><td>+10%</td><td>−5%</td><td>2.00</td><td>46.4%</td><td><span text-color="green">很宽裕</span></td></tr>
+</table>
+
+<h2>按实测 57.1% 胜率，反推需要的赔率</h2>
+
+<table>
+<tr><th background-color="light-gray">止损设在</th><th background-color="light-gray">则赢时需要赚到</th><th background-color="light-gray">需要赔率</th></tr>
+<tr><td>−3%</td><td>+5.68%</td><td>1.89</td></tr>
+<tr><td>−4%</td><td>+6.43%</td><td>1.61</td></tr>
+<tr><td>−5%</td><td>+7.18%</td><td>1.44</td></tr>
+<tr><td>−6%</td><td>+7.94%</td><td>1.32</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>这张表改变了打分 B 的目标。</b></p>
+<p>B 不需要挑出「特别好」的 idea。在 57% 胜率下，年化 25% 只需要 1.3–1.9 的赔率——这是个温和的要求。<b>真正的杠杆在止损位置：</b>止损从 −6% 收到 −3%，需要的赔率从 1.32 提到 1.89，但需要的<b>绝对涨幅</b>从 +7.94% 降到 +5.68%——后者容易得多。</p>
+<p>所以 B 的目标应该重述为：<b>「在不牺牲胜率的前提下，砍掉那些一旦错就会亏很多的 idea」</b>——也就是压缩左尾，不是追求右尾。这直接把方案排序改了：</p>
+<ul>
+<li><b>方案 2（波动带）和方案 4（红队）的重要性上升</b>——它们正是在管左尾。</li>
+<li><b>方案 3（Elo 排序）仍然需要，但它排的应该是「哪个更不容易大亏」，不是「哪个涨得更多」。</b>提示词要照这个改。</li>
+<li><b>止损位置本身应当进入优化范围</b>，而不是当成给定参数。</li>
+</ul>
+</callout>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>一个必须说清的口径问题：</b>上面用的 57.1% 是现有样本的胜率，但那些仓位<b>最长只持有了 9 个交易日，不是一个月</b>，而且其中 320 条来自「一个主题只有一个判断」的规则引擎。把它当成新口径下的胜率先验是不严谨的——它只能用来说明「门槛不是遥不可及」，不能用来预测。</p>
+</callout>
+
+<hr/>
+
+<h1>七、遗留的开放问题</h1>
+
+<checkbox done="false"><b>打分 B 的三层栈里，Elo 需要多少对比较才稳定？</b>20 条全配对是 190 对，太贵；随机 50 对够不够要实测</checkbox>
+<checkbox done="false"><b>G 和 P 改成 AI 判断后，可复现性怎么处理？</b>同一份语料两次跑分数不同——是接受（记录理由 + 事后复核），还是固定 seed / 多次取中位</checkbox>
+<checkbox done="false"><b>M 和 C 合进 P 是否正确？</b>实测 r 只有 0.10，合并是为了好记。30 天后要比较「P 单因子」与「M、C 分开」的解释力</checkbox>
+<checkbox done="false"><b>基金仓位是否进逐日权益曲线</b>——直接影响回撤等指标是真的还是插值出来的</checkbox>
+<checkbox done="true"><b>年化 25% 需要单条 idea 什么表现</b>——已算，见第六节：月度净 +1.877%，57% 胜率下只需 1.3–1.9 赔率</checkbox>
+<checkbox done="false"><b>止损位置该设在哪</b>——第六节说明它是比打分更强的杠杆，应当进入优化范围而不是当给定参数</checkbox>

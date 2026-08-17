@@ -147,6 +147,11 @@ def _artifact_root() -> Path:
 
 
 # ---------------------------------------------------------------------------
+def utcnow_iso() -> str:
+    """One UTC timestamp source. Run rows and journals must agree on the clock."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 class RunJournal:
     """One immutable record per run, written through the blob store.
 

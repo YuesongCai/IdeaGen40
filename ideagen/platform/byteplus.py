@@ -29,7 +29,7 @@ import time
 from typing import Any, Iterable, Iterator, Sequence
 
 from .base import (BlobStore, Cache, Completion, EventBus, Health, Inference,
-                   NotConfigured, PlatformError, SecretStore, StateStore)
+                   NotConfigured, PlatformError, SecretStore, StateStore, redact_url)
 
 #: Regional endpoints. ap-southeast-1 (Singapore) is the default for a Hong Kong
 #: desk: lowest latency of the BytePlus regions and outside mainland data rules,
@@ -343,7 +343,8 @@ class RedisCache(Cache):
             raise
         except Exception as e:  # noqa: BLE001
             return Health(False, "cache", f"redis unreachable: {e}")
-        return Health(True, "cache", f"redis {info.get('redis_version')} @ {self.url}",
+        return Health(True, "cache",
+                      f"redis {info.get('redis_version')} @ {redact_url(self.url)}",
                       {"version": info.get("redis_version")})
 
 

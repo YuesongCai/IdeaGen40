@@ -75,7 +75,20 @@ _CLOSE_HOUR = {"US": (16, 15, "America/New_York"), "HK": (16, 30, "Asia/Hong_Kon
 
 
 def complete_through(market: str = "US", now: datetime | None = None) -> str:
-    """Latest calendar date whose `market` session is definitely finished."""
+    """Latest date whose `market` session is finished and actually traded.
+
+    Stepping back one calendar day from the cutoff is not enough: run this before
+    the close on a Monday and it lands on Sunday, which has no session at all. That
+    is not a harmless off-by-one — this value is the ceiling on how far the book may
+    be marked, so a weekend date makes every position look unmarked, and it is the
+    same ceiling that filters incoming bars.
+
+    Weekends are excluded by calendar arithmetic, which needs no data and is always
+    right. Exchange holidays are NOT handled: they cannot be derived and would need
+    a real holiday calendar as a feed. On a holiday this therefore still returns a
+    non-trading date, which leaves the book reporting as one session stale rather
+    than marking against a price that does not exist — the safe direction of the two.
+    """
     from zoneinfo import ZoneInfo
 
     hh, mm, tzname = _CLOSE_HOUR.get(market, _CLOSE_HOUR["US"])
@@ -83,6 +96,8 @@ def complete_through(market: str = "US", now: datetime | None = None) -> str:
     local = (now or datetime.now(tz)).astimezone(tz)
     cutoff = local.replace(hour=hh, minute=mm, second=0, microsecond=0)
     d = local.date() if local >= cutoff else local.date() - timedelta(days=1)
+    while d.weekday() >= 5:                  # 5 Saturday, 6 Sunday
+        d -= timedelta(days=1)
     return d.isoformat()
 
 

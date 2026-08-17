@@ -373,3 +373,108 @@ def exposures() -> dict[str, list[str]]:
     for i in ALL:
         out.setdefault(i.exposure, []).append(i.key)
     return dict(sorted(out.items()))
+
+
+# ---------------------------------------------------------------------------
+# Eligibility: what stage B is allowed to express an idea through.
+#
+# The mandate limits expression to funds, ETFs and hedge funds, and the hedge
+# funds only where liquidity is genuinely daily — UCITS dealing. Three exclusions
+# follow, and each is a real constraint rather than a formality:
+#
+#   Single stocks are out. A one-month macro-momentum idea expressed through one
+#   company mostly buys that company's idiosyncratic risk, so the theme can be
+#   right and the position still wrong for reasons the thesis never mentioned.
+#
+#   Private vehicles without daily dealing are out. The rebalance is weekly and a
+#   tranche rolls off after four weeks; a vehicle that cannot be redeemed on that
+#   cadence turns a stop into a suggestion.
+#
+#   Anything whose vehicle is unconfirmed is out — not passed through on the
+#   assumption it is fine. An unverifiable constraint that defaults to "eligible"
+#   is the same failure as a dead feed that returns zero rows and reports success.
+# ---------------------------------------------------------------------------
+
+#: Vehicle labels admitted outright.
+ELIGIBLE_VEHICLES = ("ETF", "公募")
+
+#: Admitted only with daily dealing evidenced in the vehicle label.
+CONDITIONAL_VEHICLES = ("私募",)
+
+#: What counts as evidence of daily dealing. UCITS funds deal at least daily by
+#: regulation, which is why the mandate names it — it is the one liquidity claim
+#: that can be verified from the vehicle's own legal form rather than from a
+#: manager's assurance.
+DAILY_DEALING_MARKERS = ("UCITS", "SICAV", "OEIC", "日度", "每日")
+
+
+def eligibility(inst: "Instrument | dict") -> tuple[bool, str]:
+    """Whether one instrument may carry an idea, and why not if it may not."""
+    v = (inst.get("vehicle") if isinstance(inst, dict) else inst.vehicle) or ""
+    name = (inst.get("name") if isinstance(inst, dict) else inst.name) or ""
+    blob = f"{v} {name}"
+    if "待确认" in v or not v:
+        return False, f"载体未确认（{v or '空'}），无法核实申赎条件"
+    if v in ELIGIBLE_VEHICLES:
+        return True, ""
+    if any(v.startswith(c) for c in CONDITIONAL_VEHICLES):
+        if any(m.lower() in blob.lower() for m in DAILY_DEALING_MARKERS):
+            return True, ""
+        return False, f"私募但未见日度申赎证据（载体：{v}）"
+    if v in ("股票",):
+        return False, "个股不在授权范围（只做公募 / ETF / 日度私募）"
+    if v in ("现金",):
+        return True, ""          # the JPST sleeve idle cash lands in
+    return False, f"载体 {v} 不在授权范围"
+
+
+def eligible(rows: Iterable["Instrument | dict"] | None = None,
+             *, as_of: date | None = None
+             ) -> tuple[list[dict], dict[str, str]]:
+    """Split a universe into what stage B may use and what was excluded.
+
+    Returns (admitted rows, {instrument_id: reason}). The reasons are returned
+    rather than logged and dropped because an idea rejected for its vehicle is a
+    coverage gap — if a theme's only clean expression is an unconfirmed fund, the
+    right response is to confirm the fund, not to let the theme go unexpressed.
+
+    `as_of` drops instruments the shelf had not listed by that date. Without it a
+    replay of an old period picks from today's shelf, so a July thesis can be
+    expressed through a product that only arrived in August — which reads as
+    foresight and is not. Rows whose `first_seen_d` is unknown (everything
+    predating that column) are admitted rather than dropped, because dropping them
+    would silently empty every historical universe; they are counted instead, so
+    the uncertainty stays visible rather than being quietly decided either way.
+    """
+    src = list(rows) if rows is not None else list(ALL)
+    ok: list[dict] = []
+    why: dict[str, str] = {}
+    for r in src:
+        d = r if isinstance(r, dict) else {
+            "instrument_id": r.key, "name": r.name, "kind": r.kind,
+            "vehicle": r.vehicle, "exposure": r.exposure, "currency": r.currency,
+            "futu_code": r.futu_code, "olive_key": r.olive_key,
+            "priceable": r.priceable,
+        }
+        # A dict from the feed layer may not carry `vehicle`; recover it from the
+        # curated registry so the gate is not silently skipped for feed rows.
+        if not d.get("vehicle"):
+            hit = BY_KEY.get(str(d.get("instrument_id", "")).upper())
+            if hit:
+                d = {**d, "vehicle": hit.vehicle, "name": d.get("name") or hit.name}
+        seen = str(d.get("first_seen_d") or "")
+        if as_of and seen and seen > as_of.isoformat():
+            why[str(d.get("instrument_id"))] = f"该标的 {seen} 才上架，当期不存在"
+            continue
+        good, reason = eligibility(d)
+        (ok.append(d) if good else
+         why.__setitem__(str(d.get("instrument_id")), reason))
+    return ok, why
+
+
+def shelf_asof_coverage(rows: Iterable[dict]) -> dict[str, int]:
+    """How much of a universe can be dated. A replay over undated rows is not
+    as-of clean, and the honest report is the count, not a silent pass."""
+    rows = list(rows)
+    dated = sum(1 for r in rows if r.get("first_seen_d"))
+    return {"total": len(rows), "dated": dated, "undated": len(rows) - dated}

@@ -1291,8 +1291,36 @@ class TestPlatformPorts(unittest.TestCase):
                 secrets=_AlwaysOk("secrets"),
                 events=Unavailable("events", "kafka down"))
             self.assertTrue(p.ready(), "a dead event bus must not block a run")
+
+            # Inference is not in DEFAULT_NEED, because whether a run needs a model
+            # depends on which strategies it runs: a mechanical-only selection has
+            # no reason to be blocked by a missing key. The protection therefore
+            # lives in the declared need, and it must still bite when asked for.
             p.inference = Unavailable("inference", "no key")
-            self.assertFalse(p.ready(), "a dead inference port must block a run")
+            self.assertTrue(p.ready(),
+                            "a mechanical run must not be blocked by a missing key")
+            self.assertFalse(p.ready(need=(*Platform.DEFAULT_NEED, "inference")),
+                             "a run that declares it needs a model must be blocked")
+            self.assertEqual(
+                [h.name for h in p.missing(need=("inference",))], ["inference"],
+                "the missing port must be named, so the operator knows what to set")
+
+    def test_a_model_using_strategy_makes_inference_required(self):
+        """The requirement must travel with the strategy, not with the caller.
+
+        A caller who forgot to declare it would otherwise get a run that fetches
+        every feed and scores every topic before discovering that no generator can
+        execute — with the expensive half already spent.
+        """
+        from ideagen import strategy as strat
+        gens = [r["name"] for r in strat.available("idea_generator")]
+        self.assertTrue(gens, "stage B has no registered generators")
+        self.assertTrue(
+            strat.needs_model([("idea_generator", n) for n in gens]),
+            "generators call models; the registry must say so")
+        self.assertEqual(
+            strat.needs_model([("idea_selector", "omega_loose")]), [],
+            "a mechanical selector must not drag in an inference requirement")
 
     def test_blobs_are_immutable(self):
         """Replacing an artifact in place is the failure that cost this project
@@ -1378,3 +1406,288 @@ class _AlwaysOk:
     def check(self):
         from ideagen.platform.base import Health
         return Health(True, self._name, "stub")
+
+
+class TestThreeStagePipeline(unittest.TestCase):
+    """筛选A → 筛选B → 筛选C: the properties that make the stages comparable."""
+
+    def _ctx(self, **kw):
+        from ideagen import strategy as strat
+        base = dict(
+            as_of=date(2026, 8, 12), inputs_sha="x",
+            topics=[{"topic_id": "T1", "label": "主题一", "terms": ["联储"]},
+                    {"topic_id": "T2", "label": "主题二", "terms": ["日本"]}],
+            universe=[{"instrument_id": "SPY", "name": "SPY", "vehicle": "ETF",
+                       "exposure": "美股"},
+                      {"instrument_id": "TLT", "name": "TLT", "vehicle": "ETF",
+                       "exposure": "久期"}],
+            corpus=[{"doc_id": "d1", "published_d": "2026-08-11", "tier": 1,
+                     "title": "联储降息", "summary": "联储可能降息"}])
+        base.update(kw)
+        return strat.RunContext(**base)
+
+    def test_a_generator_cannot_invent_an_instrument(self):
+        """Stage B is where a model writes objects, so it is where an untradeable
+        one would enter. Rejection has to happen at creation, not at fill time."""
+        from ideagen import strategy as strat
+        v = strat.Verdict(strategy="t", version="1", produced=[{
+            "id": "i1", "instrument_id": "NOPE", "topic_id": "T1",
+            "thesis": "凭空捏造", "upside_pct": 5, "downside_pct": -3,
+            "p_up": .4, "p_base": .4, "p_down": .2}])
+        with self.assertRaises(strat.StrategyError) as e:
+            strat._check_produced("t", v, self._ctx())
+        self.assertIn("universe", str(e.exception))
+
+    def test_a_generator_cannot_attach_an_idea_to_an_unselected_topic(self):
+        """An idea whose topic 筛选A did not pick has no scored rationale behind it,
+        so its outcome could never be attributed to anything."""
+        from ideagen import strategy as strat
+        v = strat.Verdict(strategy="t", version="1", produced=[{
+            "id": "i1", "instrument_id": "SPY", "topic_id": "T9",
+            "thesis": "无主题", "upside_pct": 5, "downside_pct": -3,
+            "p_up": .4, "p_base": .4, "p_down": .2}])
+        with self.assertRaises(strat.StrategyError):
+            strat._check_produced("t", v, self._ctx())
+
+    def test_probabilities_must_sum_to_one(self):
+        from ideagen import strategy as strat
+        v = strat.Verdict(strategy="t", version="1", produced=[{
+            "id": "i1", "instrument_id": "SPY", "topic_id": "T1",
+            "thesis": "概率不合", "upside_pct": 5, "downside_pct": -3,
+            "p_up": .9, "p_base": .9, "p_down": .9}])
+        with self.assertRaises(strat.StrategyError) as e:
+            strat._check_produced("t", v, self._ctx())
+        self.assertIn("probabilities", str(e.exception))
+
+    def test_no_topics_is_an_error_not_an_empty_result(self):
+        """筛选A producing nothing is a broken run. If stage B returned zero ideas
+        quietly, that would be indistinguishable from a week with no trades in it."""
+        from ideagen.strategies import _gen
+        with self.assertRaises(RuntimeError) as e:
+            _gen.generate_per_topic(self._ctx(topics=[]), "ai_native",
+                                    lambda c, t: ("p", 1))
+        self.assertIn("筛选A", str(e.exception))
+
+    def test_registered_params_reach_the_strategy(self):
+        """A declared default that the strategy has to restate is decoration: the
+        two can disagree and only the code runs."""
+        from ideagen import strategy as strat
+        seen = {}
+
+        @strat.register("idea_selector", "_probe_params", "1.0",
+                        params={"n": 7, "cap": 2})
+        def _probe(ctx):
+            seen.update(ctx.params)
+            return strat.Verdict(strategy="_probe_params", version="1.0")
+        try:
+            strat.run("idea_selector", "_probe_params", self._ctx(params={"n": 9}))
+            self.assertEqual(seen.get("cap"), 2, "declared default must arrive")
+            self.assertEqual(seen.get("n"), 9, "the run's value must win")
+        finally:
+            strat._REGISTRY.pop(("idea_selector", "_probe_params"), None)
+
+    def test_the_pool_holds_each_instrument_once(self):
+        """Ten rows naming six instruments is a six-position book with one of them
+        at triple weight — not the ten-position portfolio the mandate describes."""
+        from ideagen import orchestrator as orc
+        pool = [{"id": f"{m}:{t}:SPY", "instrument_id": "SPY", "topic_id": t,
+                 "method": m, "thesis": "x", "upside_pct": u, "downside_pct": -4,
+                 "p_up": .4, "p_base": .4, "p_down": .2}
+                for m, u in (("ai_native", 6.0), ("chain", 10.0), ("gap", 8.0))
+                for t in ("T1",)]
+        merged = orc._merge_pool(pool)
+        self.assertEqual(len(merged), 1, "one instrument must yield one candidate")
+        self.assertEqual(merged[0]["upside_pct"], 8.0,
+                         "merged odds must be the median, not the most optimistic")
+        self.assertEqual(merged[0]["proposed_by"], ["ai_native", "chain", "gap"],
+                         "provenance must survive so generators stay attributable")
+        self.assertEqual(merged[0]["n_proposals"], 3)
+
+    def test_artifacts_stay_valid_json_when_a_ratio_is_infinite(self):
+        """A zero-downside idea gives an infinite ratio, and `Infinity` is not JSON.
+        These artifacts exist to be re-read years later."""
+        import json as _json
+        from ideagen import orchestrator as orc
+        raw = orc._blob({"omega": float("inf"), "nan": float("nan"), "ok": 1.5})
+        back = _json.loads(raw.decode())
+        self.assertEqual(back["omega"], "+inf")
+        self.assertIsNone(back["nan"])
+        self.assertEqual(back["ok"], 1.5)
+
+    def test_a_selector_cannot_hold_something_that_was_not_offered(self):
+        from ideagen import strategy as strat
+        cands = [{"id": "c1", "instrument_id": "SPY"}]
+
+        @strat.register("idea_selector", "_probe_cheat", "1.0")
+        def _cheat(ctx):
+            return strat.Verdict(strategy="_probe_cheat", version="1.0",
+                                 chosen=["c1", "not-offered"])
+        try:
+            with self.assertRaises(strat.StrategyError):
+                strat.run("idea_selector", "_probe_cheat",
+                          self._ctx(candidates=cands))
+        finally:
+            strat._REGISTRY.pop(("idea_selector", "_probe_cheat"), None)
+
+
+class TestFeedHonesty(unittest.TestCase):
+    """A dead source must not look like a quiet period."""
+
+    def test_a_thrown_feed_reports_not_ok(self):
+        from ideagen import feeds
+
+        @feeds.register("_probe_dead", "calendar", expect_rows=1)
+        def _dead(as_of, params):
+            raise RuntimeError("端点断连")
+        try:
+            r = feeds.fetch("_probe_dead", date(2026, 8, 12))
+            self.assertFalse(r.ok, "an outage must not be reported as success")
+            self.assertIn("端点断连", r.error or "")
+        finally:
+            feeds._REGISTRY.pop("_probe_dead", None)
+
+    def test_a_silently_empty_feed_is_flagged(self):
+        """Zero rows satisfy every schema rule, which is what makes an empty
+        return the most dangerous feed failure."""
+        from ideagen import feeds
+
+        @feeds.register("_probe_empty", "calendar", expect_rows=3)
+        def _empty(as_of, params):
+            return []
+        try:
+            r = feeds.fetch("_probe_empty", date(2026, 8, 12))
+            self.assertFalse(r.ok)
+            self.assertIn("expected at least 3", r.error or "")
+        finally:
+            feeds._REGISTRY.pop("_probe_empty", None)
+
+    def test_every_row_is_stamped_with_its_period(self):
+        """Isolation: one period's data must not be able to mix with another's."""
+        from ideagen import feeds
+
+        @feeds.register("_probe_stamp", "calendar")
+        def _rows(as_of, params):
+            return [{"event_id": "e1", "date": "2026-08-12", "label": "x",
+                     "kind": "macro_release"}]
+        try:
+            r = feeds.fetch("_probe_stamp", date(2026, 8, 12))
+            self.assertEqual(r.rows[0]["as_of"], "2026-08-12")
+            self.assertEqual(r.rows[0]["feed"], "_probe_stamp")
+        finally:
+            feeds._REGISTRY.pop("_probe_stamp", None)
+
+
+class TestSchemaDrift(unittest.TestCase):
+    """The failure that cost this build an afternoon: a name collision makes
+    `CREATE TABLE IF NOT EXISTS` a no-op, and it only surfaces at insert time."""
+
+    def test_a_colliding_table_is_reported_not_discovered_later(self):
+        from ideagen import schema
+        from ideagen.platform.local import SqliteStateStore
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            st = SqliteStateStore(Path(td) / "s.db")
+            st.execute("CREATE TABLE orch_runs (run_id TEXT)")   # wrong shape
+            with self.assertRaises(RuntimeError) as e:
+                schema.migrate(st)
+            self.assertIn("orch_runs", str(e.exception))
+
+    def test_a_clean_database_verifies(self):
+        from ideagen import schema
+        from ideagen.platform.local import SqliteStateStore
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            st = SqliteStateStore(Path(td) / "s.db")
+            schema.migrate(st)
+            self.assertEqual(schema.verify(st), [])
+            self.assertEqual(schema.orphans(st), {})
+
+
+class TestSessionClamping(unittest.TestCase):
+    """`complete_through` is the ceiling on how far the book may be marked."""
+
+    def test_a_monday_morning_does_not_resolve_to_sunday(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from ideagen.sources import futu_px
+        # 2026-08-17 is a Monday; 09:00 New York is before the close cutoff.
+        now = datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("America/New_York"))
+        got = futu_px.complete_through("US", now=now)
+        self.assertEqual(got, "2026-08-14",
+                         "stepping back one calendar day lands on Sunday, which "
+                         "has no session and makes every position look unmarked")
+
+    def test_after_the_close_uses_today(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from ideagen.sources import futu_px
+        now = datetime(2026, 8, 17, 17, 0, tzinfo=ZoneInfo("America/New_York"))
+        self.assertEqual(futu_px.complete_through("US", now=now), "2026-08-17")
+
+
+class TestUniverseEligibility(unittest.TestCase):
+    """The mandate: 公募 / ETF / 日度申赎私募 only."""
+
+    def test_single_stocks_are_excluded(self):
+        from ideagen import universe as uni
+        ok, why = uni.eligibility({"instrument_id": "X", "name": "某公司",
+                                   "vehicle": "股票"})
+        self.assertFalse(ok)
+        self.assertIn("个股", why)
+
+    def test_a_private_fund_needs_evidence_of_daily_dealing(self):
+        from ideagen import universe as uni
+        no, why = uni.eligibility({"instrument_id": "A", "name": "某私募",
+                                   "vehicle": "私募"})
+        self.assertFalse(no, "a weekly rebalance cannot use a non-daily vehicle")
+        yes, _ = uni.eligibility({"instrument_id": "B", "name": "某基金",
+                                  "vehicle": "私募 / UCITS"})
+        self.assertTrue(yes, "UCITS deals daily by regulation")
+
+    def test_an_unconfirmed_vehicle_is_not_assumed_fine(self):
+        """An unverifiable constraint that defaults to eligible is the same failure
+        as a dead feed returning zero rows and reporting success."""
+        from ideagen import universe as uni
+        ok, why = uni.eligibility({"instrument_id": "C", "name": "待确认",
+                                   "vehicle": "私募/公募（待确认）"})
+        self.assertFalse(ok)
+        self.assertIn("未确认", why)
+
+
+class TestReplacingATradedBatchIsRefused(unittest.TestCase):
+    """Re-placing a batch that has already traded rewrote live position sizes.
+
+    Same class as replacing an artifact under a live book — the failure that cost
+    this project ten days of wrong numbers — so it has to be refused, not documented.
+    """
+
+    def test_a_traded_batch_cannot_be_reopened_silently(self):
+        con = db.init()
+        row = db.q1(con, "SELECT book_id, as_of, COUNT(*) AS n FROM orders "
+                         "WHERE status <> 'pending' GROUP BY book_id, as_of "
+                         "ORDER BY n DESC LIMIT 1")
+        if not row:
+            self.skipTest("no traded orders in this database")
+        bid = db.q1(con, "SELECT batch_id FROM batches WHERE as_of=?",
+                    (row["as_of"],))
+        if not bid:
+            self.skipTest("no batch for that date")
+        with self.assertRaises(ValueError) as e:
+            paper.open_batch(con, bid["batch_id"], row["book_id"], verbose=False)
+        self.assertIn("force=True", str(e.exception),
+                      "the refusal must name the deliberate override")
+
+
+class TestCredentialsNeverReachAnArtifact(unittest.TestCase):
+    """Health details are written to immutable object storage and to the event bus,
+    so anything they contain is permanent."""
+
+    def test_a_connection_url_is_redacted(self):
+        from ideagen.platform.base import redact_url
+        self.assertEqual(redact_url("redis://:s3cr3t@h:6379/0"),
+                         "redis://***@h:6379/0")
+        self.assertEqual(redact_url("redis://user:pw@h:6379"),
+                         "redis://user:***@h:6379")
+        self.assertNotIn("s3cr3t", redact_url("redis://:s3cr3t@h:6379/0"))
+        self.assertEqual(redact_url("redis://plain:6379"), "redis://plain:6379",
+                         "a URL with no credentials must stay readable")

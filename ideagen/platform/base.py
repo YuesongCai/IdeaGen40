@@ -40,6 +40,28 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, Sequence
 
 
+def redact_url(url: str) -> str:
+    """Strip credentials from a connection URL, keeping the part worth reading.
+
+    Health details are stored in the run journal, written to object storage as an
+    immutable artifact and published to the event bus. A URL of the form
+    `redis://:password@host` therefore puts that password somewhere it can never be
+    deleted from. A health line exists to tell the operator which host answered,
+    not which secret opened it.
+    """
+    if not url or "@" not in url:
+        return url or ""
+    scheme, _, rest = url.partition("://")
+    if not rest:
+        return "***"
+    creds, _, host = rest.rpartition("@")
+    if not creds:
+        return url
+    user = creds.split(":", 1)[0]
+    shown = f"{user}:***" if user else "***"
+    return f"{scheme}://{shown}@{host}" if scheme else f"{shown}@{host}"
+
+
 @dataclass(frozen=True)
 class Health:
     """One port's readiness. `detail` is for humans, `meta` for the run journal."""
@@ -299,11 +321,25 @@ class Platform:
                 out.append(Health(False, attr, f"{type(e).__name__}: {e}"))
         return out
 
-    def ready(self) -> bool:
-        """Whether a run may start.
+    #: Ports a run needs unless it says otherwise. `events` is excluded on
+    #: purpose: losing monitoring degrades visibility, while refusing to run loses
+    #: the week's data — and a week's corpus cannot be re-fetched later at the
+    #: depth a live run would have had.
+    DEFAULT_NEED = ("secrets", "state", "blobs", "cache")
 
-        `events` is excluded on purpose: losing monitoring degrades visibility,
-        while refusing to run loses the week's data — and the corpus for a given
-        week cannot be re-fetched later at the depth a live run would have had.
+    def ready(self, *, need: Sequence[str] | None = None) -> bool:
+        """Whether a run may start, given the ports it actually uses.
+
+        Readiness is per-run rather than global. A run using only mechanical
+        strategies has no reason to be blocked by a missing model key, and an
+        all-or-nothing gate would either block it or stop protecting the runs that
+        do need inference. Callers declare what they use; `check()` still reports
+        everything so nothing is hidden.
         """
-        return all(h.ok for h in self.check() if h.name != "events")
+        want = set(need if need is not None else self.DEFAULT_NEED)
+        return all(h.ok for h in self.check() if h.name in want)
+
+    def missing(self, *, need: Sequence[str] | None = None) -> list[Health]:
+        """The ports that are needed and not ready, for a readable error."""
+        want = set(need if need is not None else self.DEFAULT_NEED)
+        return [h for h in self.check() if h.name in want and not h.ok]

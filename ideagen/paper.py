@@ -250,11 +250,35 @@ def _last_marked(con, book_id: str) -> str:
 
 
 # ---------------------------------------------------------------- open
-def open_batch(con, batch_id: str, book_id: str, verbose: bool = True) -> dict:
-    """Place the batch's orders on a book. Idempotent per (book, batch)."""
+def open_batch(con, batch_id: str, book_id: str, verbose: bool = True,
+               force: bool = False) -> dict:
+    """Place the batch's orders on a book. Refuses to re-place a traded batch.
+
+    This used to claim idempotence it did not have. The order upsert below writes
+    `status="pending"`, so a second call resurrected orders that had already filled
+    or expired, and the next `step` re-filled them at a size derived from *today's*
+    cash — rewriting quantities on positions that were already trading (measured:
+    2346.90 → 2346.28 shares, with a duplicate same-day BUY overwriting the original
+    trade row).
+
+    That is the same class of failure as replacing an artifact under a live book,
+    which this project has already paid for once. So a batch that has traded is
+    closed: re-placing it takes `force=True` and a deliberate decision about what
+    happens to the positions that already exist.
+    """
     batch = db.q1(con, "SELECT * FROM batches WHERE batch_id=?", (batch_id,))
     if not batch:
         raise KeyError(batch_id)
+
+    if not force:
+        traded = db.q1(
+            con, "SELECT COUNT(*) AS n FROM orders WHERE book_id=? AND as_of=? "
+                 "AND status <> 'pending'", (book_id, batch["as_of"]))["n"]
+        if traded:
+            raise ValueError(
+                f"book {book_id} 上 {batch['as_of']} 这批已经有 {traded} 张非挂单状态"
+                f"的委托；重新下单会把已成交仓位按今天的资金重算一遍。确实要重下请显式"
+                f"传 force=True，并先决定已有仓位怎么处理。")
     validation = db.jl(batch["validation"], {}) or {}
     if not validation.get("pass", False):
         raise ValueError(f"batch {batch_id} failed validation; refusing to trade it")

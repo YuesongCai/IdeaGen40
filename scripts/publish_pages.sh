@@ -15,6 +15,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PYBIN="${IDEAGEN_PYTHON:-/Library/Frameworks/Python.framework/Versions/3.12/bin/python3}"
 
+# The blotter being public is the owner's decision. Partner shelf data being public
+# is not — it reached the payload through the ideas' own description and sources,
+# which .gitignore does not cover. --yes skips the human prompt, so without a
+# mechanical check the automated daily run is precisely the path with no one on it.
+# This gate is not skippable by --yes for that reason.
+if ! "$PYBIN" scripts/check_publish_safety.py; then
+  echo "发布已中止：待发布内容里有不属于我们的数据（见上）。" >&2
+  exit 1
+fi
+
 # --yes skips the prompt (used by the daily run). Interactive callers still get it.
 if [ "${1:-}" != "--yes" ]; then
   read -r -p "这会把完整持仓明细发布到公开 URL。继续？输入 yes： " ans

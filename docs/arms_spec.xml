@@ -1,0 +1,213 @@
+<title>打分 B · 10 个臂的操作规格</title>
+
+<callout emoji="🎯" background-color="light-blue" border-color="blue">
+<p><b>这份文档只干一件事：把 10 个臂写到可以直接实现的程度。</b>每个臂的排序算法、门槛参数、止损规则、模型与调用量、落库字段、赢了说明什么，全部写死。</p>
+<p><b>共享部分是配对比较成立的前提</b>——所有臂用同一批候选、同一次取数、同一套硬门槛、同一成交规则。只有「排序」「门槛松紧」「止损」三处不同。</p>
+</callout>
+
+<hr/>
+
+<h1>零、全臂共享（不可各臂自定）</h1>
+
+<table>
+<tr><th background-color="light-gray">环节</th><th background-color="light-gray">规格</th></tr>
+<tr><td>候选池</td><td>打分 A 出 5 个主题 → 生成 <b>20 条</b> idea，期限一律 1 个月（21 个交易日）</td></tr>
+<tr><td><b>结构化取数</b></td><td>模型 <code>seed-1-6-flash</code>，temperature 0.7，json schema，<b>每条采样 5 次取中位</b>。与写 thesis <b>分开调用</b>（叙事式提示实测让 Brier 从 0.1542 恶化到 0.1842）</td></tr>
+<tr><td>取数输出字段</td><td><code>upside_pct</code> · <code>downside_pct</code> · <code>p_up</code> · <code>p_base</code> · <code>p_down</code> · <code>sigma_1m</code>（标的自身已实现月波动，机械算出，不由模型给）</td></tr>
+<tr><td>概率截断</td><td>任一概率 &gt; 70% 一律截断到 70%，剩余按比例归一（LLM 在高区间系统性过度自信）</td></tr>
+<tr><td><b>硬门槛 ①</b> 波动带</td><td><code>\|upside_pct\| / sigma_1m ∈ [0.35, 2.60]</code> <b>且</b> <code>\|downside_pct\| / sigma_1m ∈ [0.35, 2.60]</code>。任一超界即出局</td></tr>
+<tr><td><b>硬门槛 ②</b> 动量同向</td><td>做多需 <code>MA20 &gt; MA60</code> <b>且</b> 上月收益 &gt; 0；做空反向。依据是资产类别上月收益正向预测下月</td></tr>
+<tr><td><b>硬门槛 ③</b> 流动性</td><td>UCITS 日度申赎，或 ETF 近 20 日均成交额 ≥ 5,000 万美元</td></tr>
+<tr><td><b>硬门槛 ④</b> 可计价</td><td>上市标的需 ≥ 20 根日线；基金需能取到区间 <code>periodReturn</code>。取不到一律不进任何臂</td></tr>
+<tr><td>成交</td><td>生成时刻<b>之后</b>第一个已收盘 bar；限价成交取 <code>min(区间上沿, 开盘价)</code>；跳空给跳空价，永不给当日最低</td></tr>
+<tr><td>成本</td><td>往返双边计入：美股 ETF 0.08%，港股 0.15%，基金按申赎费。<b>在算 Omega 之前就扣</b></td></tr>
+<tr><td>批次权重</td><td>本批占组合 <b>25%</b>，批内等权 → 每条 <code>25% / n</code></td></tr>
+<tr><td>止盈（全臂相同）</td><td><code>入场价 + 3 × sigma_1m</code>。<b>刻意固定</b>，这样臂 5 与臂 3 的差值只隔离「止损」这一个变量</td></tr>
+<tr><td>未用资金</td><td>买入 JPST</td></tr>
+<tr><td>落选的 idea</td><td><b>照样结算反事实收益。</b>没有这个，打分 B 永远无法被证伪</td></tr>
+</table>
+
+<hr/>
+
+<h1>一、门槛与止损的两档定义</h1>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">宽</th><th background-color="light-gray">严</th></tr>
+<tr><td>取多少条</td><td>排序后依次取，直到 n=14 或分数低于本批中位数为止</td><td>只取排序<b>前 40%</b></td></tr>
+<tr><td>绝对下限</td><td>无</td><td>绝对打分类需 score ≥ 60；Omega 类需 Ω ≥ 1.5</td></tr>
+<tr><td>n 区间</td><td>[6, 14]</td><td>[6, 8]</td></tr>
+<tr><td>不足 6 条时</td><td colspan="2">不凑数。剩余的 25% 直接停 JPST。「这周没有好机会」就翻译成「拿现金」</td></tr>
+</table>
+
+<table>
+<tr><th background-color="light-gray">止损档</th><th background-color="light-gray">规则</th><th background-color="light-gray">用在哪</th></tr>
+<tr><td><b>σ×2</b>（基准）</td><td><code>止损价 = 入场价 − 2 × sigma_1m</code></td><td>臂 0–4、6–9</td></tr>
+<tr><td><b>σ×1.2</b>（紧）</td><td><code>止损价 = 入场价 − 1.2 × sigma_1m</code></td><td>仅臂 5</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>为什么止损用 σ 倍数而不是固定百分比：</b>固定 −4% 对月波动 3% 的债券 ETF 和月波动 12% 的半导体 ETF 意味着完全不同的事——前者几乎不可能触发，后者一周就打掉。σ 倍数让「止损有多紧」在跨资产之间口径一致。</p>
+</callout>
+
+<hr/>
+
+<h1>二、10 个臂总表</h1>
+
+<table>
+<tr><th background-color="light-gray">#</th><th background-color="light-gray">臂</th><th background-color="light-gray">角色</th><th background-color="light-gray">排序键</th><th background-color="light-gray">门槛</th><th background-color="light-gray">止损</th><th background-color="light-gray">模型</th><th background-color="light-gray">增量调用/周</th></tr>
+<tr><td>0</td><td><b>全买</b></td><td><span text-color="green">对照 A</span></td><td>不排序</td><td>—</td><td>σ×2</td><td>无</td><td>0</td></tr>
+<tr><td>1</td><td><b>Omega 宽</b></td><td><span text-color="red">主臂</span></td><td>Ω 降序</td><td>宽</td><td>σ×2</td><td>无</td><td>0</td></tr>
+<tr><td>2</td><td>Omega 严</td><td>探索</td><td>Ω 降序</td><td><b>严</b></td><td>σ×2</td><td>无</td><td>0</td></tr>
+<tr><td>3</td><td><b>绝对打分</b></td><td><span text-color="red">主臂</span></td><td>score 降序</td><td>宽</td><td>σ×2</td><td>flash</td><td>20</td></tr>
+<tr><td>4</td><td><b>绝对+红队</b></td><td><span text-color="red">主臂</span></td><td>score 降序，红队否决后</td><td>宽</td><td>σ×2</td><td>flash + r1</td><td>80</td></tr>
+<tr><td>5</td><td>绝对 紧止损</td><td>探索</td><td>score 降序（同臂 3）</td><td>宽</td><td><b>σ×1.2</b></td><td>复用臂 3</td><td>0</td></tr>
+<tr><td>6</td><td>成对 Elo</td><td>探索</td><td>Elo 降序</td><td>宽</td><td>σ×2</td><td>flash</td><td>100</td></tr>
+<tr><td>7</td><td>拆解式</td><td>探索</td><td>自洽度降序</td><td>宽</td><td>σ×2</td><td>flash</td><td>20</td></tr>
+<tr><td>8</td><td>纯左尾</td><td>探索</td><td>预期损失升序</td><td>宽</td><td>σ×2</td><td>无</td><td>0</td></tr>
+<tr><td>9</td><td><b>随机</b></td><td><span text-color="green">对照 B</span></td><td>伪随机</td><td>宽</td><td>σ×2</td><td>无</td><td>0</td></tr>
+</table>
+
+<p>共享取数 100 次 + 各臂增量 220 次 = <b>320 次/周，约 1.7 万次/年</b>。</p>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>设计里最值钱的部分：三对「只差一件事」的臂。</b>每对只差一个变量，所以差值就是那个变量的贡献——这比「10 个各不相同然后看谁赢」信息量高得多，后者赢了你也不知道是因为哪一部分。</p>
+<table>
+<tr><th background-color="light-gray">差值</th><th background-color="light-gray">直接给出</th></tr>
+<tr><td>臂 4 − 臂 3</td><td><b>红队的边际价值</b>（值不值那 4 倍成本）</td></tr>
+<tr><td>臂 5 − 臂 3</td><td><b>止损松紧的边际价值</b></td></tr>
+<tr><td>臂 2 − 臂 1</td><td><b>门槛松紧的边际价值</b></td></tr>
+</table>
+</callout>
+
+<hr/>
+
+<h1>三、逐个臂的操作细节</h1>
+
+<h2>臂 0 · 全买（对照 A）</h2>
+<table>
+<tr><td width="110"><b>做什么</b></td><td>不排序、不调模型。<b>20 条全进</b></td></tr>
+<tr><td><b>每条权重</b></td><td><code>25% / 20 = 1.25%</code>。其他臂 n≈10 时每条 2.5%，所以这里正好是<b>半仓</b></td></tr>
+<tr><td><b>硬门槛</b></td><td>仍然过。硬门槛是数据完整性检查（可计价、有流动性），不是选择</td></tr>
+<tr><td><b>回答什么</b></td><td><b>选择本身有价值吗。</b>若所有臂都赢不过它 → 打分 B 整个可以不要，直接全买</td></tr>
+<tr><td><b>落库</b></td><td>account <code>arm00_buyall</code></td></tr>
+</table>
+
+<h2>臂 1 · Omega 宽门槛（主臂）</h2>
+<table>
+<tr><td width="110"><b>排序算法</b></td><td><code>Ω = Σ pᵢ·max(rᵢ − h, 0) ÷ Σ pᵢ·max(h − rᵢ, 0)</code>，降序</td></tr>
+<tr><td><b>三情景</b></td><td><code>r = [upside_pct, 0, downside_pct]</code>，<code>p = [p_up, p_base, p_down]</code>，<b>已扣往返成本</b></td></tr>
+<tr><td><b>阈值 h</b></td><td>Olive 美元货币基金货架<b>中位 7 日年化 ÷ 12</b>（当前 3.38%/12 = 0.28%/月）。这不是拍的——Omega 最大的学术批评是「阈值任意且无系统定法」，用现金机会成本就有依据了</td></tr>
+<tr><td><b>分母为 0 时</b></td><td>Ω 记为 +∞，排最前，但<b>标记 <code>omega_inf</code></b>。这种情况通常意味着 downside 被写得太乐观，人工抽查</td></tr>
+<tr><td><b>不调模型</b></td><td>复用共享取数的三情景，零增量成本</td></tr>
+<tr><td><b>回答什么</b></td><td>AI 自报的上下行数字有信息吗，简单方案够用吗</td></tr>
+<tr><td><b>落库</b></td><td><code>arm01_omega_loose</code>，存 <code>omega</code> · <code>h_used</code> · <code>omega_inf</code></td></tr>
+</table>
+
+<h2>臂 2 · Omega 严门槛</h2>
+<table>
+<tr><td width="110"><b>与臂 1 唯一区别</b></td><td>门槛改严：只取 Ω 排序<b>前 40%</b>，且 <b>Ω ≥ 1.5</b>，n ∈ [6,8]，其余停 JPST</td></tr>
+<tr><td><b>回答什么</b></td><td><b>宁缺毋滥是否更好</b>；现金是不是一个被低估的仓位</td></tr>
+<tr><td><b>落库</b></td><td><code>arm02_omega_strict</code>，额外存 <code>cash_pct</code>（本批停 JPST 的比例）</td></tr>
+</table>
+
+<h2>臂 3 · 绝对打分（主臂）</h2>
+<table>
+<tr><td width="110"><b>模型</b></td><td><code>seed-1-6-flash</code>，1 次/条，共 20 次。temperature 0</td></tr>
+<tr><td><b>输入</b></td><td><b>只喂结构化事实，不喂 thesis 散文</b>：标的代码 · 资产类别 · 方向 · 三情景 · sigma_1m · 所属主题的 H/G/E/P 四个分 · 证据条数与层级分布 · 已定价分。<b>刻意不给模型任何自然语言论述</b>——同一个 LLM 写的 20 条 thesis，其行文习惯就是系统性干扰特征</td></tr>
+<tr><td><b>评分标准</b></td><td>rubric 写进 prompt，四档定义清楚：<br/>80–100 下行有明确约束（政策/财政/供给硬边界），上行有一手证据<br/>60–79 上行有卖方证据，下行靠估值支撑<br/>40–59 只有叙事，无硬证据<br/>0–39 论点与三情景不自洽，或已被价格走完</td></tr>
+<tr><td><b>输出 schema</b></td><td><code>score</code> 0–100 · <code>top_risk</code> ≤30字 · <code>cited</code> [doc_id]</td></tr>
+<tr><td><b>为什么不用成对</b></td><td>实测有干扰特征时成对翻转 <b>35%</b>，绝对打分只翻 <b>9%</b></td></tr>
+<tr><td><b>落库</b></td><td><code>arm03_abs</code>，存 score · top_risk · cited · prompt_sha · 模型返回 id</td></tr>
+</table>
+
+<h2>臂 4 · 绝对打分 + 红队（主臂）</h2>
+<table>
+<tr><td width="110"><b>第一步</b></td><td>直接复用臂 3 的 score 与排序</td></tr>
+<tr><td><b>第二步</b></td><td>对排序后的候选，每条派 <b>3 个独立红队</b>。模型 <code>deepseek-r1</code>（需要慢想的那一层）</td></tr>
+<tr><td><b>红队 prompt</b></td><td>「找出这条在<b>一个月内</b>失败的最可能路径。<b>默认判否决</b>，除非你找不到一条可信的失败路径。」——默认否决是刻意的，因为目标是压缩左尾</td></tr>
+<tr><td><b>输出 schema</b></td><td><code>veto</code> bool · <code>failure_path</code> ≤40字 · <code>confidence</code> low/med/high</td></tr>
+<tr><td><b>汇总规则</b></td><td>3 票中 <b>≥2 判否决 → 剔除</b>，机械计票</td></tr>
+<tr><td><b>三条硬约束</b></td><td><b>① 一次性投票，绝不多轮共识辩论</b>（辩论会随轮次降低准确率）<br/><b>② 三个红队互相看不到彼此意见</b>（单个自信的错误批评者能让准确率掉 10–40%、错误共识增 30%）<br/><b>③ 输出结构化裁决，不输出说服性论述</b></td></tr>
+<tr><td><b>回答什么</b></td><td>红队这一层的边际价值（<b>臂 4 − 臂 3</b>）</td></tr>
+<tr><td><b>落库</b></td><td><code>arm04_abs_redteam</code>，存 3 张票全文 + 计票结果 + 被否决清单</td></tr>
+</table>
+
+<h2>臂 5 · 绝对打分 + 紧止损</h2>
+<table>
+<tr><td width="110"><b>与臂 3 唯一区别</b></td><td>止损 <code>σ×2 → σ×1.2</code>。<b>止盈仍是 σ×3 不变</b>，选出的标的完全相同</td></tr>
+<tr><td><b>不调模型</b></td><td>复用臂 3 的分数与选择，零增量成本</td></tr>
+<tr><td><b>为什么值一个臂</b></td><td>倒推 25% 年化时算出：止损从 −6% 收到 −3%，需要的赔率从 1.32 提到 1.89，但需要的<b>绝对涨幅</b>从 +7.94% 降到 +5.68%——<b>后者容易得多。止损位置是比打分更强的杠杆</b></td></tr>
+<tr><td><b>回答什么</b></td><td>止损松紧的边际价值（<b>臂 5 − 臂 3</b>）</td></tr>
+<tr><td><b>落库</b></td><td><code>arm05_abs_tightstop</code>，额外存 <code>stop_hit_count</code>（被止损打掉几条）</td></tr>
+</table>
+
+<h2>臂 6 · 成对 Elo</h2>
+<table>
+<tr><td width="110"><b>配对</b></td><td>从过门槛集合里<b>固定种子</b>随机抽 50 对（可复现）</td></tr>
+<tr><td><b>每对问两次</b></td><td>A/B 与 B/A 各问一次。<b>只有两次答案一致才计一场胜负；不一致算平局</b>——这是消除位置偏好的做法</td></tr>
+<tr><td><b>Elo</b></td><td>初始 1500，K=32，按胜负更新，降序排</td></tr>
+<tr><td><b>输入</b></td><td>同臂 3，<b>只喂结构化事实</b>。这是这个臂能成立的前提</td></tr>
+<tr><td><b>模型</b></td><td><code>seed-1-6-flash</code>，100 次调用（50 对 × 双向）</td></tr>
+<tr><td><b>为什么留在探索层</b></td><td>这是我<b>唯一改过口风</b>的机制：原本认为成对最强，调研后发现它抗干扰最弱（35% vs 9%）。风险最高，所以不进主臂</td></tr>
+<tr><td><b>落库</b></td><td><code>arm06_elo</code>，存全部 50 对的双向答案 + 一致率 + 最终 Elo</td></tr>
+</table>
+
+<h2>臂 7 · 拆解式</h2>
+<table>
+<tr><td width="110"><b>要求模型输出</b></td><td>按资产类别分解预期收益：<br/><b>股票 / ETF</b>　Δ倍数(pp) + Δ盈利(%)<br/><b>利率 / 债</b>　　Δ实际利率 + Δ通胀预期 + Δ期限溢价<br/><b>FX</b>　　　　　Δ利差 + Δ风险溢价<br/><b>商品</b>　　　　Δ曲线(carry) + Δ库存</td></tr>
+<tr><td><b>排序键</b></td><td><b>自洽度</b>：<code>1 / (1 + \|分解各项之和 − upside_pct\|)</code>，降序</td></tr>
+<tr><td><b>为什么按自洽度而不是按幅度</b></td><td><b>它不奖励高预期，奖励想清楚了。</b>如果分解之和与它自己给的 upside 差很远，说明这条 idea 是先有结论再凑理由。这正好对应「防止空口讲故事」</td></tr>
+<tr><td><b>刻意不做的</b></td><td><b>不落到代码去拉数计算。</b>原方案后半段（「拉个股/ETF 数据算分」）会把 AI 降级成填数工具，做出来就是个因子模型——那是明确不走的桥水那条路。这里只要求它<b>说清</b>，不要求代码<b>算出</b></td></tr>
+<tr><td><b>附带好处</b></td><td>让跨资产可比：股票 idea 和利率 idea 本来没法比，分解给了共同语言</td></tr>
+<tr><td><b>落库</b></td><td><code>arm07_decomp</code>，存分解各项 + 之和 + 自洽度</td></tr>
+</table>
+
+<h2>臂 8 · 纯左尾</h2>
+<table>
+<tr><td width="110"><b>排序键</b></td><td><code>预期损失 = p_down × \|downside_pct\|</code>，<b>升序</b>（最小的排最前）</td></tr>
+<tr><td><b>完全忽略</b></td><td>upside 与 p_up 一概不看</td></tr>
+<tr><td><b>不调模型</b></td><td>复用共享取数，零增量成本</td></tr>
+<tr><td><b>为什么值一个臂</b></td><td>它是「B 的目标是压缩左尾」这个推断的<b>极端版检验</b>。如果这个判断成立，一个连 upside 都不看的臂也应该表现不差</td></tr>
+<tr><td><b>落库</b></td><td><code>arm08_lefttail</code></td></tr>
+</table>
+
+<h2>臂 9 · 随机（对照 B）</h2>
+<table>
+<tr><td width="110"><b>做什么</b></td><td>从过门槛集合里<b>固定种子</b>伪随机抽 n=10（可复现，可审计）</td></tr>
+<tr><td><b>回答什么</b></td><td><b>排序有信息吗。</b>若臂 9 和排序臂差不多 → 价值全在硬门槛，排序是噪音</td></tr>
+<tr><td><b>为什么两个对照组都要</b></td><td>臂 0 问「选不选有用」，臂 9 问「排序 vs 乱排」。<b>两个不同的问题，两个都是真答案，都能省掉大量后续复杂度</b></td></tr>
+<tr><td><b>落库</b></td><td><code>arm09_random</code>，存随机种子</td></tr>
+</table>
+
+<hr/>
+
+<h1>四、判胜负</h1>
+
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">规格</th></tr>
+<tr><td>比较量</td><td><b>配对差值</b> = 臂 i 本批 1 个月收益 − 臂 0 同批 1 个月收益</td></tr>
+<tr><td>为什么配对</td><td>所有臂同一周、同一批候选、同一市场 → 共同的市场因子在相减时消掉。独立样本要 7 个月才能检出 2 个百分点，配对（ρ≈0.8）只要约 1.3 个月</td></tr>
+<tr><td>检验</td><td>配对 t 检验（或 Wilcoxon 符号秩，样本小时更稳）</td></tr>
+<tr><td><b>多重比较</b></td><td>9 次比较不校正时，<b>至少一个假阳性的概率约 37%</b>。所以只对 <b>3 个预注册主臂</b>（臂 1、3、4）做正式检验，其余 6 个是探索性的<b>只生成假设，不作结论</b></td></tr>
+<tr><td>第一个结论</td><td>约 <b>1.7 个月</b>（预注册 3 臂、校正后）</td></tr>
+<tr><td>ρ 要实测</td><td>整个时间表建立在 ρ≈0.8 上。<b>第一个月就能算出真实 ρ</b>，若远低于 0.8 要重算</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>前 8 周实盘为零，10 个臂全部纸上跑。</b>冠军是<b>跑出来的，不是事先挑的</b>——「预注册」只管统计（哪 3 个臂做正式检验），不决定谁拿真钱。上实盘后仍然只有 <b>1 个臂</b>真买，其余 9 个继续跑影子盘（不占资金、不下单、零摩擦，只花 token）。</p>
+<p><b>10 个臂各买 10% 是错误答案</b>：picks 高度重叠，取并集后会买到 20 条里的绝大部分，等于收敛成对照组，既失去选择又付 10 倍成本。</p>
+</callout>
+
+<hr/>
+
+<h1>五、这份规格里仍然是拍的</h1>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">现状</th></tr>
+<tr><td>波动带 [0.35σ, 2.60σ]</td><td>沿用 v0.4，先验值</td></tr>
+<tr><td>止损 σ×2 与 σ×1.2、止盈 σ×3</td><td>拍的。但正因为拍的，才要用臂 5 去测</td></tr>
+<tr><td>n ∈ [6,14]、严门槛前 40%、Ω ≥ 1.5、score ≥ 60</td><td>全是拍的</td></tr>
+<tr><td>Elo 50 对、K=32</td><td>190 对全配对太贵，50 够不够要实测一致率</td></tr>
+<tr><td>红队 3 票、2/3 否决</td><td>拍的</td></tr>
+<tr><td>评分 rubric 的四档定义</td><td>拍的，但至少是明写的——不明写分数一定漂</td></tr>
+</table>

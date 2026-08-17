@@ -1,78 +1,37 @@
 <title>IdeaGen 生产化技术方案 · BytePlus</title>
 
 <callout emoji="🏁" background-color="light-blue" border-color="blue">
-<p><b>结论先说：</b>我用你给的 AK/SK 真连上去了，不是纸面方案。已验证 TOS 可用并建好专用 bucket、适配器端到端读写通过、ModelArk 管理面通且账号可访问 <b>42 个基础模型</b>。RDS / Redis / VKE 的 API 都通但<b>实例数为 0</b>，那些是计费资源，我没有不问就开。</p>
-<p><b>方案的核心取舍：</b>你说了「可能改方向」。所以这套架构<b>把平台层和方法论层彻底分开</b>——打分怎么改、周度还是日度、宇宙放哪些标的，都不触碰平台层一行代码。</p>
+<p><b>这份文档讲一件事：这套系统怎么在没人盯着的情况下每周三自己跑起来，并且让「没跑」永远不会被误读成「这周很安静」。</b></p>
+<p><b>核心取舍：平台层和方法论层彻底分开。</b>打分怎么改、周度还是日度、宇宙放哪些标的，都不触碰平台层一行代码；换云、换库、换模型厂商，也不触碰方法论层一行代码。</p>
+<p><b>凭证纪律：</b>这份文档、代码仓库、容器镜像里都<b>不写任何真实凭证、桶名、账号 ID 或服务地址</b>。桶名、区域、连接串一律由环境变量在运行时注入，下文只写<b>变量名</b>。</p>
 </callout>
 
 <hr/>
 
-<h1>一、已验证 vs 待办</h1>
-
-<table>
-<tr><th background-color="light-gray">服务</th><th background-color="light-gray">用途</th><th background-color="light-gray">状态</th><th background-color="light-gray">证据</th></tr>
-<tr><td><b>TOS 对象存储</b></td><td>不可变产物：语料快照、briefing pack、批次、看板、run journal</td><td><span text-color="green"><b>已验证可用</b></span></td><td>账号内原有 3 个 bucket；已创建 <code>ideagen-3003452293</code>；适配器 put/get/list/不可变性 全部通过</td></tr>
-<tr><td><b>ModelArk 推理</b></td><td>打分 A 的语义判断、20 条 idea 生成、打分 B 的排序与红队</td><td><span text-color="yellow"><b>管理面通，推理面差一步</b></span></td><td><code>ListFoundationModels</code> 返回 <b>42 个模型</b>；推理面需要 API key 或 project 绑定</td></tr>
-<tr><td><b>RDS for PostgreSQL</b></td><td>事务状态：语料、打分、idea、订单、持仓、盯市、outcome</td><td><span text-color="grey">API 通，0 实例</span></td><td>计费资源，等你确认再开</td></tr>
-<tr><td><b>Cache for Redis</b></td><td>跨沙箱运行锁（防重复下单）、MCP 响应缓存</td><td><span text-color="grey">API 通，0 实例</span></td><td>同上</td></tr>
-<tr><td><b>Message Queue for Kafka</b></td><td>run 生命周期事件流，供监控与后续 fan-out</td><td><span text-color="grey">未开</span></td><td>我试探的 API 版本号猜错了，需订正；非阻塞项</td></tr>
-<tr><td><b>VKE / AgentKit 沙箱</b></td><td>每周三跑 run 的执行环境</td><td><span text-color="yellow">AgentKit 已开通</span></td><td>账号里已有 2 个 <code>agentkit-platform-*</code> bucket；VKE 集群 0 个</td></tr>
-<tr><td><b>KMS</b></td><td>凭证托管，取代 <code>~/.ideagen.env</code></td><td><span text-color="grey">待开</span></td><td>适配器已写好，含「降级到环境变量时必须显式报告」</td></tr>
-</table>
-
-<h2>账号可用的 42 个模型（这决定推理层怎么排）</h2>
-
-<table>
-<tr><th background-color="light-gray">家族</th><th background-color="light-gray">数量</th><th background-color="light-gray">我打算用在哪</th></tr>
-<tr><td><code>deepseek</code>（r1, v3, v3-1, distill-qwen-32b…）</td><td>8</td><td><b>r1 推理模型做打分 B 的红队与排序</b>——需要慢想的那一层</td></tr>
-<tr><td><code>seed</code>（1-6, 1-6-flash, 1-8, 2-0-code…）</td><td>8</td><td><b>flash 做批量结构化取数</b>（20 条 × 5 次采样），成本敏感</td></tr>
-<tr><td><code>glm-5-2</code> / <code>kimi-k2</code> / <code>gpt-oss-120b</code></td><td>3</td><td><b>多模型集成的异质来源</b>——集成有效的前提是多样性，不是数量</td></tr>
-<tr><td><code>skylark-embedding-vision</code></td><td>1</td><td>语料向量化，供主题发现的候选聚类</td></tr>
-<tr><td>seedance / seedream / dreamina / hyper3d 等生成类</td><td>~19</td><td>与本项目无关</td></tr>
-</table>
-
-<callout emoji="💡" background-color="light-yellow" border-color="yellow">
-<p><b>这份清单本身就是一个设计输入。</b>调研里那条「多模型集成取中位能降低方差与过度自信」的结论，之前是纸上建议——现在账号里同时有 deepseek、seed、glm、kimi 四个<b>不同厂商血统</b>的模型，异质集成可以真的做，而不是同一个模型跑五遍。</p>
-</callout>
-
-<hr/>
-
-<h1>二、架构：为什么改方向不用重写</h1>
+<h1>一、两层分开：为什么改方向不用重写</h1>
 
 <callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>你的原话是「我可能改方向」。这句话决定了架构，不是决定了功能。</b></p>
-<p>如果按常规做法把 TOS、Postgres、ModelArk 的调用散在 pipeline 各处，那么改方向时——比如打分 B 从 Omega 换成 Elo、频率从周度改回日度——每一处都要动，而且每一处都可能碰坏已经调对的东西（as-of 钳制、现金约束、盯市顺序，这三样是这个项目里花时间最久的）。</p>
+<p><b>方法论一直在动。</b>哪几个字母给主题打分、用什么方式出想法、止损收多紧，都还没定。如果把云存储、数据库、模型调用散在流水线各处，那么每改一次方向，每一处都要动，而且每一处都可能碰坏已经调对的那三件事——<b>as-of 钳制</b>（只让系统看见当天真的看得到的数据）、<b>现金约束</b>、<b>盯市顺序</b>。这三件事花的时间最久，也最容易被无声破坏。</p>
 </callout>
 
 <whiteboard type="mermaid">
 flowchart TB
   subgraph M["方法论层 · 会改的部分"]
-    M1["打分 A：H/G/E/P 或别的"]
-    M2["打分 B：Omega / Elo / 红队 / 还没定"]
-    M3["频率：周度 / 日度"]
-    M4["宇宙：ETF / 公募 / 私募"]
-    M5["组合规则：25% 四批滚动"]
+    M1["筛选A 主题打分"]
+    M2["筛选B 出想法的方式"]
+    M3["筛选C 挑持仓的方式"]
+    M4["频率 · 宇宙 · 组合规则"]
   end
-  subgraph P["平台层 · 六个端口 · 不会因方向改动而变"]
-    P1["BlobStore 产物"]
-    P2["StateStore 状态"]
-    P3["Inference 推理"]
-    P4["EventBus 事件"]
-    P5["Cache 缓存与锁"]
-    P6["SecretStore 凭证"]
+  subgraph P["平台层 · 六个端口 · 不因方向改动而变"]
+    P1["产物"] & P2["状态"] & P3["推理"]
+    P4["事件"] & P5["缓存与锁"] & P6["凭证"]
   end
-  subgraph L["local 适配器"]
-    L1["文件系统"]
-    L2["SQLite"]
-    L3["直连 API"]
+  subgraph L["local 适配器 · 一台笔记本"]
+    L1["文件系统"] & L2["SQLite"] & L3["直连模型 API"]
   end
-  subgraph B["byteplus 适配器"]
-    B1["TOS"]
-    B2["RDS PostgreSQL"]
-    B3["ModelArk"]
-    B4["MQ for Kafka"]
-    B5["Cache for Redis"]
-    B6["KMS"]
+  subgraph B["byteplus 适配器 · 生产"]
+    B1["TOS 对象存储"] & B2["RDS PostgreSQL"] & B3["ModelArk"]
+    B4["MQ for Kafka"] & B5["Cache for Redis"] & B6["KMS"]
   end
   M --> P
   P --> L
@@ -81,102 +40,504 @@ flowchart TB
 
 <callout emoji="✅" background-color="light-green" border-color="green">
 <p><b>六个端口就是「什么东西能活下来」的完整定义。</b>云沙箱跑完就销毁，没有经过端口写出去的东西全部消失——所以这个清单不是抽象设计，它是可审计性的边界。</p>
-<p>一个开关切换：<code>IDEAGEN_PLATFORM=local</code> 或 <code>byteplus</code>。而且<b>端口可以混搭</b>——设了 TOS 但不设 <code>IDEAGEN_PG_DSN</code>，产物就上云、状态仍留 SQLite。这是真实的迁移路径：一个端口一个端口搬，别的照常跑。逼着六个一起搬，是迁移做不完的标准死法。</p>
+<p><b>一个开关切换：</b>环境变量 <code>IDEAGEN_PLATFORM</code> 取 <code>local</code> 或 <code>byteplus</code>。而且<b>端口可以混搭</b>——配了对象存储但没配数据库连接串，产物就上云、状态仍留 SQLite。这是真实的迁移路径：一个端口一个端口搬，别的照常跑。逼着六个一起搬，是迁移做不完的标准死法。</p>
 </callout>
 
-<h2>三条写进端口契约的硬规则</h2>
+<h2>方向改了，要动哪里</h2>
 
 <table>
-<tr><th background-color="light-gray">规则</th><th background-color="light-gray">为什么是硬的</th><th background-color="light-gray">怎么实现</th></tr>
-<tr><td><b>产物不可变，按 run 寻址</b></td><td>这个项目已经因为「替换批次没级联删除」错了十天：58 笔持仓挂到别的标的上，结算把 40 美元建仓价对着 192 美元收盘价算，一条 idea 记出 <b>+377%</b>，把发布的等权收益从 +0.96% 抬到 +5.70%</td><td><code>put</code> 没有 overwrite 路径。TOS 先 head 再 put，本地先查文件存在。<b>已实测：重复写同一 key 抛异常</b></td></tr>
-<tr><td><b>沙箱无状态</b></td><td>沙箱销毁后本地写的东西全没</td><td>run 开始从库里拉 as-of 快照，结束把全部产物写回；沙箱里不留唯一副本</td></tr>
-<tr><td><b>跑之前先体检</b></td><td>周度 run 在第 6 步才发现数据库不可达，模型钱已经花掉了</td><td>六个端口各有 <code>check()</code>，<code>ready()</code> 全绿才开跑。<b>events 故意不计入</b>——丢监控只是少看见，拒绝运行是丢掉这一周的语料，而那一周的语料事后取不回同样深度</td></tr>
+<tr><th background-color="light-gray">如果改</th><th background-color="light-gray">要动的东西</th><th background-color="light-gray">平台层</th></tr>
+<tr><td>换一套主题打分字母</td><td>加一个插件文件</td><td><span text-color="green">不动</span></td></tr>
+<tr><td>换一种出想法或挑持仓的方式</td><td>加一个插件文件</td><td><span text-color="green">不动</span></td></tr>
+<tr><td>周度改日度、或改双周</td><td>调度里的两个常量</td><td><span text-color="green">不动</span></td></tr>
+<tr><td>宇宙加减资产类别</td><td>授权载体门一处</td><td><span text-color="green">不动</span></td></tr>
+<tr><td>换模型厂商</td><td>—</td><td><span text-color="yellow">换一个地址变量</span></td></tr>
+<tr><td>换云</td><td>—</td><td><span text-color="yellow">新写一个适配器</span></td></tr>
+<tr><td>整个方法论推倒重来</td><td>方法论层全部</td><td><span text-color="green">不动，历史 run 全部还在</span></td></tr>
 </table>
-
-<hr/>
-
-<h1>三、为什么 scalable</h1>
 
 <callout emoji="📌" background-color="light-gray">
-<p>「scalable」在这个项目里不是指 QPS。周度跑一次、每次 5 个主题 20 条 idea，量小得可笑。真正会撑爆的是<b>另外三个维度</b>。</p>
-</callout>
-
-<table>
-<tr><th background-color="light-gray">会长大的维度</th><th background-color="light-gray">现在</th><th background-color="light-gray">10 倍时</th><th background-color="light-gray">架构怎么接住</th></tr>
-<tr><td><b>历史长度</b>（run 数 × 产物）</td><td>10 个 run，语料 5,836 条</td><td>2 年周度 = 104 run；语料百万级</td><td>TOS 按 <code>runs/{date}/{run_id}/</code> 分区，成本线性且极低；查询靠 Postgres 索引而非扫产物</td></tr>
-<tr><td><b>并行模型调用</b></td><td>1 次生成</td><td>20 条 × 5 次采样 × 4 个模型 = 400 次/周</td><td>ModelArk 是托管推理，并发交给它；<code>complete_many</code> 是端口方法，换成异步批量不改调用方</td></tr>
-<tr><td><b>回测重放</b></td><td>没做过真回测</td><td>2 年 × 104 周，每周完整重跑</td><td><b>这是唯一真需要横向扩的地方</b>：104 个 run 互不依赖，可以同时开 104 个沙箱。前提是 run 无状态——所以第二条硬规则是为回测服务的</td></tr>
-<tr><td><b>并发运行</b></td><td>一台笔记本，无冲突可能</td><td>定时 run + 手工重跑 + 回测同时在跑</td><td>Redis <code>SET NX EX</code> 分布式锁。<b>这是必须用 Redis 而不是文件锁的唯一理由</b>——文件锁协调不了两个沙箱，而「同一周跑两次会重复下单」是真实风险</td></tr>
-</table>
-
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>一句话版本：</b>这套东西的 scale 瓶颈是<b>回测的横向重放</b>，不是在线吞吐。所以架构的重点放在「run 是一个无状态、可寻址、可重放的闭包」，而不是放在缓存和连接池上。</p>
+<p>最后一行是这层分离真正的价值：<b>方法论推倒重来时，之前所有 run 的产物、语料快照、打分明细、结果都还在对象存储里，可以用新方法论重放旧数据做对照。</b>不做这层分离，改方向就等于丢掉历史。</p>
 </callout>
 
 <hr/>
 
-<h1>四、为什么能用（不是「应该能用」）</h1>
-
-<table>
-<tr><th background-color="light-gray">主张</th><th background-color="light-gray">验证方式</th><th background-color="light-gray">结果</th></tr>
-<tr><td>TOS 凭证有效、可建 bucket</td><td><code>list_buckets</code> + <code>create_bucket</code></td><td><span text-color="green">✅ 建成 <code>ideagen-3003452293</code></span></td></tr>
-<tr><td>我写的适配器能真读写</td><td>put → get 字节比对 → exists → list</td><td><span text-color="green">✅ 往返一致</span></td></tr>
-<tr><td>不可变性真的挡得住</td><td>对同一 key 二次 put</td><td><span text-color="green">✅ 抛 PlatformError</span></td></tr>
-<tr><td>ModelArk 账号可用</td><td>AK/SK 签名调 <code>ListFoundationModels</code></td><td><span text-color="green">✅ 42 个模型</span></td></tr>
-<tr><td>SDK 签名不是我编的</td><td><code>inspect.signature</code> 内省 <code>tos.TosClientV2</code></td><td><span text-color="green">✅ <code>(ak, sk, endpoint, region)</code></span></td></tr>
-<tr><td>不装云 SDK 也能跑测试</td><td>所有云 import 都在方法内部惰性加载，并有测试断言这一点</td><td><span text-color="green">✅ 132 个测试无需任何云依赖</span></td></tr>
-<tr><td><code>load()</code> 在配置缺失时不崩</td><td>把 ARK_API_KEY 等全部移除后 load 两种平台</td><td><span text-color="green">✅ 改过一次才对</span>——第一版真的会崩，见下</td></tr>
-<tr><td>RDS / Redis / VKE 权限够</td><td><code>DescribeDBInstances</code> / <code>ListClusters</code></td><td><span text-color="yellow">API 都通，实例数 0</span></td></tr>
-</table>
-
-<callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>写这套东西时自己踩到的一个设计错误，值得记一笔：</b>第一版 <code>load()</code> 在端口凭证缺失时<b>直接抛异常</b>。结果是 <code>ideagen platform</code>——那个「什么都不通的时候唯一还能用」的命令——自己先崩了，操作者拿到的是 stack trace 而不是「你少设了 ARK_API_KEY」这一行。</p>
-<p>体检机制的全部意义就是在这种时候还能说话，所以构造阶段抛异常是把它作废。已改为：配不出来的端口换成一个占位对象，<code>check()</code> 如实报原因，<b>真被调用时才抛</b>。这样需要它的 run 照样会失败、且失败在使用点上；不需要它的 run 正常跑。</p>
-</callout>
-
-<hr/>
-
-<h1>五、需要你决定的三件事</h1>
-
-<callout emoji="❗" background-color="light-yellow" border-color="yellow">
-<p><b>1）ModelArk 推理面怎么开。</b>管理面用 AK/SK 就通了，但推理面报 <code>must set project_name when get preset endpoint token</code>。两条路：<b>(a)</b> 你在控制台点一个 API key 给我（最快，一分钟）；<b>(b)</b> 我用 AK/SK + project 绑定继续试。<b>控制台密码你给了，但我不会用——网页登录属于凭证录入，这条我不做。</b></p>
-<p><b>2）RDS PostgreSQL 和 Redis 要不要现在开。</b>这两个是计费资源。不开也能跑：状态继续留 SQLite（挂在持久卷上）、锁退化成文件锁——代价是<b>回测不能横向并行</b>、<b>多沙箱防重复下单失效</b>。我建议 Redis 先开（便宜、解决锁问题），Postgres 等回测真要并行时再开。<b>具体价格我没验证过，不编数字，你那边看控制台报价。</b></p>
-<p><b>3）执行环境用 AgentKit 沙箱还是 VKE。</b>你账号里 AgentKit 已开通、VKE 是 0 集群。AgentKit 更省事（无需管集群），VKE 更可控（能常驻 MCP 网关）。<b>而 MCP 网关必须常驻</b>——现在整条链里唯一必须人在场的就是 Olive MCP，它挡住了「无人值守跑组合」这个目标本身。所以我倾向：<b>run 用 AgentKit 沙箱，MCP 网关用一个最小的常驻服务</b>。</p>
-</callout>
-
-<hr/>
-
-<h1>六、落地顺序</h1>
+<h1>二、六个端口与 BytePlus 服务对照</h1>
 
 <whiteboard type="mermaid">
 flowchart LR
-  A["✅ 已完成<br/>六端口抽象<br/>local 适配器<br/>byteplus 适配器<br/>TOS 实测通过<br/>run journal"] --> B["第 1 步 · 不花钱<br/>产物迁到 TOS<br/>platform doctor<br/>把 10 个历史 run 补成 journal"]
-  B --> C["第 2 步 · 需要 API key<br/>接通 ModelArk<br/>结构化取数 + 5次采样中位<br/>异质多模型集成"]
-  C --> D["第 3 步 · 需要你批预算<br/>Redis 锁<br/>Postgres 状态<br/>Kafka 事件"]
-  D --> E["第 4 步 · 目标态<br/>AgentKit 定时 run<br/>常驻 MCP 网关<br/>回测横向重放"]
+  A1["产物端口<br/>只追加不覆盖"] --> T1["TOS 对象存储"]
+  A2["状态端口<br/>可查询可更新"] --> T2["RDS for PostgreSQL"]
+  A3["推理端口<br/>模型调用"] --> T3["ModelArk"]
+  A4["事件端口<br/>run 生命周期"] --> T4["Message Queue for Kafka"]
+  A5["缓存与锁端口<br/>跨沙箱互斥"] --> T5["Cache for Redis"]
+  A6["凭证端口<br/>运行时取密钥"] --> T6["KMS"]
+  A1 --- L1["本地：文件系统"]
+  A2 --- L2["本地：SQLite"]
+  A3 --- L3["本地：直连 API"]
+  A4 --- L4["本地：JSONL 文件"]
+  A5 --- L5["本地：文件锁"]
+  A6 --- L6["本地：环境变量"]
 </whiteboard>
 
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>第 1 步现在就能做完，不需要你任何决策、不花一分钱</b>，而且做完之后「所有东西都存下来」这个要求就已经满足了——产物在 TOS、每个 run 有不可变 journal、六端口有体检。</p>
-<p>后面三步各自被一个具体的东西卡住：API key、预算、执行环境选型。我把它们列成三个独立的口子，任何一个先解开都能单独往前走。</p>
+<table>
+<tr><th background-color="light-gray">端口</th><th background-color="light-gray">存什么 / 做什么</th><th background-color="light-gray">这个端口坏了会怎样</th></tr>
+<tr><td><b>产物</b></td><td>语料快照、主题结果、每种出想法方式与每本账的输出、候选池、run journal</td><td>run 跑过但没有任何记录可以复查——等于这一周白跑</td></tr>
+<tr><td><b>状态</b></td><td>run 索引、数据源结果、每个策略的判决、候选、日历事件、事件观察点</td><td>查不到「这一期做了什么」，也无法保证一期只算一次</td></tr>
+<tr><td><b>推理</b></td><td>四种出想法方式与 AI 挑法的模型调用</td><td>出想法这一段完全跑不了</td></tr>
+<tr><td><b>事件</b></td><td>run 开始 / 每一步 / 每份产物 / 结束 / 心跳</td><td><b>只是少看见</b>，run 照跑——所以它<b>故意不计入开跑门槛</b></td></tr>
+<tr><td><b>缓存与锁</b></td><td>跨沙箱互斥、短期共享状态</td><td>同一周可能被跑两次，也就是同一批单下两遍</td></tr>
+<tr><td><b>凭证</b></td><td>运行时取密钥，仓库与镜像里一律不落盘</td><td>什么都取不到，开跑前就该被拦住</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>事件端口被排除在开跑门槛之外，是一个刻意的取舍。</b>丢监控只是少看见；因为监控不通就拒绝运行，丢掉的是这一周的语料——而那一周的语料事后取不回同样的深度。两种损失差一个数量级。</p>
+<p>同理，事件发布<b>永远不能让 run 失败</b>：一个能中止周度运行的监控挂钩不是可观测性，是负债。所以传输出错时只计数、不往上抛。</p>
 </callout>
 
 <hr/>
 
-<h1>七、方向改了会发生什么</h1>
+<h1>三、配置：只写变量名，永不写值</h1>
+
+<callout emoji="🔒" background-color="light-red" border-color="red">
+<p><b>桶名、区域、服务地址、连接串、密钥，全部由环境变量在运行时注入。</b>镜像层里没有任何一项——因为镜像层谁能拉就谁能读，而且构建参数即使被后面的层删掉，也仍然留在构建历史里。文档同理：下面这张表只有变量名，没有值。</p>
+<p>要接手的团队要做的第一件事，就是<b>用自己的桶名、自己的区域、自己的连接串把这些变量填满</b>：<code>IDEAGEN_TOS_BUCKET=&lt;你们的 bucket 名&gt;</code>。这份文档里不会出现任何一个真实桶名。</p>
+</callout>
 
 <table>
-<tr><th background-color="light-gray">如果你改</th><th background-color="light-gray">要动的代码</th><th background-color="light-gray">平台层</th></tr>
-<tr><td>打分 A 换一套字母</td><td><code>scoring.py</code> + <code>lexicon.py</code></td><td><span text-color="green">不动</span></td></tr>
-<tr><td>打分 B 换机制（Omega→Elo→别的）</td><td>新增一个 selector 模块</td><td><span text-color="green">不动</span></td></tr>
-<tr><td>周度改回日度、或改成双周</td><td>调度配置 + <code>replay.py</code> 的窗口</td><td><span text-color="green">不动</span></td></tr>
-<tr><td>宇宙加/减资产类别</td><td><code>universe.py</code></td><td><span text-color="green">不动</span></td></tr>
-<tr><td>组合规则改（25%→别的、加杠杆）</td><td><code>paper.py</code></td><td><span text-color="green">不动</span></td></tr>
-<tr><td>换模型厂商（ModelArk→别的）</td><td>—</td><td><span text-color="yellow">改一个 base_url</span></td></tr>
-<tr><td>换云（BytePlus→别的）</td><td>—</td><td><span text-color="yellow">新写一个适配器，约 300 行</span></td></tr>
-<tr><td>整个方法论推倒重来</td><td>方法论层全部</td><td><span text-color="green">不动，而且历史 run 全部还在</span></td></tr>
+<tr><th background-color="light-gray">变量名</th><th background-color="light-gray">作用</th><th background-color="light-gray">不设会怎样</th></tr>
+<tr><td><code>IDEAGEN_PLATFORM</code></td><td>选 <code>local</code> 还是 <code>byteplus</code></td><td>默认本地</td></tr>
+<tr><td><code>IDEAGEN_VENUE</code></td><td>下单去哪：纸上 / 影子 / 实盘形态</td><td>默认纸上账本</td></tr>
+<tr><td><code>BYTEPLUS_ACCESS_KEY</code> / <code>BYTEPLUS_SECRET_KEY</code></td><td>对象存储与凭证服务的密钥</td><td>这两个端口体检直接红</td></tr>
+<tr><td><code>BYTEPLUS_REGION</code></td><td>区域，默认新加坡区域</td><td>用默认值</td></tr>
+<tr><td><code>IDEAGEN_TOS_BUCKET</code></td><td><b>产物桶名。真实桶名只存在于这个变量里</b></td><td>产物端口不可用</td></tr>
+<tr><td><code>IDEAGEN_TOS_PREFIX</code></td><td>桶内前缀，例如生产与预发分开</td><td>共用一个前缀，回放会撞地址</td></tr>
+<tr><td><code>IDEAGEN_PG_DSN</code></td><td>数据库连接串</td><td><b>退回本地 SQLite，沙箱一销毁状态就没了</b></td></tr>
+<tr><td><code>ARK_API_KEY</code> / <code>IDEAGEN_ARK_MODEL</code></td><td>推理密钥与模型 id</td><td>要调模型的 run <b>开跑前</b>就被拒</td></tr>
+<tr><td><code>IDEAGEN_REDIS_URL</code></td><td>跨沙箱锁</td><td><b>退回文件锁，跨沙箱互斥失效</b></td></tr>
+<tr><td><code>IDEAGEN_KAFKA_SERVERS</code> / <code>IDEAGEN_KAFKA_TOPIC</code></td><td>事件与心跳</td><td>退回本地 JSONL 文件</td></tr>
+<tr><td><code>IDEAGEN_KMS_KEYRING</code></td><td>凭证钥匙环名</td><td>用默认名</td></tr>
+<tr><td><code>IDEAGEN_TICK_INTERVAL_S</code> / <code>IDEAGEN_MAX_DEGRADED</code></td><td>循环间隔；连续降级多少次就退出</td><td>用默认值</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
+<p><b>凭证端口取不到密钥时会退回读环境变量，而这件退回动作一定会在体检里被明确写出来。</b>不这样做的话，一个配错的密钥托管服务可以安静地被绕过好几周——所有人都以为密钥是托管的，其实一直在用环境变量。</p>
+<p>另外有一个命令专门回答「哪些变量设了、哪些没设、值从环境还是从文件来」，<b>但它永远不打印值</b>。</p>
+</callout>
+
+<hr/>
+
+<h1>四、一次 run 的完整时序</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  S0["① 按端口体检<br/>需要哪些端口由插件注册表推导"] --> Q0{"该有的都绿了吗"}
+  Q0 -->|"没有"| STOP["立刻拒绝<br/>报出缺哪个变量"]
+  Q0 -->|"是"| S1["② 抢锁<br/>一期只能一个 run"]
+  S1 --> Q1{"抢到了吗"}
+  Q1 -->|"没有"| SKIP["什么都不做就退出<br/>标记为跳过而不是完成"]
+  Q1 -->|"是"| S2["③ 建库表<br/>幂等，每次开机都跑"]
+  S2 --> S3["④ 开 run 行<br/>先写 ok=0"]
+  S3 --> S4["⑤ 拉数据源<br/>语料 · 可买清单 · 宏观日历"]
+  S4 --> S5["⑥ 授权载体门<br/>排除了谁 · 为什么 · 都记下来"]
+  S5 --> S6["⑦ 对全部输入取一个哈希"]
+  S6 --> A["⑧ 筛选A 选主题"]
+  A --> B["⑨ 筛选B 四种方式各自出想法"]
+  B --> POOL["⑩ 合并候选池<br/>一个标的一条 · 赔率取中位数"]
+  POOL --> C["⑪ 筛选C 每种挑法各出一本账"]
+  C --> S7["⑫ 每一份产物写进对象存储"]
+  S7 --> S8["⑬ 写 journal 收尾"]
+  S8 --> S9["⑭ UPDATE 把 run 行改成 ok=1"]
+  STOP --> END["结束"]
+  SKIP --> END
+  S9 --> END
+</whiteboard>
+
+<h2>时序里三个不显眼但要命的细节</h2>
+
+<table>
+<tr><th background-color="light-gray">细节</th><th background-color="light-gray">为什么这样做</th><th background-color="light-gray">不这样做的代价</th></tr>
+<tr><td><b>run 行先写 ok=0，最后 UPDATE 成 ok=1</b></td><td>成功与失败都在同一行的同一个字段上回答；没写结束时间的行就是当场死掉的 run</td><td>只在成功时才写 run 行，那么<b>失败 run 已经写出去的数据源结果和判决就没有父行标记它们不可信</b>——半截 run 的产出和好 run 的产出长得一模一样，任何建立在这些行上的对比都被悄悄污染</td></tr>
+<tr><td><b>需要哪些端口由注册表推导</b></td><td>这次要跑的插件里有没有要调模型的，系统自己问注册表，而不是让调用方声明</td><td>调用方漏写一个标志，就会先把语料抓完、主题打完，<b>才发现四种出想法的方式一个都跑不了</b>——最贵的那一段已经花掉了</td></tr>
+<tr><td><b>抢不到锁不算完成</b></td><td>「跑成功了」和「什么都没做但也没出错」是两种结果，必须能分开问</td><td>调度器把「被别人占着所以退出」当成本周已完成，<b>这一周就被整个跳过</b></td></tr>
 </table>
 
 <callout emoji="📌" background-color="light-gray">
-<p>最后一行是这套架构真正的价值：<b>方法论推倒重来时，之前所有 run 的产物、语料快照、打分明细、outcome 都还在 TOS 里，可以用新方法论重放旧数据做对照。</b>而如果不做这层分离，改方向就等于丢掉历史。</p>
+<p><b>输入是注入的，不是这一步自己去抓的。</b>语料、候选、日历、行情都可以由外面传进来，所以<b>同一个函数同时服务实盘运行、旧期次重放和测试</b>，差别只在输入从哪来。一个自己去抓数据的重放，根本不是重放。</p>
+</callout>
+
+<hr/>
+
+<h1>五、产物不可变，按 run 寻址</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>这条规则是被违反过一次才立的。</b>原地替换一个批次，没有级联删除它的下游：<b>58 笔持仓挂到了别的标的上</b>，结算把一个建仓价对着完全不相干的收盘价算，<b>一条想法记出 +377% 的收益</b>，整批发布出去的收益被显著抬高。数据都在、校验全过、没有一处报错。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart LR
+  R["一次 run"] --> K["产物地址<br/>runs / 日期 / run_id /"]
+  K --> F1["筛选A 主题结果"]
+  K --> F2["筛选B 每种方式一份"]
+  K --> F3["合并后的候选池"]
+  K --> F4["筛选C 每本账一份"]
+  K --> F5["journal<br/>端口体检 · 每一步 · 每份产物 · 成败"]
+  W["再往同一个地址写"] --> X["直接报错<br/>写入路径里没有覆盖这个动作"]
+  FIX["口径要改"] --> NEW["开一个新 run<br/>旧 run 永久可查"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">怎么实现</th></tr>
+<tr><td>产物只追加，不覆盖</td><td>写入接口<b>根本没有覆盖参数</b>。云端先探一次这个地址是否存在，本地先查文件是否存在；已存在就抛异常</td></tr>
+<tr><td>改口径就开新 run</td><td>地址里带日期和 run_id，所以「决策当时用的是哪一份」永久可查</td></tr>
+<tr><td>沙箱不留唯一副本</td><td>run 开始从库里拉当期快照，结束把全部产物写回。沙箱销毁后本地什么都不剩</td></tr>
+<tr><td>run_id 按时间排序且唯一</td><td>产物地址自然按时间排，同一秒起的两个 run 也撞不上</td></tr>
+</table>
+
+<h2>run journal：一次 run 的完整闭包</h2>
+
+<callout emoji="📝" background-color="light-yellow" border-color="yellow">
+<p>journal 回答的是「<b>这次 run 到底看见了什么、做了什么</b>」：当时六个端口各自的健康状况、每一步的时间和参数、每一份产物的地址和字节数、跑了多久、最后成功还是失败以及为什么。它和产物一样不可变。</p>
+<p>它存在的原因很具体：这套系统已经产出过一段自己回答不了「这次 run 究竟看到了什么」的历史——一个批次在活着的持仓底下被替换掉，而好几天的打分对着一个还在不停变大的语料库。</p>
+<p><b>所以健康信息里绝不能带凭证。</b>体检结果会被写进这份不可变的 journal，还会发到事件流上——一条形如「用户名:密码@主机」的连接串一旦进去，就再也删不掉了。写入前统一把凭证部分抹掉，只留「哪台主机应答了」。<b>一条健康信息的用途是告诉运维哪台主机通，不是告诉他用哪个密钥开的门。</b></p>
+</callout>
+
+<hr/>
+
+<h1>六、库表可移植：换库只换一个连接串</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  DDL["建表语句<br/>只用最通用的写法"] --> D1["SQLite"]
+  DDL --> D2["PostgreSQL"]
+  UP["写一行数据"] --> Q{"看当前引擎"}
+  Q -->|"SQLite"| S1["INSERT OR REPLACE"]
+  Q -->|"PostgreSQL"| S2["INSERT ... ON CONFLICT<br/>DO UPDATE"]
+  OPEN["开 run 行"] --> STRICT["严格插入<br/>不用替换语义"]
+  STRICT --> WHY["否则冲突时会先删掉<br/>那条已完成的记录"]
+  CLOSE["收尾"] --> UPD["UPDATE<br/>UPDATE 会老实撞上唯一索引"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">做法</th><th background-color="light-gray">为什么</th></tr>
+<tr><td>字段类型只用最通用的写法</td><td>不用带长度的字符串、不用自增、不用 JSON 列型（JSON 存成文本，在程序里解析）</td></tr>
+<tr><td>每条建表语句都幂等</td><td>每次开机都能跑一遍，漏掉过一次迁移的部署会自己长好，而不是在第一次插入时炸</td></tr>
+<tr><td><b>写入语句按引擎分方言</b></td><td><code>INSERT OR REPLACE</code> 只有 SQLite 有。直接写死它，等于建表语句可移植而每一条写入都不可移植——<b>状态搬到云数据库的那一天，周三这次 run 会在抓完语料、打完主题之后、第一次插入时失败</b>。承诺过「换库只换连接串」，这一处就是让这句话成立的地方</td></tr>
+<tr><td>新表统一加前缀</td><td>「表不存在才建」撞上同名而结构不同的旧表时<b>是个静默空操作</b>，问题要到第一次插入才以「没有这一列」的形式冒出来，离原因很远。所以建表<b>之前</b>先检查同名冲突，把这件事变成开机时一句能读懂的话</td></tr>
+<tr><td>字段可以后补</td><td>「表不存在才建」加不了列，而 SQLite 也没有「列不存在才加」。所以把「哪张表要补哪一列」写成数据，每次开机检查并补齐</td></tr>
+<tr><td>孤儿行只报告不删除</td><td>父 run 没有记录的子行来自崩掉的 run，它和好行验证起来一模一样。<b>因为看起来不对就删数据，是真结果被扔掉的标准路径</b>，所以这个决定留给人</td></tr>
+</table>
+
+<h2>一期只能算一次，由数据库保证</h2>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>唯一索引只加在「已完成」这一行上。</b>不能简单地对（类型, 日期）加唯一约束，因为盯市一天要写很多行，而且<b>一次失败之后重试成功，同一期留下两行是对的</b>——那段历史正是「第一次失败了」的证据。绝不能发生的只有一件事：同一期被算成完成两次。</p>
+<p>所以：<b>失败重试仍留下历史，成功重复被数据库直接拒绝。</b>这道保证不只靠锁——锁会过期、会因为进程被杀而释放，而索引不会。</p>
+<p>还有一个配套动作：开 run 行时用<b>严格插入</b>而不是替换语义。替换语义遇到冲突时会先<b>删掉</b>撞上的那一行再插入新的——那正好会抹掉这道约束要保护的那条已完成记录，等于绕过约束而不是被它挡住。收尾改成 UPDATE，UPDATE 会老实地撞上索引。</p>
+</callout>
+
+<h2>写进库里的六张表</h2>
+
+<table>
+<tr><th background-color="light-gray">表</th><th background-color="light-gray">一行是什么</th><th background-color="light-gray">没有它就答不出的问题</th></tr>
+<tr><td>run 索引</td><td>一次 run</td><td>这一期做过没有、成功没有、产物在哪</td></tr>
+<tr><td>数据源结果</td><td>一次 run 里的一个数据源</td><td><b>一个安静返回空的数据源，和一个真的很安静的星期，长得一模一样</b></td></tr>
+<tr><td>策略判决</td><td>一次 run 里的一个策略</td><td>这本账是<b>哪个版本的逻辑</b>、看着<b>哪一份输入</b>做出来的</td></tr>
+<tr><td>候选</td><td>摆在所有挑法面前的同一份池子</td><td>几本账能不能相减比较</td></tr>
+<tr><td>日历事件</td><td>一个带日期与一致预期的事件</td><td>触发条件能不能指向一个真实存在的事件</td></tr>
+<tr><td>事件观察点</td><td>挂在某条想法上的一个触发条件</td><td>偏离发生时该做什么，是不是出生时就写定的</td></tr>
+</table>
+
+<hr/>
+
+<h1>七、分布式锁：为什么文件锁不够</h1>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>分布式锁 = 一把不放在任何一台机器本地、而是放在共享服务上的锁</b>，所以两个互不相识的沙箱抢的是同一把。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart TB
+  subgraph BAD["文件锁 · 不成立"]
+    X1["沙箱 甲<br/>看自己的文件系统"] --> X2["没人上锁 → 我跑"]
+    Y1["沙箱 乙<br/>看自己的文件系统"] --> Y2["没人上锁 → 我也跑"]
+    X2 --> DUP["同一周下了两批单"]
+    Y2 --> DUP
+  end
+  subgraph GOOD["共享锁 · 成立"]
+    Z1["沙箱 甲"] --> LK["共享缓存服务<br/>只有第一个抢到"]
+    Z2["沙箱 乙"] --> LK
+    LK -->|"抢到"| RUN["跑，并全程持锁"]
+    LK -->|"没抢到"| OUT["什么都不做就退出<br/>并且不算这一期已完成"]
+  end
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">问题</th><th background-color="light-gray">答案</th></tr>
+<tr><td>为什么周度 run 会被跑两次</td><td>它是定时任务。定时任务会被重启、被上游超时重试、被不确定第一次跑没跑成的人再点一次</td></tr>
+<tr><td>锁持多久</td><td>整个 run 全程持有，并带过期时间。持有者进程被杀掉时锁会自己过期，否则一次崩溃会把这一期永久锁死</td></tr>
+<tr><td>锁过期了怎么办</td><td>这就是为什么还有那道数据库唯一索引：<b>锁负责不并发，索引负责不重复计入</b>，两道防线针对的是两件不同的事</td></tr>
+<tr><td>不配共享缓存服务行不行</td><td>能跑，但退回文件锁，<b>跨沙箱互斥就失效了</b>。所以无人值守上线时这是必配项，不是可选项</td></tr>
+</table>
+
+<hr/>
+
+<h1>八、按端口体检</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  REG["插件注册表<br/>这次要跑哪些插件"] --> NEED["推导出需要哪些端口"]
+  NEED --> CK["逐个端口体检"]
+  CK --> R1["凭证"] & R2["状态"] & R3["产物"] & R4["缓存与锁"]
+  CK --> R5["推理<br/>只在这次真的要调模型时才要求"]
+  CK -.->|"永不计入门槛"| R6["事件"]
+  R1 & R2 & R3 & R4 & R5 --> G{"全绿"}
+  G -->|"是"| GO["开跑"]
+  G -->|"否"| NO["拒绝，并说清缺哪个变量<br/>以及本次哪些插件要调模型"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">设计</th><th background-color="light-gray">为什么</th></tr>
+<tr><td><b>门槛按本次 run 而不是全局</b></td><td>只跑机械策略的 run 没有理由被一个缺失的模型密钥挡住；而一刀切的门槛只有两种结局——要么挡住它，要么对真需要模型的 run 不再起保护作用</td></tr>
+<tr><td><b>配不出来的端口不抛异常</b></td><td>配不出来的端口会被换成一个占位对象：体检时如实报出原因，<b>真被调用时才抛错</b>。否则最需要说话的时候——什么都不通的时候——体检自己先崩了，运维拿到的是一串堆栈而不是「你少设了哪个变量」这一行。这样需要它的 run 照样会失败、且失败在使用点上；不需要它的 run 正常跑</td></tr>
+<tr><td><b>「没配」和「配了但坏了」分成两种</b></td><td>两种问题的修法完全不同：一个是去补变量，一个是去查服务</td></tr>
+<tr><td><b>体检结果进 journal</b></td><td>事后回看时，「当时环境是什么样」和「当时结果是什么」必须在同一份记录里</td></tr>
+<tr><td><b>先体检再花钱</b></td><td>周度 run 走到第六步才发现数据库连不上，模型的钱已经花掉了</td></tr>
+</table>
+
+<hr/>
+
+<h1>九、无人值守调度 · 沙箱里的一圈循环</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  LOOP["容器入口<br/>每 5 分钟调一次 tick"] --> T["tick<br/>幂等：同一期跑第二次会被拒"]
+  T --> J1{"周策略到期了吗"}
+  J1 -->|"周三 07:00 香港时间<br/>且本期没做过"| W["跑周策略"]
+  J1 -->|"否"| N1["记一句未到期"]
+  T --> J2{"盯市到期了吗"}
+  J2 -->|"每 15 分钟"| MON["推进已收盘的行情<br/>评估止损 · 读数据源健康"]
+  J2 -->|"否"| N2["记一句未到期"]
+  T --> HB["心跳<br/>无论上面发生了什么都写"]
+  HB --> CODE{"退出码"}
+  CODE -->|"0 健康"| LOOP
+  CODE -->|"1 降级<br/>下一轮可能就好了"| CNT["连续降级计数<br/>累到上限就退出让故障暴露"]
+  CODE -->|"2 配置错<br/>重启也修不好"| DIE["立刻非零退出"]
+  CNT --> LOOP
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">设计</th><th background-color="light-gray">为什么</th></tr>
+<tr><td><b>判断依据全在共享状态里</b></td><td>本期该不该跑，看的是共享锁加库里的 run 行，不看任何本地文件。被重启、被重试、被排了两次的沙箱因此都会得出同一个结论：已经做过了，我不做</td></tr>
+<tr><td><b>循环写在 shell 里，每个 tick 是一个新进程</b></td><td>tick 之间什么都不累积——不留连接、不留缓存的密钥、不留半截迁移。一次硬崩只损失一个 tick，不损失整个排程。这也正好对上平台自己的规则：沙箱是一次性的，真正重要的东西早就通过端口写出去了</td></tr>
+<tr><td><b>退出码就是容器接口</b></td><td>0 健康、1 降级、2 不可恢复。降级会重试但有上限——<b>无限重试会让一个坏掉的沙箱一直看起来活着</b>；第一次抖动就退出又会让容器天天重启</td></tr>
+<tr><td><b>心跳单独写，带过期时间</b></td><td><b>停掉的系统和安静的一周必须长得不一样。</b>两个周三之间本来就没有新账本、告警也少，一个崩掉的沙箱产生的正是同一种安静。心跳的<b>缺失</b>才是信号，所以它带过期时间；而且<b>不写进对象存储</b>——产物不可覆盖，心跳却要反复刷新，这两件事天生冲突</td></tr>
+<tr><td><b>数据库暂时不通算降级不算致命</b></td><td>下一个 tick 可能就好了，而心跳照样发出去，于是沙箱读起来是「活着但在报错」，不是「死了」</td></tr>
+<tr><td><b>时间永不隐式读取</b></td><td>「现在几点」是参数传进去的，所以一周可以被精确重放和测试</td></tr>
+<tr><td><b>不支持的下单场所直接拒绝启动</b></td><td>无人值守时把下单场所设成一个本仓库没有实现的值，正确反应是拒绝而不是尝试</td></tr>
+<tr><td><b>健康探针问调度器自己的健康接口</b></td><td>那个接口读的是心跳，而不是自己声明自己还好。<b>一个已经停止跳动的容器不能看起来是健康的</b></td></tr>
+</table>
+
+<h2>时区：只在一个地方换算</h2>
+
+<callout emoji="🕐" background-color="light-red" border-color="red">
+<p><b>换算只做一次：UTC 时刻 → 香港挂钟时间 → 香港日历日，这个日历日就是 as_of。周三 07:00 香港时间＝周二 23:00 UTC。</b></p>
+<p>难点不是算术（香港是 UTC+8 且没有夏令时），难点是 <b>as_of 同时是触发日和语料窗口</b>。语料取的是「截止 as_of 的三天」，周三就是周一至周三。<b>按 UTC 日期排班会把周二 23:00 UTC 记成「周二」，语料窗口于是从周一至周三悄悄移成周日至周二</b>——丢掉周一的研报，多进一天报告自称没用过的数据。</p>
+<p><b>而且什么都不会报错</b>，因为空数据和移位的数据都能通过校验，分数照算，周与周之间的对比就这样安静地不再是同一回事。</p>
+<p>所以：触发小时和这条规则一起，作为一个命名常量写在代码里，<b>不写在某台没人看的机器的定时表达式里</b>；容器时钟本身固定为 UTC，免得「本地时间看起来对」把问题掩盖到某天换个地方运行时才炸；镜像里显式装了时区数据库，因为缺了它连时区转换本身都起不来。</p>
+</callout>
+
+<h2>错过的一周不假装补上</h2>
+
+<whiteboard type="mermaid">
+flowchart TB
+  DOWN["沙箱停了一段时间"] --> ASK{"这一期还能救吗"}
+  ASK -->|"迟不超过 48 小时"| OK["还能跑<br/>语料深度与订单前瞻性都还成立"]
+  ASK -->|"超过 48 小时"| BAD["记成永久错过"]
+  BAD --> ROW["写一行 kind=weekly_missed 且 ok=0<br/>占住这一期，但绝不会被当成一次 run"]
+  BAD --> ART["在这一期本该放 journal 的位置<br/>写一份说明：没跑，原因是什么"]
+  MON["盯市这一侧"] --> REPLAY["可以补<br/>它只是已收盘 K 线的确定性函数<br/>停两周也只花补跑的时间"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">为什么周策略补不了</th><th background-color="light-gray">说明</th></tr>
+<tr><td>语料取不回同样深度</td><td>深取拿的是每条线上<b>最近的</b>若干篇一手与卖方材料，所以它的内容是「什么时候问」的函数。周六再问，读到的是另一批东西</td></tr>
+<tr><td>订单会带上后见之明</td><td>周策略下的是<b>进场区间单</b>，挂在当时还没印出来的那些交易日上。用现在已经存在的 K 线去成交它们，<b>不是一次迟到的运行，是一次带后见之明的运行</b>——而它会写进和诚实那些行完全相同的表里</td></tr>
+<tr><td>所以宁可记一个洞</td><td>一行加一份产物明确写着「这一期没跑、原因如下」，比回填一个冒充原版的东西可信得多。运维翻到那一周的目录时看到的是一句话，不是一个空目录加自己的猜测</td></tr>
+<tr><td>补跑窗口两处共用一个常量</td><td>「还能跑」和「记成永久错过」用的是同一个 48 小时。两个不同的窗口会造出一个洞：tick 不肯跑，而补跑逻辑也不肯记</td></tr>
+<tr><td>回来之后也不自作主张</td><td>停了三周的沙箱恢复后<b>不会自己决定开三本账</b>——补跑要人明确要求</td></tr>
+<tr><td>失败重试有上限</td><td>一个每次都在第六步失败的周期，如果无限重试，会每个 tick 都花一遍模型的钱；不重试又会把它藏起来。所以有上限，而且吵</td></tr>
+</table>
+
+<hr/>
+
+<h1>十、执行层：一个接口，三档通道</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>「想买什么」和「怎么下单」必须分开，而且下单只能有一个出口。</b>没有这个出口，接券商就等于改流水线——<b>而「为了上实盘去改流水线」正是实盘意外到来的方式</b>。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart LR
+  I["意图<br/>只说标的 · 方向 · 目标额<br/>不说券商代码 · 不说手数"] --> V{"下单场所"}
+  V -->|"默认"| P["纸上账本<br/>照原样记账"]
+  V -->|"上实盘前的排练"| S["影子通道<br/>记账 + 把本该发出的委托完整录下来<br/>一张都不发"]
+  V -->|"实盘形态"| F["实盘适配器<br/>能解析代码 · 能校验可交易性 · 能估成本<br/>下单函数直接拒绝"]
+  S --> DIFF["把录下来的委托<br/>和券商真实成交对齐"]
+  DIFF --> READY["对齐干净之后<br/>才由人另做一次显式授权"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">档</th><th background-color="light-gray">做什么</th></tr>
+<tr><td><b>纸上</b></td><td>原封不动交给已经在跑的纸面账本引擎，不重新定量、不重新成交。<b>如果这层抽象套不上正在生产里跑的引擎，那它描述的就是一个没人在跑的系统</b></td></tr>
+<tr><td><b>影子</b></td><td>同一笔意图既进纸面账本，又把「如果真下单会是什么委托」完整录一份：券商代码、股数、单型、限价、有效期、预估滑点与费用。<b>录的来源是纸面账本真正生成的那张委托，而不是意图本身</b>——引擎自己会重算进场方式和规模，从意图去反推会录出账本从没做过的东西，那样对齐的就是错的差异</td></tr>
+<tr><td><b>实盘形态</b></td><td>代码解析、可交易性校验（权限、每手股数、交易时段、价格偏离）、成本估算全都有，<b>下单函数本身抛错拒绝</b>。没有开关、没有构造参数、没有环境变量能打开它——<b>因为开关是脚本能设的东西</b>。行情通道也只走只读的报价上下文，本模块没有任何一行去构造交易上下文</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>影子通道已经证明了自己存在的必要。</b>实测：纸面账本成交 <b>1803.9 股</b>，而实盘只能买 <b>1799 整股</b>。零股与整手的差异如果第一次暴露在真钱上，那它就是真钱上的第一个 bug。</p>
+<p>影子档还有一个刻意的宽松：<b>行情网关连不上导致某个实盘细节这次算不出来，不算失败，而是这一档的产出</b>——它被记进「未解决项」，等着对齐时被发现。一次必须等网关在线才能做的排练，就不太算排练。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">硬保证</th><th background-color="light-gray">为什么</th></tr>
+<tr><td>实盘不可能默认发生</td><td>下单场所变量的默认值是「纸上」这个字面值，不认识的值直接报错而不是顺着往下走，而唯一知道怎么连券商的适配器根本不能下单。<b>默认可用的下单通道，等于一个 bug、一次重试、一条无人看管的定时任务就能触发的下单通道</b>——这种损失修完 bug 也拿不回来</td></tr>
+<tr><td>重试不会重复下单</td><td>每笔意图带一个由（run_id, 想法 id, 方向）算出来的<b>确定性委托号</b>，落盘的账本认出重放就直接拒绝。号里<b>不含订单内容</b>：重试时顺手改了数量也必须撞上——因为那是同一个决策，而这个仓库历史上 58 笔持仓正是被「同一条想法、不同数字」的重建搞错的</td></tr>
+<tr><td>整批先校验再发</td><td>发出十四笔之后才发现第十五笔不能下，留下的是一本半表达的账，比全发或全不发都更糟</td></tr>
+<tr><td>账本落盘而不是放内存</td><td>重试产生的重复来自<b>一个新进程</b>，内存里的已发集合恰好在最需要它的时候是空的</td></tr>
+<tr><td>「拒绝」和「连不上」是两种错</td><td>拒绝是正确结果，调用方不许靠重试绕过去；连不上才可以重试</td></tr>
+<tr><td>价格偏离过大直接拦住</td><td>限价离上一个收盘太远，绝大多数时候是拿了个过期的参考价或者手打错了。这里的失败模式是<b>不问价格地买入</b>，所以拦住而不是提醒</td></tr>
+</table>
+
+<hr/>
+
+<h1>十一、回测层：唯一的一道门</h1>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>as-of 干净</b>＝重放某一期时，策略只能看到那一期当时真的看得到的东西。<b>一个让策略多看一天的回测，比没有回测严格更糟</b>：它给出一个自信的数字，数字是错的，而下游没有任何东西能看出来。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart TB
+  DOOR["重建当期上下文<br/>唯一入口"] --> G1["语料：只要发表日不晚于当期的"]
+  DOOR --> G2["行情：钳到当天已收盘的交易日"]
+  DOOR --> G3["主题：重新按当期的注册情况过滤"]
+  DOOR --> G4["日历：只收本身 as_of 不晚于当期的<br/>并抹掉当期之后才公布的实际值"]
+  DOOR --> G5["候选：只用当期那一批"]
+  G1 & G2 & G3 & G4 & G5 --> AUD["随结果一起报出一份自检<br/>越界就报错，不是静默通过"]
+  AUD --> RUN["走和实盘完全相同的调用路径"]
+  RUN --> OUT["算收益<br/>算不出的记 UNKNOWN 并剔除"]
+  OUT --> CMP["同批相减做配对比较"]
+  CMP --> Q{"样本够吗"}
+  Q -->|"不够"| NOPE["拒绝给出胜负<br/>并说清还差多少"]
+  Q -->|"够"| CONC["才给结论"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">代价</th></tr>
+<tr><td><b>只有一道门</b></td><td>只有一个函数读输入，而且它建出来的上下文都盖了戳，别处造的上下文会被<b>直接拒绝</b>。策略拿到的是一个冻结的上下文，<b>没有数据库句柄</b>——一个能查库的策略就是一个能不小心读到未来的策略</td></tr>
+<tr><td><b>走的就是实盘的调用路径</b></td><td>自带一套执行逻辑的回测，测的是回测自己</td></tr>
+<tr><td><b>主题注册日不可回填</b></td><td>一个 08-08 才注册的主题，曾经能影响 08-07 的回放——它拿到了一次自己从没做过的判断的功劳。所以每一行存下来的主题都要重新按当期的注册情况过滤一遍，并把过滤掉几个报出来</td></tr>
+<tr><td><b>行情钳到已收盘</b></td><td>某一天的日线在那天收盘前不能用。用当期那根 K 线去给决策计价，等于把它正在决策的那一场交易的结果先交给它</td></tr>
+<tr><td><b>建仓价用之后的第一个收盘</b></td><td>用决策当时那个价建仓，会白送一个当时根本交易不到的跳空——而且市场动得最大时送得最多，这正是<b>看起来像本事的错误</b>的形状</td></tr>
+<tr><td><b>日历只按行自己的 as_of 收</b></td><td>日历上的日期是参考期而不是公布日：七月的物价数据挂在 7 月 1 日、八月中才公布。只按日期关联就会提前读到已公布的数字</td></tr>
+<tr><td><b>算不出净值的记 UNKNOWN，绝不补 0</b></td><td>补 0 会<b>系统性偏袒挑了流动性差标的的挑法</b>：实测这个偏袒对最集中的那种挑法是 −0.50pp，对「不筛全买」只有 −0.13pp——也就是说补 0 本身就会造出一个假的排名差</td></tr>
+<tr><td><b>模型调用要显式开启并计数</b></td><td>扫一年历史不该花推理费用。做法是<b>直接不给推理端口</b>，要模型的策略于是干净地失败并被报成跳过；扫完还会断言总调用数是零——<b>不给才是执行，开关只是承诺</b></td></tr>
+<tr><td><b>样本不够就拒绝给结论</b></td><td>现有可回放期次折算后<b>有效独立样本 0.33，而所需是 4</b>。配对比较要分辨 2 个百分点，需要约 <b>17 次周跑（约 4 个月）</b>。<b>一个能从三周数据里点出赢家的函数是负债</b>，因为一定有人照着它行动</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>为什么必须同批配对比较：</b>所有挑法同一周、同一个候选池、同一个市场，共同的市场涨跌在相减时抵消掉。不配对去比绝对水平，市场自己的月度波动就坐在分母上，同一置信度要约五倍的历史。</p>
+<p><b>还要折算窗口重叠：</b>持有 30 天而每周跑一次，相邻期次的持仓期高度重叠。十个这样的期次远远不是十个观测，所以在和门槛比较之前先按重叠折算。不折算，就会把重叠放大出来的统计量当成证据。</p>
+<p><b>而且所需样本量是从实测出来的差值波动算的，不是从一个先验数字算的</b>——证据越多，门槛自己会收紧。</p>
+</callout>
+
+<hr/>
+
+<h1>十二、什么会长大，架构怎么接住</h1>
+
+<callout emoji="📌" background-color="light-gray">
+<p>「能扩」在这个项目里不是指每秒请求数。周度跑一次，量小得可笑。真正会撑爆的是另外三个维度。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">会长大的维度</th><th background-color="light-gray">架构怎么接住</th></tr>
+<tr><td><b>历史长度</b>（run 数 × 产物）</td><td>产物按「日期 / run_id」分区，成本线性且极低；查询靠数据库索引而不是扫产物</td></tr>
+<tr><td><b>并行模型调用</b></td><td>同一个提示采样若干次取中位是<b>端口自带的方法</b>而不是调用方的循环，换成异步批量不改调用方</td></tr>
+<tr><td><b>回测横向重放</b></td><td><b>这是唯一真需要横向扩的地方</b>：一百多个期次互不依赖，可以同时开一百多个沙箱。前提是 run 无状态——所以「沙箱不留唯一副本」这条规则其实是为回测服务的</td></tr>
+<tr><td><b>并发运行</b></td><td>定时 run、手工重跑、回测可能同时在跑。共享锁加数据库唯一索引两道防线</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>一句话版本：</b>这套东西的瓶颈是<b>回测的横向重放</b>，不是在线吞吐。所以架构的重点放在「一次 run 是一个无状态、可寻址、可重放的闭包」，而不是放在缓存和连接池上。</p>
+</callout>
+
+<hr/>
+
+<h1>十三、凭证与发布安全</h1>
+
+<table>
+<tr><th background-color="light-gray">机制</th><th background-color="light-gray">做法</th></tr>
+<tr><td><b>仓库凭证扫描</b></td><td>只扫会被发布出去的那些文件（默认是版本控制在跟踪的文件），按「长得像真凭证」的少量形状匹配。<b>刻意做窄</b>——一个天天误报的扫描器会被关掉，而关掉的扫描器比没有更糟。<b>命中时绝不打印命中的值</b>，为了警告一个密钥而把它印出来是自相矛盾的</td></tr>
+<tr><td><b>实测结果</b></td><td><b>51 个跟踪文件、254 个工作目录文件、266 个版本历史对象，0 处凭证命中</b></td></tr>
+<tr><td><b>镜像层无凭证</b></td><td>不作为构建参数、不作为镜像环境变量、不拷贝任何密钥文件。<b>镜像层谁能拉就谁能读，而构建参数即使被后面的层删掉也留在构建历史里</b>。笔记本上那个方便用的本地凭证文件，在容器里<b>不存在也不应该存在</b></td></tr>
+<tr><td><b>健康信息抹凭证</b></td><td>见第五节：体检结果会进不可变 journal 和事件流，进去就删不掉</td></tr>
+<tr><td><b>发布前闸门</b></td><td>检查<b>真正即将被发布的那份产物</b>，而不是检查它的来源——因为只有在产物上这个问题才能被诚实地回答。不合格就拒绝发布，<b>而且从不自动改内容</b>：该脱敏什么是关于别人授权条款的判断，属于人</td></tr>
+</table>
+
+<hr/>
+
+<h1>十四、现在的实测状态</h1>
+
+<h2>已经验证过的</h2>
+
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">实测结果</th></tr>
+<tr><td>三段全流程</td><td>跑通：<b>5 个主题 → 四种出想法方式各出 100 条 → 合并成 96 条候选 → 8 本账（六种挑法 + 两个量尺）</b>；<b>14 份产物</b>落不可变存储；落库<b>无孤儿行</b></td></tr>
+<tr><td>数据源</td><td><b>语料 311 条、宏观参考水平 5 条、美债拍卖 5 条、可买清单 156 条，全部免 key</b></td></tr>
+<tr><td>授权载体门</td><td>156 条清单中 <b>101 条可用</b>；排除 55 条：<b>4 条个股、6 条私募无日度申赎证据、45 条载体待确认</b></td></tr>
+<tr><td>换库只换连接串</td><td><b>两种方言实测生成正确语句</b></td></tr>
+<tr><td>一期只算一次</td><td>由数据库唯一索引保证。<b>成功重复被拒绝，失败重试仍留下历史</b></td></tr>
+<tr><td>凭证</td><td><b>51 / 254 / 266，0 处命中</b></td></tr>
+<tr><td>影子通道</td><td><b>纸面成交 1803.9 股 vs 实盘只能买 1799 整股</b></td></tr>
+<tr><td>回测拒绝下结论</td><td><b>有效独立样本 0.33，所需 4</b>；配对分辨 2 个百分点需约 <b>17 次周跑（约 4 个月）</b></td></tr>
+<tr><td>测试</td><td><b>153 项全过</b>，且不需要安装任何云依赖——云 SDK 全部在方法内部惰性加载，并有测试断言这一点</td></tr>
+</table>
+
+<h2>阻塞中 · 这两条必须先看</h2>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>1）四种出想法的方式还没有一条真实产出。</b>推理服务需要在控制台创建一个推理专用 API key。AK/SK 只能签管理面接口，签不了推理面；SDK 的 AK/SK 路径要绑 project，当前版本的构造器不暴露这个参数。<b>三段管道已经用桩（一个假的模型返回值）验证过契约，但到目前为止没有一条想法是真模型写的。</b></p>
+<p><b>2）公开产物里带了合作方货架数据。</b>产品代码顺着每条想法的描述与来源流进了公开报告。版本控制的忽略规则挡住了原始快照，没挡住派生物——<b>边界只设在了输入侧，派生出去的输出没人看着</b>。发布现在已被闸门拦住并拒绝。<b>当前版本怎么脱敏、历史提交要不要重写，都要人来定。</b></p>
+</callout>
+
+<h2>需要人来决定的三件事</h2>
+
+<table>
+<tr><th background-color="light-gray">决定</th><th background-color="light-gray">不决定的后果</th></tr>
+<tr><td><b>推理密钥怎么开</b></td><td>四种出想法的方式一直只有契约、没有产出。<b>控制台网页登录属于凭证录入，这一步不由自动化来做。</b></td></tr>
+<tr><td><b>数据库与共享缓存要不要开</b></td><td>都是计费资源。不开也能跑，代价是：状态留在 SQLite，<b>沙箱一销毁就没了</b>；锁退化成文件锁，<b>跨沙箱互斥失效</b>；回测不能横向并行。建议共享缓存先开（它解决的是重复下单这件事），数据库等回测真要并行时再开。<b>具体价格未经核实，不编数字。</b></td></tr>
+<tr><td><b>公开产物怎么脱敏</b></td><td>发布保持被拦住的状态。这是关于合作方授权条款的判断，不是技术判断</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
+<p>还有一条不是决策但必须知道：<b>可买清单没有上架日期，156 条全部未知。</b>字段已经在，以后新入的会盖日期，但存量补不出来——所以<b>回放旧期次时不算 as-of 干净</b>，八月才上架的产品对七月的想法是可见的。系统<b>每次 run 都把这个数字报出来</b>，而不是让它变成口头传说。</p>
+</callout>
+
+<hr/>
+
+<h1>十五、接手清单</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  S1["① 填变量<br/>自己的桶名 · 区域 · 连接串"] --> S2["② 跑一次体检<br/>六个端口逐个看绿"]
+  S2 --> S3["③ 跑一次单发 tick<br/>先证明一次，再交给沙箱排程"]
+  S3 --> S4["④ 看 journal<br/>产物地址 · 端口健康 · 每一步"]
+  S4 --> S5["⑤ 跑一次凭证扫描<br/>确认 0 命中"]
+  S5 --> S6["⑥ 影子通道对齐<br/>录下的委托 vs 券商真实成交"]
+  S6 --> S7["⑦ 实盘授权<br/>由人另做一次显式决定"]
+</whiteboard>
+
+<callout emoji="📌" background-color="light-gray">
+<p>前五步不花一分钱、不需要任何决策，做完之后「所有东西都存下来、而且存的东西可审计」这个要求就已经满足了。第六步和第七步各自被一件具体的事卡着：一个是券商对齐，一个是人的授权。<b>它们是两个独立的口子，不互相等。</b></p>
 </callout>

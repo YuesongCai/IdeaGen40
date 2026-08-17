@@ -1,544 +1,590 @@
 <title>IdeaGen40 · 原理、方法论与技术方案</title>
 
 <callout emoji="🏁" background-color="light-blue" border-color="blue">
-<p><b>一句话</b>：把「每天读投研、出 40 条战术交易想法」这件事，做成一个每天真的下单、真的盯市、真的记结果的系统，从而让「这些想法值不值钱」变成一个<b>有答案</b>的问题。</p>
-<p>已上线：工作日 07:23 HKT 自动跑；2026-07-27 起每个交易日一批 40 条，共 10 批 400 条想法、343 条真实成交；语料 5,836 条全部可溯源；主题字典可从语料自我扩张；116 个测试。</p><p><b>全部记录已于 2026-08-08 由一次性重放按 as-of 顺序整体重建</b>，所以每一天的分数、pack、想法、订单、盯市同源同码。</p>
-<p>看板 https://yuesongcai.github.io/IdeaGen40/ ｜ 代码 https://github.com/YuesongCai/IdeaGen40</p>
+<p><b>一句话：</b>相信 AI 的语义分析去做一个月期限的动量交易，跑一个永续组合，目标年化 25%——并且把它做成一个<b>真的下单、真的盯市、真的记结果</b>的系统，让「这些想法值不值钱」变成一个<b>有答案</b>的问题。</p>
+<p><b>验收线：我们自己愿不愿意把钱放进去。</b></p>
+<p>这份文档分三部分：<b>原理</b>（为什么这样赌）、<b>方法论</b>（三段筛选各自在做什么）、<b>技术方案</b>（插件架构与工程层，为什么方法论怎么改都不用重写系统）。最后一节如实写明<b>什么还不能信</b>。</p>
 </callout>
 
 <hr/>
 
 <h1>一、要回答什么</h1>
 
-<p>原来的流程每次都能产出 40 条看起来很完整的想法，但从来没人回答过一个问题：<b>这些想法如果真的买下去，会怎么样。</b></p>
+<p>产出一批看起来很完整的交易想法，从来不难。难的是回答一个问题：<b>这些想法如果真的买下去，会怎么样。</b></p>
 
 <callout emoji="❗" background-color="light-yellow" border-color="yellow">
-<p><b>注意：</b>这不是策略回测。它不问「这个策略能不能赚钱」，而问「这套研究流程产出的判断，事后被市场证明对了多少」。</p>
+<p><b>注意：这不是一个策略回测项目。</b>它不问「这个策略能不能赚钱」，它问的是「这套研究流程产出的判断，事后被市场证明对了多少」——以及，<b>这三段筛选里到底哪一段在创造价值</b>。</p>
 </callout>
-
-<p>具体拆成三个可检验的问题：</p>
-
-<table>
-<tr><th background-color="light-gray">问题</th><th background-color="light-gray">用什么量</th><th background-color="light-gray">当前读数</th></tr>
-<tr><td>这些想法的<b>方向</b>对不对</td><td>等权收益、胜率、超额</td><td>等权 +1.23%，胜率 57.1%，跑赢基准 33%</td></tr>
-<tr><td>引擎给的<b>排序</b>有没有信息</td><td>赔率 vs 实际收益的 Spearman ρ</td><td>保守赔率 ρ = +0.278</td></tr>
-<tr><td>它声明的<b>概率</b>诚不诚实</td><td>三分类 Brier 与技能分</td><td>技能分 +0.34（＞0 优于瞎猜）</td></tr>
-</table>
-
-<h2>为什么原来的流程回答不了</h2>
-
-<callout emoji="❌" background-color="light-red" border-color="red">
-<p><b>三个结构性缺陷：</b></p>
-<ul>
-<li><b>从不记录结果。</b>打完分、出完 HTML，下一版重新来一遍。没有任何一条 idea 被跟到期限结束，所以「A 级比 C 级好」这种主张既无法证实也无法证伪。</li>
-<li><b>概率不可伪证。</b>情景概率和回报可以是纯 research_judgment，于是任何结局都与预测相容——涨了是「上涨情景兑现」，跌了是「下跌情景兑现」。</li>
-<li><b>没有成本、没有执行规则。</b>「$73–76 分两笔」在纸面上很清楚，但没人定义过它到底算不算成交、成交在哪个价、算不算滑点。</li>
-</ul>
-</callout>
-
-<hr/>
-
-<h1>二、系统全貌</h1>
 
 <whiteboard type="mermaid">
 flowchart LR
-  subgraph SRC["数据源"]
-    W["Wisburg 智堡<br/>9 条线语料 + 图表库"]
-    F["Futu OpenD<br/>US/HK 前复权日线"]
-    O["Olive / Nexus HK<br/>产品货架 + NAV"]
-  end
-  DB[("SQLite<br/>单文件全量落库")]
-  SC["v0.4 因子引擎<br/>D A B N + M C"]
-  BR["briefing pack<br/>生成器唯一合法输入 · 带 SHA"]
-  GEN{"生成 40 条"}
-  VAL["发布前校验<br/>error 即拒绝下单"]
-  BK["纸上交易引擎<br/>10 个 cohort + 2 个混合盘"]
-  AN["归因 · 排序 IC · Brier 校准"]
-  UI["单文件 Dashboard"]
-
-  W --> DB
-  F --> DB
-  O --> DB
-  DB --> SC --> BR --> GEN --> VAL
-  VAL -->|pass| BK
-  VAL -.->|fail| GEN
-  BK --> AN --> UI
-  DB --> UI
-</whiteboard>
-
-<callout emoji="ℹ️" background-color="light-blue" border-color="blue">
-<p><b>说明：</b>整个系统是一个单文件 SQLite（约 9,000 行 Python），没有服务端依赖。任何一天的决策都能从数据库单独重建：当时可得的语料、由它算出的因子、产出的想法、下的单、之后每一次盯市。</p>
-</callout>
-
-<hr/>
-
-<h1>三、每日流程</h1>
-
-<p>分两半。<b>只有一半需要人。</b></p>
-
-<whiteboard type="mermaid">
-flowchart TD
-  subgraph AUTO["自动的一半 · launchd 工作日 07:23 HKT · 无人值守"]
-    A1["ingest 拉 9 条线语料"] --> A2["prices 同步 Futu 日线"]
-    A2 --> A3["score 算 D/A/B/N + M/C"]
-    A3 --> A4["brief 生成 briefing pack"]
-    A4 --> A5["mark 推进全部 12 个账本"]
-    A5 --> A6["monitor 告警"]
-    A6 --> A7["settle + dashboard + 推 Pages"]
-  end
-  subgraph MAN["需要 Claude 的一半 · 约 5 分钟 · /ideagen-daily"]
-    B1["捕获 Olive 货架快照<br/>olive-ingest"] --> B2["读 briefing pack<br/>按契约生成 40 条"]
-    B2 --> B3["ingest-batch 校验 + 下单"]
-    B3 --> B4["盯市 + 发飞书汇报"]
-  end
-  A4 -.->|"pack 是唯一输入"| B2
-  B3 --> A5
-</whiteboard>
-
-<callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>为什么不能全自动：</b>云端定时 agent 连不上本机的 Futu OpenD 和本地数据库，Olive MCP 在 headless 环境也不可用，所以生成这一步必须是本地会话。</p>
-<p><b>漏一天的代价：</b>当天没有新批次（已有仓位照常自动盯市，不受影响），但 Olive 只给最新 NAV 不给历史，<b>基金的日频 NAV 序列会断一天且无法回补</b>。</p>
-</callout>
-
-<hr/>
-
-<h1>四、数据来源与溯源链</h1>
-
-<table>
-<tr><th background-color="light-gray">来源</th><th background-color="light-gray">用途</th><th background-color="light-gray">接入方式</th><th background-color="light-gray">实测量</th></tr>
-<tr><td><b>Wisburg 智堡</b></td><td>9 条线：市场日报、资讯流、研究文章、投行研报、资管研报、企业研究、电话会纪要、政策文献、数据图表</td><td>MCP-over-HTTP，直接讲 JSON-RPC，cron 可用</td><td>5,836 条 · 167 张图表</td></tr>
-<tr><td><b>Futu OpenD</b></td><td>美股/港股前复权日线，所有成交判定与盯市</td><td>本地 127.0.0.1:11111</td><td>90 标的 · 24,894 根日线</td></tr>
-<tr><td><b>Olive / Nexus HK</b></td><td>产品货架；hurdle 的无风险收益来源</td><td>MCP（仅 Agent 会话可达）→ 快照 → olive-ingest</td><td>17 只货币基金日频 NAV</td></tr>
-</table>
-
-<h2>溯源链：一层层追到底</h2>
-
-<whiteboard type="mermaid">
-flowchart LR
-  I["交易想法<br/>XLE / COPX ..."] -->|"sources"| D["文档<br/>doc_id"]
-  D --> R["可复现检索式<br/>get-report-detail(id, category)"]
-  D --> H["内容 sha1<br/>证明存的就是取的"]
-  D --> T["published_at + ingested_at<br/>+ 机构 + 来源层级"]
-  D --> A["图表资产<br/>rocks/doctext.wisburg.com"]
-  A --> V["HEAD 验证<br/>167/167 可达 · 带字节数与 content-type"]
-  P["价格"] --> PS["src=futu:qfq + 交易日"]
-  N["NAV"] --> NS["src=olive:货架 + 观测日"]
+  Q["一个月后<br/>组合赚了还是亏了"] --> W1{"如果亏了<br/>是哪一段错了"}
+  W1 --> A1["选错了主题<br/>= 筛选A 的问题"]
+  W1 --> A2["主题对<br/>但用错了工具表达<br/>= 筛选B 的问题"]
+  W1 --> A3["想法都还行<br/>但挑错了那十条<br/>= 筛选C 的问题"]
+  A1 --> F1["改打分维度"]
+  A2 --> F2["换出想法的方式"]
+  A3 --> F3["换挑持仓的方式"]
 </whiteboard>
 
 <callout emoji="📌" background-color="light-gray">
-<p><b>为什么不存永久链接：</b>智堡是客户端渲染的 SPA，探测 <code>/article/&lt;id&gt;</code>、<code>/report/&lt;id&gt;</code>、<code>/note/&lt;id&gt;</code> 全都返回同一个 200 空壳。猜一个链接等于给出一条<b>看起来权威但指向空页</b>的引用。真正的凭据是那条能把文档重新取回来的 API 调用，加上内容哈希。</p>
+<p><b>三段必须分开量，这是整套设计的起点。</b>一个坏月份可以来自选错主题、来自把对的主题表达成错的工具、也可以来自在二十条都说得通的想法里挑错了十条。<b>把它们压成一个总分，这三件事就变得无法区分</b>——而它们各自要修的东西完全不同。</p>
 </callout>
 
+<hr/>
+
+<h1>二、原理：为什么这样赌</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  BELIEF["相信 AI 的<br/>语义分析"] --> WHY{"AI 的能力边界"}
+  WHY -->|"做不到"| NO["把很远的点<br/>用逻辑串成<br/>3-6 个月的判断"]
+  WHY -->|"做得到"| YES["读得快 · 消化快<br/>能想到人想不到的点"]
+  YES --> MOM["语义分析做动量"]
+  MOM --> H1["期限钉死 1 个月"]
+  MOM --> H2["宇宙只用 ETF<br/>公募 · 私募"]
+  H1 --> BOTH["两者必须同时成立"]
+  H2 --> BOTH
+  BOTH --> EV["实证：资产类别上月收益<br/>正向预测下月<br/>而个股层面是反转"]
+</whiteboard>
+
 <table>
-<tr><th background-color="light-gray">溯源指标</th><th background-color="light-gray">覆盖</th></tr>
-<tr><td>可复现检索式</td><td><span text-color="green">5,836 / 5,836（100%）</span></td></tr>
-<tr><td>内容 sha1</td><td><span text-color="green">100%</span></td></tr>
-<tr><td>发布时间</td><td><span text-color="green">100%</span></td></tr>
-<tr><td>具名机构</td><td>1,772（30%）——语料无机构字段，从正文抽取 50+ 家中英文形式，抽不到时用标题签名去重</td></tr>
-<tr><td>图表资产可达性</td><td><span text-color="green">167 / 167 已验证</span></td></tr>
-<tr><td>想法引用可解析</td><td><span text-color="green">761 / 761，0 悬空</span></td></tr>
+<tr><th background-color="light-gray">主张</th><th background-color="light-gray">依据</th></tr>
+<tr><td>AI 主导，但要给方向性约束</td><td>全放手噪音太大、会退化成统计机器；纯黑箱又没法迭代。通用大模型的训练数据里没有系统性的「论点 → 市场输入 → 转化」这条链，所以要用我们的认知给它维度</td></tr>
+<tr><td>期限 1 个月 · 只用 ETF 与基金</td><td>两个世纪、五类资产的实证：上月收益正向预测下月。而<b>个股层面 1 个月是反转异象</b>，所以宇宙里<b>不含个股</b></td></tr>
+<tr><td>年化 25%</td><td>组合满仓等权 → <b>单条想法月度净只需 +1.877%</b>。按 57% 胜率只需 1.3–1.9 的赔率</td></tr>
+<tr><td>压缩左尾比排序更值钱</td><td>止损从 −6% 收到 −3%，需要的绝对涨幅从 +7.94% 降到 +5.68%。<b>止损位置是比排序更强的杠杆</b></td></tr>
+</table>
+
+<hr/>
+
+<h1>三、系统全貌</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  subgraph W["每周三 07:00 香港时间 · 一次 run"]
+    IN1["Wisburg 语料<br/>周一至周三"]
+    IN2["可买清单<br/>公募 · ETF · 私募"]
+    IN3["宏观日历<br/>事件 · 一致预期 · 利差水平"]
+    IN1 --> A["筛选A<br/>出 5 个宏观主题"]
+    IN3 --> A
+    A --> B["筛选B · 四种出想法的方式<br/>每个主题各出 20 条"]
+    IN2 --> GATE["授权载体门<br/>公募 · ETF · 日度私募"]
+    GATE --> B
+    IN3 --> B
+    B --> POOL["合并成一个候选池<br/>一个标的只留一条"]
+    POOL --> C["筛选C · 每种挑法<br/>各挑出自己的 10 条"]
+  end
+  C --> LIVE["实盘 = 当前采用的那一种<br/>本批占组合 25% 等权"]
+  C --> SHADOW["其余挑法<br/>纸上记账，不花钱"]
+  LIVE --> EXIT{"三种退出"}
+  EXIT -->|"到期"| ROLL["第 5 周换第 1 周"]
+  EXIT -->|"价格"| CASH["货币基金"]
+  EXIT -->|"事件"| CASH
+  ROLL --> LIVE
+  SHADOW --> CMP["同批对比<br/>决定要不要换"]
+  LIVE --> CMP
+</whiteboard>
+
+<hr/>
+
+<h1>四、三个输入</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  subgraph S1["① 信息源"]
+    L1["市场日报 · 资讯流 · 研究文章"]
+    L2["投行研报 · 资管研报"]
+    L3["企业研究 · 电话会 · 政策文献"]
+  end
+  subgraph S2["② 标的源"]
+    O1["公募与私募货架"]
+    O2["ETF 注册表"]
+    O3["行情网关"]
+  end
+  subgraph S3["③ 宏观日历"]
+    C1["事件日程<br/>数据发布 · 财报 · 拍卖"]
+    C2["一致预期值"]
+    C3["利差 · 曲线 · 波动率 · 点阵图"]
+  end
+  S1 --> U1["筛选A 的语料"]
+  S2 --> U2["想法的表达工具"]
+  S3 --> U3["筛选A 的定价上下文"]
+  S3 --> U4["事件观察点的触发器"]
+</whiteboard>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>宏观日历是独立输入，不是语料的一部分。</b>语料检索工具只给研报文本，不提供日程、一致预期或实际值。日历走另一套免密钥的公开数据源：收益率曲线、波动率指数、信用利差、物价、点阵图、美元指数。</p>
+<p>为什么必须独立：<b>「如果情绪转坏就减仓」不是一个触发条件</b>，因为事后无法判定它有没有发生。触发条件必须指向一个真实存在的事件日期或一个真实的水平读数——那就得有日历。</p>
+</callout>
+
+<hr/>
+
+<h1>五、筛选A · 选主题</h1>
+
+<callout emoji="🅰️" background-color="light-blue" border-color="blue">
+<p><b>读完这一周的全部语料，选出 5 个值得下注的宏观主题。</b></p>
+<p>主题不是从一张固定清单里挑的——系统自己从语料里发现新主题，达标就注册。<b>注册日不可回填</b>，所以回放某一周时，那周还没出现的主题不会被看到。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart LR
+  H["H 热度<br/>多少人在说<br/>在加速吗<br/>要高"] --> S["主题分<br/>0.30H + 0.25G<br/>+ 0.25E + 0.20 的反向 P"]
+  G["G 分歧<br/>吵得多凶<br/>要高"] --> S
+  E["E 实据<br/>说的多实<br/>要高"] --> S
+  P["P 已定价<br/>价格听懂了多少<br/>要低"] --> S
+  GATE{"方向闸门<br/>指标同向命中率"} --> P
+  GATE -->|"命中率过低判背离"| CONF["标为方向冲突<br/>不按 P 打分"]
+  S --> TOP["取前 5 个主题"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">字母</th><th background-color="light-gray">量的是什么</th><th background-color="light-gray">机械还是 AI</th></tr>
+<tr><td><b>H</b> 热度</td><td>这个主题在语料里的音量水平，加上它自己相对过去的加速度</td><td>机械</td></tr>
+<tr><td><b>G</b> 分歧</td><td>读完全部证据打 0–100，同时输出看多与看空的机构数、分歧在哪、引用哪几篇</td><td>AI</td></tr>
+<tr><td><b>E</b> 实据</td><td>证据按因果链的强度编码：叙事最弱，价格更强，订单收入更强，已实现利润或政策落地最强</td><td>AI</td></tr>
+<tr><td><b>P</b> 已定价</td><td>机械分看动量、距高点、低波溢价、意外程度；AI 另读语料里有没有已经在说「充分反映」，且必须引用原文。<b>两个值都落库</b></td><td>机械 + AI</td></tr>
 </table>
 
 <callout emoji="💡" background-color="light-yellow" border-color="yellow">
-<p><b>顺带一个发现：</b>原 2026-07-27 PM pack 的 40 条 source 全是散文式归属（「State Street / YFinance」「Olive MCP 已落盘产品记录」），无法解析到任何具体文档。这是原 pack 的真实属性，不是 bug——但它意味着那批想法的证据链事后无法复核。</p>
+<p><b>选中的主题会把自己的词表、核心问题、相关敞口一起交给筛选B。</b>不这样做的话，筛选B 只能拿主题的英文代号去语料里找料——一个英文代号匹配不到任何一篇中文研报，于是五个主题拿到的都是同一批语料，<b>写出来的想法也就趋同：五个主题产出的是同一个主题的想法五遍</b>。系统会记录「哪些主题的词表一篇都没匹配上」，让这件事变成一个数字而不是五份看起来眼熟的清单。</p>
 </callout>
 
 <hr/>
 
-<h1>五、方法论 v0.4.1</h1>
+<h1>六、筛选B · 四种出想法的方式</h1>
 
-<callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>核心判断：</b>v0.3 的问题不是想错了，而是<b>很多规则在它自己的数据口径下无法被执行、或者无法被检验</b>。15 项改动，全部围绕这一点。</p>
-</callout>
-
-<h2>最要紧的七项</h2>
-
-<h3>① 主题集合被当成可以提前想全的东西</h3>
-
-<p>这是最根本的一条,也是最晚被发现的一条。原设计把 16 个主题冻结在代码里。冻结「关键问题」和「价格指标」是<b>对的</b>——否则 M 因子会自己验证自己。但它顺带假设了主题的<b>集合</b>可以提前穷举。</p>
-
-<callout emoji="❌" background-color="light-red" border-color="red">
-<p><b>拿语料一量,这个假设直接崩了:</b></p>
-<table>
-<tr><th background-color="light-gray">语料总量</th><th background-color="light-gray">16 条主题能命名</th><th background-color="light-gray">匹配不到任何主题</th></tr>
-<tr><td>5,836 条</td><td>3,148 条（54%）</td><td><span text-color="red">2,688 条（46%）</span></td></tr>
-</table>
-<p>盲区里不是噪声。抽样可见:<b>GLP-1 与医保准入解锁处方量、韩国从工业化到国际化的科技股重估、人形机器人与美国保护主义、光收发器进口禁令、黄金与韩国央行重启购金、拉美宏观、电信资本开支、动量与质量因子轮动</b>。全部有具名机构、有多天覆盖,<b>全部无法被打分,因此无法产出任何一条想法。</b></p>
-<p>而最糟的一点是:<b>固定字典报不出这个数。它把自己的盲区变成了看不见的东西。</b></p>
-</callout>
-
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>v0.4.1:</b>字典拆成两半——<b>16 条种子</b>(代码内,冻结) + <b>只能追加的注册表</b> <code>themes/registry.jsonl</code>。每天从零匹配语料里机械挖候选,由生成器判定哪些真的是主题。</p>
+<callout emoji="🅱️" background-color="light-blue" border-color="blue">
+<p><b>我们不知道哪种出想法的方式是对的，所以四种同时跑。</b>每个主题各出 20 条一个月期的做多想法。</p>
+<p>四者<b>只在「被要求怎么想」这一点上不同</b>——语料、可买清单、解析、赔率校验、标的核对全部共用同一套代码。否则业绩差可能来自某一种方式的解析更宽松，而不是这种想法方式本身更好。</p>
 </callout>
 
 <whiteboard type="mermaid">
-flowchart TD
-  C["当天语料"] --> M{"能被已注册主题命名?"}
-  M -->|"是 · 54%"| S["正常打分 D/A/B/N/M/C"]
-  M -->|"否 · 46%"| U["零匹配池"]
-  U --> P["挖短语<br/>CJK 2-6元字组 + ASCII词元"]
-  P --> G["门槛<br/>≥8篇 · ≥4机构 · ≥3天 · lift≥2.0"]
-  G --> X["极大化合并<br/>丢掉共享≥80%文档的碎片"]
-  X --> N2["判定套话<br/>字符覆盖率≥60%即拒"]
-  N2 --> K["共现聚类<br/>Jaccard≥0.34 · 聚类后≥10篇"]
-  K --> J{"生成器语义判定<br/>是一个可交易的分歧吗?"}
-  J -->|"是"| R["注册<br/>盖上今天的日期"]
-  J -->|"否 · 公司名/栏目名/泛词"| D2["丢弃"]
-  R --> S
+flowchart TB
+  T["5 个主题<br/>各带词表与敞口"] --> M1["1. AI 端到端<br/>不规定任何推理步骤"]
+  T --> M2["2. 约束边界<br/>异常 → 真实动机<br/>→ 绑住他的约束 → 触发条件"]
+  T --> M3["3. 传导链<br/>主题 → 可观测宏观变量<br/>→ 价格通道 → 可买工具"]
+  T --> M4["4. 共识缺口<br/>先说价格已相信什么<br/>只在证据与之矛盾处出手"]
+  U["可买清单<br/>已过授权载体门"] --> M1 & M2 & M3 & M4
+  M1 & M2 & M3 & M4 --> CHK["同一套硬校验<br/>标的必须在清单内<br/>三档概率相加为 1<br/>必须写出理由与证伪条件"]
+  CHK --> POOL["合并成候选池<br/>同一标的只留一条<br/>赔率取中位数"]
 </whiteboard>
 
-<callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>唯一真正重要的规则:注册日不可回填。</b></p>
-<p><code>registered_d</code> 必须等于注册当天,而 <code>all_themes(as_of)</code> 只返回 <code>registered_d ≤ as_of</code> 的主题。</p>
-<p>没有这条,「主题发现」就是<b>事后挑一个已经涨完的东西定义成主题,然后为自己排序准确而自豪</b>——这是所有回看错误里最难被发现、也最能自我欺骗的一种。有了它,今天注册的主题只能从今天起打分,永远拿不到它没有做过的判断的功劳。</p>
-<p>这条纪律<b>已经抓到过一次真实泄漏</b>:候选挖掘的同义词压制用的是「全部」注册主题而不是 as-of 主题集,于是 SPACE-ECONOMY 在 08-08 注册的那一刻,08-07 的重放就不再把 spacex 当候选了——历史运行看起来像是早就发现了它当时还没看到的东西。</p>
-</callout>
-
-<callout emoji="ℹ️" background-color="light-blue" border-color="blue">
-<p><b>两个实现细节,都是踩过坑才定下来的:</b></p>
-<ul>
-<li><b>顺序是承重的。</b>先过滤套话会删掉父短语「维持买入评级」,让碎片「持买入评」变成孤儿、看起来像高 lift 的新词。第一版就是这样让它连续四天登上候选榜首。必须<b>先极大化合并、再判定套话</b>。</li>
-<li><b>候选不等于主题,这是设计上的分工。</b>机械挖掘只能说「这些文档在讲一个字典没有词的东西」;公司名(小米集团)、研报栏目名(skynomad)、泛词碎片(下一)一定会漏进来,语义判断留给生成器。</li>
-</ul>
-</callout>
-
-<p>2026-08-08 已注册的两条:</p>
-
 <table>
-<tr><th background-color="light-gray">id</th><th background-color="light-gray">主题</th><th background-color="light-gray">关键问题</th><th background-color="light-gray">主指标</th><th background-color="light-gray">证据</th></tr>
-<tr><td><code>FACTOR-ROTATION</code></td><td>因子轮动与拥挤交易解除</td><td>从动量与 AI 拥挤交易向价值与防御的轮动能否延续</td><td><code>US.VLUE</code></td><td>11 篇 / 10 家 / 3 天 / lift 2.30</td></tr>
-<tr><td><code>SPACE-ECONOMY</code></td><td>商业航天与卫星产业化</td><td>商业航天订单与首批财报能否支撑估值扩张</td><td><code>US.XAR</code></td><td>16 篇 / 9 家 / 4 天 / lift 6.03</td></tr>
+<tr><th background-color="light-gray">方式</th><th background-color="light-gray">为什么试它</th></tr>
+<tr><td><b>1. AI 端到端</b></td><td>整套系统的立论就是「相信 AI 的语义分析」。另外三种都往里加了人为设定的思考骨架，而<b>加了骨架到底是帮忙还是碍事，只能跟一个没加的比出来</b>。所以它不是垫底的对照，<b>它就是被检验的那个假设本身</b></td></tr>
+<tr><td><b>2. 约束边界</b></td><td>「四十万亿债务，加二十五个基点的利息比国防加教育加起来还多，他没有必要也没有空间」——<b>约束推出来的封顶是最强形式的「下行有限」</b>，而且天然带一个可以事前写下来的触发点</td></tr>
+<tr><td><b>3. 传导链</b></td><td>语义动量最典型的失败是：一条想法读起来很对，但新闻和价格之间没有机制连着。这种想法一个月后<b>没法复盘</b>——因为当初没指定要看什么。要求写出链条，等于要求这条想法一个月后可以被检验</td></tr>
+<tr><td><b>4. 共识缺口</b></td><td>语义动量有个结构性隐患：<b>等一个主题热到能被检测出来，它可能已经完整反映在价格里了</b>。这是四种里唯一从价格出发而不是从叙事出发的，所以它分散的是「优势的来源」，不只是推理风格</td></tr>
 </table>
 
-<callout emoji="📌" background-color="light-gray">
-<p><b>冷启动是已知代价,不是 bug。</b>新主题没有自己的 20 天历史,A 的强度项算不出来,当天标 <code>cold_start</code>。这个标记进归因分档,<b>所以「发现的主题是不是系统性更差」是一个可以被测量的问题</b>,而不是一个看不见的问题。</p>
-<p><b>字典覆盖率</b>(当前约 54%)每天显示在看板语料折叠区、<code>ideagen sources</code> 与 <code>ideagen theme-candidates</code>。这个数字下降就说明发现机制跟不上语料了。</p>
-</callout>
-
-<h3>② D 和 A 是退化的查表，不是连续变量</h3>
-
-<p>v0.3：<code>D = 100 × 提及主题的独立日报数 ÷ 窗口有效日报总数</code>。核心来源是每天一份的智堡首页日报，3 日窗口 → <b>分母恒为 3</b>。</p>
+<h2>四种共用的硬约束</h2>
 
 <table>
-<tr><th background-color="light-gray">因子</th><th background-color="light-gray">v0.3 实际取值集合</th><th background-color="light-gray">后果</th></tr>
-<tr><td>D</td><td>只有 4 个值：0 / 33.3 / 66.7 / 100</td><td>15% 权重挂在四档变量上</td></tr>
-<tr><td>A</td><td>穷举后只有 5 个值：0/25/50/75/100</td><td>且 (1,0,1) 与 (1,1,1) <b>同为 50 分</b>——恰好抹掉它存在的理由</td></tr>
-<tr><td>合计</td><td>4 × 5 = <span text-color="red">20 种组合</span></td><td>40% 的权重坐在一个 20 格的表上</td></tr>
+<tr><th background-color="light-gray">约束</th><th background-color="light-gray">内容与理由</th></tr>
+<tr><td>期限</td><td>一律 1 个月，<b>生成时钉死</b>。整个组合建立在一个月的动量兑现窗口上，<b>能自选期限等于让它去优化考核口径</b></td></tr>
+<tr><td>可买范围</td><td>公募 + ETF + 有日度申赎证据的私募。<b>不含个股</b>；载体待确认的一律排除，不默认放行</td></tr>
+<tr><td>取数与叙述分开</td><td>叙事式提问实测让概率的准确度指标从 0.1542 恶化到 0.1842。所以先用结构化方式直接问概率与幅度，再另起一次生成叙述；<b>叙述不参与打分</b></td></tr>
+<tr><td>概率归一而非照信</td><td>模型返回三档各 0.4，是把情景排序说清楚了、算术出了错。直接拒收会连判断一起丢掉，所以归一化后使用，<b>但把原始和记下来</b>——习惯性算不准本身就是关于这条想法有多用心的信号</td></tr>
+<tr><td>触发条件必须挂在真日历上</td><td>日历为空时<b>明确禁止编日期</b></td></tr>
 </table>
 
-<p>另外 <code>minimum_valid_reports: 5</code> 在 3 日窗口下<b>永远无法满足</b>，每轮都被标记低置信。</p>
-
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>v0.4：</b>计票池换成 9 条线的<b>来源条目</b>（3 日窗口实测 1,100+ 条）。D 对数标定到当窗口最响的主题（注意力分布是重尾的，线性份额会把所有主题压到 10 分以下）。A 保留重心项保持可比，再混入<b>强度项</b>：当日热度在该主题自己过去 20 天分布中的百分位。</p>
-<p>实测效果：D 跨主题 21→100，A 0→95，B 3.5→69，N 15→97.5，全部连续可区分。</p>
-</callout>
-
-<h3>③ N 里权重最大的子项长期是 NA</h3>
-
-<p>「意外程度」（占 N 的 40%）要求 <code>|实际 − 一致预期| ÷ 过去两年同类预测误差标准差</code>。语料从不同时给出这三个数。按 §12「任一因子缺失时按剩余权重归一化」，结果是：</p>
-
-<callout emoji="❌" background-color="light-red" border-color="red">
-<p>占总分 <b>35% 的最大因子</b>，长期在<b>缺掉自己 40% 权重</b>的状态下运行——而缺的正是权重最大的那个子项。</p>
-</callout>
-
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>v0.4：</b>改用<b>可观测代理</b>——主题预注册价格指标在窗口内的最大单日涨跌幅 ÷ 自身 60 日日波动。分档表沿用 v0.3（z＜0.5→20 … ≥2→100），每天都算得出来。语料若真给出 actual-vs-consensus，则覆盖代理值。</p>
-</callout>
-
-<h3>④ 情景不可伪证</h3>
-
-<p>v0.4 要求上下行幅度落在标的<b>自身已实现波动</b>的区间内：</p>
-
-<pre lang="text" caption="情景幅度校验"><code>σ_h    = 标的已实现年化波动 × √(月数 / 12)
-k_up   = |R_up|   ÷ σ_h
-k_down = |R_down| ÷ σ_h
-要求 0.35 ≤ k ≤ 2.60</code></pre>
-
-<p>一个月期的想法不能写「+30% 上涨」而标的月波动只有 4%（k=7.5，属于幻想），也不能写「+0.5%」（k=0.12，属于没有观点）。超出就标 <code>wide</code> / <code>narrow</code>，不否决，但写进 outcome 供事后检验。</p>
-
-<h3>⑤ 不计成本</h3>
-
-<p>v0.3 全文没有提到佣金、滑点、借券。v0.4 双边计入（美股往返 0.08%，港股 0.15%），<b>在算赔率之前</b>从三个情景回报里扣掉——一条边比自己价差还薄的 idea 不会再评成好赔率。</p>
-
-<h3>⑥ 没有拥挤度</h3>
-
-<p>v0.3 里一个主题可以 TIS 90 分，而它的表达工具正处在 1 年动量极值，模型不会反对。新增独立因子 <b>C</b>：</p>
-
-<pre lang="text" caption="拥挤度 C"><code>C = 0.45 × 60日动量百分位
-  + 0.30 × 距52周高点得分（-3% 内满分，-20% 外 0 分）
-  + 0.25 × (100 − 20日已实现波动百分位)   ← 高位且安静才最拥挤</code></pre>
-
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>C ≥ 80 强制「等待回踩」并把仓位砍半。</b>实测当天 USMV 的 60 日动量百分位是 100.0（一年最高），系统就此发出了 crowding_spike 告警。</p>
-</callout>
-
-<h3>⑦ 从不记录结果</h3>
-
-<p>v0.4 为每条 idea 落一条 outcome，<b>包括从未成交的那些的反事实收益</b>，然后输出排序 ρ、Brier 校准与技能分、以及按评级/期限/主题/拥挤度/幅度校验的分档。</p>
-
-<h2>另外八项</h2>
-
-<table>
-<tr><th background-color="light-gray">问题</th><th background-color="light-gray">修法</th></tr>
-<tr><td>「同一机构只计一次」无法执行——语料没有机构字段</td><td>从正文抽取 50+ 家机构；抽不到时用<b>标题签名</b>去重，而不是退化成「来源线」（那会重建 9×3=27 格的退化）</td></tr>
-<tr><td>同一事实同时进 D 和 N，双重计分</td><td>来源分层<b>硬分区</b>：D/A 只数 Tier2+3（卖方+策展）；N 的因果深度只认 Tier1+2（一手+卖方）</td></tr>
-<tr><td>hurdle 的无风险收益是手工常数</td><td>取 Olive 美元货币基金货架<b>中位</b> 7 日年化（当前 3.38%）；闲置现金也按此计息</td></tr>
-<tr><td>评级门槛是绝对值，hurdle 一动全部漂移</td><td>并列<b>横截面四分位评级</b>，对 hurdle 标定免疫（已用单测证明缩放不变）</td></tr>
-<tr><td>只有价格止损，没有「论点失效」触发</td><td>新增 <code>thesis_invalidated</code>：主题预注册指标自建仓逆向 ≥1.5σ 且尚未触发止损</td></tr>
-<tr><td>没有 as-of 纪律</td><td>briefing 里每个价格都来自已收盘交易日；成交只发生在批次生成时刻之后收盘的 bar</td></tr>
-<tr><td>因子缺失静默归一化</td><td>缺失项列在 <code>factors.TIS.missing</code> 里并打印</td></tr>
-<tr><td><code>minimum_valid_reports: 5</code> 恒不满足</td><td>改为条目口径，门槛 12 条</td></tr>
-</table>
-
-<callout emoji="ℹ️" background-color="light-blue" border-color="blue">
-<p><b>刻意没改：</b>TIS 四因子权重（0.15/0.25/0.25/0.35）、情景赔率公式、S/A/B/C 绝对阈值、主题分级门槛 75/60/45、三层强制层级。<b>保留是为了让 v0.4 的分数与历史 pack 可比。</b></p>
-</callout>
-
-<h2>因子如何汇成判断</h2>
+<h2>合并成一个池子</h2>
 
 <whiteboard type="mermaid">
 flowchart LR
-  D["D 讨论覆盖<br/>15%"] --> TIS
-  A["A 三日升温<br/>25%"] --> TIS
-  B["B 关键争议<br/>25%"] --> TIS
-  N["N 最新变化<br/>35%"] --> TIS["TIS 冲击潜力<br/>值不值得研究"]
-  M["M 市场验证<br/>独立"] --> ACT
-  C["C 拥挤度<br/>独立"] --> ACT["动作与仓位<br/>现在该不该买"]
-  TIS --> Q["主题配额<br/>40 条怎么分"]
-  Q --> ACT
-  ACT --> IDEA["交易想法"]
+  T["5 个主题"] --> R["5 × 4 × 20<br/>= 400 条原始想法"]
+  M["4 种出想法方式"] --> R
+  R --> DUP["但只对应<br/>96 个不同标的"]
+  DUP --> POOL["候选池 96 条<br/>一个标的一条<br/>赔率取中位数"]
+  POOL --> BOOK["筛选C<br/>每种挑法各出一本账"]
+  BOOK --> ONE["其中 1 本花真钱"]
 </whiteboard>
 
-<callout emoji="📌" background-color="light-gray">
-<p><b>关键设计：</b>TIS 回答「值不值得研究」，M 和 C 回答「现在该不该买」。两者<b>刻意不混在一个分数里</b>——高 TIS 低 M 是机会，高 TIS 高 C 是陷阱，混成一个数就分不出来了。</p>
+<callout emoji="🔀" background-color="light-yellow" border-color="yellow">
+<p><b>为什么必须合并：</b>不合并的话，挑法选出的「10 条」里可能只有 6 个真实仓位，其中一个占三倍权重——<b>那不是规格里说的十仓组合</b>，而且每一种挑法都得各自记得去防这件事。合并一次，这个缺陷就变得不可能出现，而不是被反复避开。</p>
+<p><b>为什么赔率取中位数而不取最优：</b>取最优等于把池子交给最激进的那一种方式，那看起来像本事，其实只是敢喊；<b>中位数没法被一家拉动</b>。</p>
+<p><b>几种方式同时看中同一个标的，单独记一笔。</b>四种独立方法撞到一起是信息，挑法可以显式用它，而不是当成重复项吸收掉。合并后的每一条都记着「谁提过它」，否则最后赚到的钱归功给谁就再也算不清了。</p>
+<p><b>真实筛选比是 10 / 96 ≈ 10%，不是 10 / 20 = 50%。</b>这不是措辞问题——50% 的筛选比里挑法能起的作用有限，<b>10% 意味着挑法这一层的权重比听起来重得多</b>。</p>
+</callout>
+
+<h2>为什么不做四乘四全交叉</h2>
+
+<table>
+<tr><th background-color="light-gray">设计</th><th background-color="light-gray">账本数</th><th background-color="light-gray">对照比较次数</th><th background-color="light-gray">至少出一个假赢家的概率</th></tr>
+<tr><td>4 种出想法 × 4 种挑法 全交叉</td><td>16</td><td>15</td><td><b>54%</b></td></tr>
+<tr><td>合并池（采用）</td><td>少得多</td><td>5</td><td>23%</td></tr>
+<tr><td>只对预先声明的主方法做检验</td><td>—</td><td>3</td><td>14%</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p>全交叉看起来信息更多，但 <b>十六本账意味着一半以上的时间你会看到一个假冠军</b>。而且样本本来就紧：持有 30 天、每周跑一次，窗口重叠让<b>每期只值 0.23 个独立样本</b>——配对比较要约 <b>17 次周跑（约 4 个月）</b>才能分辨 2 个百分点。十六本账在这个样本量下根本分不开。</p>
+<p>所以<b>出想法的四种方式不做冠军制</b>，产出合并进一个池子；哪一种更会出想法，看的是<b>最后被持有的想法里它贡献了多少</b>。</p>
 </callout>
 
 <hr/>
 
-<h1>六、记账口径：每天一个独立组合</h1>
+<h1>七、筛选C · 挑出真正持有的十条</h1>
 
-<grid>
-<column width-ratio="0.5">
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>主口径 · cohort（vintage）</b></p>
-<p>当天那 40 条自己成一个 1,000 万美元的独立盘：等权买入、持有到期限、单独计价。</p>
-<p>每天一盘 → 「哪天的想法好、哪天的差」可以直接比。30 天后就是 30 行。</p>
+<callout emoji="🅲" background-color="light-blue" border-color="blue">
+<p><b>每种挑法看完全相同的池子，各挑一份、各记一本账。只有一种花真钱</b>，其余纸上记账、不占资金、不下单。</p>
+<p>同批同池是关键：<b>共同的市场涨跌在相减时抵消</b>，所以分辨两种挑法要几周而不是几个月。</p>
 </callout>
-</column>
-<column width-ratio="0.5">
-<callout emoji="ℹ️" background-color="light-blue" border-color="blue">
-<p><b>次要参考 · 混合账户</b></p>
-<p>两个盘把每天的想法累加进同一个账户，回答「这套流程对账户净值做了什么」。</p>
-<p>它<b>回答不了</b>「某一天的想法好不好」——一条混合曲线把所有 vintage 搅在一起了。</p>
-</callout>
-</column>
-</grid>
+
+<whiteboard type="mermaid">
+flowchart TB
+  POOL["候选池"] --> GATE["先过四道底线"]
+  GATE --> G1["幅度不能离谱"]
+  GATE --> G2["价格方向要顺"]
+  GATE --> G3["买得进卖得出"]
+  GATE --> G4["能算出净值"]
+  G1 & G2 & G3 & G4 --> FOUR
+  subgraph FOUR["剩下的交给每一种挑法"]
+    S1["AI 端到端挑"]
+    S2["按赚亏比排"]
+    S3["组合去集中"]
+    S4["证据赔率一致性"]
+    S5["只看最多亏多少"]
+    S6["赚亏比 + 严门槛"]
+  end
+  subgraph RULER["两个量尺 · 不上实盘"]
+    R1["不筛全买"]
+    R2["随机抽"]
+  end
+  POOL --> RULER
+  FOUR --> BOOK["各自建仓<br/>本批占组合 25%<br/>选中的等权分"]
+  RULER --> BOOK
+  GATE -.->|"没选中的"| CF["也照样记账<br/>否则不知道漏掉的好不好"]
+</whiteboard>
+
+<h2>四道底线（所有挑法共用，不合格的谁都不能选）</h2>
 
 <table>
-<tr><th background-color="light-gray"></th><th background-color="light-gray">守纪律组合</th><th background-color="light-gray">无脑全买组合</th><th background-color="light-gray">当日组合（cohort）</th></tr>
-<tr><td>仓位</td><td>方法论仓位 × 评级乘数，单标的 ≤5%，单主题 ≤25%</td><td>等权</td><td>等权</td></tr>
-<tr><td>进场</td><td>区间限价 / 突破触发</td><td>首个可成交收盘价</td><td>首个可成交收盘价</td></tr>
-<tr><td>止损止盈</td><td>有</td><td>无</td><td>无（要纯粹的想法读数）</td></tr>
-<tr><td>未成交资金</td><td>留现金按货币基金收益计息</td><td>—</td><td>—</td></tr>
-<tr><td>回答什么</td><td colspan="2">对账户净值做了什么；两条线之差 = 仓位管理的贡献</td><td>那一天的想法好不好</td></tr>
+<tr><th background-color="light-gray">底线</th><th background-color="light-gray">意思</th></tr>
+<tr><td>幅度不能离谱</td><td>预测涨跌幅必须落在这个标的自己平时波动的合理范围内。说一个月波动 3% 的债券 ETF 能涨 30%，直接出局</td></tr>
+<tr><td>价格方向要顺</td><td>做多的标的，短期均线要在长期均线之上，上个月要是涨的。不接飞刀</td></tr>
+<tr><td>买得进卖得出</td><td>公募要能日度申赎，ETF 近 20 日日均成交额要够</td></tr>
+<tr><td>能算出净值</td><td>算不出这条赚了还是亏了，就不能进组合。<b>否则等于凭空塞进一个 0% 收益，而这个 0 会系统性偏袒那些挑了流动性差标的的挑法</b></td></tr>
+</table>
+
+<h2>每种挑法各押了一个假设</h2>
+
+<table>
+<tr><th background-color="light-gray">挑法</th><th background-color="light-gray">怎么挑 / 押了什么</th></tr>
+<tr><td><b>AI 端到端挑</b></td><td>把整个池子给模型，让它直接挑 10 条并逐条给一句理由。它是那个「什么都没押」的参照——另外几种各押了一个比值、一个上限、一个扣分项，<b>猜得对不对只能跟它比</b>。硬防呆：给出不存在的标的、或者多给少给，一律截断补齐并把截断了什么记下来——<b>悄悄少给几条会让组合空着一部分资金而没人发现</b></td></tr>
+<tr><td><b>按赚亏比排</b></td><td>每条算概率加权的「赚的部分 ÷ 亏的部分」，基准是现金收益：放着不动本来就有收益，跑不过它就没必要冒险。零额外模型调用，生成时的幅度与概率就够算</td></tr>
+<tr><td><b>组合去集中</b></td><td>先按赚亏比排，然后<b>带上限地往下取</b>：同一主题最多 3 条、同一敞口最多 3 条、同一种出想法方式最多 4 条。这是唯一一个<b>优化「这一组」而不是给单条排名次</b>的挑法。实测纯赚亏比排序的前十条里<b>有八条挤在同一个主题</b>，集中度指标 0.68，<b>等于只有 1.5 个独立赌注</b>；去集中之后分布到全部五个主题，指标 0.24，约 4.2 个独立赌注</td></tr>
+<tr><td><b>证据赔率一致性</b></td><td>按赚亏比排，但对四件事扣分：证据太薄、信心过头、算得粗糙、不对称没来由。<b>扣在对数上而不是直接扣比值</b>——直接扣的话一条赔率很高的想法扣一点仍然赢过一条干净的，等于什么都没做（实测第一版就是主题分布和纯排序一模一样）。每条扣分都逐项落库，<b>说不出理由的否决没法评估</b></td></tr>
+<tr><td><b>只看最多亏多少</b></td><td>只按下行大小排，不看上行。用来检验「压缩左尾」这个立论本身</td></tr>
+<tr><td><b>赚亏比 + 严门槛</b></td><td>同一套排序，但只取头部一小截并强制下限，剩余资金留现金。用来检验「宁少勿滥」值多少</td></tr>
+</table>
+
+<h2>两个量尺：先回答「筛选到底有没有用」</h2>
+
+<table>
+<tr><th background-color="light-gray">量尺</th><th background-color="light-gray">怎么挑</th><th background-color="light-gray">它赢了意味着什么</th></tr>
+<tr><td><b>不筛全买</b></td><td>池子全买，仓位按条数摊薄</td><td><b>所有挑法都是白费劲</b>，以后直接全买，筛选C 这一层可以拆掉</td></tr>
+<tr><td><b>随机抽</b></td><td>过了底线的里面随便抽 10 条</td><td>价值全在那四道底线，<b>排序本身是噪音</b></td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p>这两个必须在场，而且它们<b>是量尺，不是候选方法</b>——不会被拿去上实盘。少了它们，就算某种挑法看起来不错，也分不清是<b>它真的会挑</b>，还是<b>候选本身就不错、随便拿都行</b>。这两种情况后续该做的事完全相反。</p>
+</callout>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>没选中的那些也要记账。</b>每条落选的想法照样按实际行情算出「如果买了会怎样」。没有这一步，就永远不知道被砍掉的那一半是不是更好——那样的话，无论哪种挑法看起来赢了，都说明不了它真的在挑。</p>
+</callout>
+
+<h2>止损按波动倍数，不按固定百分比</h2>
+
+<callout emoji="📌" background-color="light-gray">
+<p>同样设 −4%，对月波动 3% 的债券 ETF 几乎永远不会触发，对月波动 12% 的半导体 ETF 一周的正常波动就打掉了。改成「跌 2 倍月波动」之后，<b>「止损有多紧」这件事在不同资产之间才是同一个意思</b>。</p>
+<p>另有一组<b>只改止损、其余完全相同</b>的账本，业绩之差就是止损收紧值多少。止盈不动，这样差异只来自止损。</p>
+</callout>
+
+<hr/>
+
+<h1>八、组合、冠军与退出</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  W1["第 1 周<br/>25%"] --> W2["第 2 周<br/>25%"]
+  W2 --> W3["第 3 周<br/>25%"]
+  W3 --> W4["第 4 周<br/>25%"]
+  W4 --> W5["第 5 周<br/>新批次<br/>换掉第 1 周"]
+  W5 --> STEADY["稳态 · 满仓滚动"]
+  CASH["未用资金<br/>停货币基金"] --> STEADY
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">内容</th></tr>
+<tr><td>批次权重</td><td>每周三进来的批占组合 25%，批内等权</td></tr>
+<tr><td>持仓条数</td><td>6 到 14 条。过硬门槛的都进，<b>不凑数</b>；不足 6 条时剩余部分停货币基金</td></tr>
+<tr><td>为什么设上下限</td><td>过门槛的少意味着市场不清楚，<b>若不设下限就会在最没把握时下最重的注</b></td></tr>
+<tr><td>周与周之间不互联</td><td>下一轮不喂上一轮的输出，每次都是全新观点</td></tr>
+<tr><td>观点重复是叠加</td><td>这周表达黄金、下周还是黄金，仓位自己起来；转向下也自己平衡掉。同一观点不同标的不做额外调整</td></tr>
+<tr><td>只有一种挑法花真钱</td><td>几种各买一部分行不通：它们从同一个池子里选，重叠度很高，取并集就等于「不筛全买」——<b>既失去了筛选，又付了几倍交易成本</b></td></tr>
+<tr><td>换冠军靠四批滚动自然完成</td><td>新进批次按新规则选，存量三批各自跑到期，四周后组合完全由新冠军构成，<b>零额外交易</b></td></tr>
+</table>
+
+<whiteboard type="mermaid">
+flowchart TB
+  POS["持仓"] --> T1["① 到期<br/>1 个月<br/>等权替换"]
+  POS --> T2["② 价格<br/>止损 入场 − 2 倍月波动<br/>止盈 入场 + 3 倍月波动"]
+  POS --> T3["③ 事件<br/>观察点偏离"]
+  T1 --> ROLL["新批次替换"]
+  T2 --> J["货币基金"]
+  T3 --> J
+  T3 --> WP
+  subgraph WP["观察点在生成时就写死"]
+    E1["事件 id + 日期<br/>来自宏观日历"]
+    E2["预期值<br/>来自一致预期"]
+    E3["偏离条件"]
+    E4["触发后动作"]
+  end
+</whiteboard>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>三种触发器全部在想法生成时预注册，运行中不变，不设人工干预的组合经理角色。</b>观察点把触发器从「价格」扩展到「事件」，性质仍然是规则——触发条件和动作都在出生时写定，<b>运行中零判断</b>。风控同理：仓位层统计异常、论点失效、波动预算，击穿即执行，不进入判断。</p>
+</callout>
+
+<hr/>
+
+<h1>九、技术方案（一）：投资逻辑是插件，系统不是</h1>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>方法论一直在动。</b>哪几个字母打分、用什么方式出想法、止损收多紧，都还没定。如果这些都写成流水线里的固定函数，那么<b>每迭代一次就要改一次流水线，每一次都可能碰坏已经调对的那三件事</b>——as-of 钳制（只让系统看见当天真的看得到的数据）、现金约束、盯市顺序。这三件事花的时间最久，也最容易被无声破坏。</p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart TB
+  subgraph STRAT["策略注册表 · 三类插件"]
+    S1["筛选A<br/>主题打分"]
+    S2["筛选B<br/>出想法的方式"]
+    S3["筛选C<br/>挑持仓的方式 + 量尺"]
+  end
+  subgraph FEED["数据源注册表 · 按种类校验"]
+    F1["语料"]
+    F2["可买清单"]
+    F3["宏观日历"]
+  end
+  subgraph ORCH["编排 · 一次 run 走完三段"]
+    O1["分布式锁<br/>同一期只跑一次"]
+    O2["不可变 journal<br/>runs / 日期 / run_id /"]
+    O3["落库<br/>可移植的表"]
+  end
+  subgraph PORT["平台层 · 六个端口"]
+    P1["产物"] & P2["状态"] & P3["推理"]
+    P4["事件"] & P5["缓存与锁"] & P6["凭证"]
+  end
+  FEED --> ORCH
+  STRAT --> ORCH
+  ORCH --> PORT
+  ORCH --> EXE["执行层<br/>纸上 · 影子 · 实盘形态"]
+  ORCH --> BT["回测层<br/>同一套策略跑历史"]
+  SCHED["云上调度<br/>每周三 run + 常态盯市"] --> ORCH
+</whiteboard>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>加一种打法是加一个文件，不是改流水线。</b>插件靠扫描包目录自动发现，流水线里没有一处按名字引用某个策略——它只问注册表。数据源同理：加一个源就是多一批同样形状的行。</p>
+</callout>
+
+<h2>注册表强制的三件事</h2>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">为什么它让「换策略」变安全而不只是变方便</th></tr>
+<tr><td><b>每个策略声明版本，结果盖版本号</b></td><td>一个查不出是哪段逻辑算出来的分数，不可审计。所以每本账都能追到<b>产出它的那个确切版本</b></td></tr>
+<tr><td><b>策略对这一次 run 是纯的</b></td><td>它收到一个上下文、返回一份判决；<b>不写库、不下单、不读时钟</b>。持久化和下单属于编排层——这正是为什么八种挑法可以同时给同一批候选打分，而没有任何一种会真的去交易。上下文是冻结的，<b>没有数据库句柄</b>：一个能查库的策略就是一个能不小心读到未来的策略</td></tr>
+<tr><td><b>输入取哈希</b></td><td>两种挑法要能比较，前提是它们看的是同一份东西。<b>两份判决的输入哈希不一致，就不许拿来比</b></td></tr>
+</table>
+
+<h2>数据源注册表：形状统一，坏了就降级</h2>
+
+<table>
+<tr><th background-color="light-gray">设计</th><th background-color="light-gray">为什么</th></tr>
+<tr><td>按种类校验字段</td><td>一个漂移的数据源在<b>入口</b>就带着字段名失败，而不是三步之后变成一个错的数字。这是「一个难过的下午」和「一个难过的季度」之间的差别</td></tr>
+<tr><td>每一行都盖上期次和来源</td><td>一期的数据不可能悄悄混进另一期</td></tr>
+<tr><td>默认<b>不是</b>必需项</td><td>一个能让整次 run 失败的数据源，会把每一次第三方抖动都变成丢掉一期——<b>而丢掉的那一期事后取不回同样深度</b></td></tr>
+<tr><td>声明最少行数下限</td><td><b>返回空是最危险的一种数据源故障，因为它校验得干干净净</b>：零行满足所有规则，于是一个死掉的接口读起来就像一个安静的星期，而 run 会以为自己看过了</td></tr>
+<tr><td>一个策略炸了不拖累其他</td><td>并行跑多个插件时，出错的那个记下错误，别的照样出账</td></tr>
 </table>
 
 <hr/>
 
-<h1>七、让结果诚实的规则</h1>
+<h1>十、技术方案（二）：工程层</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  RUN["一次 run"] --> L1["① 按端口体检<br/>需要哪些端口<br/>由注册表推导"]
+  L1 --> L2["② 抢分布式锁<br/>一期只能一个 run"]
+  L2 --> L3["③ 开 run 行 ok=0<br/>最后 UPDATE 成 ok=1"]
+  L3 --> L4["④ 三段筛选"]
+  L4 --> L5["⑤ 每份产物写进<br/>不可覆盖的存储"]
+  L5 --> L6["⑥ journal 收尾<br/>端口健康 · 每一步 · 每份产物"]
+  L6 --> L7["⑦ 数据库唯一索引<br/>保证一期只完成一次"]
+</whiteboard>
+
+<h2>四条规则，每条都是被违反过一次才立的</h2>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">内容</th><th background-color="light-gray">违反的代价</th></tr>
+<tr><td><b>产物不可变</b></td><td>一切按「日期 / run_id /」寻址，只追加不覆盖。改口径就开新 run，旧 run 永久可查</td><td>原地替换一个批次曾把 <b>58 个仓位绑到错的标的上</b>，一条想法报出 <b>+377%</b>，把整批发布出去的收益显著抬高。而数据都在、校验全过、没有一处报错</td></tr>
+<tr><td><b>沙箱不留唯一副本</b></td><td>run 开始从库里拉当期快照，结束把全部产物写回。云沙箱跑完就销毁，<b>没走端口的东西等于没有</b></td><td>—</td></tr>
+<tr><td><b>跑前体检</b></td><td>六个端口各有体检。<b>需要哪些端口由注册表推导</b>：这一次要跑的插件里有没有要调模型的，系统自己知道</td><td>调用方漏写一个标志，就会<b>先把语料抓完、主题打完，才发现四种出想法的方式一个都跑不了</b>——最贵的那一段已经花掉了</td></tr>
+<tr><td><b>as-of 是一等公民</b></td><td>每张表带期次；价格钳到已收盘的交易日；主题注册日不可回填；标的上架日不可回填</td><td><b>08-08 注册的主题曾能影响 08-07 的回放</b>——它拿到了一次自己从没做过的判断的功劳</td></tr>
+</table>
+
+<h2>三段之外的三层</h2>
+
+<whiteboard type="mermaid">
+flowchart LR
+  subgraph EXE["执行层 · 一个接口三档"]
+    E1["纸上<br/>照原样记账"] --> E2["影子<br/>记账 + 把本该发出的委托<br/>完整录下来，一张都不发"]
+    E2 --> E3["实盘形态<br/>能校验 · 能估成本<br/>下单函数直接拒绝"]
+  end
+  subgraph BT2["回测层"]
+    B1["唯一入口重建当期上下文"] --> B2["越界即报错<br/>不是静默通过"]
+    B2 --> B3["算不出的记 UNKNOWN<br/>绝不补 0"]
+    B3 --> B4["样本不够就拒绝<br/>给出胜负结论"]
+  end
+  subgraph SC["云上调度"]
+    C1["入口幂等<br/>重启 · 重试 · 排两次<br/>都不会多跑一次"] --> C2["心跳单独写<br/>停掉的系统和安静的一周<br/>必须长得不一样"]
+    C2 --> C3["错过的一周<br/>记成永久缺失<br/>不假装补上"]
+  end
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">层</th><th background-color="light-gray">关键设计与为什么</th></tr>
+<tr><td><b>执行层</b></td><td>把「想买什么」和「怎么下单」分开，三档走<b>同一个接口</b>。<br/><b>影子档</b>是纸上到实盘之间的那一档：走纸面账本记账，同时把「如果真下单会是什么委托」完整录下来（券商代码、手数、单型、限价、有效期、预估滑点），一张都不发出去。<b>它已经抓到东西了——纸面成交 1803.9 股，实盘只能买 1799 整股</b>，零股与整手的差异正是这一档存在的意义。<br/><b>实盘适配器故意不能下单</b>，也没有任何开关能打开它：<b>默认可用的下单通道，等于一个 bug、一次重试、一条无人看管的定时任务就能触发的下单通道</b>，而这种损失修完 bug 也拿不回来。<br/>每笔意图带一个由（run_id, 想法 id, 方向）算出的<b>确定性委托号</b>，重试撞上就被拒；号里不含订单内容，<b>因为「同一条想法、不同数字」的重建正是 58 笔持仓被搞错的方式</b></td></tr>
+<tr><td><b>回测层</b></td><td>新策略拿历史检验，走<b>同一条</b> run 路径——自带一套执行逻辑的回测，测的是回测自己。唯一入口重建当期上下文，越界即报错。<br/>算不出净值的记 UNKNOWN 并剔除，<b>绝不补 0</b>：补 0 会系统性偏袒挑了流动性差标的的挑法，实测这个偏袒对最集中的那个挑法是 <b>−0.50pp</b>，对全买只有 <b>−0.13pp</b>。<br/>模型调用要显式开启并计数——<b>直接不给推理端口才是执行，一个开关只是承诺</b>。<br/><b>样本不够时拒绝给出胜负结论</b></td></tr>
+<tr><td><b>云上调度</b></td><td>每周三 07:00 香港时间跑策略，之间常态盯市。入口幂等，判断依据是<b>共享锁加库里的 run 行</b>而不是本地文件——两个沙箱不共享文件系统，文件锁在这里毫无意义，两个沙箱都会认为没人在跑然后各跑一遍，<b>也就是同一周下两套单</b>。<br/><b>心跳单独写并带过期时间</b>：两个周三之间本来就安静，一个崩掉的沙箱产生的正是同一种安静，所以<b>心跳的缺失才是信号</b>。<br/><b>错过的一周不假装补上</b>：那一周本该深挖的语料现在已经拿不到同样深度，而且当时挂的进场区间单如果用现在已经印出来的 K 线去成交，<b>那不是一次迟到的运行，是一次带后见之明的运行</b>。所以记成「永久缺失」，写一行加一份说明，而不是回填一个冒充原版的东西</td></tr>
+</table>
+
+<callout emoji="🕐" background-color="light-red" border-color="red">
+<p><b>时区只在一个地方换算：</b>UTC 时刻 → 香港挂钟时间 → 香港日历日，这个日历日就是期次。周三 07:00 香港时间＝周二 23:00 UTC。</p>
+<p>这件事必须做对，因为<b>期次同时是触发日和语料窗口</b>。按 UTC 日期排班会把周二 23:00 UTC 记成「周二」，语料窗口悄悄从周一至周三移成周日至周二——丢掉周一的研报，多进一天报告自称没用过的数据。<b>而什么都不会报错</b>，因为空数据和移位的数据都能通过校验。</p>
+</callout>
+
+<h2>换库只换一个连接串</h2>
+
+<table>
+<tr><th background-color="light-gray">做法</th><th background-color="light-gray">为什么</th></tr>
+<tr><td>建表语句只用最通用的写法，且每条都幂等</td><td>每次开机都能跑一遍，漏掉过一次迁移的部署会自己长好</td></tr>
+<tr><td><b>写入语句按引擎分方言</b></td><td>那条最顺手的「插入或替换」写法<b>只有 SQLite 有</b>。直接写死它，等于建表可移植而每一条写入都不可移植——<b>状态搬到云数据库那天，周三这次 run 会在抓完语料、打完主题之后、第一次插入时失败</b></td></tr>
+<tr><td><b>一期只完成一次由数据库保证</b></td><td>唯一索引只加在「已完成」这一行上：盯市一天要写很多行，而一次失败之后重试成功、同一期留两行是对的——<b>那段历史正是「第一次失败了」的证据</b>。绝不能发生的只有一件事：同一期被算成完成两次。<b>成功重复被拒绝，失败重试仍留下历史</b></td></tr>
+<tr><td>孤儿行只报告不删除</td><td>父 run 没有记录的子行来自崩掉的 run，和好行验证起来一模一样。<b>因为看起来不对就删数据，是真结果被扔掉的标准路径</b></td></tr>
+</table>
+
+<bookmark name="BytePlus 生产化技术方案（六端口、调度、执行、回测的完整工程细节）" href="https://mq21cqc641p.feishu.cn/docx/XZgIdGL7ao6mtNxenAxcVxelnvd"></bookmark>
+
+<hr/>
+
+<h1>十一、让结果诚实的规则</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  D["某一期的决策"] --> R1["语料：只要发表日不晚于当期"]
+  D --> R2["行情：钳到当天已收盘的交易日"]
+  D --> R3["主题：只看当期已注册的"]
+  D --> R4["标的：只看当期已上架的"]
+  D --> R5["日历：只收本身期次不晚于当期的<br/>并抹掉当期之后才公布的实际值"]
+  R1 & R2 & R3 & R4 & R5 --> OK["as-of 干净"]
+  OK --> ENT["建仓价用之后的<br/>第一个收盘，不是决策价"]
+  ENT --> UNK["算不出净值 → UNKNOWN<br/>绝不补 0"]
+  UNK --> PAIR["同批相减做配对比较"]
+  PAIR --> DISC["按窗口重叠折算<br/>有效样本"]
+  DISC --> JUDGE{"够不够"}
+  JUDGE -->|"不够"| NO["拒绝给出胜负<br/>并说清还差多少"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">不这样做的代价</th></tr>
+<tr><td>建仓价用决策之后的第一个收盘</td><td>用决策当时那个价建仓，会白送一个当时根本交易不到的跳空——<b>而且市场动得最大时送得最多，这正是「看起来像本事的错误」的形状</b></td></tr>
+<tr><td>日历只按行自己的期次收</td><td>日历上的日期是参考期而不是公布日：七月的物价数据挂在 7 月 1 日、八月中才公布。<b>只按日期关联就会提前读到已公布的数字</b></td></tr>
+<tr><td>必须同批配对比较</td><td>不配对去比绝对水平，市场自己的月度波动就坐在分母上，<b>同一置信度要约五倍的历史</b></td></tr>
+<tr><td>要按窗口重叠折算</td><td>持有 30 天而每周跑一次，相邻期次高度重叠。十个这样的期次远不是十个观测。<b>不折算就会把重叠放大出来的统计量当成证据</b></td></tr>
+<tr><td>只对预先声明的主方法做统计检验</td><td>五次比较不校正时假阳性概率约 23%，全交叉的十五次会到 54%。<b>哪些比较是正式的必须事前定，不能看到结果之后再选</b></td></tr>
+</table>
+
+<hr/>
+
+<h1>十二、验证：什么时候能知道什么</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  M0["第 1 个月"] --> K1["实测各挑法之间的相关性<br/>校正时间表"]
+  M1["约 4 个月<br/>17 次周跑"] --> K2["挑法对比全买<br/>2 个百分点级别"]
+  M2["约 7 个月"] --> K3["单个打分维度<br/>2 个百分点级别的贡献"]
+  M3["约 26 个月"] --> K4["单个维度<br/>1 个百分点级别的贡献"]
+  K2 --> LIVE["决定谁上实盘"]
+  K3 --> CAL["校准四因子权重"]
+</whiteboard>
 
 <callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
-<p>一个「每天下单看看」的系统<b>很容易骗自己</b>。下面每一条都对应一种常见的自我美化。</p>
+<p><b>组合能不能跑到 25%，会比「我们知道为什么」早得多地显现。</b>逐因子归因是一到两年的事。短期内的决策依据是「方向说得通 + 组合整体表现」。</p>
+<p><b>而现在：有效独立样本 0.33，所需 4。所以现在没有任何一种挑法可以说赢了</b>，系统也拒绝给出这个结论。</p>
 </callout>
+
+<hr/>
+
+<h1>十三、当前状态：什么在跑，什么还不能信</h1>
+
+<h2>已经验证过的</h2>
 
 <table>
-<tr><th background-color="light-gray">规则</th><th background-color="light-gray">防的是什么</th></tr>
-<tr><td><b>不可同 bar 回看</b>——只能在批次生成时刻<b>之后收盘</b>的 bar 上成交</td><td>用当天还没收盘的价格定当天的进场区间</td></tr>
-<tr><td><b>突破次日开盘成交</b></td><td>t 日收盘确认的信号在同一个收盘价上执行</td></tr>
-<tr><td><b>限价成交取较差价</b>——成交价 <code>min(区间上沿, 开盘价)</code></td><td>假装总能买在当日最低点</td></tr>
-<tr><td><b>盘中不完整的 bar 直接丢弃</b></td><td>OpenD 盘中返回一根正在形成的日线，用它会泄漏盘中信息</td></tr>
-<tr><td><b>不可盯市的标的绝不进组合</b></td><td>按成本价盯市 = 凭空塞进一个 0% 收益</td></tr>
-<tr><td><b>闲置现金按真实收益计息</b></td><td>惩罚被检验的那个纪律本身</td></tr>
-<tr><td><b>敞口匹配基准</b></td><td>拿一个按设计只投 13% 的组合去和满仓指数比</td></tr>
-<tr><td><b>成本双边计入且在算赔率之前扣</b></td><td>把比价差还薄的边评成好赔率</td></tr>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">实测结果</th></tr>
+<tr><td>三段全流程</td><td>跑通：<b>5 个主题 → 四种方式各出 100 条 → 合并成 96 条候选 → 8 本账（六种挑法 + 两个量尺）</b>；<b>14 份产物</b>落不可变存储；落库<b>无孤儿行</b></td></tr>
+<tr><td>数据源</td><td><b>语料 311 条、宏观参考水平 5 条、美债拍卖 5 条、可买清单 156 条，全部免密钥</b></td></tr>
+<tr><td>授权载体门</td><td>156 条清单中 <b>101 条可用</b>；排除 55 条：<b>4 条个股、6 条私募无日度申赎证据、45 条载体待确认</b></td></tr>
+<tr><td>换库只换连接串</td><td>建表与写入路径都已可移植，<b>两种方言实测生成正确语句</b></td></tr>
+<tr><td>同一期只算一次</td><td>由数据库唯一索引保证，不只靠锁。<b>失败重试仍留下历史，成功重复被拒绝</b></td></tr>
+<tr><td>凭证</td><td><b>51 个跟踪文件、254 个工作目录文件、266 个版本历史对象，0 处凭证命中</b></td></tr>
+<tr><td>影子通道</td><td><b>纸面成交 1803.9 股 vs 实盘只能买 1799 整股</b></td></tr>
+<tr><td>测试</td><td><b>153 项全过</b></td></tr>
 </table>
 
-<h2>开发中被这些规则抓到的真实 bug</h2>
+<h2>阻塞中</h2>
 
 <callout emoji="❌" background-color="light-red" border-color="red">
-<ul>
-<li><b>盯市循环缺 <code>opened_d ≤ d</code> 过滤</b>——重跑时把后来才建的仓位盯到更早的日期上，第一天权益凭空多了 <b>+5.7%</b>。</li>
-<li><b>回填时 briefing 用「现在」截价格</b>——给 2026-07-28 的包塞了 2026-08-06 的收盘价，40 条全被 <code>ref_price_not_future</code> 拦下。<b>防回看的校验抓到了我自己写的回看。</b></li>
-<li><b>混合盘 naive 敞口跑到 825%</b>——每天来一批就按满仓分配，现金变负数，悄悄加了 8 倍杠杆。现在按手上现金硬约束。</li>
-<li><b><code>mark</code> 只推两个混合盘</b>——每个过去日期的 cohort 会冻结在旧价。现在推全部 12 个账本。</li>
-</ul>
+<p><b>1）四种出想法的方式还没有一条真实产出。</b>推理服务需要在控制台创建一个推理专用密钥。管理面密钥只能签管理面接口，签不了推理面；SDK 的另一条路径要绑项目，当前版本的构造器不暴露这个参数。<b>三段管道已经用桩（一个假的模型返回值）验证过契约，但到目前为止没有一条想法是真模型写的。</b></p>
+<p><b>2）公开产物里带了合作方货架数据。</b>产品代码顺着每条想法的描述与来源流进了公开报告。版本控制的忽略规则挡住了原始快照，<b>没挡住派生物——边界只设在了输入侧，派生出去的输出没人看着</b>。发布已被闸门拦住并拒绝。<b>当前版本怎么脱敏、历史提交要不要重写，都要人来定。</b></p>
+<p><b>3）整条链还没闭合。</b>编排到「各挑法出账」为止；从账目到真正建仓那一步仍然只能手动触发。</p>
 </callout>
 
-<hr/>
+<h2>先验值，等业绩说话</h2>
 
-<h1>八、前端信息架构</h1>
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">说明</th></tr>
+<tr><td><b>H 的符号</b></td><td><b>最大风险。</b>注意力文献记录的是「约两周上涨、年内反转」，一个月持有正好在边界；而我们量的是机构覆盖而不是散户搜索。真正的赌注是「H 高 + P 低」这个组合，<b>而这个组合在现有样本上没有分辨力（统计量 −0.47，区间横跨 0）</b></td></tr>
+<tr><td>四个权重 0.30 / 0.25 / 0.25 / 0.20</td><td>先验值</td></tr>
+<tr><td>挑法之间的相关性假设</td><td>整个验证时间表建立在它上面，第一个月实测</td></tr>
+<tr><td>止损与止盈的波动倍数</td><td>先验值，由只改止损的那本账检验</td></tr>
+<tr><td>去集中的三个上限</td><td>先验值。实测在这组上限下能选满 10 条，上限收到 1 就只能选 5 条并如实报告缺口</td></tr>
+<tr><td>赚亏比门槛与条数区间</td><td>先验值</td></tr>
+<tr><td>罕见度是否进筛选A</td><td>「历史上极少发生」本身是信号，语料里已有可用的代理指标。进 A 之前需先验证它与 H 反向</td></tr>
+</table>
 
-<p>三个视图，职责刻意分开，靠<b>点开</b>而不是往下滑。</p>
-
-<whiteboard type="mermaid">
-flowchart TD
-  subgraph V0["概览 · 无日期选择器"]
-    K["10 个高层指标"] --> CAL["收益日历 · 一格一天"]
-    CAL --> BAR["每日柱状 · 灰点是同期 SPY"]
-    BAR --> SK["想法层面能力 + 分档归因<br/>跨全部天"]
-  end
-  subgraph V1["日报 · 有日期"]
-    T1["主题表 · 一行一主题"] -->|点开| T2["预注册关键结果<br/>D/A/B/N/M/C 各自怎么算出来的<br/>该主题的原始图表<br/>该主题的证据逐条 + 检索式<br/>由此产生哪几条想法"]
-    I1["想法表 · 归类列在行里<br/>主题 / 传导主线 / 资产信号"] -->|点开| I2["论点 · 最可能怎么错<br/>三情景表 · 执行口径<br/>成交与盯市<br/>这条引用的来源（可点）"]
-  end
-  subgraph V2["组合 · 有日期"]
-    P1["当日持仓"] -->|点开| P2["产生这个仓位的那条想法<br/>完整论点与来源"]
-    P1 --> P3["未成交 + 每天一览"]
-  end
-  CAL -.->|点某一天| V2
-</whiteboard>
-
-<callout emoji="💡" background-color="light-yellow" border-color="yellow">
-<p><b>两条设计原则：</b></p>
-<ul>
-<li><b>source 放在引用它的东西下面，不是页面最底部。</b>证据挂在它支撑的那个主题上，引用挂在引用它的那条想法上。</li>
-<li><b>归类写在行里，不另开一棵树。</b>原来的 Theme Map 的叶子就是想法表里的 ticker——重复。现在归类是想法表的三列。</li>
-</ul>
-</callout>
-
-<p>不确定的名词旁边都有 <b>ⓘ</b>（悬停或键盘聚焦出解释），侧边栏「名词表」是完整 21 条。</p>
-
-<hr/>
-
-<h1>九、当前结果</h1>
+<h2>已知会让回放不干净的地方</h2>
 
 <callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
-<p><b>注意：</b>最长的 cohort 只持有 9 个交易日，<b>样本没有统计意义</b>。下面的数字是「系统跑通了、口径正确」的证据，不是「这套方法有效或无效」的结论。第一个完整读数要等 2026-08-27（首批 1 个月期到期）。</p>
+<p>这些不是 bug，是<b>历史数据本身缺了那一维</b>，所以回放到那些期次时结论要打折看。<b>系统每次都把这些数字报出来，而不是让它变成口头传说。</b></p>
 </callout>
-
-<h2>每天一个组合，各自的成绩</h2>
 
 <table>
-<tr><th background-color="light-gray">日期</th><th background-color="light-gray">生成器</th><th background-color="light-gray">成交</th><th background-color="light-gray">持有</th><th background-color="light-gray">收益</th><th background-color="light-gray">SPY 同期</th><th background-color="light-gray">超额</th></tr>
-<tr><td>2026-07-27</td><td>原始 pack</td><td>23/40</td><td>9 天</td><td><span text-color="red">+1.80%</span></td><td>+4.01%</td><td><span text-color="green">−2.21%</span></td></tr>
-<tr><td>2026-07-28</td><td>规则</td><td>40/40</td><td>8 天</td><td><span text-color="red">+2.44%</span></td><td>+3.99%</td><td><span text-color="green">−1.55%</span></td></tr>
-<tr><td>2026-07-29</td><td>规则</td><td>40/40</td><td>7 天</td><td><span text-color="red">+2.62%</span></td><td>+3.74%</td><td><span text-color="green">−1.12%</span></td></tr>
-<tr><td>2026-07-30</td><td>规则</td><td>40/40</td><td>6 天</td><td><span text-color="red">+1.53%</span></td><td>+5.36%</td><td><span text-color="green">−3.83%</span></td></tr>
-<tr><td>2026-07-31</td><td>规则</td><td>40/40</td><td>5 天</td><td><span text-color="red">+1.71%</span></td><td>+3.62%</td><td><span text-color="green">−1.91%</span></td></tr>
-<tr><td>2026-08-03</td><td>规则</td><td>40/40</td><td>4 天</td><td><span text-color="red">+0.97%</span></td><td>+2.88%</td><td><span text-color="green">−1.91%</span></td></tr>
-<tr><td>2026-08-04</td><td>规则</td><td>40/40</td><td>3 天</td><td><span text-color="green">−0.39%</span></td><td>+1.44%</td><td><span text-color="green">−1.83%</span></td></tr>
-<tr><td>2026-08-05</td><td>规则</td><td>40/40</td><td>2 天</td><td><span text-color="green">−0.24%</span></td><td>−0.36%</td><td><span text-color="red">+0.12%</span></td></tr>
-<tr><td>2026-08-06</td><td>规则</td><td>40/40</td><td>1 天</td><td><span text-color="green">−0.03%</span></td><td>−0.16%</td><td><span text-color="red">+0.13%</span></td></tr>
-<tr><td>2026-08-07</td><td>Claude</td><td>0/40</td><td>0 天</td><td>—</td><td>—</td><td>等当日收盘成交</td></tr>
-</table>
-
-<callout emoji="❗" background-color="light-yellow" border-color="yellow">
-<p><b>最重要的一个读数：9 个有持有期的组合里只有 2 个跑赢 SPY，平均超额 −1.57%。</b></p>
-<p>方向大多对（胜率 57.1%），但幅度跑不过指数（只有 33% 逐条跑赢）。在一个八天涨 4% 的市场里，选出来的东西涨得比市场慢。</p>
-</callout>
-
-<callout emoji="❌" background-color="light-red" border-color="red">
-<p><b>更正（2026-08-08）：此前发布的想法层面等权收益 +7.11% 是错的，真实值是 +1.22%。</b></p>
-<p>原因是一处数据完整性缺陷，由合作方 PM review 指出后定位：<code>idea_uid</code> 是 <code>&lt;批次号&gt;#&lt;序号&gt;</code>，不是内容派生的。当 2026-07-27 那批想法被重新导入、而引用它们的持仓没有被级联删除时，每个 uid 都被静默重新绑定到了另一个标的——<code>B20260727#26</code> 的持仓仍是 US.URA（建仓价 40.33），而它的想法已经变成 US.DLR（收盘 192.56），于是结算把一个资产的建仓价对着另一个资产的收盘价算，记出 <b>+377%</b>。3 个账本共 58 条持仓受影响，该批次均值达 +48.5%。</p>
-<p><b>只污染想法层面的指标，不影响 cohort 记账</b>——组合是按自己的持仓计价的，所以「9 个组合里 2 个跑赢 SPY、平均超额 −1.57%」这个结论从头到尾都是对的。</p>
-<p>已修：批次替换改为级联删除依赖行；新增 <code>ideas.instrument_mismatches()</code> 一致性检查；<code>settle</code> 在检测到任何不一致时<b>直接拒绝运行</b>而不是照常发布数字。这个断言本该第一天就存在——按 <code>idea_uid</code> 的 join 即使 uid 已被改绑也照样成功，所以流程里没有任何其他环节能发现它。</p><p><b>另一处更正：</b>我最初把这件事归因为「早期的天是拿不完整的语料打的分」，并引用了「7/27 计票池 370、窗口现在 497 篇」。这个诊断是错的——370 是 Tier 2+3 计票层，497 是窗口全部文档，两个不可比的分母；计票池当时是 370，现在还是 370。真实原因是<b>深取正文</b>：<code>ingest</code> 按 3 天滚动窗口给每条来源线补取几篇全文，所以 7/26 发布的文档可能在 7/28、7/29 的运行里才拿到正文；而主题匹配读标题+摘要+正文，一条证据要两个不同词才算命中，晚到的正文因此能把「不命中」变成「命中」。重打分 7/27 给 AI-CAPEX 恰好增加两条证据，两条都有正文（1,765 与 723 字），没有任何证据消失。这不是回看——正文与文档同时发布，只是我们取得晚。</p>
-</callout>
-
-<h2>能力指标</h2>
-
-<table>
-<tr><th background-color="light-gray">指标</th><th background-color="light-gray">读数</th><th background-color="light-gray">怎么读</th></tr>
-<tr><td>想法等权收益</td><td><span text-color="red">+1.23%</span>（303 条有持有期）</td><td>剔除仓位规模影响的纯想法读数。中位 +0.30%</td></tr>
-<tr><td>胜率</td><td>57.1%</td><td>—</td></tr>
-<tr><td>跑赢基准比例</td><td><span text-color="green">33%</span></td><td>逐条 vs SPY，偏低；平均超额 −1.26%</td></tr>
-<tr><td><b>排序能力 ρ（保守赔率）</b></td><td><span text-color="red">+0.278</span></td><td><b>ρ ＞ 0 表示引擎的排序确实有信息</b></td></tr>
-<tr><td>排序能力 ρ（保守 k 赔率 / 中心 EV）</td><td>+0.257 / +0.209</td><td>三者接近，样本还短</td></tr>
-<tr><td><b>概率技能分</b></td><td><span text-color="red">+0.34 / +0.36</span></td><td>= 1 − Brier ÷ 0.667；<b>＞0 表示优于瞎猜</b></td></tr>
-<tr><td>1 个月 vs 6 个月</td><td>+1.49%（n=100，胜率 62%） vs +1.09%（n=203，胜率 55%）</td><td>短期略好，样本远不足以下结论</td></tr>
+<tr><th background-color="light-gray">缺口</th><th background-color="light-gray">影响</th></tr>
+<tr><td>可买清单没有上架日期</td><td><b>156 条全部未知。</b>字段已经在、以后新入的会盖日期，但存量补不出来——<b>回放旧期次时，八月才上架的产品对七月的想法是可见的</b></td></tr>
+<tr><td>标的可计价标记是活的</td><td>它随行情额度变动，所以回放看到的是「今天能不能计价」，不是当天能不能</td></tr>
+<tr><td>日历的发布时间用的是抓取时间</td><td>只按日期关联会提前读到已公布的数字</td></tr>
+<tr><td>语料深度不可重建</td><td>历史语料里相当一部分是后来补抓的。没有未来信息进来，<b>但当时手上的料确实少得多</b></td></tr>
+<tr><td>基金计价</td><td>货架上只有一部分基金有净值，且只有一个日期。基金按区间收益在期限终点计价，不进逐日权益曲线，单独列</td></tr>
+<tr><td>财报一致预期数据源</td><td>缺口。现成的免费源条款禁商用，需另定合规源</td></tr>
 </table>
 
 <hr/>
 
-<h1>十、已知弱点</h1>
+<h1>十四、相关文档</h1>
 
-<callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>这些是真实限制，不是待办事项。</b></p>
-</callout>
-
-<table>
-<tr><th background-color="light-gray">#</th><th background-color="light-gray">弱点</th><th background-color="light-gray">影响</th></tr>
-<tr><td>1</td><td><b>B 因子是词典法，不是语义理解</b>。立场编码靠正负词表匹配，反讽、条件句、双重否定会误判</td><td>B 的绝对水平不可靠；30% 条目才有具名机构</td></tr>
-<tr><td>2</td><td><b>N 的意外程度代理与 M 有结构性相关</b>——两者都读同一个预注册价格指标</td><td>可能只是在重复衡量「市场已反应」。需在 30 天样本上测相关系数，过高则应从 N 剔除</td></tr>
-<tr><td>3</td><td><b>A 的强度项需要 20 天基线</b></td><td>要到 9 月初该因子才完全生效，现在部分天仍是 NA</td></tr>
-<tr><td>4</td><td><b>基金类想法的日频曲线无法回溯</b>——Olive 只给最新 NAV</td><td>历史 pack 里 17/40 条是基金，全部无法盯市，起点批次实际只检验了 23/40 条</td></tr>
-<tr><td>5</td><td><b>7/28–8/06 那 8 批是规则引擎生成的</b>（标 <code>rules:v0.4</code>）</td><td>走同一套契约与校验，但 thesis 是模板，不是研究叙述。手写 8 天 × 40 条不现实</td></tr>
-<tr><td>6</td><td><b>生成步骤不可复现</b>——同样的 pack 喂两次，Claude 给出的 40 条不会完全一样</td><td>选「每天 Claude 弄」必须接受的代价；用 pack SHA + 契约 + 代码校验约束</td></tr>
-<tr><td>7</td><td><b>情景波动带、拥挤度分段、四因子权重都还是先验值</b></td><td>本身就是待校准参数，现在只是「看起来合理」</td></tr>
-<tr><td>8</td><td><b>图表挂到主题是关键词匹配</b></td><td>图表库无主题标签；双词命中算可信，单词命中标「弱匹配」让读者折扣</td></tr>
-<tr><td>9</td><td>A 股无行情权限；OpenD 历史 K 线有滚动 30 天不同标的额度（已用满 90 个）</td><td>中国主题只能用离岸与港股表达；宇宙扩张受限，被挡标的自动标为不可盯市</td></tr>
-<tr><td>10</td><td><b>主题发现的候选精度约一半</b>。机械挖掘是字符 n-gram + 词频 lift，不是语义理解</td><td>公司名、栏目名、泛词碎片会漏进候选，靠生成器逐个否掉。而<b>漏判（该注册却没注册）比误判更难发现</b>——没有任何指标会为此报警</td></tr>
-<tr><td>11</td><td><b>发现窗口 5 天、打分窗口 3 天，两者不同步</b></td><td>主题可能在刚要冷下去时才被注册：FACTOR-ROTATION 注册当日在 3 日窗口里就是 0 条证据。休眠机制会自我纠正，代价是白占几天配额</td></tr>
-<tr><td>12</td><td><b>新主题的价格指标只是「可定价宇宙里最近的代理」</b></td><td>SPACE-ECONOMY 用 <code>US.XAR</code>（航空国防）表达商业航天，更贴的 ARKX 不在可定价宇宙里。M 因子会因此偏钝</td></tr>
-</table>
-
-<hr/>
-
-<h1>十一、后续</h1>
-
-<h2>关键时间点</h2>
-
-<whiteboard type="mermaid">
-timeline
-  title IdeaGen40 关键时间点
-  2026-07-27 : 起点批次（原始 PM pack）
-  2026-08-07 : 系统上线 · 10 批 400 条想法
-  2026-08-27 : 首批 1 个月期到期 → 第一批完整结果
-  2026-09-06 : A 因子强度项累积满 20 天基线
-  2026-09-07 : 满 30 天 · 约 1,200 条想法 · 样本开始有意义
-  2027-01-27 : 起点批次 30 条 6 个月期到期
-</whiteboard>
-
-<h2>30 天后要做的五件事</h2>
-
-<checkbox done="false">按 <code>origin</code> 与 <code>cold_start</code> 分档，看<b>语料发现的主题是不是系统性差于种子主题</b>。这是新增机制唯一的验收标准；如果发现的主题一致更差，说明门槛该收紧或候选判定该更严</checkbox>
-<checkbox done="false">用 outcome <b>校准四因子权重</b>，替掉 0.15/0.25/0.25/0.35 这组先验值</checkbox>
-<checkbox done="false">测 <b>N 的意外程度与 M 的相关系数</b>，决定要不要把它从 N 里剔除</checkbox>
-<checkbox done="false">决定<b>评级用中心赔率还是保守赔率</b>——目前两者排序能力接近（+0.257 vs +0.278），需要更长样本</checkbox>
-<checkbox done="false">检验 v0.4 三个新假设：高 C 是否真的预示跑输、<code>wide</code> 幅度校验是否真标记出更差的 idea、<code>thesis_invalidated</code> 是否真早于价格止损</checkbox>
-
-<h2>可以考虑加的</h2>
-
-<callout emoji="💡" background-color="light-yellow" border-color="yellow">
-<ul>
-<li><b>第三个组合</b>：只买当日 Q1 分位的 10 条、等权满仓。直接检验「排序」的经济价值，信噪比比 40 条等权高得多。</li>
-<li><b>把立场编码交给生成器</b>，机器词典值留作对照，量化两者差异——这是 B 因子唯一的实质改进路径。</li>
-<li><b>规则 vs Claude 对照</b>：用 Claude 重写其中几天，看两种生成器差多少。</li>
-</ul>
-</callout>
-
-<hr/>
-
-<h1>十二、交付物与运维</h1>
-
-<table>
-<tr><th background-color="light-gray">项</th><th background-color="light-gray">位置</th></tr>
-<tr><td>公开看板</td><td>https://yuesongcai.github.io/IdeaGen40/</td></tr>
-<tr><td>数据 JSON</td><td>https://yuesongcai.github.io/IdeaGen40/report.json</td></tr>
-<tr><td>代码仓库</td><td>https://github.com/YuesongCai/IdeaGen40</td></tr>
-<tr><td>本机实时看板</td><td>http://127.0.0.1:8765（每次刷新从数据库重新生成，开机自启常驻）</td></tr>
-<tr><td>本地安装</td><td><code>~/IdeaGen40</code>（<code>~/Downloads/IdeaGen40</code> 是软链）</td></tr>
-<tr><td>方法论全文</td><td><code>docs/methodology_v0.4.md</code>——14 项改动逐条对照 v0.3</td></tr>
-<tr><td>生成契约</td><td><code>prompts/idea_generation.md</code></td></tr>
-<tr><td>每日命令</td><td>slash command <code>/ideagen-daily</code></td></tr>
-<tr><td>定时</td><td><code>~/Library/LaunchAgents/com.ideagen40.daily.plist</code>（工作日 07:23 HKT）</td></tr>
-<tr><td>规模</td><td>约 9,000 行 Python · 91 个测试</td></tr>
-</table>
-
-<callout emoji="⚠️" background-color="light-red" border-color="red">
-<p><b>公开范围提醒：</b>GitHub Pages 那个地址是公开、可被搜索引擎索引的，内容包括每一条 idea、每个成交价、每个在场仓位。要收回去有两种办法：把 publish-pages 那段从 <code>scripts/daily.sh</code> 删掉，或者把仓库转私有（Pages 会随之变成需要登录）。</p>
-<p>公开仓库里<b>不含</b> briefing pack 与 Olive 快照——前者有智堡付费研究的逐字摘录，后者有 Nexus HK 产品货架数据，都不是我们可以转发布的。两者都可本地重新生成。</p>
-</callout>
-
-<callout emoji="📌" background-color="light-gray">
-<p><b>免责：</b>模拟盘，非投资建议。所有成交均为规则化模拟，不涉及任何真实下单、资金划转或券商交易接口。<code>futu-api</code> 在本项目中只用于行情，交易接口从未被调用。</p>
-</callout>
+<bookmark name="筛选A · HGEP 完整方案（计算细节与实现）" href="https://mq21cqc641p.feishu.cn/docx/RM07d6WAQoJ5zWx91FDc533XnqD"></bookmark>
+<bookmark name="BytePlus 生产化技术方案（工程层完整细节）" href="https://mq21cqc641p.feishu.cn/docx/XZgIdGL7ao6mtNxenAxcVxelnvd"></bookmark>
+<bookmark name="调研结论与引用（影响设计的实证发现）" href="https://mq21cqc641p.feishu.cn/docx/HC9UdapS6o2bnBx4zLRcVbLHnac"></bookmark>
+<bookmark name="挑法的完整操作规格（公式、参数、落库字段）" href="https://mq21cqc641p.feishu.cn/docx/Wu2adrJu9oC2wuxE1excyzo6nog"></bookmark>

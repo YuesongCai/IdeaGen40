@@ -1,0 +1,170 @@
+<title>打分 A · HGEP 方案</title>
+
+<callout emoji="🎯" background-color="light-blue" border-color="blue">
+<p><b>一句话：</b>把现在的六个字母（D/A/B/N + M/C）压成四个——<b>H 热度 · G 分歧 · E 实据 · P 已定价</b>。</p>
+<p><b>不是为了少几个字母，是为了修一个实测出来的毛病：</b>D、B、N 里有三块在数同一件事（写了多少），导致 D 的权重最小（0.15）却最主导总分（与 TIS 相关性 +0.78）。<b>标称权重描述的不是实际发生的事。</b></p>
+<p><b>记法：</b>多少人在说（H）· 吵得多凶（G）· 说的多实（E）· 价格听懂了多少（P）。</p>
+</callout>
+
+<h2>核心逻辑</h2>
+
+<table>
+<tr><th background-color="light-gray">字母</th><th background-color="light-gray">回答什么</th><th background-color="light-gray">要高还是低</th><th background-color="light-gray">性质</th></tr>
+<tr><td><b>H</b> 热度</td><td>多少人在说，而且在加速还是降温</td><td><b>高</b></td><td>机械</td></tr>
+<tr><td><b>G</b> 分歧</td><td>机构之间对方向有多不一致</td><td><b>高</b>（有分歧才有被证明对的空间）</td><td>AI 判断</td></tr>
+<tr><td><b>E</b> 实据</td><td>证据落在因果链的哪一环</td><td><b>高</b></td><td>AI 判断</td></tr>
+<tr><td><b>P</b> 已定价</td><td>这波行情已经走了多少</td><td><span text-color="red"><b>低</b></span>（已经被定价的，再对也赚不到）</td><td>机械 + AI</td></tr>
+</table>
+
+<p><b>主题分 = 0.30·H + 0.25·G + 0.25·E + 0.20·(100 − P)</b>，取前 5 个主题。</p>
+
+<callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
+<p><b>权重是先验值，没有依据。</b>写出来是为了能跑，不是因为算出来是这四个数。真正的校准要等样本，而按功效分析，检出 2 个百分点的差异需要约 7 个月周度运行。</p>
+</callout>
+
+<hr/>
+
+<h1>老六个去哪了</h1>
+
+<table>
+<tr><th background-color="light-gray">老的</th><th background-color="light-gray">→</th><th background-color="light-gray">为什么</th></tr>
+<tr><td><b>D</b> 讨论覆盖</td><td>H</td><td>它本身就是计数（与证据条数 r = +0.58）</td></tr>
+<tr><td><b>A</b> 三日升温</td><td>H 的加速项</td><td>和 D 是同一件事的水平项与变化项</td></tr>
+<tr><td><b>N</b> 的「新事实广度」</td><td>H</td><td><b>它也是计数</b>（r = +0.43）——这是共线的第三个来源</td></tr>
+<tr><td><b>B</b> 关键争议</td><td>G</td><td>保留，但从词典匹配改为 AI 判断</td></tr>
+<tr><td><b>N</b> 的「因果深度」</td><td>E</td><td>N 里唯一真正语义的部分，值得单列</td></tr>
+<tr><td><b>N</b> 的「意外程度」</td><td>P</td><td>它读的是价格 z 值，本质是「市场反应了没」</td></tr>
+<tr><td><b>M</b> 市场验证</td><td>P（作方向闸门，见下）</td><td>—</td></tr>
+<tr><td><b>C</b> 拥挤度</td><td>P</td><td>「高位且安静」也是一种已定价</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>关键洞察：N 被拆成了三个家。</b>会上说「N 是怎么来的已经说不清了」——原因是它本来就是三个不同性质的东西平均在一起：<b>广度是计数、意外是价格信号、深度是语义判断</b>。拆开各归其位之后，共线也就没了：所有「数数量」的合并进 H，<b>「写得多」这件事只算一次</b>。</p>
+</callout>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>原方案里的第五个字母 X（可表达）已撤回。</b>三个理由任何一个都够废掉它：打分 A 阶段还没有标的；种子主题的 exposures 是当初写主题时一起定的，循环论证；新主题注册时 <code>validate()</code> 本来就强制要求指标可定价，<b>设计上不可能失败</b>。这个检查真正该做的地方在下单时的 <code>markable()</code>，那里已经有了，而且真的会卡住——货架 61 只基金只有 17 只可盯市。</p>
+</callout>
+
+<hr/>
+
+<h1>具体计算</h1>
+
+<h2>H 热度</h2>
+
+<pre lang="text" caption="H = 0.60 × 水平 + 0.40 × 加速"><code>水平 = 100 × log(1 + 本主题计票条数) / log(1 + 当窗口最响主题的条数)
+加速 = 当日份额在该主题自己过去 20 天分布中的百分位
+
+H = 0.60 × 水平 + 0.40 × 加速     （历史不足 8 天时，加速记 NA，只用水平）</code></pre>
+
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">说明</th></tr>
+<tr><td>计票池</td><td>3 日窗口内 <b>Tier 2 + Tier 3</b>（卖方 + 策展）的来源条目，实测每窗口 370–1,138 条</td></tr>
+<tr><td>为什么对数</td><td>注意力分布是重尾的，线性份额会把所有主题压到 10 分以下</td></tr>
+<tr><td>去重</td><td>同一机构同一天同一主题只计一次；机构抽不到时用标题签名，<b>不能退化成来源线</b>（那会重建 9×3=27 格的退化）</td></tr>
+<tr><td>与旧的关系</td><td>水平项 = 旧 D；加速项 = 旧 A 的强度项。<b>旧 A 的重心项和旧 N 的广度项都并进来了</b></td></tr>
+</table>
+
+<h2>G 分歧</h2>
+
+<callout emoji="🔄" background-color="light-blue" border-color="blue">
+<p><b>这一项从机械改为 AI 判断。</b>原来用正负词表匹配机构立场，碰到反讽、条件句、双重否定就误判，而且只有 30% 的条目能抽到具名机构。</p>
+</callout>
+
+<pre lang="text" caption="G 的调用契约"><code>输入：本主题 3 日窗口内全部证据（标题 + 摘要 + 正文 + 机构 + 来源层级）
+问题：这些机构对「主题的预注册关键问题」的答案，分歧有多大？
+输出（结构化，不要散文）：
+  score        0-100    0 = 完全一致，100 = 尖锐对立
+  bull_count   int      明确看多的机构数
+  bear_count   int      明确看空的机构数
+  why          ≤60字    分歧的具体所在
+  cited        [doc_id] 支撑判断的文档
+</code></pre>
+
+<p>同时保留机械词典值作为对照落库，两个都存，30 天后比解释力。</p>
+
+<h2>E 实据</h2>
+
+<pre lang="text" caption="E = 最强三条证据的因果深度均值"><code>每条证据编码到因果链的一环：
+   25   叙事 / 观点 / 预期
+   50   价格已动
+   75   订单 / 收入 / 出货
+  100   已实现利润 / 政策落地 / 已签合同
+
+E = mean(最强的三条)        只认 Tier 1 + Tier 2（一手 + 卖方）</code></pre>
+
+<p>只取三条而不是全部，是为了让「有三条硬证据」和「有三十条软叙事」区分开——后者不该因为量大而得高分。</p>
+
+<h2>P 已定价</h2>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>P 有一个必须处理的符号问题。</b>它吸收了旧 M（市场验证，<b>高 = 好</b>，论点被确认）和旧 C（拥挤度，<b>高 = 坏</b>，太晚了）。两者测的几乎是同一件事，解读却相反——不能压成一个单调分数。</p>
+<p><b>解法：把方向确认从 P 里拿出来，做成一个前置闸门。</b></p>
+</callout>
+
+<pre lang="text" caption="第一步：方向闸门（不进分数）"><code>方向 = 语料净立场（不看价格，否则 P 会自己验证自己）
+命中率 = 预注册指标 + 最多3个佐证指标里，窗口内与方向同向的比例
+
+  命中率 ≥ 60%   →  确认    P 正常计算
+  40-60%         →  中性    P 正常计算，标记
+  &lt; 40%          →  背离    ⚠ 这不是「已定价」，是市场不同意
+                            主题标 direction_conflict，不按 P 打分</code></pre>
+
+<pre lang="text" caption="第二步：机械已定价分"><code>mom      = 预注册指标 60 日收益百分位
+near_high= 距 52 周高点：3% 以内满分，20% 以外 0 分
+calm     = 100 − 20 日已实现波动百分位     （高位且安静最拥挤）
+surprise = 窗口内最大单日涨跌 ÷ 自身 60 日日波动，按 z 分档
+           z&lt;0.5→20  &lt;1.0→40  &lt;1.5→60  &lt;2.0→80  ≥2→100
+
+P_机械 = 0.35×mom + 0.25×near_high + 0.20×calm + 0.20×surprise</code></pre>
+
+<pre lang="text" caption="第三步：AI 读语料自己怎么说"><code>输入：上面五个数 + 本主题全部证据
+问题：研究本身是否已经在说这件事被 price in 了？
+     （「已充分反映」「market has priced in」「positioning 偏拥挤」
+       「预期差已收敛」这类表述）
+输出：
+  score   0-100
+  quotes  [原文片段]     必须引用，不能空口给分
+  cited   [doc_id]
+
+P = AI 值，但机械值与 AI 值两个都落库</code></pre>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>为什么 AI 值和机械值都要存：</b>AI 能读到价格数据里完全没有的东西——卖方自己写「已充分反映」。这是 LLM 真正的增量。但<b>不能让 AI 静默覆盖价格数据</b>，否则等于拿可复现性换一个说不清好坏的东西。两个都存，30 天后直接比：是价格数据解释力强、AI 语义判断强、还是两者结合最好。</p>
+</callout>
+
+<hr/>
+
+<h1>实现</h1>
+
+<table>
+<tr><th background-color="light-gray">改什么</th><th background-color="light-gray">在哪</th><th background-color="light-gray">工作量</th></tr>
+<tr><td>H：合并 D + A + N广度</td><td><code>scoring.factor_H</code>（新），删 <code>factor_D</code> / <code>factor_A</code></td><td>小，公式已有</td></tr>
+<tr><td>G：改成 AI 调用</td><td><code>scoring.factor_G</code>，走 <code>platform.inference</code></td><td>中，要写调用契约与 schema</td></tr>
+<tr><td>E：从 N 里抽出来</td><td><code>scoring.factor_E</code>，复用 <code>lexicon.depth_of</code></td><td>小</td></tr>
+<tr><td>P：方向闸门 + 机械分 + AI 分</td><td><code>scoring.factor_P</code>，复用 <code>factor_M</code> / <code>factor_C</code> 的取数</td><td>中</td></tr>
+<tr><td>主题数收敛到 5</td><td><code>config.MAX_REPORT_THEMES</code> 16 → 5</td><td>一行</td></tr>
+<tr><td>落库两套值</td><td><code>themes.factors</code> JSON 里同时存机械值与 AI 值</td><td>小</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>三条实现纪律，都是踩过坑才定的：</b></p>
+<ul>
+<li><b>预注册指标不能事后改。</b><code>price_indicator</code> 在读价格之前就冻结在主题定义里，否则 P 会自己验证自己。新主题注册日不可回填，<code>all_themes(as_of)</code> 只返回注册日 ≤ 当日的主题。</li>
+<li><b>AI 调用必须结构化，不能夹在叙事里。</b>实证显示叙事式提示让 Brier 从 0.1542 恶化到 0.1842。G 和 P 的调用都用 json schema，理由单独字段，不混在一段话里。</li>
+<li><b>同一个判断采样 5 次取中位。</b>降低方差与过度自信。<code>platform.inference.complete_many(k=5)</code> 已经是端口方法。</li>
+</ul>
+</callout>
+
+<hr/>
+
+<h1>已知未解</h1>
+
+<table>
+<tr><th background-color="light-gray">问题</th><th background-color="light-gray">状态</th></tr>
+<tr><td><b>H 的符号没验证</b>。文献里散户注意力上升是「约 2 周上涨、年内反转」，而我们持有 1 个月正好在边界上；我们量的又是机构覆盖而非散户搜索，是不同构念</td><td><b>最大风险</b>。真正的赌注是「H 高 + P 低」这个组合，不是 H 单独</td></tr>
+<tr><td>H×P 交互检验</td><td>已用现有 121 个 theme-day 跑过：<b>t = −0.47，95% 区间横跨 0，无分辨力</b>。需约 7 个月周度运行才能检出 2 个百分点差异</td></tr>
+<tr><td>四个权重</td><td>纯先验值</td></tr>
+<tr><td>M 和 C 合并进 P</td><td>实测两者 r 只有 0.10，<b>合并是为了好记，不是数据支持的</b>。方向闸门是我能想到的最诚实的处理；若 30 天后 P 的解释力弱于 M、C 分开，应该拆回去</td></tr>
+<tr><td>G、P 改 AI 判断后不可复现</td><td>同一份语料两次跑分数不同。缓解：5 次取中位 + 理由与引用落库可复核 + 机械值并存对照</td></tr>
+</table>

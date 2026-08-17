@@ -42,6 +42,14 @@ DDL: tuple[str, ...] = (
          calls       INTEGER DEFAULT 0
        )""",
     "CREATE INDEX IF NOT EXISTS orch_runs_as_of ON orch_runs (as_of)",
+    # At most one *completed* weekly run per period. Uniqueness on (kind, as_of)
+    # alone would be wrong twice over: monitoring writes many rows for one date, and
+    # a failed attempt followed by a successful re-run legitimately leaves two rows
+    # for the same period — that history is what says the first one failed. What must
+    # never happen is one period counted as done twice, so the constraint is on the
+    # completed row, and it is enforced by the database rather than by the lock alone.
+    "CREATE UNIQUE INDEX IF NOT EXISTS orch_runs_done "
+    "ON orch_runs (kind, as_of) WHERE ok = 1 AND kind = 'weekly'",
 
     # Which feeds ran, what they returned, and whether they validated. A feed that
     # silently returned nothing looks identical to a quiet week without this.
@@ -229,6 +237,56 @@ def _columns(state: Any, table: str) -> list[str]:
     return [r["column_name"] for r in state.q(
         "SELECT column_name FROM information_schema.columns WHERE table_name=?",
         (table,))]
+
+
+#: Conflict key per owned table, matching the PRIMARY KEY in the DDL above. An
+#: upsert has to name the key it resolves on, and naming it here keeps the DDL and
+#: the write path from drifting apart.
+CONFLICT_KEY: dict[str, tuple[str, ...]] = {
+    "orch_runs":   ("run_id",),
+    "feed_runs":   ("run_id", "feed"),
+    "verdicts":    ("run_id", "kind", "strategy"),
+    "candidates":  ("run_id", "candidate_id"),
+    "events":      ("event_id",),
+    "watchpoints": ("watch_id",),
+}
+
+
+def upsert(state: Any, table: str, row: dict[str, Any], *,
+           replace: bool = True) -> int:
+    """Insert one row, replacing an existing one with the same key by default.
+
+    `replace=False` inserts strictly. It exists because REPLACE semantics defeat a
+    unique index rather than being stopped by one: on a conflict SQLite *deletes*
+    the conflicting row and inserts the new one, so an `orch_runs` row written with
+    `ok=1` would silently erase the completed run it collided with — removing the
+    very evidence the constraint was added to protect. Opening a run therefore
+    inserts strictly, and closing it is an UPDATE, which does respect the index.
+
+    `INSERT OR REPLACE` is SQLite-only. Writing it directly meant the DDL was
+    portable while every write path was not — so moving state to RDS for PostgreSQL
+    would have failed at the first insert of the weekly run, after the feeds had
+    been fetched and the topics scored. The promise was that the move is a DSN
+    change; this is what makes that true.
+    """
+    if table not in CONFLICT_KEY:
+        raise KeyError(f"no conflict key declared for {table!r}")
+    cols = list(row)
+    marks = ", ".join("?" for _ in cols)
+    names = ", ".join(cols)
+    key = CONFLICT_KEY[table]
+
+    if not replace:
+        sql = f"INSERT INTO {table} ({names}) VALUES ({marks})"
+    elif getattr(state, "paramstyle", "qmark") == "qmark":
+        sql = f"INSERT OR REPLACE INTO {table} ({names}) VALUES ({marks})"
+    else:
+        sets = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in key)
+        conflict = ", ".join(key)
+        sql = (f"INSERT INTO {table} ({names}) VALUES ({marks}) "
+               f"ON CONFLICT ({conflict}) "
+               + (f"DO UPDATE SET {sets}" if sets else "DO NOTHING"))
+    return state.execute(sql, tuple(row[c] for c in cols))
 
 
 def collisions(state: Any) -> list[str]:

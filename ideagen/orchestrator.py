@@ -49,6 +49,17 @@ class RunResult:
     calls: int = 0
     error: str | None = None
 
+    @property
+    def completed(self) -> bool:
+        """Whether this period is actually done.
+
+        `ok` alone is ambiguous: a run that exited because another sandbox held the
+        lock is not a failure, so it reports `ok=True` — but nothing happened, and a
+        scheduler that treated it as a finished period would skip the week. Callers
+        deciding "is this period done" must ask this, not `ok`.
+        """
+        return self.ok and not self.skipped
+
 
 def weekly(
     *,
@@ -81,13 +92,17 @@ def weekly(
     # that fetches every feed, scores the topics, and only then finds that no
     # generator can call a model — after the expensive part. Asking the registry
     # makes the check match the run.
-    picked = ([("topic_scorer", topic_scorer)]
-              + [("idea_generator", n) for n in
-                 (list(generators) if generators
-                  else [r["name"] for r in strat.available("idea_generator")])]
-              + [("idea_selector", n) for n in
-                 (list(selectors) if selectors
-                  else [r["name"] for r in strat.available("idea_selector")])])
+    # Injected candidates mean stage B does not run at all — a replay reuses the
+    # pool it is replaying. Demanding a model key for generators that will never be
+    # called would block exactly the runs that need no model.
+    picked = [("topic_scorer", topic_scorer)]
+    if candidates is None:
+        picked += [("idea_generator", n) for n in
+                   (list(generators) if generators
+                    else [r["name"] for r in strat.available("idea_generator")])]
+    picked += [("idea_selector", n) for n in
+               (list(selectors) if selectors
+                else [r["name"] for r in strat.available("idea_selector")])]
     model_arms = strat.needs_model(picked)
     need = list(plat.Platform.DEFAULT_NEED)
     if not dry_run and (needs_inference or model_arms):
@@ -122,12 +137,12 @@ def weekly(
             # one's. Opening first makes `ok` the single place that question is
             # answered, and `ended_at IS NULL` identifies runs that died outright.
             if not dry_run:
-                p.state.execute(
-                    "INSERT OR REPLACE INTO orch_runs "
-                    "(run_id,as_of,kind,platform,started_at,ended_at,ok,error,"
-                    " inputs_sha,journal_uri,calls) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    (j.run_id, as_of.isoformat(), "weekly", p.name,
-                     j._t0.isoformat(), None, 0, None, None, None, 0))
+                schema.upsert(p.state, "orch_runs", {
+                    "run_id": j.run_id, "as_of": as_of.isoformat(),
+                    "kind": "weekly", "platform": p.name,
+                    "started_at": j._t0.isoformat(), "ended_at": None,
+                    "ok": 0, "error": None, "inputs_sha": None,
+                    "journal_uri": None, "calls": 0}, replace=False)
 
             # Feeds run through the registry unless inputs were injected. Injection
             # is what lets a replay of an old week reuse stored rows instead of
@@ -169,12 +184,11 @@ def weekly(
                 j.step(f"feed:{fr.feed}", kind=fr.kind, n=len(fr.rows),
                        ok=fr.ok, error=fr.error)
                 if not dry_run:
-                    p.state.execute(
-                        "INSERT OR REPLACE INTO feed_runs "
-                        "(run_id,feed,kind,as_of,n_rows,ok,error,rows_sha) "
-                        "VALUES (?,?,?,?,?,?,?,?)",
-                        (j.run_id, fr.feed, fr.kind, fr.as_of, len(fr.rows),
-                         1 if fr.ok else 0, fr.error, fr.sha))
+                    schema.upsert(p.state, "feed_runs", {
+                        "run_id": j.run_id, "feed": fr.feed, "kind": fr.kind,
+                        "as_of": fr.as_of, "n_rows": len(fr.rows),
+                        "ok": 1 if fr.ok else 0, "error": fr.error,
+                        "rows_sha": fr.sha})
                 log(f"  feed {fr.feed:<20}{len(fr.rows):>5} rows"
                     + ("" if fr.ok else f"   ! {str(fr.error)[:60]}"))
 
@@ -182,14 +196,25 @@ def weekly(
             # level, and a watchpoint can name an event that already exists.
             if calendar and not dry_run:
                 for e in calendar:
-                    p.state.execute(
-                        "INSERT OR REPLACE INTO events "
-                        "(event_id,date,label,kind,expectation,actual,unit,source,as_of,feed) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                        (e.get("event_id"), e.get("date"), e.get("label"),
-                         e.get("kind"), e.get("expectation"),
-                         (None if e.get("actual") is None else str(e["actual"])),
-                         e.get("unit"), e.get("source"), e.get("as_of"), e.get("feed")))
+                    schema.upsert(p.state, "events", {
+                        "event_id": e.get("event_id"), "date": e.get("date"),
+                        "label": e.get("label"), "kind": e.get("kind"),
+                        "expectation": e.get("expectation"),
+                        "actual": (None if e.get("actual") is None
+                                   else str(e["actual"])),
+                        "unit": e.get("unit"), "source": e.get("source"),
+                        "as_of": e.get("as_of"), "feed": e.get("feed")})
+
+            # A run with no corpus is a failed run, not a successful empty one.
+            # Every input validates cleanly at zero rows, so without this check the
+            # sequence "no corpus → no topics → no ideas → done" reports success, and
+            # a week whose source was down becomes indistinguishable from a week with
+            # nothing to trade. That is the same failure the feed layer refuses to
+            # commit, and it must not be reintroduced one layer up.
+            if not corpus:
+                raise RuntimeError(
+                    f"{as_of} 没有任何语料，筛选A 无从打分——这次运行不算完成。"
+                    f"「数据源不通」和「本周没料」必须区分开")
 
             # One hash over every input. Two verdicts that disagree on this were
             # not looking at the same thing and must not be compared.
@@ -411,10 +436,17 @@ def _merge_pool(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _convergence(candidates: list[dict[str, Any]]) -> dict[str, int]:
-    """How many instruments how many methods agreed on, for the journal."""
+    """How many instruments how many distinct methods agreed on.
+
+    Counted over distinct methods, not over contributing rows. One method can reach
+    the same instrument through several topics, so a row count reads as "ten methods
+    agreed" when at most four exist — which would turn the convergence signal into a
+    number that cannot mean what it appears to mean.
+    """
     out: dict[str, int] = {}
     for c in candidates:
-        k = f"{c.get('n_proposals', 1)}票"
+        n = len(c.get("proposed_by") or []) or 1
+        k = f"{n}种方式"
         out[k] = out.get(k, 0) + 1
     return dict(sorted(out.items(), reverse=True))
 
@@ -500,32 +532,35 @@ def _save_candidates(p, run_id: str, ctx, candidates: list[dict[str, Any]]) -> N
     no way to ask whether 筛选C actually added anything over holding the pool, and
     that question is the only evidence that the selection stage is worth its cost.
     """
-    p.state.executemany(
-        "INSERT OR REPLACE INTO candidates "
-        "(run_id,as_of,candidate_id,instrument_id,topic_id,method,"
-        " upside_pct,downside_pct,p_up,p_base,p_down,payload) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        [(run_id, ctx.as_of.isoformat(), str(c.get("id")),
-          str(c.get("instrument_id")), str(c.get("topic_id") or ""),
-          str(c.get("method") or ""),
-          c.get("upside_pct"), c.get("downside_pct"),
-          c.get("p_up"), c.get("p_base"), c.get("p_down"),
-          json.dumps(c, ensure_ascii=False, default=str))
-         for c in candidates])
+    for c in candidates:
+        schema.upsert(p.state, "candidates", {
+            "run_id": run_id, "as_of": ctx.as_of.isoformat(),
+            "candidate_id": str(c.get("id")),
+            "instrument_id": str(c.get("instrument_id")),
+            "topic_id": str(c.get("topic_id") or ""),
+            "method": str(c.get("method") or ""),
+            "upside_pct": c.get("upside_pct"),
+            "downside_pct": c.get("downside_pct"),
+            "p_up": c.get("p_up"), "p_base": c.get("p_base"),
+            "p_down": c.get("p_down"),
+            "payload": json.dumps(_finite(c), ensure_ascii=False, default=str,
+                                  allow_nan=False)})
 
 
 def _save_verdict(p, run_id: str, ctx, kind: str, v, role: str) -> None:
     """Persist one verdict. `version` and `inputs_sha` travel with it, because a
     stored score whose producing logic cannot be identified is not auditable."""
-    p.state.execute(
-        "INSERT OR REPLACE INTO verdicts "
-        "(run_id,as_of,kind,strategy,version,role,inputs_sha,chosen,scores,"
-        " rejected,meta,calls) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (run_id, ctx.as_of.isoformat(), kind, v.strategy, v.version, role,
-         ctx.inputs_sha, json.dumps(v.chosen, ensure_ascii=False),
-         json.dumps(v.scores, ensure_ascii=False, default=str),
-         json.dumps(v.rejected, ensure_ascii=False),
-         json.dumps(v.meta, ensure_ascii=False, default=str), v.calls))
+    schema.upsert(p.state, "verdicts", {
+        "run_id": run_id, "as_of": ctx.as_of.isoformat(), "kind": kind,
+        "strategy": v.strategy, "version": v.version, "role": role,
+        "inputs_sha": ctx.inputs_sha,
+        "chosen": json.dumps(v.chosen, ensure_ascii=False),
+        "scores": json.dumps(_finite(v.scores), ensure_ascii=False,
+                             default=str, allow_nan=False),
+        "rejected": json.dumps(v.rejected, ensure_ascii=False),
+        "meta": json.dumps(_finite(v.meta), ensure_ascii=False,
+                           default=str, allow_nan=False),
+        "calls": v.calls})
 
 
 def _finite(obj: Any) -> Any:

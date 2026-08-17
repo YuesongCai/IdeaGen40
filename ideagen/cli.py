@@ -562,6 +562,35 @@ def cmd_status(args) -> int:
     return 0
 
 
+
+def cmd_weekly(args) -> int:
+    """Run one weekly period through 筛选A → 筛选B → 筛选C.
+
+    A thin wrapper on purpose. The orchestrator owns the sequence and the
+    invariants; this only parses arguments and prints. Keeping the CLI thin is what
+    lets the scheduled sandbox, a replay and a test all enter through the same
+    function rather than through three slightly different paths.
+    """
+    from . import orchestrator
+    as_of = _as_of(args)
+    res = orchestrator.weekly(
+        as_of=as_of,
+        topic_scorer=args.topic_scorer,
+        generators=(args.generators.split(",") if args.generators else None),
+        selectors=(args.selectors.split(",") if args.selectors else None),
+        dry_run=args.dry_run)
+    if res.skipped:
+        print(f"\n跳过：{res.skipped}")
+        return 0
+    if not res.ok:
+        print(f"\n失败：{res.error}")
+        return 1
+    print(f"\n完成  主题 {len(res.topics)} · 候选 {res.n_candidates} · "
+          f"账本 {len(res.selectors)} · 产物 {len(res.artifacts)} · "
+          f"模型调用 {res.calls}")
+    return 0
+
+
 # ---------------------------------------------------------------- parser
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser("ideagen", description="IdeaGen40 daily pipeline")
@@ -591,6 +620,13 @@ def main(argv: list[str] | None = None) -> int:
     s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
+    s = add("weekly", cmd_weekly, "one weekly run: 筛选A → 筛选B → 筛选C")
+    s.add_argument("--topic-scorer", default="hgep")
+    s.add_argument("--generators", help="comma-separated; default every registered one")
+    s.add_argument("--selectors", help="comma-separated; default every registered one")
+    s.add_argument("--dry-run", action="store_true",
+                   help="run the strategies, persist nothing")
+
     s = add("platform", cmd_platform, "platform port health (run this first)")
     s.add_argument("--platform", choices=["local", "byteplus"],
                    help="override IDEAGEN_PLATFORM")

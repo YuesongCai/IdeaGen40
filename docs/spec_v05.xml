@@ -17,16 +17,16 @@ flowchart TB
     A --> G["生成 20 条 idea<br/>1 个月期"]
     IN2 --> G
     IN3 --> G
-    G --> B["打分 B · 10 个臂并行"]
+    G --> B["打分 B<br/>十种挑法同时跑"]
   end
-  B --> LIVE["实盘 = 冠军臂<br/>本批占 25% 等权"]
-  B --> SHADOW["影子盘 = 其余 9 臂<br/>纸上记账"]
+  B --> LIVE["实盘 = 当前采用的那一种<br/>本批占 25% 等权"]
+  B --> SHADOW["其余 9 种<br/>纸上记账，不花钱"]
   LIVE --> EXIT{"三种退出"}
   EXIT -->|到期| ROLL["第 5 周换第 1 周"]
   EXIT -->|价格| JPST["JPST"]
   EXIT -->|事件| JPST
   ROLL --> LIVE
-  SHADOW --> CMP["配对比较<br/>决定换不换冠军"]
+  SHADOW --> CMP["同批对比<br/>决定要不要换"]
   LIVE --> CMP
 </whiteboard>
 
@@ -153,63 +153,142 @@ flowchart TB
 
 <hr/>
 
-<h1>五、打分 B · 10 个臂并行</h1>
+<h1>五、打分 B · 怎么从 20 条里挑</h1>
+
+<callout emoji="🎯" background-color="light-blue" border-color="blue">
+<p><b>我们不知道哪种挑法是对的，所以十种挑法同时跑。</b></p>
+<p>每周同一批 20 条候选，十种挑法各自选出自己那一份、各记一本账。<b>只有一种花真钱，其余九种纸上记账</b>，不占资金、不下单。一个多月之后用实际业绩决定留哪一种。</p>
+</callout>
 
 <whiteboard type="mermaid">
 flowchart TB
-  C20["20 条候选"] --> GATES["四道硬门槛<br/>波动带 0.35-2.60σ<br/>动量同向<br/>流动性<br/>可计价"]
-  GATES --> ARMS
-  subgraph ARMS["10 个臂 · 只有排序 门槛 止损 三处不同"]
-    direction LR
-    A0["0 全买<br/>对照 A"]
-    A1["1 Omega 宽<br/>主臂"]
-    A2["2 Omega 严"]
-    A3["3 绝对打分<br/>主臂"]
-    A4["4 绝对+红队<br/>主臂"]
-    A5["5 绝对+紧止损"]
-    A6["6 成对 Elo"]
-    A7["7 拆解式"]
-    A8["8 纯左尾"]
-    A9["9 随机<br/>对照 B"]
+  C["每周 20 条候选"] --> GATE["先过四道底线<br/>幅度不能离谱 · 价格方向要顺<br/>能买得进卖得出 · 能算出净值"]
+  GATE --> FOUR
+  subgraph FOUR["剩下的交给十种挑法"]
+    direction TB
+    G1["两个对照组<br/>回答：筛选到底有没有用"]
+    G2["三种主要挑法<br/>正式比较的就这三个"]
+    G3["三个旋钮试验<br/>只拧一个参数看差多少"]
+    G4["两个极端试验<br/>把某个想法推到底"]
   end
-  ARMS --> POS["各臂建仓<br/>n ∈ 6~14 等权<br/>不足停 JPST"]
-  GATES -.->|"落选的"| CF["反事实收益照样结算"]
+  FOUR --> BOOK["十本账各自建仓<br/>本批占组合 25%<br/>选中的等权分"]
+  GATE -.->|"没选中的"| CF["也记账<br/>否则不知道漏掉的好不好"]
 </whiteboard>
 
-<h2>三对只差一件事的臂</h2>
+<h2>四道底线（十种挑法共用，不合格的谁都不能选）</h2>
+
+<table>
+<tr><th background-color="light-gray">底线</th><th background-color="light-gray">意思</th></tr>
+<tr><td>幅度不能离谱</td><td>预测的涨跌幅必须落在这个标的自己平时波动的合理范围内。说一个月波动 3% 的债券 ETF 能涨 30%，直接出局</td></tr>
+<tr><td>价格方向要顺</td><td>做多的标的，短期均线要在长期均线之上，上个月要是涨的。不接飞刀</td></tr>
+<tr><td>买得进卖得出</td><td>公募要能日度申赎，ETF 近 20 日日均成交额要够</td></tr>
+<tr><td>能算出净值</td><td>算不出这条赚了还是亏了，就不能进组合。否则等于凭空塞进一个 0% 收益</td></tr>
+</table>
+
+<hr/>
+
+<h2>两个对照组：先回答「筛选有没有用」</h2>
+
+<table>
+<tr><th background-color="light-gray">挑法</th><th background-color="light-gray">怎么挑</th><th background-color="light-gray">它赢了意味着什么</th></tr>
+<tr><td><b>不筛，全买</b></td><td>20 条全买，每条仓位减半</td><td><b>所有挑法都是白费劲</b>，以后直接全买，打分 B 这一层可以拆掉</td></tr>
+<tr><td><b>随机抽</b></td><td>过了底线的里面随便抽 10 条</td><td>价值全在那四道底线，<b>排序本身是噪音</b></td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p>这两个必须在里面。少了它们，就算某种挑法看起来不错，也不知道是<b>它真的会挑</b>，还是<b>候选本身就不错、随便拿都行</b>。这两种情况后续该做的事完全相反。</p>
+</callout>
+
+<hr/>
+
+<h2>三种主要挑法：正式比较的就这三个</h2>
+
+<h3>一、按赚亏比排</h3>
+<table>
+<tr><td width="100"><b>怎么挑</b></td><td>每条算一个「赚亏比」：按概率加权的<b>赚的部分 ÷ 亏的部分</b>，比值高的排前面</td></tr>
+<tr><td><b>比什么基准</b></td><td>现金收益。也就是「比放货币基金多赚的部分」除以「亏掉的部分」。这个基准不是随便定的——放着不动本来就有 3.4% 年化，跑不过它就没必要冒险</td></tr>
+<tr><td><b>为什么试它</b></td><td>它直接就是我们要的东西：<b>赚多少相对亏多少</b>。而且不用额外问模型，生成时给的涨跌幅和概率就够算</td></tr>
+<tr><td><b>成本</b></td><td>零额外调用</td></tr>
+</table>
+
+<h3>二、逐条打分</h3>
+<table>
+<tr><td width="100"><b>怎么挑</b></td><td>让模型一条一条独立给 0–100 分，按分排</td></tr>
+<tr><td><b>打分标准明写在提示里</b></td><td>80–100：下行有硬约束（政策、财政、供给的边界），上行有一手证据<br/>60–79：上行有卖方证据，下行靠估值撑着<br/>40–59：只有故事，没有硬证据<br/>0–39：说的和给的数字对不上，或者行情已经走完了</td></tr>
+<tr><td><b>只给模型看数字和事实</b></td><td>不给它看那段论述文字。20 条论述都是同一个模型写的，它的行文习惯（哪条写得更自信、更长、更具体）会变成干扰——那不代表交易更好</td></tr>
+<tr><td><b>为什么试它</b></td><td>让模型独立打分，比让它两两比较更不容易被文字风格带跑：实测有干扰时两两比较有 <b>35%</b> 会改口，独立打分只有 <b>9%</b></td></tr>
+<tr><td><b>成本</b></td><td>20 次调用/周</td></tr>
+</table>
+
+<h3>三、逐条打分 + 找茬否决</h3>
+<table>
+<tr><td width="100"><b>怎么挑</b></td><td>先用第二种排好序，然后<b>每条派三个「找茬的」</b>，任务是「找出这条在一个月内会亏的最可能路径」</td></tr>
+<tr><td><b>默认判死</b></td><td>找茬的默认投否决，除非它找不出一条站得住的亏钱路径。三票里两票否决就剔掉</td></tr>
+<tr><td><b>三条硬规矩</b></td><td>① 一次性投票，<b>不许来回辩论</b>——辩论轮次越多准确率越低<br/>② 三个找茬的<b>互相看不到对方意见</b>——一个自信但错的意见能把整体准确率拉低 10–40%<br/>③ 只输出「否决/不否决 + 一句话失效路径」，<b>不许写说服性长文</b></td></tr>
+<tr><td><b>为什么试它</b></td><td>我们要的是少亏，而「找出怎么会亏」比「判断能赚多少」更容易做对</td></tr>
+<tr><td><b>成本</b></td><td>80 次调用/周（最贵的一个）</td></tr>
+</table>
+
+<hr/>
+
+<h2>三个旋钮试验：只拧一个参数，差多少就是这个参数值多少</h2>
 
 <whiteboard type="mermaid">
 flowchart LR
-  A3["臂 3<br/>绝对打分<br/>宽门槛 · σ×2"] -->|"加红队"| A4["臂 4"]
-  A3 -->|"止损改 σ×1.2"| A5["臂 5"]
-  A1["臂 1<br/>Omega<br/>宽门槛"] -->|"门槛改严"| A2["臂 2"]
-  A4 --> D1["差值 = 红队的边际价值"]
-  A5 --> D2["差值 = 止损松紧的边际价值"]
-  A2 --> D3["差值 = 门槛松紧的边际价值"]
+  BASE["逐条打分<br/>宽门槛 · 松止损"] -->|"加找茬"| V1["找茬版"]
+  BASE -->|"止损收紧"| V2["紧止损版"]
+  BASE2["按赚亏比排<br/>宽门槛"] -->|"门槛收紧"| V3["严门槛版"]
+  V1 --> R1["业绩之差<br/>= 找茬这一层值多少"]
+  V2 --> R2["业绩之差<br/>= 止损收紧值多少"]
+  V3 --> R3["业绩之差<br/>= 少买多留现金值多少"]
 </whiteboard>
 
 <table>
-<tr><th background-color="light-gray">#</th><th background-color="light-gray">臂</th><th background-color="light-gray">排序键</th><th background-color="light-gray">门槛</th><th background-color="light-gray">止损</th><th background-color="light-gray">增量调用/周</th></tr>
-<tr><td>0</td><td>全买（对照 A）</td><td>不排序，每条 1.25%</td><td>—</td><td>σ×2</td><td>0</td></tr>
-<tr><td>1</td><td><b>Omega 宽</b>（主臂）</td><td>Ω 降序，阈值取货币基金月化收益</td><td>宽</td><td>σ×2</td><td>0</td></tr>
-<tr><td>2</td><td>Omega 严</td><td>Ω 降序</td><td>严</td><td>σ×2</td><td>0</td></tr>
-<tr><td>3</td><td><b>绝对打分</b>（主臂）</td><td>score 降序，rubric 四档明写</td><td>宽</td><td>σ×2</td><td>20</td></tr>
-<tr><td>4</td><td><b>绝对+红队</b>（主臂）</td><td>score 降序 + 3 票 2/3 否决</td><td>宽</td><td>σ×2</td><td>80</td></tr>
-<tr><td>5</td><td>绝对+紧止损</td><td>同臂 3</td><td>宽</td><td>σ×1.2</td><td>0</td></tr>
-<tr><td>6</td><td>成对 Elo</td><td>50 对双向问，一致才计；只喂结构化事实</td><td>宽</td><td>σ×2</td><td>100</td></tr>
-<tr><td>7</td><td>拆解式</td><td>自洽度降序：分解各项之和与自报 upside 的接近程度</td><td>宽</td><td>σ×2</td><td>20</td></tr>
-<tr><td>8</td><td>纯左尾</td><td><code>p_down × \|downside\|</code> 升序，忽略 upside</td><td>宽</td><td>σ×2</td><td>0</td></tr>
-<tr><td>9</td><td>随机（对照 B）</td><td>固定种子伪随机</td><td>宽</td><td>σ×2</td><td>0</td></tr>
+<tr><th background-color="light-gray">旋钮</th><th background-color="light-gray">拧成什么</th><th background-color="light-gray">要回答</th></tr>
+<tr><td><b>止损松紧</b></td><td>止损从「跌 2 倍月波动」收到「跌 1.2 倍月波动」。<b>止盈不动</b>，这样差异只来自止损</td><td>止损位置到底值多少</td></tr>
+<tr><td><b>买多少条</b></td><td>从「宽：过线的都要，6–14 条」收到「严：只要排名前 40% 且分数够高，6–8 条」，剩下的钱放货币基金</td><td>宁缺毋滥是不是更好，<b>现金算不算一种仓位</b></td></tr>
+<tr><td><b>怎么比较</b></td><td>从「逐条独立打分」换成「两两比较排名次」，50 对，每对正反问两遍，两遍答案一致才算</td><td>两两比较去掉文字干扰之后，是不是比独立打分更准</td></tr>
 </table>
 
-<p>共享取数 100 次 + 各臂增量 220 次 = <b>320 次/周，约 1.7 万次/年</b>。取数用 <code>seed-1-6-flash</code>，红队用 <code>deepseek-r1</code>。</p>
-
-<callout emoji="✅" background-color="light-green" border-color="green">
-<p><b>两个对照组回答两个不同的问题。</b>臂 0 问「选择本身有价值吗」——若所有臂都赢不过它，打分 B 整个不要，直接全买。臂 9 问「排序有信息吗」——若与排序臂差不多，价值全在硬门槛。</p>
-<p><b>落选的 idea 必须照样结算反事实收益</b>，否则打分 B 无法被证伪。</p>
+<callout emoji="📌" background-color="light-gray">
+<p><b>止损为什么按波动倍数而不是固定百分比：</b>同样设 −4%，对月波动 3% 的债券 ETF 几乎永远不会触发，对月波动 12% 的半导体 ETF 一周的正常波动就打掉了。改成「跌 2 倍月波动」之后，月波动 6% 的标的止损在 −12%，月波动 3% 的止损在 −6%——<b>「止损有多紧」这件事在不同资产之间才是同一个意思</b>。</p>
 </callout>
 
-<bookmark name="打分 B · 10 个臂的操作规格（可直接实现的细节）" href="https://mq21cqc641p.feishu.cn/docx/Wu2adrJu9oC2wuxE1excyzo6nog"></bookmark>
+<hr/>
+
+<h2>两个极端试验：把一个想法推到底，看它成不成立</h2>
+
+<table>
+<tr><th background-color="light-gray">试验</th><th background-color="light-gray">怎么挑</th><th background-color="light-gray">在验证什么</th></tr>
+<tr><td><b>只看最多亏多少</b></td><td>完全不看能赚多少。只按「亏的概率 × 亏的幅度」从小到大排，取最小的那批</td><td>倒推年化 25% 时算出来「重点是少亏不是多赚」。<b>如果这个判断对，一个连上涨空间都不看的挑法也不该差</b></td></tr>
+<tr><td><b>算得清不清</b></td><td>要求模型把预期收益拆开：股票拆成「估值变化 + 盈利变化」，债拆成「实际利率 + 通胀预期 + 期限溢价」，汇率拆成「利差 + 风险溢价」，商品拆成「曲线 + 库存」。<b>然后按「拆出来的各项加起来，和它自己说的涨幅差多少」排序，差得越少排越前</b></td><td>它不奖励预期高，<b>奖励想清楚了</b>。加起来和自己说的差很远，说明是先有结论再凑理由</td></tr>
+</table>
+
+<hr/>
+
+<h2>十种挑法一览</h2>
+
+<table>
+<tr><th background-color="light-gray">分组</th><th background-color="light-gray">挑法</th><th background-color="light-gray">一句话</th><th background-color="light-gray">额外调用/周</th></tr>
+<tr><td rowspan="2">对照组</td><td>不筛全买</td><td>20 条全要，仓位减半</td><td>0</td></tr>
+<tr><td>随机抽</td><td>过线的里面随便抽 10 条</td><td>0</td></tr>
+<tr><td rowspan="3"><b>正式比较</b></td><td><b>按赚亏比排</b></td><td>赚的部分 ÷ 亏的部分，基准是现金收益</td><td>0</td></tr>
+<tr><td><b>逐条打分</b></td><td>模型独立给 0–100，标准明写</td><td>20</td></tr>
+<tr><td><b>打分 + 找茬</b></td><td>三个找茬的，两票否决就剔</td><td>80</td></tr>
+<tr><td rowspan="3">旋钮试验</td><td>打分 + 紧止损</td><td>选的一样，止损收紧一半</td><td>0</td></tr>
+<tr><td>赚亏比 + 严门槛</td><td>只要前 40%，其余放现金</td><td>0</td></tr>
+<tr><td>两两比较</td><td>50 对正反各问一遍，一致才算</td><td>100</td></tr>
+<tr><td rowspan="2">极端试验</td><td>只看最多亏多少</td><td>不看上涨空间</td><td>0</td></tr>
+<tr><td>算得清不清</td><td>按拆解自洽程度排</td><td>20</td></tr>
+</table>
+
+<p>加上十种共用的一次取数（100 次），合计 <b>320 次调用/周，约 1.7 万次/年</b>。便宜的模型做取数，会推理的模型只用在找茬上。</p>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>没选中的那些也要记账。</b>每条落选的 idea 照样按实际行情算出「如果买了会怎样」。没有这一步，就永远不知道被砍掉的那一半是不是更好——那样的话，无论哪种挑法看起来赢了，都说明不了它真的在挑。</p>
+</callout>
+
+<bookmark name="十种挑法的完整操作规格（公式、参数、落库字段）" href="https://mq21cqc641p.feishu.cn/docx/Wu2adrJu9oC2wuxE1excyzo6nog"></bookmark>
 
 <hr/>
 
@@ -217,26 +296,26 @@ flowchart LR
 
 <whiteboard type="mermaid">
 flowchart TB
-  P1["阶段一 · 第 1-8 周<br/>实盘为零<br/>10 个臂全部纸上"] --> SEL{"8 周配对比较"}
-  SEL -->|"有臂显著优于对照组"| P2["阶段二 · 第 9 周<br/>赢家上实盘小资金<br/>其余 9 臂转影子盘"]
-  SEL -->|"没有任何臂显著"| ZERO["结论：选择本身没价值<br/>直接用臂 0 全买"]
-  P2 --> P3["阶段三 · 稳态<br/>9 个影子臂常驻挑战<br/>想试新机制就加一个臂"]
+  P1["阶段一 · 第 1-8 周<br/>不花真钱<br/>十种挑法全部纸上"] --> SEL{"8 周同批对比"}
+  SEL -->|"有挑法明显赢过全买"| P2["阶段二 · 第 9 周<br/>赢家上实盘小资金<br/>其余 9 种继续纸上"]
+  SEL -->|"没有一种赢过全买"| ZERO["结论：筛选没有价值<br/>以后直接全买"]
+  P2 --> P3["阶段三 · 稳态<br/>9 种纸上挑法常驻挑战<br/>想试新方法就加一种"]
   P3 --> T1{"触发器一<br/>挑战成功"}
   P3 --> T2{"触发器二<br/>冠军失效"}
-  T1 --> SW["月度边界换冠军<br/>四批滚动自然过渡"]
+  T1 --> SW["月度边界换<br/>四批滚动自然过渡"]
   T2 --> SW
   SW --> P3
 </whiteboard>
 
 <table>
 <tr><th background-color="light-gray"></th><th background-color="light-gray">触发器一 · 挑战成功</th><th background-color="light-gray">触发器二 · 冠军失效</th></tr>
-<tr><td>条件</td><td>配对差值 ≥ 2 个百分点<br/>校正后 p &lt; 0.05<br/>观察 ≥ 8 周<br/>挑战者须为预注册主臂</td><td>12 周内跑不过对照组臂 0<br/>或击穿回撤预算</td></tr>
-<tr><td>动作</td><td>月度边界切换</td><td>立即降级为当前最优臂</td></tr>
+<tr><td>条件</td><td>配对差值 ≥ 2 个百分点<br/>校正后 p &lt; 0.05<br/>观察 ≥ 8 周<br/>挑战者必须是正式比较的那三种之一</td><td>12 周内跑不过「不筛全买」<br/>或击穿回撤预算</td></tr>
+<tr><td>动作</td><td>月度边界切换</td><td>立即换成当前表现最好的那一种</td></tr>
 <tr><td>冷静期</td><td>换过之后 12 周不再换</td><td>不受冷静期限制</td></tr>
 </table>
 
 <callout emoji="📌" background-color="light-gray">
-<p><b>实盘只有一个臂真买。</b>影子盘不占资金、不下单、零摩擦成本，只花 token。10 个臂各买 10% 会让 picks 取并集后买到 20 条里的绝大部分，等于收敛成对照组。</p>
+<p><b>只有一种挑法花真钱。</b>其余九种纸上记账，不占资金、不下单、没有交易成本，只花模型调用。</p><p><b>十种各买 10% 是行不通的：</b>十种挑法从同一批 20 条里选，选出来的重叠度很高，取并集之后会买到 20 条里的绝大部分——那就等于「不筛全买」，既失去了筛选，又付了十倍交易成本。</p>
 <p><b>切换靠四批滚动自然完成：</b>新进的批次按新冠军规则选，存量三批各自跑到 1 个月到期，四周后组合完全由新冠军构成，零额外交易。</p>
 </callout>
 
@@ -312,8 +391,8 @@ flowchart TB
 
 <whiteboard type="mermaid">
 flowchart LR
-  M0["第 1 个月"] --> K1["实测臂间相关性 ρ<br/>校正时间表"]
-  M1["约 1.7 个月"] --> K2["3 个预注册主臂<br/>vs 对照组的结论"]
+  M0["第 1 个月"] --> K1["实测各挑法之间的相关性<br/>校正时间表"]
+  M1["约 1.7 个月"] --> K2["正式比较的三种<br/>对比全买的结论"]
   M2["约 7 个月"] --> K3["单个打分维度<br/>2 个百分点级别的贡献"]
   M3["约 26 个月"] --> K4["单个维度<br/>1 个百分点级别的贡献"]
   K2 --> LIVE["决定谁上实盘"]
@@ -322,10 +401,10 @@ flowchart LR
 
 <table>
 <tr><th background-color="light-gray">项</th><th background-color="light-gray">规格</th></tr>
-<tr><td>比较量</td><td>配对差值 = 臂 i 本批 1 个月收益 − 臂 0 同批收益</td></tr>
-<tr><td>为什么配对</td><td>所有臂同一周、同一批候选、同一市场，共同的市场因子相减消掉。独立样本要 7 个月检出 2 个百分点，配对（ρ≈0.8）约 1.3 个月</td></tr>
+<tr><td>比较量</td><td>同批之差 = 某挑法本批 1 个月收益 − 「不筛全买」同批收益</td></tr>
+<tr><td>为什么要同批比</td><td>十种挑法同一周、同一批候选、同一个市场，共同的市场涨跌在相减时抵消掉。独立样本要 7 个月检出 2 个百分点，配对（ρ≈0.8）约 1.3 个月</td></tr>
 <tr><td>检验</td><td>配对 t 检验或 Wilcoxon 符号秩</td></tr>
-<tr><td>多重比较</td><td>9 次比较不校正时假阳性概率约 37%。只对 3 个预注册主臂做正式检验，其余 6 个探索性、只生成假设</td></tr>
+<tr><td>多重比较</td><td>9 次比较不校正时假阳性概率约 37%。只对正式比较的那三种做统计检验，其余六种只用来产生想法、不下结论</td></tr>
 </table>
 
 <callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
@@ -340,7 +419,7 @@ flowchart LR
 flowchart TB
   subgraph M["方法论层"]
     M1["打分 A"]
-    M2["打分 B 与 10 个臂"]
+    M2["打分 B 与十种挑法"]
     M3["频率与宇宙"]
     M4["组合与退出规则"]
   end
@@ -386,7 +465,7 @@ flowchart TB
 <tr><td><b>H 的符号</b></td><td>最大风险。注意力文献记录的是「约 2 周上涨、年内反转」，1 个月持有正好在边界；我们量的是机构覆盖而非散户搜索。真正的赌注是「H 高 + P 低」的组合。H×P 检验在现有 121 个 theme-day 上 t = −0.47，区间横跨 0，无分辨力</td></tr>
 <tr><td>四个权重 0.30/0.25/0.25/0.20</td><td>先验值</td></tr>
 <tr><td>ρ ≈ 0.8</td><td>整个时间表建立在它上面，第一个月实测</td></tr>
-<tr><td>止损 σ×2 与 σ×1.2、止盈 σ×3</td><td>先验值，由臂 5 与臂 3 的差值检验</td></tr>
+<tr><td>止损 σ×2 与 σ×1.2、止盈 σ×3</td><td>先验值，由「紧止损版」与「逐条打分」的业绩之差检验</td></tr>
 <tr><td>波动带 [0.35σ, 2.60σ]</td><td>先验值</td></tr>
 <tr><td>n ∈ [6,14]、严门槛前 40%、Ω ≥ 1.5、score ≥ 60</td><td>先验值</td></tr>
 <tr><td>Elo 50 对、红队 3 票 2/3 否决</td><td>先验值</td></tr>

@@ -1,0 +1,279 @@
+<title>打分 B 方案 · 养蛊式并行验证</title>
+
+<callout emoji="🎯" background-color="light-blue" border-color="blue">
+<p><b>一句话：</b>打分 B 不做「选一个方案」，做<b>并行跑 10 个策略，让实现的 P&amp;L 决定</b>。</p>
+<p><b>为什么这不是碰运气：</b>10 个策略从<b>同一批 20 条候选</b>里选，同一周同一市场，共同的市场因子在相减时被消掉——这是<b>配对比较</b>。独立样本要 7 个月才能检出 2 个百分点的差异，配对之后只要 <b>1.3–2.2 个月</b>。</p>
+<p><b>它把「我们不知道哪个 B 对」从阻塞变成了测量设计。</b></p>
+</callout>
+
+<whiteboard type="mermaid">
+flowchart TB
+  T["打分 A → 5 个主题"] --> G20["生成 20 条 idea<br/>1 个月期"]
+  G20 --> PIPE
+  subgraph PIPE["每个臂共用的流水线"]
+    S1["① 结构化取数<br/>与写理由分开调用<br/>采样5次取中位<br/>>70% 概率截断"]
+    S1 --> S2["② 硬门槛<br/>波动带 0.35-2.60σ<br/>价格动量同向<br/>流动性可申赎"]
+    S2 --> S3["③ 排序 ← 各臂在这里不同"]
+    S3 --> S4["④ 红队一次性独立否决<br/>结构化裁决 · 不互看 · 不多轮"]
+  end
+  PIPE --> N["过门槛的都进<br/>n ∈ 6~14<br/>不足部分停 JPST"]
+  N --> BOOKS["10 个并行账本<br/>各自 25% 四批滚动"]
+  PIPE -.->|"落选的"| CF["反事实收益<br/>照样结算"]
+  BOOKS --> CMP{"配对比较<br/>vs 对照组"}
+  CF --> CMP
+</whiteboard>
+
+<hr/>
+
+<h1>一、背景</h1>
+
+<p>目标从「每天 40 条 idea 给 PM 挑」改成「<b>一个持续在跑的组合</b>」。验收线年化 25%，第一性原理是「我们自己愿不愿意把钱放进去」。</p>
+
+<table>
+<tr><th background-color="light-gray">环节</th><th background-color="light-gray">做什么</th><th background-color="light-gray">状态</th></tr>
+<tr><td>每周三</td><td>读周一至周三日报</td><td>已定</td></tr>
+<tr><td><b>打分 A</b></td><td>出 5 个宏观主题</td><td><span text-color="green">已定：HGEP</span></td></tr>
+<tr><td>生成</td><td>20 条 tactical idea，1 个月期</td><td>已定</td></tr>
+<tr><td><b>打分 B</b></td><td>决定哪些进组合</td><td><span text-color="red"><b>本文要解的</b></span></td></tr>
+<tr><td>组合</td><td>占 25% 等权 · 4 批滚动 · 到期换掉 · 现金停 JPST</td><td>已定</td></tr>
+</table>
+
+<hr/>
+
+<h1>二、要解决什么问题</h1>
+
+<p>表面问题是「20 条里怎么选」。真正的难点是三个约束叠在一起：</p>
+
+<table>
+<tr><th background-color="light-gray">约束</th><th background-color="light-gray">具体</th></tr>
+<tr><td><b>不知道哪个对</b></td><td>这类 know-how 在 macro PM 脑子里，跑成的也不外说，市面上没有现成方案</td></tr>
+<tr><td><b>验证很慢</b></td><td>功效分析：独立样本检出 2 个百分点的差异需要 <b>7 个月</b>周度运行</td></tr>
+<tr><td><b>LLM 有系统性偏误</b></td><td>而 B 完全依赖 LLM 判断</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>而且打分 B 现在是零——没代码、没数据。</b></p>
+<p>旧流程 40 条<b>全买</b>，S/A/B/C 评级只影响<b>仓位大小</b>（<code>GRADE_SIZE_MULT</code>），从不筛掉任何一条。唯一让想法进不了组合的原因是「不可盯市 / 没汇率 / 现金不够」。</p>
+<p>所以既没有「筛选」这个动作，也没有「被筛掉的那一半」——<b>B 连一条历史数据都没有可以诊断。这是它比打分 A 难的根本原因</b>（A 有 196 个 theme-day 的实测）。</p>
+<p>顺带澄清一个命名混淆：旧系统的 <b>S/A/B/C 不是「打分 B」</b>。它是描述性的（这条赔率好不好），不是选择性的（要不要买）。而且它已经退化——320 条规则想法里 <b>S 有 0 个、A 只有 2 个</b>。</p>
+</callout>
+
+<hr/>
+
+<h1>三、调研结论</h1>
+
+<table>
+<tr><th background-color="light-gray">发现</th><th background-color="light-gray">证据</th><th background-color="light-gray">对 B 的影响</th></tr>
+<tr><td><b>1 个月在 ETF 宇宙是动量</b></td><td>Zaremba, Karathanasopoulos &amp; Long (2019), JIMF 63：两世纪五类资产，上月收益正向预测下月，<b>明确与股票层面相反</b></td><td>方向对，<b>但前提是不投个股</b>——股票层面 1 个月是经典反转异象</td></tr>
+<tr><td><b>热度符号未验证</b></td><td>Da, Engelberg &amp; Gao (2011), JF：注意力上升 → 约 2 周涨 → 年内反转</td><td>最大风险，但属于打分 A 不属于 B</td></tr>
+<tr><td><b>成对 vs 绝对</b></td><td>Tripathi 等 (2025), arXiv:2504.14716：有干扰特征时<b>成对翻转 35%，绝对只翻 9%</b>；成对另有位置偏好</td><td><span text-color="red"><b>排序机制的选择被推翻重来</b></span></td></tr>
+<tr><td><b>LLM 高区间过度自信</b></td><td>Lu (2025), arXiv:2507.04562：&gt;70% 不可信；<b>叙事式提问让 Brier 从 0.1542 恶化到 0.1842</b></td><td>取数必须结构化、与写理由分开、采样取中位</td></tr>
+<tr><td><b>红队双刃</b></td><td>多智能体辩论平均 +7.05%，但单个自信的错误批评者能让准确率<b>掉 10–40%</b>、错误共识增 30%</td><td>保留，但必须一次性、结构化、不多轮共识</td></tr>
+</table>
+
+<callout emoji="❗" background-color="light-yellow" border-color="yellow">
+<p><b>「成对 vs 绝对」是什么意思：</b></p>
+<ul>
+<li><b>绝对打分</b>——一条一条独立给分（72 / 55 / 81），再按分排序。像老师给每篇作文打分。</li>
+<li><b>成对比较</b>——两条放一起只问「哪个更好」，比很多对之后用 Elo 排名次。像下棋积分。</li>
+</ul>
+<p><b>干扰特征</b>＝和质量无关但评判者偏好的表面属性：写得更长、语气更自信、数字更具体、名字更熟悉。实验是把干扰注入<b>更差</b>的那一条，看评判者会不会改口——成对改口 35%，绝对只改 9%。</p>
+<p><b>为什么这对我们特别致命：</b>那 20 条 idea <b>是同一个 LLM 写的</b>，它的行文习惯就是系统性干扰。如果它碰巧对熟悉的标的写得更自信，成对排序会系统性偏向熟悉的标的——<b>不是因为那是更好的交易</b>。</p>
+</callout>
+
+<hr/>
+
+<h1>四、两个关键思考</h1>
+
+<h2>① B 的目标不是「挑最好的」，是「砍掉一旦错就亏很多的」</h2>
+
+<p>这是算术推出来的。年化 25% → 组合满仓等权 → <b>单条月度净只需 +1.877%</b>。按实测 57% 胜率反推：</p>
+
+<table>
+<tr><th background-color="light-gray">止损设在</th><th background-color="light-gray">赢时需要赚到</th><th background-color="light-gray">需要赔率</th></tr>
+<tr><td>−3%</td><td>+5.68%</td><td>1.89</td></tr>
+<tr><td>−4%</td><td>+6.43%</td><td>1.61</td></tr>
+<tr><td>−5%</td><td>+7.18%</td><td>1.44</td></tr>
+<tr><td>−6%</td><td>+7.94%</td><td>1.32</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>止损位置是比打分更强的杠杆。</b>从 −6% 收到 −3%，需要的赔率从 1.32 提到 1.89，但需要的<b>绝对涨幅</b>从 +7.94% 降到 +5.68%——后者容易得多。</p>
+<p>所以 B 的目标函数应写成「<b>在不牺牲胜率的前提下压缩左尾</b>」，不是追右尾。这直接改了臂的排序：管左尾的（波动带、红队、纯下行排序）重要性上升。</p>
+</callout>
+
+<h2>② 养蛊不是碰运气，是测量设计</h2>
+
+<p>10 个策略从<b>同一批 20 条候选</b>里选，同一周、同一个市场。共同的市场因子在两两相减时被消掉——这是配对比较，不是独立样本。</p>
+
+<table>
+<tr><th background-color="light-gray">策略间相关性 ρ</th><th background-color="light-gray">差值标准差</th><th background-color="light-gray">检出 2 个百分点所需</th></tr>
+<tr><td>0（独立样本）</td><td>4.24%</td><td><span text-color="red">7 个月</span></td></tr>
+<tr><td>0.5</td><td>3.00%</td><td>3 个月</td></tr>
+<tr><td>0.7</td><td>2.32%</td><td>2 个月</td></tr>
+<tr><td><b>0.8（共享候选池的典型值）</b></td><td>1.90%</td><td><span text-color="green"><b>约 1.3 个月</b></span></td></tr>
+<tr><td>0.9</td><td>1.34%</td><td>1 个月</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p>成本也不高：每周 20 条候选 × 10 个臂 = 200 次打分调用，量很小；10 个账本都是纸上的，不占真钱。</p>
+<p><b>「我不过问」这句话在这个框架下是对的</b>——不该先验挑，应该让实现的 P&amp;L 决定。</p>
+</callout>
+
+<hr/>
+
+<h1>五、方案：养蛊做框架，三个原方案是里面的臂</h1>
+
+<p>每个臂共用同一条流水线，只在<b>第 ③ 步排序机制</b>和<b>门槛松紧</b>上不同：</p>
+
+<pre lang="text" caption="共用流水线"><code>① 结构化取数     与写理由分开调用；同一条采样 5 次取中位；>70% 概率一律截断
+② 硬门槛         波动带 [0.35σ, 2.60σ] + 价格动量同向 + 流动性可日度申赎
+③ 排序           ← 各臂在这里不同
+④ 红队           一次性独立投票，结构化裁决，不互看，绝不多轮共识
+⑤ 建仓           过门槛的都进，n ∈ [6,14]，不足部分停 JPST</code></pre>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>关于「定门槛不定比例」：</b>批次权重永远是 25%，浮动的只是批内每条的权重（6 条就每条 4.17%，14 条就 1.79%），<b>结构上没有冲突</b>。</p>
+<p>真正的坏处是<b>集中度会反向漂移</b>：过门槛的少 = 市场不清楚的时候，而那时反而最集中——最没把握时下最重的注，这是反的。所以设 n ∈ [6,14] 上下限，不足部分停 JPST。</p>
+<p>这样「这周没有好机会」就翻译成「拿现金」，<b>而配额制强迫你违反这一点</b>，必须凑够 10 条——那正是「为了凑数放进明知道差的」。</p>
+</callout>
+
+<hr/>
+
+<h1>六、10 个臂</h1>
+
+<h2>臂 0 · 全买 20 条，每条半仓（对照组）</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>不做任何排序，20 条全进，每条权重减半</td></tr>
+<tr><td><b>为什么在</b></td><td><b>必需件。</b>没有它，你永远不知道打分 B 到底加没加价值</td></tr>
+<tr><td><b>赢了说明</b></td><td>所有排序都是白烧 token，应该直接全买</td></tr>
+<tr><td><b>成本</b></td><td>零（不调模型）</td></tr>
+</table>
+
+<h2>臂 1 · Omega（阈值取货币基金收益）</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>AI 直接给 upside% 与 downside%，相除排序。<code>Ω = 阈值以上的概率加权收益 ÷ 阈值以下的</code></td></tr>
+<tr><td><b>为什么在</b></td><td>Omega <b>本身就是左尾感知的度量</b>，和目标函数天然匹配。它最大的批评是「阈值任意、无系统定法」——<b>而我们恰好有一个有依据的阈值：现金机会成本</b>，这条批评对我们不成立</td></tr>
+<tr><td><b>赢了说明</b></td><td>AI 自报的上下行数字有信息，简单方案够用</td></tr>
+<tr><td><b>成本</b></td><td>低（取数阶段已经产生这两个数）</td></tr>
+</table>
+
+<h2>臂 2 · Omega + 严门槛</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>同臂 1，但门槛收紧，平均只持 6–8 条，其余停 JPST</td></tr>
+<tr><td><b>为什么在</b></td><td>检验<b>门槛松紧本身</b>是不是一个独立的杠杆——而不是只有排序机制重要</td></tr>
+<tr><td><b>赢了说明</b></td><td>宁缺毋滥；现金是一个被低估的仓位</td></tr>
+<tr><td><b>成本</b></td><td>与臂 1 相同</td></tr>
+</table>
+
+<h2>臂 3 · 绝对打分排序</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>逐条按统一评分标准给 0–100，按分排序</td></tr>
+<tr><td><b>为什么在</b></td><td>调研的直接推荐：<b>抗干扰能力远强于成对</b>（翻转 9% vs 35%），且便宜、实现简单</td></tr>
+<tr><td><b>赢了说明</b></td><td>该走这条；成对不必上</td></tr>
+<tr><td><b>成本</b></td><td>低（20 次调用）</td></tr>
+</table>
+
+<h2>臂 4 · 绝对打分 + 红队否决</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>臂 3 的排序 + 每条派 3 个只被要求「杀掉它」的独立评审，2/3 判死则剔除</td></tr>
+<tr><td><b>为什么在</b></td><td>直接检验红队这一层的<b>边际价值</b>——与臂 3 只差这一步，差值就是红队的贡献</td></tr>
+<tr><td><b>赢了说明</b></td><td>否决层有效，值得那 3 倍成本</td></tr>
+<tr><td><b>成本</b></td><td>中（+60 次调用）</td></tr>
+</table>
+
+<h2>臂 5 · 成对 Elo（只喂结构化事实）</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>随机配约 50 对问「哪个更适合一个月」，Elo 排名。<b>只喂结构化事实，不喂 thesis 散文</b>；左右双向各问一次，一致才采信</td></tr>
+<tr><td><b>为什么在</b></td><td>成对更贴合偏好，而且<b>天然把 20 条拉开</b>——正好治「同主题概率全一样」的病。去掉散文就去掉了 35% 那个脆弱性的来源</td></tr>
+<tr><td><b>赢了说明</b></td><td>去干扰之后成对确实更强，值得那个成本</td></tr>
+<tr><td><b>成本</b></td><td>高（约 100 次调用，双向各一次）</td></tr>
+</table>
+
+<h2>臂 6 · 拆解式（收益来源必须说清）</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>AI 必须把预期收益拆开：股票＝Δ倍数 × Δ盈利；利率＝Δ实际 + Δ通胀预期 + Δ期限溢价；FX＝Δ利差 + Δ风险溢价；商品＝Δ曲线 + Δ库存。按拆解的一致性与可信度排序</td></tr>
+<tr><td><b>为什么在</b></td><td>这是<b>推理纪律</b>，防止空口讲故事；而且让<b>跨资产可比</b>——股票 idea 和利率 idea 本来没法比，拆解给了共同语言</td></tr>
+<tr><td><b>赢了说明</b></td><td>强制结构化推理有效</td></tr>
+<tr><td><b>成本</b></td><td>中高（输出长，token 多）</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
+<p><b>这个臂只保留了原方案 3 的前半。</b>「落到 coding、去拉个股/ETF 数据计算」那一半<b>刻意砍掉</b>——那会把 AI 降级成填数工具，做出来就是个因子模型，即会上明确不走的桥水那条路。保留的是「必须说清收益从哪来」这个约束，不是「用代码算出来」。</p>
+</callout>
+
+<h2>臂 7 · 纯左尾（只按下行排，upside 不看）</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>完全忽略上行，只按「最可能的下行幅度 × 下行概率」升序排，取最小的那批</td></tr>
+<tr><td><b>为什么在</b></td><td>目标函数的<b>极端版</b>。如果「压缩左尾」这个判断是对的，这个臂应该表现不差——而它连 upside 都不看</td></tr>
+<tr><td><b>赢了说明</b></td><td>目标函数的推断成立，右尾基本无需预测</td></tr>
+<tr><td><b>成本</b></td><td>低</td></tr>
+</table>
+
+<h2>臂 8 · 异质多模型取中位</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>同一套绝对打分，分别由 deepseek / seed / glm / kimi 各跑一遍，取中位</td></tr>
+<tr><td><b>为什么在</b></td><td>集成的收益来自<b>多样性不是数量</b>。账号里正好有四个<b>不同厂商血统</b>的模型，异质集成能真做，而不是同一个模型跑五遍</td></tr>
+<tr><td><b>赢了说明</b></td><td>模型间的分歧是有信息的，值得 4 倍成本</td></tr>
+<tr><td><b>成本</b></td><td>高（4 倍）</td></tr>
+</table>
+
+<h2>臂 9 · 随机选（第二对照组）</h2>
+<table>
+<tr><td width="90"><b>做什么</b></td><td>过硬门槛后<b>随机</b>抽 10 条</td></tr>
+<tr><td><b>为什么在</b></td><td>检验<b>排序本身</b>有没有信息。臂 0 检验「选不选」，臂 9 检验「排序 vs 乱排」——两个问题不同</td></tr>
+<tr><td><b>赢了说明</b></td><td>硬门槛贡献了全部价值，排序是噪音</td></tr>
+<tr><td><b>成本</b></td><td>零</td></tr>
+</table>
+
+<hr/>
+
+<h1>七、怎么判胜负</h1>
+
+<callout emoji="❌" background-color="light-red" border-color="red">
+<p><b>10 个臂同时比有一个必须处理的陷阱：多重比较。</b></p>
+<p>10 个臂对照组 = 9 次比较。在 α=0.05 下不做校正，<b>至少出现一个假阳性的概率约 37%</b>——也就是说，即使所有臂都一样好，你也大概率会看到某个臂「显著更优」，然后把它当成结论。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">检验设计</th><th background-color="light-gray">每臂所需周数</th><th background-color="light-gray">月数</th></tr>
+<tr><td>单一比较，不校正（<span text-color="red">不可用</span>）</td><td>7</td><td>1.3</td></tr>
+<tr><td><b>预注册 3 个主臂 → 3 次比较</b></td><td>9</td><td><span text-color="green"><b>1.7</b></span></td></tr>
+<tr><td>10 臂全比 → 9 次 Bonferroni 校正</td><td>12</td><td>2.2</td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>建议的设计：</b></p>
+<ul>
+<li><b>预注册 3 个主臂</b>做正式检验——我提名 <b>臂 1（Omega）、臂 3（绝对打分）、臂 4（绝对+红队）</b>，因为它们最便宜、最可能上线、而且臂 4 减臂 3 直接给出红队的边际价值。</li>
+<li><b>其余 6 个臂是探索性的</b>，只用来生成假设，不作结论。探索性臂表现好，下一轮把它升级成主臂重新预注册。</li>
+<li><b>两个对照组都保留</b>（臂 0 全买、臂 9 随机），它们回答两个不同的问题：选不选有没有用、排序有没有信息。</li>
+</ul>
+<p>这样约 <b>1.7 个月</b>能出第一个可信结论，而不是 7 个月。</p>
+</callout>
+
+<hr/>
+
+<h1>八、记账铁律</h1>
+
+<table>
+<tr><th background-color="light-gray">规则</th><th background-color="light-gray">为什么</th></tr>
+<tr><td><b>落选的那些必须照样结算反事实收益</b></td><td>否则打分 B <b>永远无法被证伪</b>——你不会知道砍掉的那一半是不是更好。这是整套设计里最容易被省掉、也最不能省的一环</td></tr>
+<tr><td>10 个臂共享同一批候选、同一个成交规则</td><td>否则差异里混进了执行差异，配对比较的前提就没了</td></tr>
+<tr><td>每个臂一个独立账本，25% 四批滚动</td><td>与主组合口径完全一致，避免「臂赢了但换成真组合就不成立」</td></tr>
+<tr><td>每次打分的输入、输出、理由、引用全部落库</td><td>AI 判断不可复现，只能靠事后可复核来补</td></tr>
+<tr><td>止损位置每批生成时定死，运行中不变</td><td>无人值守的前提。但<b>不同臂可以用不同止损规则</b>——算术显示它比排序杠杆更大，值得进入养蛊</td></tr>
+</table>
+
+<hr/>
+
+<h1>九、仍然没定的</h1>
+
+<table>
+<tr><th background-color="light-gray">问题</th><th background-color="light-gray">现状</th></tr>
+<tr><td><b>止损用什么规则定</b></td><td>固定百分比对不同波动的标的意味着完全不同的事。倾向按 σ 倍数，但没有依据。建议直接做成一个臂的维度</td></tr>
+<tr><td><b>n ∈ [6,14] 这个上下限</b></td><td>拍的。上限防过度分散，下限防集中度反向漂移，但具体数字无依据</td></tr>
+<tr><td><b>Elo 需要多少对比较</b></td><td>20 条全配对是 190 对太贵，随机 50 对够不够要实测</td></tr>
+<tr><td><b>ρ=0.8 这个假设</b></td><td>整个加速论证建立在它上面。<b>第一个月就能实测出真实 ρ</b>，如果远低于 0.8，时间表要重算</td></tr>
+<tr><td><b>20 → 10 这个比例</b></td><td>已改为门槛制，比例问题消失。但门槛具体设在哪仍无依据</td></tr>
+</table>

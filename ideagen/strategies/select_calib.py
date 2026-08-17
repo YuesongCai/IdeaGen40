@@ -92,8 +92,8 @@ def _topic_evidence(ctx: RunContext) -> dict[str, dict]:
     return out
 
 
-@register("idea_selector", "calib", "1.0", label="证据赔率一致性",
-          role="exploratory",
+@register("idea_selector", "calib", "1.0", label="8. 证据赔率一致性",
+          role="primary",
           params={"n": 10, "thin_docs": 12, "p_up_floor": 0.40,
                   "p_up_span": 0.30, "peer_mult": 1.5, "sum_tol": 0.20})
 def calib(ctx: RunContext) -> Verdict:

@@ -15,17 +15,17 @@ from ..strategy import RunContext, Verdict, register
 MAX_N = 14
 
 
-@register("idea_selector", "buy_all", "1.0", label="1. 不筛全买",
+@register("idea_selector", "buy_all", "1.0", label="9. 不筛全买（量尺）",
           role="control")
 def buy_all(ctx: RunContext) -> Verdict:
     """Take every candidate. Answers whether selecting adds anything at all."""
     ids = [c["id"] for c in ctx.candidates]
     return Verdict(strategy="buy_all", version="1.0", chosen=ids,
-                   meta={"note": "no ranking; weight halved by the orchestrator",
+                   meta={"note": "没有排序；持仓在选中的条目间等权摊薄",
                          "n": len(ids)})
 
 
-@register("idea_selector", "random_pick", "1.0", label="2. 随机抽",
+@register("idea_selector", "random_pick", "1.0", label="10. 随机抽（量尺）",
           role="control", params={"n": 10, "seed": 20260817})
 def random_pick(ctx: RunContext) -> Verdict:
     """Draw n at random from a fixed seed. Answers whether *ranking* carries

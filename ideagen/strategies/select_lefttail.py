@@ -13,7 +13,7 @@ import statistics as st
 from ..strategy import RunContext, Verdict, register
 
 
-@register("idea_selector", "left_tail", "1.0", label="9. 只看最多亏多少",
+@register("idea_selector", "left_tail", "1.0", label="只看最多亏多少（常驻探索）",
           role="exploratory", params={"n_min": 6, "n_max": 14})
 def left_tail(ctx: RunContext) -> Verdict:
     loss = {}

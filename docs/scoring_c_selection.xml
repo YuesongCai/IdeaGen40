@@ -1,0 +1,481 @@
+<title>筛选C · 定持仓的操作规格</title>
+
+<callout emoji="🅲" background-color="light-blue" border-color="blue">
+<p><b>这份文档是筛选C 的操作规格：每种挑法的公式、参数默认值、落库字段，以及几种挑法之间怎么比出高下。</b></p>
+<p>筛选C 面对的是筛选B 合并去重后的候选池，从里面定出真正持有的十条。<b>八本账并行</b>——四种挑法、两个量尺、两个常驻探索项，看完全相同的池子，各挑一份、各记一本；只有一本花真钱。</p>
+<p>投资逻辑是插件：每种挑法是 <code>ideagen/strategies/</code> 下的一个文件，注册进 <code>idea_selector</code>；流水线不按名字导入任何一种。</p>
+</callout>
+
+<hr/>
+
+<h1>一、这一层的输入与输出</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  POOL["候选池 96 条<br/>一个标的一条"] --> GATE["四道底线<br/>不合格的谁都不能选"]
+  GATE --> BOOKS
+  subgraph BOOKS["同一个池子，八本账并行"]
+    direction TB
+    A["5. AI 端到端挑"]
+    B["6. 按赚亏比排"]
+    C["7. 组合去集中"]
+    D["8. 证据赔率一致性"]
+    E["9. 不筛全买 · 量尺"]
+    F["10. 随机抽 · 量尺"]
+    G["赚亏比 + 严门槛 · 探索"]
+    H["只看最多亏多少 · 探索"]
+  end
+  BOOKS --> HOLD["各自建仓<br/>本批占组合 25%<br/>批内等权"]
+  BOOKS --> DB["每本都落库<br/>verdicts 一行"]
+  GATE -. "没被选中的也照样记账" .-> CF["反事实<br/>candidates 全量落库"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">数</th><th background-color="light-gray">出处</th></tr>
+<tr><td>候选池条数</td><td><b>96</b></td><td>5 主题 × 4 种出想法方式 × 20 条 = 400 条原始想法，合并去重后 96 个不同标的</td></tr>
+<tr><td>目标持仓</td><td><b>10</b></td><td>各挑法的 <code>n</code> 默认 10；按赚亏比排一类用区间 <code>n_min</code> / <code>n_max</code></td></tr>
+<tr><td>并行账本</td><td><b>8</b></td><td>注册在 <code>idea_selector</code> 下的全部挑法，缺省全跑</td></tr>
+<tr><td>进统计检验的</td><td><b>3</b></td><td>只有 <code>role=primary</code> 的三种对量尺做正式检验</td></tr>
+<tr><td>花真钱的</td><td><b>1</b></td><td>其余纸上记账，不占资金、不下单</td></tr>
+</table>
+
+<callout emoji="🔢" background-color="light-yellow" border-color="yellow">
+<p><b>实际筛选比是 10 / 96 ≈ 10%，不是 10 / 20 = 50%。</b>「每个主题 20 条」说的是筛选B 每个主题的产量；筛选C 面对的是全部主题、全部方式合并去重之后的池子。这个差别不是措辞问题——<b>10% 的筛选比意味着挑法这一层的权重比听起来重得多</b>。</p>
+<p>重叠程度是实测的：96 个标的里 <b>17 个是四种出想法方式都看中的</b>，33 个三种，35 个两种，只有 11 个是某一种独有。</p>
+</callout>
+
+<h2>候选池是怎么合出来的</h2>
+
+<whiteboard type="mermaid">
+flowchart LR
+  R["400 条原始想法<br/>method × topic × instrument"] --> G["按 instrument_id 分组"]
+  G --> MED["赔率取中位数<br/>upside_pct / downside_pct<br/>p_up / p_base / p_down"]
+  G --> KEEP["同时记下<br/>proposed_by 哪几种方式<br/>n_proposals 几条<br/>topics 涉及哪些主题<br/>theses 各自的理由原文"]
+  MED --> OUT["候选池<br/>id 形如 pool:标的代码"]
+  KEEP --> OUT
+  OUT --> SORT["按 n_proposals 从多到少排<br/>同数按标的代码"]
+</whiteboard>
+
+<table>
+<tr><td width="130"><b>为什么要合</b></td><td>不合并的话，同一只 ETF 在不同主题、不同方式下反复出现，挑法选出的「10 条」可能只有 6 个真实仓位、其中一个占三倍权重。合并一次让这个缺陷<b>无法被表达</b>，而不是让每种挑法各自记得去防</td></tr>
+<tr><td><b>为什么取中位数</b></td><td>取最优等于把池子交给最激进的那一种方式，那看起来像本事，其实只是敢喊；<b>中位数没法被一家拉动</b></td></tr>
+<tr><td><b>主题归属</b></td><td>取该标的下出现次数最多的主题，写进 <code>topic_id</code>；全部涉及的主题另存 <code>topics</code></td></tr>
+<tr><td><b>方式标签</b></td><td>只有一种方式提过时 <code>method</code> 记那一种，多于一种记 <code>merged</code>。所以统计「哪种方式贡献多」要读 <code>proposed_by</code>，读 <code>method</code> 会得到「想法来自不知何处」</td></tr>
+</table>
+
+<table>
+<tr><th background-color="light-gray">每条候选带的字段</th><th background-color="light-gray">含义</th><th background-color="light-gray">谁在用</th></tr>
+<tr><td><code>id</code></td><td>候选编号，形如 <code>pool:GLD</code></td><td>所有挑法。选出的 id 必须来自池子，否则注册表直接报错</td></tr>
+<tr><td><code>instrument_id</code></td><td>标的代码</td><td>合并的分组键</td></tr>
+<tr><td><code>topic_id</code> / <code>topics</code></td><td>主题</td><td>组合去集中的主题上限；证据赔率一致性的证据归属</td></tr>
+<tr><td><code>exposure</code></td><td>风险敞口</td><td>组合去集中的敞口上限</td></tr>
+<tr><td><code>method</code> / <code>proposed_by</code> / <code>n_proposals</code></td><td>出想法方式与撞车数</td><td>组合去集中的方式上限；事后归因</td></tr>
+<tr><td><code>upside_pct</code> / <code>downside_pct</code></td><td>三档情景的涨跌幅，上行必须为正、下行必须为负</td><td>赚亏比、期望亏损</td></tr>
+<tr><td><code>p_up</code> / <code>p_base</code> / <code>p_down</code></td><td>三档概率，归一后相加为 1</td><td>赚亏比、期望亏损、信心过头的扣分</td></tr>
+<tr><td><code>p_sum_raw</code></td><td>模型给出的原始概率之和（归一之前）</td><td>证据赔率一致性的「算得粗糙」扣分</td></tr>
+<tr><td><code>thesis</code> / <code>theses</code></td><td>理由原文</td><td>AI 端到端挑的输入</td></tr>
+</table>
+
+<hr/>
+
+<h1>二、入口条件：四道底线</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  C["一条候选"] --> G1{"幅度不能离谱？"}
+  G1 -- "否" --> OUT["出局<br/>任何挑法都不能选"]
+  G1 -- "是" --> G2{"价格方向顺不顺？"}
+  G2 -- "否" --> OUT
+  G2 -- "是" --> G3{"买得进卖得出？"}
+  G3 -- "否" --> OUT
+  G3 -- "是" --> G4{"一个月后算得出净值？"}
+  G4 -- "否" --> OUT
+  G4 -- "是" --> IN["进入八本账<br/>各挑法自己再判"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">底线</th><th background-color="light-gray">规则</th><th background-color="light-gray">判定位置</th></tr>
+<tr><td>幅度不能离谱</td><td>预测涨跌幅除以该标的自己的月波动，必须落在 <b>0.35 – 2.60 倍</b>之间。低于下限是「narrow」，高于上限是「wide」，没有波动数据记 「na」</td><td><code>ideagen/ideas.py</code> 的 <code>vol_sanity()</code>，带宽常量 <code>VOL_BAND</code>；结果落 <code>k_up</code> / <code>k_down</code></td></tr>
+<tr><td>价格方向要顺</td><td>做多的标的，短期均线在长期均线之上、上个月是涨的。不接飞刀</td><td>阈值与判定位置<b>尚未固定</b>，见文末「还没钉死的地方」</td></tr>
+<tr><td>买得进卖得出</td><td>公募要能日度申赎，ETF 近 20 日日均成交额要够；载体待确认的一律排除，不默认放行</td><td><code>ideagen/universe.py</code> 的 <code>eligible()</code>，在筛选B 之前就把清单收窄，排除原因逐条记进 run journal</td></tr>
+<tr><td>能算出净值</td><td>算不出这条赚了还是亏了，就不能计入业绩。<b>不能用 0% 补</b>——那个 0 会系统性地偏袒挑了流动性差标的的挑法</td><td>回测层：算不出的计入 <code>unknown</code>，同时报出 <code>bias_if_zero_filled</code>，也就是「如果按 0 填会把这本账抬高多少」</td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+<p><b>除了四道底线，每种挑法自己还会拒两类东西，而且必须写出理由。</b></p>
+<ul>
+<li><b>三档情景不完整</b>——涨跌幅或概率有缺，或概率之和不为正，算不出赚亏比。落 <code>rejected</code>，理由「三档情景不完整，无法计算赚亏比」</li>
+<li><b>选了池子里没有的 id</b>——注册表在挑法返回后就地校验，直接抛错，不做模糊匹配。把编错的代码凑到最近的真标的上，会产生一个没有人推理过的仓位</li>
+</ul>
+<p>落选的每一条都要有一句理由进 <code>rejected</code>。<b>说不出理由的否决没法评估</b>。</p>
+</callout>
+
+<hr/>
+
+<h1>三、六种挑法的操作规格</h1>
+
+<h2>5. AI 端到端挑</h2>
+
+<p>注册名 <code>ai_native</code>，版本 1.0，角色 <code>primary</code>，需要模型调用。</p>
+
+<whiteboard type="mermaid">
+flowchart TB
+  P["整个池子摆给模型<br/>标的 · 敞口 · 主题 · 方式<br/>涨跌幅 · 三档概率 · 理由前 220 字"] --> M["要正好 10 条<br/>每条一句中文理由<br/>只能抄清单里的 id"]
+  M --> V{"逐条核对 id"}
+  V -- "不在清单里" --> U["丢掉<br/>记进 clamped.unknown_ids<br/>绝不模糊匹配"]
+  V -- "重复" --> U2["去重"]
+  V -- "有效" --> K["进入候选名单"]
+  K --> N{"够 10 条吗"}
+  N -- "多了" --> T["截断<br/>记 clamped.truncated"]
+  N -- "少了" --> BF["按筛选B 原始顺序补位<br/>记 clamped.backfilled<br/>标注非模型判断"]
+  N -- "正好" --> DONE["10 条持仓"]
+  T --> DONE
+  BF --> DONE
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">默认</th><th background-color="light-gray">作用</th></tr>
+<tr><td><code>n</code></td><td>10</td><td>要求返回的条数，多截少补</td></tr>
+<tr><td><code>thesis_chars</code></td><td>220</td><td>每条理由截给模型的字数</td></tr>
+<tr><td><code>temperature</code></td><td>0.2</td><td>生成温度；单次调用，上限 4000 tokens</td></tr>
+</table>
+
+<table>
+<tr><td width="130"><b>为什么要有它</b></td><td>另外三种挑法各自押了一个假设——一个比值、一个上限、一个扣分项。每个都是猜的，而<b>猜得对不对，只能跟一个什么都没押的比</b>。它不是垫底的对照，它是被检验的那个假设本身</td></tr>
+<tr><td><b>没有模型端口时报错</b></td><td>安静地返回空账本，看起来跟「这一周没什么值得持有」一模一样，而这是相反的结论。所以直接抛错，错误记进 <code>meta.error</code>，其余七本账照跑</td></tr>
+<tr><td><b>补位不带排序</b></td><td>补位按筛选B 原始顺序，<b>不按任何分数</b>。否则这本账会悄悄长出自己的排序规则，它存在的意义——当一个没押假设的基准——就没了</td></tr>
+<tr><td><b>落库</b></td><td>每条落 <code>reason</code> 与 <code>pick_rank</code>；四类修补全部落 <code>meta.clamped</code>：<code>unknown_ids</code> / <code>truncated</code> / <code>backfilled</code> / <code>raw_returned</code>。<b>看不见的修补，跟模型本来就选对了没有区别</b></td></tr>
+</table>
+
+<hr/>
+
+<h2>6. 按赚亏比排</h2>
+
+<p>注册名 <code>omega_loose</code>，版本 1.0，角色 <code>primary</code>，零模型调用。</p>
+
+<p><b>赚亏比</b>——按概率加权的「比现金多赚的部分」除以「亏掉的部分」：</p>
+
+<p><latex>\text{赚亏比} = \frac{\sum_i p_i \max(r_i - h,\ 0)}{\sum_i p_i \max(h - r_i,\ 0)}</latex></p>
+
+<table>
+<tr><td width="130"><b>三档情景</b></td><td>涨跌幅 <code>r</code> 取 <code>upside_pct</code> / 0 / <code>downside_pct</code>（换成小数），概率 <code>p</code> 取 <code>p_up</code> / <code>p_base</code> / <code>p_down</code>，先归一到相加为 1</td></tr>
+<tr><td><b>基准 h</b></td><td><b>月度 0.0028</b>，也就是约 3.4% 年化的货币基金收益除以 12。常量 <code>DEFAULT_HURDLE_M</code>，可用参数 <code>hurdle_monthly</code> 覆盖。这个家族的比值常被质疑「门槛是随便定的」，但<b>拿着现金的机会成本不是随便定的</b></td></tr>
+<tr><td><b>亏损为零时</b></td><td>比值记为无穷。落库时序列化成字符串 <code>+inf</code>——比值确实可以是无穷，但 JSON 没有这个字面量，写进去这份存档就再也解析不出来</td></tr>
+<tr><td><b>算不出的</b></td><td>三档不完整的落 <code>rejected</code>，理由 <code>incomplete scenarios</code>；无穷的个数单独记 <code>meta.inf_count</code></td></tr>
+</table>
+
+<whiteboard type="mermaid">
+flowchart TB
+  ALL["池子里能算出赚亏比的<br/>按比值从高到低排"] --> MED["取这一批的中位数<br/>计算中位数时排除无穷"]
+  MED --> PASS{"比值不低于中位数？"}
+  PASS -- "否" --> REJ["落选<br/>理由 below batch median"]
+  PASS -- "是" --> TAKE["按序取，最多 14 条"]
+  TAKE --> LO{"够 6 条吗"}
+  LO -- "够" --> BOOK["建仓，批内等权"]
+  LO -- "不够" --> CASH["就只买这么多<br/>剩下的停 JPST<br/>不用落选的凑数"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">默认</th><th background-color="light-gray">作用</th></tr>
+<tr><td><code>n_min</code></td><td>6</td><td>低于这个数不凑数，缺口停现金</td></tr>
+<tr><td><code>n_max</code></td><td>14</td><td>上限</td></tr>
+<tr><td><code>floor</code></td><td>1.5</td><td>绝对下限。<b>在这一种的宽口径下不生效</b>，只在下面「赚亏比 + 严门槛」里绑定</td></tr>
+<tr><td><code>hurdle_monthly</code></td><td>0.0028</td><td>现金基准</td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p><b>按门槛录取，不按名额录取。</b>名额制会强迫最后几个位置去填已知偏弱的候选；门槛制允许一个清淡的周次落到「多持现金」——那是一个真实且正确的组合状态。</p>
+<p><b>同时设上下限，是因为集中度会往反方向漂。</b>过门槛的少意味着市场不清楚，若不设下限，就会在最没把握的时候把单个仓位做到最大。</p>
+<p><b>为什么试它：</b>它直接就是我们要的东西——赚多少相对亏多少。而且这个比值本身就是个左尾度量，正好对上收益目标的形状：做到 25% 年化只需要每条想法每月净赚约 +1.9%，功夫在不亏，不在找暴涨。零额外调用，生成时给的涨跌幅和概率就够算。</p>
+</callout>
+
+<hr/>
+
+<h2>7. 组合去集中</h2>
+
+<p>注册名 <code>spread</code>，版本 1.0，角色 <code>primary</code>，零模型调用。</p>
+
+<whiteboard type="mermaid">
+flowchart TB
+  R["按赚亏比从高到低排<br/>现金基准同样是月度 0.0028"] --> L{"已经满 10 条？"}
+  L -- "是" --> F["落选：名额已满"]
+  L -- "否" --> T{"同主题已有 3 条？"}
+  T -- "是" --> BLK["落选：组合层面重复<br/>而不是质量不足<br/>同时记下是谁占着这三个位置"]
+  T -- "否" --> E{"同敞口已有 3 条？"}
+  E -- "是" --> BLK
+  E -- "否" --> M{"同一种出想法方式已有 4 条？"}
+  M -- "是" --> BLK
+  M -- "否" --> IN["录取<br/>三个维度的计数各加一"]
+  IN --> L
+  BLK --> L
+  F --> SHORT{"凑不满 10 条？"}
+  SHORT -- "是" --> CASH["缺口停 JPST<br/>绝不为了凑数破上限"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">默认</th><th background-color="light-gray">上限维度</th></tr>
+<tr><td><code>n</code></td><td>10</td><td>目标持仓数</td></tr>
+<tr><td><code>max_per_topic</code></td><td>3</td><td>同一个 <code>topic_id</code> 最多几条</td></tr>
+<tr><td><code>max_per_exposure</code></td><td>3</td><td>同一个 <code>exposure</code> 最多几条</td></tr>
+<tr><td><code>max_per_method</code></td><td>4</td><td>同一个 <code>method</code> 最多几条</td></tr>
+</table>
+
+<table>
+<tr><th background-color="light-gray"></th><th background-color="light-gray">纯按赚亏比排</th><th background-color="light-gray">组合去集中</th></tr>
+<tr><td>前 10 条的主题分布</td><td><b>8 条挤在同一个主题</b></td><td>3 / 3 / 2 / 1 / 1，铺满全部五个主题</td></tr>
+<tr><td>主题集中度指数<br/><span text-color="gray">各主题占比平方后相加，1 = 全压一个</span></td><td><b>0.68</b></td><td><b>0.24</b></td></tr>
+<tr><td>相当于几个独立赌注</td><td><b>约 1.5 个</b></td><td><b>约 4.2 个</b></td></tr>
+</table>
+
+<table>
+<tr><td width="130"><b>为什么试它</b></td><td>这是唯一一个<b>优化「这一组」而不是给单条排名次</b>的挑法。池子只来自 5 个主题，而筛选A 里分最高的主题在筛选B 拿到的赔率也最有信心，它那 20 条会成片地压在任何单条分数的顶端——纯排序选出的十个仓位，实际是一个赌注押十遍</td></tr>
+<tr><td><b>它在防什么</b></td><td>十条一起动，真实波动远高于「十个仓位」听起来的样子，而且一个主题错了就是整个月错了。每周批占组合 25%、四周才滚完，这个错误组合要背一个月，中途没法缩</td></tr>
+<tr><td><b>被挤掉的要能申辩</b></td><td>落 <code>caps_bound</code>（哪个上限卡住了几次）和 <code>displaced</code>（每条被挤掉的想法，当时是谁占着那几个位置）。对「为什么不选这条」<b>唯一站得住的回答是「这三条已经在了」</b></td></tr>
+<tr><td><b>其余落库</b></td><td><code>distribution</code> 三个维度的最终分布、<code>caps</code> 实际生效的上限、<code>shortfall</code> 差几条、<code>scoreable</code> 能算分的条数</td></tr>
+</table>
+
+<hr/>
+
+<h2>8. 证据赔率一致性</h2>
+
+<p>注册名 <code>calib</code>，版本 1.0，角色 <code>exploratory</code>，零模型调用。</p>
+
+<p>按赚亏比排，但对四件事扣分——每一项都是拿这条想法自称的信心，去比同一次运行里另一个本该跟着一起动的东西。</p>
+
+<whiteboard type="mermaid">
+flowchart TB
+  O["赚亏比<br/>上限截到 50"] --> ADJ["调整后分数<br/>取自然对数后按扣分打折"]
+  P1["① 证据太薄<br/>这个主题背后几篇材料"] --> SUM["扣分总额<br/>四项相加，最多 0.70"]
+  P2["② 信心过头<br/>上涨概率高过主题分歧度所能支撑的水平"] --> SUM
+  P3["③ 算得粗糙<br/>三档概率原始和离 1 太远"] --> SUM
+  P4["④ 不对称没来由<br/>涨幅远超同主题同侪，证据没更厚"] --> SUM
+  SUM --> ADJ
+  ADJ --> RANK["按调整后分数排，取前 10"]
+  RANK --> WHY["落选的写明主要扣在哪一项"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">扣分项</th><th background-color="light-gray">怎么算</th><th background-color="light-gray">上限</th></tr>
+<tr><td>① 证据太薄</td><td>0.25 × 夹到 0–1 的 <latex>(12 - \text{材料篇数}) / 12</latex>。材料篇数按主题 id 与名称分词去匹配语料的标题加摘要，<b>与筛选B 给生成器看的是同一条归属规则</b>——换一条规则等于让想法为它作者从没见过的材料受罚</td><td><b>0.25</b></td></tr>
+<tr><td>② 信心过头</td><td>先算这个主题的证据能支撑多高的上涨概率：<latex>0.40 + 0.30 \times (1 - \text{分歧度})</latex>——语料一致时 0.70，正好对半分时 0.40。超出部分除以 0.30 后夹到 0–1，再乘 0.30</td><td><b>0.30</b></td></tr>
+<tr><td>③ 算得粗糙</td><td>0.15 × 夹到 0–1 的 <latex>\lvert \text{原始概率和} - 1 \rvert / 0.20</latex>。这个偏差<b>跟交易本身毫无关系</b>，所以它是「这条想法有多用心」的一个没被污染的样本</td><td><b>0.15</b></td></tr>
+<tr><td>④ 不对称没来由</td><td>0.20 × 夹到 0–1 的 <latex>(\text{涨幅} / \text{同主题涨幅中位数} - 1.5) / 1.5</latex>，<b>再乘上 0.5 + 0.5 × 证据薄度</b>——主题材料充足时这一项减半：目标高得离谱只有在语料里没有额外东西撑着时才算异常</td><td><b>0.20</b></td></tr>
+</table>
+
+<p>分歧度按语料里方向性表态的分裂程度算：<latex>1 - \lvert \text{看多篇数} - \text{看空篇数} \rvert / (\text{看多} + \text{看空})</latex>。一篇有方向的都没有时记 <b>0.5</b> 的显式中性，<b>不读成一致</b>。</p>
+
+<callout emoji="📐" background-color="light-yellow" border-color="yellow">
+<p><b>扣分打在对数上，不打在比值上。</b>赚亏比是个右尾很长的比值：一条把亏损分支只给了 5% 概率的想法能拿到 20 分，而一条老实定价的只有 3 分。<b>直接按比例扣比值，一条 24 分的想法扣掉 0.51 之后还是赢过一条干净的 8.6 分——这个方法等于什么都没做</b>（第一次实测就是这样：主题分布和纯排序一模一样，集中度指数同为 0.68）。取对数之后，百分比扣分变成固定的「几次翻倍」，也就是这个比值实际被阅读的单位，扣分才真的能改变排序。</p>
+<p>调整后分数 = <latex>\ln(1 + \text{赚亏比}) \times (1 - \text{扣分总额})</latex>。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">默认</th><th background-color="light-gray">作用</th></tr>
+<tr><td><code>n</code></td><td>10</td><td>目标持仓数</td></tr>
+<tr><td><code>thin_docs</code></td><td>12</td><td>低于这个篇数开始按缺口扣「证据太薄」</td></tr>
+<tr><td><code>p_up_floor</code></td><td>0.40</td><td>语料完全分裂时允许的上涨概率</td></tr>
+<tr><td><code>p_up_span</code></td><td>0.30</td><td>分歧度从满到零，允许的上涨概率往上加多少</td></tr>
+<tr><td><code>peer_mult</code></td><td>1.5</td><td>涨幅超过同主题中位数几倍才算不对称</td></tr>
+<tr><td><code>sum_tol</code></td><td>0.20</td><td>原始概率和偏离 1 多少算满分扣</td></tr>
+</table>
+
+<table>
+<tr><td width="130"><b>为什么试它</b></td><td>生成式系统的典型失败不是一个坏想法，而是一个<b>形式完整</b>的想法：三篇材料撑起 0.70 / 0.20 / 0.10 和 +9% / −3%，而所有按这些数字排序的挑法，恰好在奖励那些数字最不受观察约束的想法。<b>把赚亏比排得更狠也检测不出来，因为编出来的那条本来就是靠构造赢在赚亏比上的</b></td></tr>
+<tr><td><b>为什么每项都有上限</b></td><td>四项相加最多 0.70，单项也各有上限，所以证据薄的想法是被降级、不是被删除。材料归属是关键词匹配，<b>一个能把想法扣到零的方法会让一次漏配悄悄抹掉一笔好交易</b></td></tr>
+<tr><td><b>赚亏比上限 50</b></td><td>无穷意味着筛选B 给亏损分支零概率。那是个建模瑕疵，而且正是这种挑法要罚的过度自信——所以截到 50 参与排序，不让它直接赢</td></tr>
+<tr><td><b>每条扣分都要能被反驳</b></td><td>四项扣分、扣分总额、主题材料篇数、主题分歧度、允许的上涨概率、原始概率和、涨幅与同侪中位数之比，<b>逐条落 <code>scores</code></b>；落选的写明主要扣在哪一项</td></tr>
+</table>
+
+<hr/>
+
+<h2>9. 不筛全买（量尺）</h2>
+
+<p>注册名 <code>buy_all</code>，版本 1.0，角色 <code>control</code>，零模型调用、零参数。</p>
+
+<table>
+<tr><td width="130"><b>怎么挑</b></td><td>池子里全买，不排序，仓位按条数摊薄</td></tr>
+<tr><td><b>它赢了意味着什么</b></td><td><b>所有挑法都是白费劲</b>，以后直接全买，筛选C 这一层可以拆掉</td></tr>
+<tr><td><b>它是所有配对比较的分母</b></td><td>每种挑法的成绩是「本批收益 − 不筛全买同批收益」，不是它的绝对收益</td></tr>
+</table>
+
+<h2>10. 随机抽（量尺）</h2>
+
+<p>注册名 <code>random_pick</code>，版本 1.0，角色 <code>control</code>，零模型调用。</p>
+
+<table>
+<tr><th background-color="light-gray">参数</th><th background-color="light-gray">默认</th><th background-color="light-gray">作用</th></tr>
+<tr><td><code>n</code></td><td>10</td><td>抽几条</td></tr>
+<tr><td><code>seed</code></td><td>20260817</td><td>随机种子。实际种子是<b>种子与当期日期拼起来</b>，所以每期抽法不同、每期都可重放</td></tr>
+</table>
+
+<table>
+<tr><td width="130"><b>它赢了意味着什么</b></td><td>价值全在那四道底线，<b>排序本身是噪音</b>。这跟「筛选有没有用」是两个不同的问题</td></tr>
+<tr><td><b>种子必须落库</b></td><td><b>不可复核的量尺不是量尺</b>。种子进 <code>meta.seed</code>，没抽中的逐条进 <code>rejected</code></td></tr>
+</table>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+<p>这两个必须在里面，而且它们<b>是量尺，不是候选方法</b>——不会被拿去上实盘。少了它们，就算某种挑法看起来不错，也分不清是<b>它真的会挑</b>，还是<b>候选本身就不错、随便拿都行</b>。这两种情况后续该做的事完全相反。</p>
+</callout>
+
+<hr/>
+
+<h1>四、两个常驻探索项</h1>
+
+<callout emoji="🧪" background-color="light-gray">
+<p>这两个照样每期跑、照样落库，但角色是 <code>exploratory</code>：<b>只用来产生想法，不参与预注册的统计检验，也不上实盘</b>。多做一次比较就多一份撞出假赢家的概率，所以哪些比较算正式的必须事前钉死。</p>
+</callout>
+
+<table>
+<tr><th background-color="light-gray"></th><th background-color="light-gray">赚亏比 + 严门槛</th><th background-color="light-gray">只看最多亏多少</th></tr>
+<tr><td>注册名</td><td><code>omega_strict</code></td><td><code>left_tail</code></td></tr>
+<tr><td>怎么挑</td><td>排序与「按赚亏比排」<b>完全相同</b>，只改录取：只看前 40%，且比值必须不低于 <code>floor</code> = 1.5，上限压到 8 条</td><td>只算<b>期望亏损</b> = 下跌概率 × 下跌幅度的绝对值，从小到大排，取不超过这一批中位数的，最多 14 条。<b>完全不看上行</b></td></tr>
+<tr><td>参数默认</td><td><code>n_min</code> 6 · <code>n_max</code> 8 · <code>floor</code> 1.5</td><td><code>n_min</code> 6 · <code>n_max</code> 14</td></tr>
+<tr><td>它回答什么</td><td>与宽口径<b>只差在录取严格度</b>，所以两本账之差只给一个问题定价：<b>现金是不是一个被用得太少的仓位</b></td><td>收益目标意味着任务是控亏而不是猎取赢家。这是把那个推论推到极限：如果它成立，一个从不看上行的挑法不该表现太差；<b>如果它明显差，那个推论就错了</b>——而这件事越早越便宜地知道越好，它零模型调用</td></tr>
+<tr><td>落库</td><td><code>admission</code> 记 <code>strict</code>；落选写明是「不在前 40%」还是「低于下限」</td><td><code>median_expected_loss</code> 记这一批的中位期望亏损</td></tr>
+</table>
+
+<hr/>
+
+<h1>五、参数总表</h1>
+
+<table>
+<tr><th background-color="light-gray">挑法</th><th background-color="light-gray">注册名</th><th background-color="light-gray">角色</th><th background-color="light-gray">模型调用</th><th background-color="light-gray">参数默认</th></tr>
+<tr><td>5. AI 端到端挑</td><td><code>ai_native</code></td><td><span text-color="blue">primary</span></td><td>1 次</td><td><code>n</code> 10 · <code>thesis_chars</code> 220 · <code>temperature</code> 0.2</td></tr>
+<tr><td>6. 按赚亏比排</td><td><code>omega_loose</code></td><td><span text-color="blue">primary</span></td><td>0</td><td><code>n_min</code> 6 · <code>n_max</code> 14 · <code>floor</code> 1.5 · <code>hurdle_monthly</code> 0.0028</td></tr>
+<tr><td>7. 组合去集中</td><td><code>spread</code></td><td><span text-color="blue">primary</span></td><td>0</td><td><code>n</code> 10 · <code>max_per_topic</code> 3 · <code>max_per_exposure</code> 3 · <code>max_per_method</code> 4</td></tr>
+<tr><td>8. 证据赔率一致性</td><td><code>calib</code></td><td><span text-color="purple">exploratory</span></td><td>0</td><td><code>n</code> 10 · <code>thin_docs</code> 12 · <code>p_up_floor</code> 0.40 · <code>p_up_span</code> 0.30 · <code>peer_mult</code> 1.5 · <code>sum_tol</code> 0.20</td></tr>
+<tr><td>9. 不筛全买（量尺）</td><td><code>buy_all</code></td><td><span text-color="green">control</span></td><td>0</td><td>无</td></tr>
+<tr><td>10. 随机抽（量尺）</td><td><code>random_pick</code></td><td><span text-color="green">control</span></td><td>0</td><td><code>n</code> 10 · <code>seed</code> 20260817</td></tr>
+<tr><td>赚亏比 + 严门槛</td><td><code>omega_strict</code></td><td><span text-color="purple">exploratory</span></td><td>0</td><td><code>n_min</code> 6 · <code>n_max</code> 8 · <code>floor</code> 1.5</td></tr>
+<tr><td>只看最多亏多少</td><td><code>left_tail</code></td><td><span text-color="purple">exploratory</span></td><td>0</td><td><code>n_min</code> 6 · <code>n_max</code> 14</td></tr>
+</table>
+
+<table>
+<tr><th background-color="light-gray">共用常量</th><th background-color="light-gray">值</th><th background-color="light-gray">出现在</th></tr>
+<tr><td>现金基准（月度）</td><td><b>0.0028</b></td><td>按赚亏比排、赚亏比 + 严门槛、组合去集中、证据赔率一致性。<b>三个模块各写一份，不互相 import</b>——这几种挑法要互相比较，从一处引用会让日后调一个数字悄悄改掉另几本已经存好的账，两本账之差就不再归因于它们真正的差别</td></tr>
+<tr><td>赚亏比上限</td><td><b>50</b></td><td>证据赔率一致性</td></tr>
+<tr><td>四项扣分上限</td><td><b>0.25 / 0.30 / 0.15 / 0.20</b>，合计最多 <b>0.70</b></td><td>证据赔率一致性</td></tr>
+<tr><td>幅度合理带宽</td><td><b>0.35 – 2.60</b> 倍月波动</td><td>幅度底线</td></tr>
+</table>
+
+<callout emoji="📌" background-color="light-gray">
+<p><b>参数写在注册处，运行时可以被覆盖。</b>注册时声明的默认值会被垫在这次运行传进来的参数底下，所以扫参可以覆盖，而声明值不会变成摆设——否则挑法内部还得再写一遍兜底值，两个数字可以悄悄不一致，而只有代码那一份真的在跑。</p>
+</callout>
+
+<hr/>
+
+<h1>六、落库字段</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  RUN["orch_runs<br/>一次运行一行"] --> V["verdicts<br/>一本账一行"]
+  RUN --> C["candidates<br/>整个池子逐条"]
+  V --> ART["runs 目录下的存档<br/>C_selectors 每种挑法一个 json"]
+  C --> ART2["B_pool.json<br/>合并后的池子"]
+  C -. "落选的也全存" .-> CF["反事实<br/>否则问不出筛选C 值不值这份成本"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray"><code>verdicts</code> 字段</th><th background-color="light-gray">内容</th></tr>
+<tr><td><code>run_id</code> · <code>as_of</code> · <code>kind</code></td><td>哪次运行、哪一期、哪个阶段。筛选C 的 <code>kind</code> 是 <code>idea_selector</code>。主键是 <code>run_id</code> + <code>kind</code> + <code>strategy</code></td></tr>
+<tr><td><code>strategy</code> · <code>version</code></td><td>挑法名与版本，<b>由注册表覆写而不是信挑法自报</b>。一个自称错名字的挑法会让每条存档的分数都无法归属</td></tr>
+<tr><td><code>role</code></td><td><code>primary</code> / <code>exploratory</code> / <code>control</code>。谁进正式检验由这个字段决定</td></tr>
+<tr><td><code>inputs_sha</code></td><td>这一期候选池的哈希。<b>筛选C 单独算自己的哈希，只对池子里的 id 求</b>——两本账要对得上的是池子，不是池子怎么造出来的。两条记录这个值不同，就不是在看同一个东西，不可相减</td></tr>
+<tr><td><code>chosen</code></td><td>选中的 id，有序</td></tr>
+<tr><td><code>scores</code></td><td>逐条的评分细节，让这次选择可解释</td></tr>
+<tr><td><code>rejected</code></td><td>落选的 id 与理由。<b>说不出丢了什么的挑法，没法跟反事实比</b></td></tr>
+<tr><td><code>meta</code></td><td>参数、分布、修补、错误。某一种挑法抛错时错误进这里，其余照跑</td></tr>
+<tr><td><code>calls</code></td><td>模型调用次数，用于成本核算</td></tr>
+</table>
+
+<table>
+<tr><th background-color="light-gray"><code>candidates</code> 字段</th><th background-color="light-gray">内容</th></tr>
+<tr><td><code>run_id</code> · <code>candidate_id</code></td><td>主键</td></tr>
+<tr><td><code>as_of</code> · <code>instrument_id</code> · <code>topic_id</code> · <code>method</code> · <code>direction</code></td><td>这一期、标的、主题、出想法方式、方向</td></tr>
+<tr><td><code>upside_pct</code> · <code>downside_pct</code> · <code>p_up</code> · <code>p_base</code> · <code>p_down</code> · <code>sigma_1m</code></td><td>三档情景与月波动</td></tr>
+<tr><td><code>payload</code></td><td>整条候选的完整 JSON，含 <code>proposed_by</code> / <code>n_proposals</code> / <code>topics</code> / <code>theses</code></td></tr>
+</table>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+<p><b>整个池子都落库，不只落持有的那十条。</b>没被选中的那些就是反事实。没有它们，就没法问「筛选C 比直接持有整个池子到底多做了什么」——而这个问题是这一层值不值它成本的唯一证据。</p>
+<p><b>无穷值在序列化那一个出口统一处理：</b>正无穷写成 <code>"+inf"</code>、负无穷写成 <code>"-inf"</code>、非数写成空。赔率为无穷是合法的，但 <code>Infinity</code> 和 <code>NaN</code> 不是合法 JSON，混进去这份存档对严格解析器就是坏的——而这些存档存在的意义正是几年后还能被重新读一遍。</p>
+</callout>
+
+<hr/>
+
+<h1>七、怎么比出高下</h1>
+
+<whiteboard type="mermaid">
+flowchart TB
+  SAME["同一周 · 同一个候选池 · 同一个哈希"] --> DIFF["逐期相减<br/>某挑法本批收益 − 不筛全买同批收益"]
+  DIFF --> N["折算有效独立样本<br/>n_eff = 期数 × 间隔天数 / 持有天数"]
+  N --> CHK{"够不够"}
+  CHK -- "两组哈希不一致" --> NO["拒绝出结论<br/>看的不是同一个池子"]
+  CHK -- "配对期数少于 2" --> NO
+  CHK -- "n_eff 低于所需" --> NO2["拒绝出结论<br/>并说清缺的是独立周期数<br/>不是效应大小"]
+  CHK -- "都满足" --> YES["给出配对差与显著性"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">项</th><th background-color="light-gray">规格</th></tr>
+<tr><td>比较量</td><td>同批之差 = 某挑法本批 1 个月收益 − <b>不筛全买</b>同批收益</td></tr>
+<tr><td>为什么必须同批比</td><td>八本账同一周、同一个池子、同一个市场，共同的市场涨跌在相减时抵消。<b>同一置信度下不配对要约 5 倍的历史</b>——恰好是 1 /（1 − 相关系数），相关系数取 0.80</td></tr>
+<tr><td>窗口重叠要折算</td><td>持有 30 天而每周跑一次，相邻期次的持仓期高度重叠，<b>每期只值 7 / 30 ≈ 0.23 个独立样本</b>。不折算就会把重叠放大出来的 t 值当成证据</td></tr>
+<tr><td>要检出的优势</td><td><b>月度 2 个百分点</b>。低于这个数，收益目标本身并不取决于哪本账赢了</td></tr>
+<tr><td>检验口径</td><td>配对，双侧 α = 0.05，把握度 0.80</td></tr>
+<tr><td>门槛怎么来</td><td>由<b>实测</b>的逐期差值标准差推出所需独立周期数，所以证据越多门槛越准；实测样本不足时先用参考离散度（月度 1.34%）代入。以参考值算门槛是 2 个独立周期；某次实测的差值波动更大，门槛算出来是 4 个</td></tr>
+<tr><td>换算成日历</td><td>按每周跑一次每期折 0.23 算，<b>4 个独立周期约等于 17 次周跑、约 4 个月</b>；同一件事不配对要约 20 个月</td></tr>
+<tr><td>样本不够就不给结论</td><td>回测层在样本不足时<b>拒绝输出胜负</b>，并把差多少说清楚。现有可回放周期折算后有效样本 <b>0.33</b>，远低于所需的 <b>4</b>——<b>所以现在没有任何一种挑法可以说赢了</b></td></tr>
+</table>
+
+<table>
+<tr><th background-color="light-gray">同时做几次比较</th><th background-color="light-gray">至少出一个假赢家的概率</th></tr>
+<tr><td>3 次（只检验预注册的主方法）</td><td><span text-color="green"><b>14%</b></span></td></tr>
+<tr><td>5 次</td><td><span text-color="orange"><b>23%</b></span></td></tr>
+<tr><td>15 次（生成 × 挑法全交叉）</td><td><span text-color="red"><b>54%</b></span></td></tr>
+</table>
+
+<callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
+<p><b>所以只有 <code>role=primary</code> 的三种对量尺做正式检验</b>，探索项照跑照落库，但只用来产生想法、不下结论。<b>哪些比较算正式的必须事前声明</b>，不能看完结果再挑。</p>
+<p>还有一种失败要分开说清楚：<b>折算后 t 值已经过线、但独立周期数不够</b>时，说「这是噪音」是假话，也会训练读者以后忽略这一行。这时的反对意见是「观察之间不独立」，那是关于样本量的陈述，不是关于效应大小的陈述——报告要照这个措辞写。</p>
+</callout>
+
+<hr/>
+
+<h1>八、加一种新挑法</h1>
+
+<whiteboard type="mermaid">
+flowchart LR
+  F["在 strategies 目录下<br/>放一个新文件"] --> R["用 register 注册<br/>idea_selector · 名字 · 版本<br/>角色 · 参数默认"]
+  R --> IN["读 ctx 里的候选与参数<br/>不碰数据库 · 不下单 · 不读时钟"]
+  IN --> OUT["返回一个 Verdict<br/>chosen · scores · rejected · meta"]
+  OUT --> AUTO["流水线自动带上它<br/>落库 · 存档 · 进对比"]
+</whiteboard>
+
+<table>
+<tr><th background-color="light-gray">硬约束</th><th background-color="light-gray">为什么</th></tr>
+<tr><td>选出的 id 必须来自这一期的候选池</td><td>注册表就地校验，不符合直接抛错，不做模糊匹配</td></tr>
+<tr><td>只能读传进来的运行上下文</td><td>上下文里<b>没有数据库句柄、没有网络</b>：能查询的挑法就是能不小心读到未来的挑法。它需要的一切由流水线按当期日期装配好递进来，这样几个月后同一个上下文能重放出同一个结果</td></tr>
+<tr><td>不写库、不下单、不读时钟</td><td>持久化与执行属于流水线。<b>这是八种挑法能同时给同一批候选打分而没有一种会真的去交易的原因</b></td></tr>
+<tr><td>必须声明版本</td><td>存档里的分数如果认不出是哪套逻辑产生的，就不可审计</td></tr>
+<tr><td>必须声明角色</td><td>决定它进不进正式检验</td></tr>
+<tr><td>必须声明要不要模型</td><td>只有挑法自己知道。猜错的代价是单向的：一次以为不需要模型的运行会把所有数据源拉完、把主题打完分，然后才发现跑不下去</td></tr>
+<tr><td>一种挑法出错不能带走其他几本</td><td>错误被收进那一本账的 <code>meta.error</code>，其余照跑</td></tr>
+</table>
+
+<hr/>
+
+<h1>九、还没钉死的地方</h1>
+
+<callout emoji="❓" background-color="light-red" border-color="red">
+<ul>
+<li><b>价格方向要顺</b>——短期与长期均线各取多少天、上个月涨幅怎么算、在流水线哪一步判定，<b>都还没有固定的取值</b>。这一条目前不在筛选C 插件的拒绝理由里</li>
+<li><b>止损与止盈不属于挑法</b>——按波动倍数设、不按固定百分比，规格在主文档；筛选C 只定持有哪十条</li>
+<li><b>门槛值是参考值还是实测值，会变</b>——所需独立周期数随实测的差值标准差重算，所以这个数字会随周次变化。任何引用它的报告都要写清那次用的是实测还是参考</li>
+<li><b>先验值等业绩说话</b>——现金基准 0.0028、上限 3 / 3 / 4、扣分权重 0.25 / 0.30 / 0.15 / 0.20 全部是先验设定。<b>目前的样本量不足以校准其中任何一个</b>，逐参数归因是 1–2 年的事</li>
+</ul>
+</callout>
+
+<callout emoji="📎" background-color="light-blue" border-color="blue">
+<p><b>代码位置：</b> 注册表与协议 <code>ideagen/strategy.py</code>；六种挑法与两个探索项 <code>ideagen/strategies/select_*.py</code>；池子合并与落库 <code>ideagen/orchestrator.py</code>；表结构 <code>ideagen/schema.py</code>；配对比较与拒绝出结论的逻辑 <code>ideagen/backtest.py</code>。</p>
+</callout>

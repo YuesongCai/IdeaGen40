@@ -55,11 +55,22 @@ def _admit(ranked: list[tuple[str, float]], *, strict: bool,
                 rejected[i] = f"below floor {floor}"
         hi = min(hi, 8)
     else:
+        # The bar is the batch median *or* the floor, whichever is higher. The
+        # median alone is relative: in a week where everything looks poor it admits
+        # whatever is least poor, including ratios below 1 — ideas whose
+        # probability-weighted loss exceeds their gain, which are worse than holding
+        # cash. Holding cash is a real portfolio state, so the floor has to bind
+        # here and not only in the strict arm.
         med = st.median([s for _, s in ranked if s != float("inf")] or [0.0])
-        pool = [(i, s) for i, s in ranked if s >= med]
+        bar = max(med, floor)
+        pool = [(i, s) for i, s in ranked if s >= bar]
         for i, s in ranked:
-            if s < med:
-                rejected[i] = "below batch median"
+            if s < bar:
+                # Name which bar actually bound. "below median" when the floor was
+                # the binding one would misattribute the rejection, and these
+                # reasons are the record used to argue with a rejection later.
+                rejected[i] = (f"低于本批中位数 {med:.2f}" if bar == med
+                               else f"赚亏比低于下限 {floor:.2f}（本批中位数 {med:.2f} 更低）")
     chosen = [i for i, _ in pool[:hi]]
     if len(chosen) < lo:
         # Not enough passed. The shortfall is parked in cash by the orchestrator
@@ -84,7 +95,7 @@ def _rank(ctx: RunContext) -> tuple[list[tuple[str, float]], dict, dict[str, str
                     "inf_count": sum(1 for v in scores.values() if v == float("inf"))}, bad
 
 
-@register("idea_selector", "omega_loose", "1.0", label="3. 按赚亏比排",
+@register("idea_selector", "omega_loose", "1.0", label="6. 按赚亏比排",
           role="primary", params={"n_min": 6, "n_max": 14, "floor": 1.5})
 def omega_loose(ctx: RunContext) -> Verdict:
     """Rank by gain-over-loss versus cash; admit everything above the batch median.
@@ -105,7 +116,7 @@ def omega_loose(ctx: RunContext) -> Verdict:
                          "n": len(chosen), "admission": "loose"})
 
 
-@register("idea_selector", "omega_strict", "1.0", label="7. 赚亏比 + 严门槛",
+@register("idea_selector", "omega_strict", "1.0", label="赚亏比 · 严门槛（常驻探索）",
           role="exploratory", params={"n_min": 6, "n_max": 8, "floor": 1.5})
 def omega_strict(ctx: RunContext) -> Verdict:
     """Same ranking, top 40% only, floor enforced, remainder held in cash.

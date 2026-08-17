@@ -360,6 +360,12 @@ def weekly(
             return res
 
         except Exception as e:  # noqa: BLE001
+            # `ok` is cleared here, not merely left alone. It is set optimistically
+            # before the run row is closed, so a failure during persistence would
+            # otherwise return ok=True carrying an error — a result that claims
+            # success and reports failure at the same time, which is worse for a
+            # caller than a plain failure because it is silently believed.
+            res.ok = False
             res.error = f"{type(e).__name__}: {e}"
             if not dry_run:
                 try:

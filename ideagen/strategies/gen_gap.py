@@ -86,6 +86,7 @@ def build_prompt(ctx: RunContext,
         f"就这个主题给出最多 {_gen.PER_TOPIC} 条持有期一个月的做多想法。标的原样取自上面的"
         "清单；每条要有一个月内的上行与下行幅度（百分数）和上行/持平/下行三档概率"
         "（相加为 1）；同一主题内不要重复标的。",
+        _gen.CITATION_RULE,
         "只输出 JSON 数组，形如：\n" + SHAPE,
     ]), n_docs
 

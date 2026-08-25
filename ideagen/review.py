@@ -342,7 +342,8 @@ def state(con=None, p=None) -> dict[str, Any]:
             aof = _date.fromisoformat(weekly["as_of"])
             days = [(aof - _td(days=i)).isoformat() for i in range(3)]
             docs = db.q(con,
-                        "SELECT doc_id, published_d, title, institution, tier "
+                        "SELECT doc_id, published_d, title, institution, tier, "
+                        "content_hash, retrieval "
                         "FROM documents WHERE published_d IN (%s)"
                         % ",".join("?" * len(days)), days)
             themes_by_id = {t.id: t for t in lexicon.all_themes(aof)}
@@ -357,9 +358,13 @@ def state(con=None, p=None) -> dict[str, Any]:
                 for d in docs:
                     blob = f"{d['title'] or ''}".lower()
                     if any(w in blob for w in terms):
+                        # The credentials that make a line item auditable:
+                        # the API retrieval expression that re-fetches it, and
+                        # the content hash that proves it is the same text.
                         hits.append({k: d[k] for k in
                                      ("doc_id", "published_d", "title",
-                                      "institution", "tier")})
+                                      "institution", "tier", "retrieval")}
+                                    | {"sha": (d["content_hash"] or "")[:12]})
                 hits.sort(key=lambda x: (x["tier"] or 3, x["published_d"] or ""),
                           reverse=False)
                 ev[tid] = {"n": len(hits), "docs": hits[:60],

@@ -37,7 +37,8 @@ STOP_SIGMA = 2.0
 TAKE_SIGMA = 3.0
 
 
-def payload_from_candidates(cands: list[dict[str, Any]]) -> dict:
+def payload_from_candidates(cands: list[dict[str, Any]],
+                            run_id: str | None = None) -> dict:
     """Translate stage-B candidates into the shape `ideas.compute` expects.
 
     The translation is mechanical on purpose. Anything invented here — a haircut,
@@ -61,9 +62,16 @@ def payload_from_candidates(cands: list[dict[str, Any]]) -> dict:
             "conservative": {"p": ps, "r": [up, 0.0, dn]},
             "thesis": (c.get("thesis") or "")[:600],
             "role": c.get("method"),
+            # Hard lineage, not inference: a position must be traceable to the
+            # exact run and candidate that produced it by following stored ids,
+            # never by matching dates and hoping. This is what makes the chain
+            # 持仓 → 想法 → 候选 → 运行 → 语料 walkable in both directions.
             "sources": [{"provenance": "weekly-run",
+                         "run_id": run_id,
+                         "candidate_id": c.get("id"),
                          "methods": c.get("proposed_by") or [c.get("method")],
-                         "n_proposals": c.get("n_proposals", 1)}],
+                         "n_proposals": c.get("n_proposals", 1),
+                         "citations": c.get("citations") or []}],
         })
     return {"ideas": ideas}
 
@@ -135,7 +143,7 @@ def book_run(con, p, run_id: str, *, selectors: list[str] | None = None,
         exists = db.q1(con, "SELECT 1 x FROM batches WHERE batch_id=?", (batch_id,))
         if not exists:
             _, rows, val = ideas_mod.build_batch(
-                con, payload_from_candidates(chosen), as_of,
+                con, payload_from_candidates(chosen, run_id=run_id), as_of,
                 generator=f"weekly:{run_id}", batch_id=batch_id)
             if not (val or {}).get("pass", False):
                 out["books"][name] = {"error": f"批次校验未过：{val}"}

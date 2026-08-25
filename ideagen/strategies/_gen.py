@@ -44,6 +44,17 @@ SYSTEM = (
 )
 
 
+#: Appended to every generator's prompt. Citation is part of the shared
+#: contract — all four arms carry the identical requirement, so it cannot
+#: confound the comparison — because an idea that cannot name the documents it
+#: rests on is an idea whose evidence trail starts at nothing: a month later
+#: there is no way to ask whether the thesis misread its sources or the market
+#: disagreed with them, and those two failures teach opposite lessons.
+CITATION_RULE = ("每条想法必须带 citations 字段：从上面材料里挑最支撑这条论点的 "
+                 "1-3 条，原样填它们的 doc_id（形如 feed:100994）。"
+                 "没有任何材料支撑的想法不要写。")
+
+
 def universe_block(ctx: RunContext, limit: int = 120) -> str:
     """The buyable list, as compactly as it can be stated without losing meaning.
 
@@ -113,7 +124,11 @@ def corpus_block(ctx: RunContext, topic: dict[str, Any],
     use = hits[:k] if hits else ctx.corpus[:k]
     out = []
     for d in use:
-        out.append(f"[{d.get('published_d')}] {d.get('institution') or ''} "
+        # The doc_id leads each line because the citation contract asks the
+        # model to quote it back. A rule demanding ids the material never shows
+        # would make every citation a hallucination by construction.
+        out.append(f"{d.get('doc_id')} [{d.get('published_d')}] "
+                   f"{d.get('institution') or ''} "
                    f"{d.get('title','')} — {str(d.get('summary') or '')[:220]}")
     return "\n".join(out), len(hits)
 
@@ -246,8 +261,21 @@ def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
             continue
         seen.add(idea_id)
 
+        # Citations are validated against the corpus actually shown, then kept.
+        # An invalid doc_id is dropped and counted rather than repaired: a
+        # generator that habitually cites documents it was never given is
+        # telling us something about its reading, and that signal would vanish
+        # under silent repair.
+        known_docs = {str(d.get("doc_id")) for d in ctx.corpus}
+        cits = [str(x) for x in (r.get("citations") or [])
+                if str(x) in known_docs][:3]
+        bad_cits = len([x for x in (r.get("citations") or [])
+                        if str(x) not in known_docs])
+
         idea = {
             "id": idea_id,
+            "citations": cits,
+            "bad_citations": bad_cits,
             "instrument_id": str(inst["instrument_id"]),
             "instrument_name": inst.get("name"),
             "vehicle": inst.get("vehicle"),

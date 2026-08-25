@@ -47,10 +47,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/state":
             from . import review
             return self._json(review.state(db.init()))
-        if path in ("/review", "/review.html"):
-            from . import review
-            out = review.build(db.init())
-            return self._raw(out.read_bytes(), "text/html; charset=utf-8")
+        if path in ("/review", "/review.html", "/dash"):
+            # The Nexus dashboard is the review surface now; the old generated
+            # placeholder is retired. Static file + live /api/state.
+            dash = config.WEB / "dash.html"
+            if dash.exists():
+                return self._raw(dash.read_bytes(), "text/html; charset=utf-8")
+            return self._json({"error": "dash.html 尚未生成"})
         if path == "/healthz":
             return self._json({"ok": True, "ts": config.now_hkt().isoformat()})
         return super().do_GET()

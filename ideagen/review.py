@@ -271,9 +271,16 @@ def state(con=None, p=None) -> dict[str, Any]:
     if hb:
         age = (datetime.now(timezone.utc)
                - datetime.fromisoformat(hb["at_utc"])).total_seconds()
+    import re as _re
+    def _scrub(text: str) -> str:
+        # Bucket names and paths can embed the cloud account id; the dashboard
+        # may be screenshotted or shared, so identifiers never leave the server.
+        text = _re.sub(r"tos://[\w.-]+", "tos://<bucket>", text or "")
+        return _re.sub(r"/Users/[\w.-]+", "~", text)
     out["alive"] = {"heartbeat": hb, "age_s": age,
                     "ok": age is not None and age < 1800,
-                    "ports": [{"name": h.name, "ok": h.ok, "detail": h.detail}
+                    "ports": [{"name": h.name, "ok": h.ok,
+                               "detail": _scrub(h.detail)}
                               for h in p.check()]}
 
     # -- run history ------------------------------------------------------
@@ -333,10 +340,15 @@ def state(con=None, p=None) -> dict[str, Any]:
             (b["book_id"],))]
         pos = [dict(x) for x in db.q(
             con, "SELECT p.code, p.qty, p.entry_px, p.last_px, p.stop_px, "
-                 "p.take_px, p.opened_d, p.unrealized, i.thesis, i.theme_id "
+                 "p.take_px, p.opened_d, p.unrealized, i.thesis, i.theme_id, "
+                 "i.tool_desc AS instrument_name "
                  "FROM positions p LEFT JOIN ideas i USING(idea_uid) "
                  "WHERE p.book_id=? AND p.status='open' ORDER BY p.code",
             (b["book_id"],))]
+        latest_batch = db.q1(
+            con, "SELECT i.batch_id, i.as_of FROM orders o "
+                 "JOIN ideas i USING(idea_uid) WHERE o.book_id=? "
+                 "ORDER BY i.as_of DESC LIMIT 1", (b["book_id"],))
         realized = db.q1(con, "SELECT COALESCE(SUM(realized),0) r, COUNT(*) n "
                               "FROM positions WHERE book_id=? AND status='closed'",
                          (b["book_id"],))
@@ -345,6 +357,10 @@ def state(con=None, p=None) -> dict[str, Any]:
                  "WHERE book_id=? AND status='closed' GROUP BY exit_reason",
             (b["book_id"],))}
         books.append({"book_id": b["book_id"],
+                      "booked_batch": (latest_batch["batch_id"]
+                                       if latest_batch else None),
+                      "booked_as_of": (latest_batch["as_of"]
+                                       if latest_batch else None),
                       "selector": b["book_id"].replace("sel-", ""),
                       "capital": b["capital"], "equity": eq,
                       "open_positions": pos,
@@ -357,6 +373,17 @@ def state(con=None, p=None) -> dict[str, Any]:
     out["feeds"] = [dict(r) for r in p.state.q(
         "SELECT feed, kind, as_of, n_rows, ok, error FROM feed_runs "
         "ORDER BY rowid DESC LIMIT 12")]
+
+    # -- schedule: the server says when, the page only displays -----------
+    try:
+        from .scheduler import weekly_period
+        period_start, trigger = weekly_period(now)
+        out["schedule"] = {"current_period": period_start.date().isoformat()
+                           if hasattr(period_start, "date") else str(period_start),
+                           "trigger_hkt": trigger.isoformat(),
+                           "tick_interval_s": 900}
+    except Exception:  # noqa: BLE001
+        out["schedule"] = None
 
     # -- static registers -------------------------------------------------
     out["assumptions"] = [dict(zip(("claim", "nature", "status"), a))

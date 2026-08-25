@@ -180,7 +180,13 @@ class DirectInference(Inference):
             except ImportError as e:
                 raise NotConfigured(
                     "openai SDK not installed; pip install openai") from e
-            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            # 180s per call, 2 retries. The default 600s timeout means one hung
+            # call eats a sixth of the weekly window; twenty of them eat the day.
+            # A generation that cannot finish in three minutes is not going to
+            # finish, and the per-topic error handling upstream already knows how
+            # to lose one topic without losing the run.
+            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url,
+                                  timeout=180.0, max_retries=2)
         return self._client
 
     def complete(self, prompt: str, *, system: str | None = None,

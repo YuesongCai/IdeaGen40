@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The production loop: one idempotent tick every 15 minutes. The tick itself
+       decides what is due (Wednesday 07:00 HKT weekly run, monitoring in
+       between) and refuses double work via the run lock and the completed-period
+       unique index, so a crashed or overlapping invocation cannot double-book.
+       launchd rather than cron: cron on macOS needs Full Disk Access per binary,
+       and a schedule that silently loses permission is a schedule that looks
+       alive while storing nothing. -->
+  <key>Label</key><string>com.ideagen40.scheduler</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
+    <string>-m</string>
+    <string>ideagen.scheduler</string>
+    <string>tick</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/yuesongcai/IdeaGen40</string>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/scheduler_tick.log</string>
+  <key>StandardErrorPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/scheduler_tick.log</string>
+</dict>
+</plist>

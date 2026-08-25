@@ -49,7 +49,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable
 
-from . import config, feeds, orchestrator, platform as plat, schema
+from . import config, execution, feeds, orchestrator, platform as plat, schema
 
 # ---------------------------------------------------------------------------
 # The schedule, as constants rather than as a crontab.
@@ -376,6 +376,23 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
         log("  ⚠ 周策略跑完了，但 corpus 为 0 行——ingest 或 Wisburg 通道有问题")
         p.events.publish("scheduler.weekly.thin_corpus",
                          {"as_of": as_of.isoformat(), "run_id": res.run_id, "rows": 0})
+
+    # Booking is part of the weekly job, not an afterthought: a run whose picks
+    # never became positions stores opinions, and a month later there is nothing
+    # to compare the selectors on. It is guarded to the paper venue and reported
+    # as degraded rather than fatal — the verdicts are already persisted, so a
+    # booking failure is recoverable by `ideagen book`, while crashing the tick
+    # here would also take the heartbeat down with it.
+    if not dry_run and execution.selected() == "paper":
+        try:
+            from . import booking, db as _db
+            bk = booking.book_run(_db.init(), p, res.run_id, verbose=True)
+            detail["booked"] = {k: v for k, v in bk["books"].items()}
+        except Exception as e:  # noqa: BLE001
+            detail["booking_error"] = f"{type(e).__name__}: {e}"
+            log(f"  ⚠ 建仓失败（结论已保存，可用 `ideagen book` 补）：{e}")
+            p.events.publish("scheduler.weekly.booking_failed",
+                             {"run_id": res.run_id, "error": str(e)[:300]})
 
     log(f"  周策略  完成 run_id={res.run_id} artifacts={len(res.artifacts)}")
     p.events.publish("scheduler.weekly.ran",

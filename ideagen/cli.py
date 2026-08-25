@@ -588,6 +588,25 @@ def cmd_weekly(args) -> int:
     print(f"\n完成  主题 {len(res.topics)} · 候选 {res.n_candidates} · "
           f"账本 {len(res.selectors)} · 产物 {len(res.artifacts)} · "
           f"模型调用 {res.calls}")
+    if args.trade and res.completed:
+        from . import booking, platform as plat
+        print("\n建仓：")
+        booking.book_run(_con(), plat.load(), res.run_id)
+    return 0
+
+
+def cmd_book(args) -> int:
+    """Book an already-completed run's verdicts into the selector paper books."""
+    from . import booking, db as _db, platform as plat
+    p = plat.load()
+    run_id = args.run_id
+    if not run_id:
+        r = p.state.q("SELECT run_id FROM orch_runs WHERE kind='weekly' AND ok=1 "
+                      "ORDER BY as_of DESC, started_at DESC LIMIT 1")
+        if not r:
+            print("没有成功完成的周跑可以建仓"); return 1
+        run_id = r[0]["run_id"]
+    booking.book_run(_con(), p, run_id)
     return 0
 
 
@@ -621,11 +640,16 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
     s = add("weekly", cmd_weekly, "one weekly run: 筛选A → 筛选B → 筛选C")
+    s.add_argument("--trade", action="store_true",
+                   help="book each selector's picks into its paper book after the run")
     s.add_argument("--topic-scorer", default="hgep")
     s.add_argument("--generators", help="comma-separated; default every registered one")
     s.add_argument("--selectors", help="comma-separated; default every registered one")
     s.add_argument("--dry-run", action="store_true",
                    help="run the strategies, persist nothing")
+
+    s = add("book", cmd_book, "book a completed run into the selector paper books")
+    s.add_argument("--run-id", help="default: the latest completed weekly run")
 
     s = add("platform", cmd_platform, "platform port health (run this first)")
     s.add_argument("--platform", choices=["local", "byteplus"],

@@ -46,7 +46,7 @@ from .sources import futu_px, olive
 # Any instrument in a currency without an entry here is refused, not guessed.
 FX_TO_USD = {"USD": 1.0, "HKD": 1.0 / 7.80}
 
-EXIT_REASONS = ("stop", "take", "horizon", "unmarkable", "manual")
+EXIT_REASONS = ("stop", "take", "horizon", "event", "unmarkable", "manual")
 
 
 def _oid(*parts: Any) -> str:
@@ -57,6 +57,8 @@ def book_spec(book_id: str) -> dict:
     """Spec for any book, including the per-batch cohort books."""
     if config.is_cohort(book_id):
         return config.COHORT_SPEC
+    if config.is_selector_book(book_id):
+        return config.SELECTOR_SPEC
     return config.BOOKS[book_id]
 
 
@@ -439,6 +441,13 @@ def _apply_fill(con, order: dict, idea: dict, d: str, px: float, rule: str) -> s
     return pos_id
 
 
+def _event_exit(con, pos: dict, d: str) -> bool:
+    """An unacked thesis_invalidated alert from an earlier session."""
+    return db.q1(con, "SELECT 1 x FROM alerts WHERE book_id=? AND idea_uid=? "
+                      "AND kind='thesis_invalidated' AND d<? AND acked=0 LIMIT 1",
+                 (pos["book_id"], pos["idea_uid"], d)) is not None
+
+
 def _close_position(con, pos: dict, d: str, px: float, reason: str) -> None:
     idea = db.q1(con, "SELECT * FROM ideas WHERE idea_uid=?", (pos["idea_uid"],))
     ccy = _currency(con, dict(idea))
@@ -526,11 +535,24 @@ def step(con, book_id: str, d: str, verbose: bool = False) -> dict:
                         (hi, lo, pos["pos_id"]))
 
             reason = px = None
-            if spec["entry"] != "market_close":       # naive book has no stops
+            # Whether risk rules apply is the book's own declaration, not an
+            # inference from its entry style. The old inference ("market_close
+            # entry means no stops") was true of the naive book and false of the
+            # selector books, which enter at the close *and* carry σ-multiple
+            # stops fixed at generation — inferring would have silently stripped
+            # every stop the spec promises.
+            if spec.get("stops", spec["entry"] != "market_close"):
                 if pos["stop_px"] and m["px"] < pos["stop_px"]:
                     reason, px = "stop", m["px"]      # pack convention: 日收盘低于
                 elif pos["take_px"] and hi >= pos["take_px"]:
                     reason, px = "take", pos["take_px"]
+                elif _event_exit(con, pos, d):
+                    # The third exit the spec promises: the theme's pre-registered
+                    # price indicator has invalidated the thesis. Alerting without
+                    # acting left the book long a position whose stated reason to
+                    # exist was already gone — the alert fires on day t's data, so
+                    # the exit is day t+1's close, never the same bar.
+                    reason, px = "event", m["px"]
             if reason is None and pos["horizon_end"] and d >= pos["horizon_end"]:
                 reason, px = "horizon", m["px"]
             if reason:

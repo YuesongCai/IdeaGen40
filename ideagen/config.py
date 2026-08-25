@@ -215,6 +215,27 @@ COHORT_SPEC = {
 }
 
 
+#: One paper book per 筛选C selector, so eight selection methods can trade the
+#: same weekly pool side by side without touching each other's cash. Capital
+#: matches the cohort books so cross-book returns are comparable at equal scale.
+SELECTOR_PREFIX = "sel-"
+SELECTOR_SPEC = {
+    "label": "挑法组合", "desc": "筛选C 单一挑法：每周选中的想法等权买入，滚动持有一个月",
+    "capital": COHORT_CAPITAL, "sizing": "equal", "entry": "market_close",
+    # Enters at the close like the naive book, but carries the spec's full risk
+    # rules: σ-multiple stops and takes fixed at booking, plus the event exit.
+    "stops": True,
+}
+
+
+def selector_book(selector: str) -> str:
+    return f"{SELECTOR_PREFIX}{selector}"
+
+
+def is_selector_book(book_id: str) -> bool:
+    return book_id.startswith(SELECTOR_PREFIX)
+
+
 def cohort_book(batch_id: str) -> str:
     return f"{COHORT_PREFIX}{batch_id}"
 

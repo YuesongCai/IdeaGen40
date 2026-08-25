@@ -252,6 +252,31 @@ def weekly(
                 log(f"  筛选A  {tv.strategy} v{tv.version} → {len(tv.chosen)}: "
                     f"{', '.join(tv.chosen[:5])}")
 
+                # Every mechanical (no-model) topic scorer also runs and persists,
+                # purely as a recorded opinion — ideas are only generated from the
+                # primary scorer's topics. This is how the "语义打分 vs 纯数数"
+                # disagreement becomes data instead of argument: each week both
+                # verdicts land side by side at zero model cost, and once outcomes
+                # exist the backtest layer can ask which topic list the profitable
+                # ideas actually came from.
+                for r in strat.available("topic_scorer"):
+                    if r["name"] == topic_scorer or r.get("needs_model"):
+                        continue
+                    try:
+                        cv = strat.run("topic_scorer", r["name"], ctx)
+                    except Exception as e:  # noqa: BLE001 — a control must not cost the run
+                        j.step(f"topics:{r['name']}", error=f"{type(e).__name__}: {e}")
+                        continue
+                    if not dry_run:
+                        res.artifacts.append(j.artifact(
+                            f"A_topics_{r['name']}.json",
+                            _blob(cv.as_row(ctx, "topic_scorer"))))
+                        _save_verdict(p, j.run_id, ctx, "topic_scorer", cv,
+                                      r["role"])
+                    agree = len(set(cv.chosen) & set(tv.chosen))
+                    log(f"  筛选A対照 {cv.strategy} → {', '.join(cv.chosen[:5])}"
+                        f"（与主打分重合 {agree}/{len(tv.chosen)}）")
+
             # ---- 筛选B: each generator writes ideas for every topic --------
             #
             # All generators' output is pooled into one candidate set rather than

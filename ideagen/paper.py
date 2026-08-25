@@ -217,7 +217,12 @@ def size_batch(con, book_id: str, rows: list[dict], equity: float) -> dict[str, 
 
     notional: dict[str, float] = {}
     if spec["sizing"] == "equal":
-        per = min(equity, budget) / max(len(live), 1)
+        # A tranche-capped book may not spend more than its declared fraction of
+        # capital on one batch, however much cash is sitting free. Without this,
+        # the first week of a four-tranche rolling book deploys everything and
+        # the "weekly 25%" of the mandate exists only in the documentation.
+        tranche = float(spec.get("tranche_frac", 1.0)) * float(spec["capital"])
+        per = min(equity, budget, tranche) / max(len(live), 1)
         for r in live:
             notional[r["idea_uid"]] = per
     else:

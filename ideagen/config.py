@@ -225,6 +225,11 @@ SELECTOR_SPEC = {
     # Enters at the close like the naive book, but carries the spec's full risk
     # rules: σ-multiple stops and takes fixed at booking, plus the event exit.
     "stops": True,
+    # One weekly batch may deploy at most a quarter of the book. Four tranches
+    # roll side by side, so steady state is ~fully invested; week one is 25%
+    # deployed with the rest earning the money-market yield — which is the
+    # founding rule stated as arithmetic: 每周占 25%，剩下的钱在 JPST。
+    "tranche_frac": 0.25,
 }
 
 

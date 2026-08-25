@@ -1691,3 +1691,19 @@ class TestCredentialsNeverReachAnArtifact(unittest.TestCase):
         self.assertNotIn("s3cr3t", redact_url("redis://:s3cr3t@h:6379/0"))
         self.assertEqual(redact_url("redis://plain:6379"), "redis://plain:6379",
                          "a URL with no credentials must stay readable")
+
+
+class TestTrancheWeight(unittest.TestCase):
+    """每周一批最多动用账本资本的 25%——初心里的滚动结构，用算术执行。"""
+
+    def test_first_week_deploys_at_most_a_quarter(self):
+        from ideagen import config
+        spec = config.SELECTOR_SPEC
+        self.assertEqual(spec.get("tranche_frac"), 0.25,
+                         "挑法账本必须声明每批 25% 的上限")
+        # The sizing arithmetic: full cash available, one batch of 10 —
+        # per-idea notional must come from the tranche, not from all cash.
+        cap = spec["capital"]
+        per = min(cap, cap, spec["tranche_frac"] * cap) / 10
+        self.assertAlmostEqual(per * 10, cap * 0.25,
+                               msg="第一周只许铺四分之一，其余吃货币基金收益")

@@ -342,7 +342,8 @@ def state(con=None, p=None) -> dict[str, Any]:
             aof = _date.fromisoformat(weekly["as_of"])
             days = [(aof - _td(days=i)).isoformat() for i in range(3)]
             docs = db.q(con,
-                        "SELECT doc_id, published_d, title, institution, tier, "
+                        "SELECT doc_id, published_d, title, "
+                        "COALESCE(institution, line) AS institution, tier, "
                         "content_hash, retrieval "
                         "FROM documents WHERE published_d IN (%s)"
                         % ",".join("?" * len(days)), days)

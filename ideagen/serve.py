@@ -44,6 +44,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not p.exists():
                 report.build(db.init())
             return self._raw(p.read_bytes(), "application/json; charset=utf-8")
+        if path == "/api/state":
+            from . import review
+            return self._json(review.state(db.init()))
+        if path in ("/review", "/review.html"):
+            from . import review
+            out = review.build(db.init())
+            return self._raw(out.read_bytes(), "text/html; charset=utf-8")
         if path == "/healthz":
             return self._json({"ok": True, "ts": config.now_hkt().isoformat()})
         return super().do_GET()

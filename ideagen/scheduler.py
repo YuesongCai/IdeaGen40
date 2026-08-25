@@ -361,6 +361,7 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
         # budget on a pre-flight refusal would declare the week exhausted within
         # the hour. The container's degraded counter is what escalates this one.
         detail["attempt_recorded"] = res.run_id != "-"
+        _notify(f"❌ IdeaGen 周跑失败 {as_of.isoformat()}：{str(res.error)[:180]}")
         log(f"  周策略  失败：{res.error}")
         p.events.publish("scheduler.weekly.failed",
                          {"as_of": as_of.isoformat(), "run_id": res.run_id,
@@ -394,12 +395,40 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
             p.events.publish("scheduler.weekly.booking_failed",
                              {"run_id": res.run_id, "error": str(e)[:300]})
 
+    _notify(f"✅ IdeaGen 周跑完成 {as_of.isoformat()}：主题 {len(res.topics)} · "
+            f"候选 {res.n_candidates} · 账本 {len(res.selectors)} · "
+            f"模型调用 {res.calls}。建仓结果见复盘板 http://localhost:8765/review")
     log(f"  周策略  完成 run_id={res.run_id} artifacts={len(res.artifacts)}")
     p.events.publish("scheduler.weekly.ran",
                      {"as_of": as_of.isoformat(), "run_id": res.run_id,
                       "late_h": round((now_hkt - weekly_period(now_hkt)[1])
                                       .total_seconds() / 3600, 2)})
     return JobOutcome("weekly", as_of.isoformat(), "ran", None, detail)
+
+
+def _notify(text: str) -> None:
+    """Feishu DM, fire-and-forget. A notification that can fail the run is a
+    liability; one that silently never fires is a dead man's misunderstanding —
+    so failures are logged to stderr but never raised."""
+    import subprocess, sys
+    try:
+        subprocess.run(
+            ["/opt/homebrew/bin/lark-cli", "im", "+messages-send", "--as", "bot",
+             "--user-id", "ou_8d0e4064f46c1d0de14c501c1f5db808",
+             "--text", text], timeout=30, capture_output=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  (飞书通知失败: {e})", file=sys.stderr)
+
+
+def _refresh_review() -> None:
+    """Regenerate the review board. Best-effort: the board is a view, and a view
+    must never be able to take down the thing it views."""
+    try:
+        from . import review
+        review.build()
+    except Exception as e:  # noqa: BLE001
+        import sys
+        print(f"  (复盘板刷新失败: {e})", file=sys.stderr)
 
 
 def _corpus_rows(p: plat.Platform, run_id: str) -> int | None:
@@ -524,6 +553,10 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
         f"告警 {(detail.get('alerts') or {}).get('n', '-')}  "
         f"feed 异常 {len([f for f in detail['feeds'] if f.get('problem')])}"
         + (f"  ⚠ {len(problems)} 项降级" if problems else ""))
+    # The review board is a view over the same stores this pass just wrote, so
+    # refreshing it here keeps "the page" and "the truth" at most 15 minutes
+    # apart without anyone remembering to rebuild it.
+    _refresh_review()
     # A degraded pass still counts as having run. Reporting it as `failed` would
     # make the container exit non-zero every quarter hour for the normal cloud
     # condition — OpenD is a local gateway and is not reachable from a sandbox —

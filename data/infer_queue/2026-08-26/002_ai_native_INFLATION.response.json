@@ -1,0 +1,12 @@
+[
+{"instrument_id":"STIP","thesis":"核心服务通胀持续施压 + AI 相关价格上涨，而 PCE 数据周五公布。短 TIPS 拿通胀应计而几乎不担利率久期，是通胀粘性最直接的表达。","upside_pct":1.5,"downside_pct":-0.8,"p_up":0.50,"p_base":0.38,"p_down":0.12,"citations":["feed:102603","feed:102556"]},
+{"instrument_id":"DBC","thesis":"能源价格短期回落但地缘风险或推升油价（Fed 日报原话），叠加核心商品反弹——广义商品篮子对『通胀再加速』情形是杠杆最高的多头。","upside_pct":6.0,"downside_pct":-4.5,"p_up":0.40,"p_base":0.35,"p_down":0.25,"citations":["feed:102603","feed:102494"]},
+{"instrument_id":"XLE","thesis":"通胀再加速的驱动如果来自能源（地缘 + TTF 冬季缺口），能源生产商同时吃价格与通胀受益股双重逻辑。","upside_pct":6.0,"downside_pct":-4.0,"p_up":0.43,"p_base":0.35,"p_down":0.22,"citations":["feed:102494","feed:102603"]},
+{"instrument_id":"TIP","thesis":"中长 TIPS：若通胀粘性坐实而联储被迫更鹰，实际收益率上行伤名义久期更重，TIPS 相对名义债胜出；若 UBS 的放缓路径兑现则盈亏平衡收窄有限。相对安全的通胀腿。","upside_pct":2.5,"downside_pct":-2.0,"p_up":0.42,"p_base":0.36,"p_down":0.22,"citations":["feed:102603","feed:102508"]},
+{"instrument_id":"GLD","thesis":"通胀粘性 + 美元走弱（美银：沟通失败则美元进一步走弱）是黄金的双引擎；风险是 2.4% 的实际收益率是逆风，故赔率给得保守。","upside_pct":4.5,"downside_pct":-3.5,"p_up":0.40,"p_base":0.36,"p_down":0.24,"citations":["feed:102572","feed:102509"]},
+{"instrument_id":"QUAL","thesis":"若通胀维持 2.5-3.0%，定价权就是利润率的护城河：质量因子（高毛利、低杠杆）是核心服务通胀环境里的结构性受益者。","upside_pct":4.0,"downside_pct":-3.5,"p_up":0.42,"p_base":0.38,"p_down":0.20,"citations":["feed:102556","feed:102569"]},
+{"instrument_id":"USFR","thesis":"通胀粘性直接映射为政策利率更久更高，浮息票息同步重置。与 STIP 一起构成『不赌方向的通胀受益』组合。","upside_pct":0.6,"downside_pct":-0.1,"p_up":0.58,"p_base":0.40,"p_down":0.02,"citations":["feed:102556"]},
+{"instrument_id":"VLUE","thesis":"通胀高企期价值因子的盈利久期短、对贴现率钝感——UBS 与德银的分歧无论谁对，价值相对成长的赔率都不差。","upside_pct":4.5,"downside_pct":-4.0,"p_up":0.41,"p_base":0.38,"p_down":0.21,"citations":["feed:102517","feed:102508"]},
+{"instrument_id":"PDBC","thesis":"与 DBC 同构但免 K-1 的商品篮子；持仓略偏能源，通胀再加速情形下与 DBC 同向，可作为同一论点的第二载体分散基金层面风险。","upside_pct":5.5,"downside_pct":-4.5,"p_up":0.40,"p_base":0.35,"p_down":0.25,"citations":["feed:102603"]},
+{"instrument_id":"SPLV","thesis":"若周五 PCE 超预期引发利率恐慌，低波是权益内最浅的回撤路径；若 PCE 因方法论下调走低，低波也不掉队。两种通胀结局下都可持有。","upside_pct":3.0,"downside_pct":-2.5,"p_up":0.42,"p_base":0.40,"p_down":0.18,"citations":["feed:102548","feed:102603"]}
+]

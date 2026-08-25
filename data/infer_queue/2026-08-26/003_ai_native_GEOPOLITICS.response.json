@@ -1,0 +1,12 @@
+[
+{"instrument_id":"XLE","thesis":"摩根大通直接推荐 XLE/XOP 看涨结构作为地缘对冲；霍尔木兹正常化延迟令能源供给风险有真实期限结构，而非情绪。","upside_pct":6.5,"downside_pct":-4.0,"p_up":0.45,"p_base":0.34,"p_down":0.21,"citations":["feed:102519","feed:102494"]},
+{"instrument_id":"XOP","thesis":"勘探生产商是油价上行 beta 最高的载体：霍尔木兹受阻 + 冬季 TTF 需 100 欧元以上平衡市场，供给风险直接进上游利润。","upside_pct":8.0,"downside_pct":-6.0,"p_up":0.42,"p_base":0.33,"p_down":0.25,"citations":["feed:102494","feed:102519"]},
+{"instrument_id":"USO","thesis":"原油价格本体：地缘风险推升油价是本周 Fed 日报明示的尾部。相比股票载体少一层市场 beta,纯度最高。","upside_pct":7.0,"downside_pct":-5.5,"p_up":0.40,"p_base":0.34,"p_down":0.26,"citations":["feed:102603","feed:102494"]},
+{"instrument_id":"ITA","thesis":"日本 2027 预算国防压力凸显、欧洲再武装持续——国防订单周期是少数不依赖利率方向的增长故事。注意拥挤度高,仓位宜标准而非超配。","upside_pct":5.0,"downside_pct":-4.5,"p_up":0.42,"p_base":0.36,"p_down":0.22,"citations":["feed:102501"]},
+{"instrument_id":"GLD","thesis":"地缘 + 美加贸易破裂 + 美债需求结构恶化（布鲁金斯：外国官方需求减弱）——黄金同时是地缘对冲与『美债信任对冲』。","upside_pct":5.0,"downside_pct":-3.5,"p_up":0.43,"p_base":0.35,"p_down":0.22,"citations":["feed:102604","feed:102518"]},
+{"instrument_id":"OIH","thesis":"油服是油价上行的二阶导：上游资本开支跟随油价与能源安全叙事,补库瓶颈（大摩油轮报告）暗示实物链条紧张延续。","upside_pct":7.0,"downside_pct":-6.0,"p_up":0.40,"p_base":0.34,"p_down":0.26,"citations":["feed:102562","feed:102494"]},
+{"instrument_id":"AMLP","thesis":"中游管道现金流对油价方向钝感、对运量敏感——地缘导致的贸易流重排（美 LNG 转欧）反而抬运量。高股息在利率恐慌月提供缓冲。","upside_pct":4.0,"downside_pct":-3.0,"p_up":0.44,"p_base":0.38,"p_down":0.18,"citations":["feed:102494"]},
+{"instrument_id":"PPA","thesis":"与 ITA 同主题不同权重（含更多电子战/供应链标的）：国防补库逻辑相同,双载体降低单一 ETF 结构风险。","upside_pct":5.0,"downside_pct":-4.5,"p_up":0.41,"p_base":0.37,"p_down":0.22,"citations":["feed:102501"]},
+{"instrument_id":"VIXY","thesis":"美加关税 9/8 生效 + 杰克逊霍尔 + 伊朗制裁三个事件挤在一个月内,波动率月度采买有具体触发点而非泛泛对冲。衰减成本限制仓位与持有期。","upside_pct":10.0,"downside_pct":-8.0,"p_up":0.32,"p_base":0.33,"p_down":0.35,"citations":["feed:102518","feed:102523"]},
+{"instrument_id":"XAR","thesis":"国防等权版本:若补库订单向二线供应商扩散,等权比市值加权多吃扩散收益。","upside_pct":5.5,"downside_pct":-5.0,"p_up":0.40,"p_base":0.37,"p_down":0.23,"citations":["feed:102501"]}
+]

@@ -1,0 +1,14 @@
+[
+{"instrument_id":"XLE","thesis":"巴克莱复盘历次加息周期：能源是唯一录得正收益的板块（+0.3%），而本周 9 月加息概率已被打到 35-60%。加息恐慌月份里能源既有历史韧性又有地缘油价支撑。","upside_pct":6.5,"downside_pct":-4.0,"p_up":0.45,"p_base":0.35,"p_down":0.20,"citations":["feed:102517","feed:102603"]},
+{"instrument_id":"USFR","thesis":"浮息国债是加息定价的直接受益者：票息随政策利率上行重置，久期近零。年底前加息概率 68% 的定价环境里，这是拿着等的最干净方式。","upside_pct":0.6,"downside_pct":-0.1,"p_up":0.60,"p_base":0.38,"p_down":0.02,"citations":["feed:102603","feed:102556"]},
+{"instrument_id":"VLUE","thesis":"巴克莱：加息周期里价值跑赢成长、大盘跑赢小盘。若沃什在杰克逊霍尔坐实鹰派反应函数，风格切换是最确定的相对收益来源。","upside_pct":5.0,"downside_pct":-4.5,"p_up":0.42,"p_base":0.38,"p_down":0.20,"citations":["feed:102517","feed:102572"]},
+{"instrument_id":"FXY","thesis":"日央行 9 月加息概率已飙至 82%，而美元兑日元还停在 158-159。政策落差一旦兑现，日元是本月最不对称的多头之一；财务大臣留任预期也在托底。","upside_pct":4.5,"downside_pct":-2.0,"p_up":0.50,"p_base":0.32,"p_down":0.18,"citations":["market-daily:102616","feed:102523","feed:102586"]},
+{"instrument_id":"BTAL","thesis":"杰克逊霍尔沟通失败的尾部（美银：10 年期可能破 5.5%）对高贝塔冲击最大。反贝塔组合在利率恐慌月提供正凸性，且不依赖方向判断。","upside_pct":4.0,"downside_pct":-2.5,"p_up":0.40,"p_base":0.40,"p_down":0.20,"citations":["feed:102572"]},
+{"instrument_id":"DBMF","thesis":"趋势策略当前的持仓结构（空债券、多能源、空日元转向）与加息重定价方向一致；若 9 月加息落地，债券下行趋势延续为其主要盈利腿。","upside_pct":3.5,"downside_pct":-2.5,"p_up":0.42,"p_base":0.38,"p_down":0.20,"citations":["feed:102556","feed:102509"]},
+{"instrument_id":"STIP","thesis":"短久期通胀保值债在『通胀粘性 + 政策利率上行』组合下两头兼顾：通胀应计保护 + 极低久期。Musalem 称基础通胀 2.5-3.0% 过高——这正是 STIP 的应计来源。","upside_pct":1.5,"downside_pct":-0.8,"p_up":0.48,"p_base":0.40,"p_down":0.12,"citations":["feed:102556","feed:102603"]},
+{"instrument_id":"USMV","thesis":"利率不确定性月份的防守腿：低波因子在加息周期回撤显著小于大盘，且与 VLUE 的价值倾斜互补。","upside_pct":3.5,"downside_pct":-3.0,"p_up":0.40,"p_base":0.42,"p_down":0.18,"citations":["feed:102517"]},
+{"instrument_id":"IEF","thesis":"反向一手：UBS 与花旗都指出 9 月 PCE 方法论修订将机械下调核心 PCE 20-40bp，若杰克逊霍尔偏鸽 + PCE 走低，中久期国债的加息定价（60%）有快速回吐空间。赔率型仓位。","upside_pct":3.0,"downside_pct":-2.5,"p_up":0.35,"p_base":0.33,"p_down":0.32,"citations":["feed:102508","feed:102548"]},
+{"instrument_id":"EWJ","thesis":"日央行加快加息 + 终端利率上调的组合利好日本金融与内需股，且日元升值直接抬高美元计价的 EWJ；对冲版 DXJ 在此情形反受损。","upside_pct":4.5,"downside_pct":-3.5,"p_up":0.42,"p_base":0.36,"p_down":0.22,"citations":["market-daily:102616","feed:102501"]},
+{"instrument_id":"BIL","thesis":"现金腿的对照：3.5%+ 的无风险收益率在政策不确定周是真实的机会成本锚。若组合其余想法过不了门槛，钱应该在这里而不是硬凑仓位。","upside_pct":0.4,"downside_pct":0.0,"p_up":0.55,"p_base":0.45,"p_down":0.00,"citations":["feed:102508"]},
+{"instrument_id":"KMLM","thesis":"与 DBMF 同类但商品腿更重的趋势策略：若地缘推升油价与美债下行同时发生（本周语料的组合情形），双腿同向。","upside_pct":4.0,"downside_pct":-3.0,"p_up":0.40,"p_base":0.38,"p_down":0.22,"citations":["feed:102603","feed:102509"]}
+]

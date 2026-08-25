@@ -49,6 +49,8 @@ class Item:
     sections: dict | None = None
     assets: list[str] | None = None
     retrieval: str | None = None
+    body_sha256: str | None = None       # sha256 of the verbatim detail markdown
+    raw_uri: str | None = None           # where those exact bytes were archived
 
     @property
     def body_is_deep(self) -> bool:
@@ -556,22 +558,265 @@ def _to_hkt_date(ts: str | None) -> str | None:
         return ts[:10] if len(ts) >= 10 else None
 
 
+# ---------------------------------------------------------------- archive
+# LICENSE RULE: the verbatim bodies archived below are licensed material. They
+# live in the private artifact store (TOS in production, the local artifact root
+# otherwise) and are never republished into public artifacts — reports quote and
+# cite, the archive proves.
+
+def _ensure_doc_columns(con) -> None:
+    """Additive-only evolution of `documents` on the legacy sqlite path.
+
+    The declarations live in `schema.ADD_COLUMNS` so the state-port `migrate`
+    and this path cannot drift apart; this exists because the CLI ingest opens
+    its connection through `db.init()`, which only runs CREATE TABLE and cannot
+    add a column to a table that already shipped.
+    """
+    from .. import schema as _schema
+
+    have = {r["name"] for r in con.execute("PRAGMA table_info(documents)")}
+    for table, col, decl in _schema.ADD_COLUMNS:
+        if table == "documents" and col not in have:
+            con.execute(f"ALTER TABLE documents ADD COLUMN {col} {decl}")
+
+
+def archive_raw(blobs, line: str, source_id, md: str,
+                errors: dict | None = None) -> tuple[str, str | None]:
+    """Write the verbatim detail markdown to the blob store, content-addressed.
+
+    Content addressing turns provenance from "a receipt and a weak hash" into
+    "the exact bytes, refetchable and provable": the sha in the key commits the
+    store to the content, and the store is the same immutable one the rest of
+    the system already trusts. If the vendor later edits a document, the new
+    bytes hash to a new key and both versions survive — which is the point.
+
+    Returns (sha256, uri). A put that fails still returns the sha, because the
+    hash is a property of the bytes we hold, not of the store's availability.
+    """
+    data = md.encode("utf-8")
+    sha = hashlib.sha256(data).hexdigest()
+    key = f"corpus/raw/{line}/{source_id}_{sha[:12]}.md"
+    try:
+        if not blobs.exists(key):
+            blobs.put(key, data, content_type="text/markdown; charset=utf-8")
+        return sha, blobs.uri(key)
+    except Exception as e:  # noqa: BLE001 - includes the already-exists race
+        # `put` refuses overwrites by design. Same sha ⇒ same bytes, so losing
+        # that race *is* the idempotent path; anything else is recorded and the
+        # ingest carries on — a full archive must never block the corpus.
+        try:
+            if blobs.exists(key):
+                return sha, blobs.uri(key)
+        except Exception:  # noqa: BLE001
+            pass
+        if errors is not None:
+            errors[key] = f"{type(e).__name__}: {e}"[:120]
+        return sha, None
+
+
+def _default_blobs():
+    """The platform blob store, best-effort. Callers that already hold a
+    Platform pass its blobs in; the CLI paths predate the ports and get the
+    archive for free through this — a missing platform degrades to no archive,
+    never to a failed ingest."""
+    try:
+        from .. import platform as plat
+        return plat.load().blobs
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# ---------------------------------------------------------------- tool drift
+#: Tools this module calls by name beyond the per-line list tools.
+_DETAIL_TOOLS = ("get-report-detail", "get-article-detail")
+
+
+def tool_drift(w: Wisburg) -> dict | None:
+    """Diff the server's tools/list against what this module hardcodes.
+
+    The vendor adds and removes tools without notice, and a silently missing
+    list tool becomes zero rows that validate cleanly — indistinguishable from
+    a quiet week. Unknown new tools are worth a look too: they are usually a
+    new source line the corpus is not yet reading.
+    """
+    expected = ({spec["tool"] for spec in config.SOURCE_LINES.values()}
+                | set(_DETAIL_TOOLS))
+    try:
+        have = set(w.tools())
+    except Exception as e:  # noqa: BLE001 - drift detection must not fail ingest
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
+    missing = sorted(expected - have)
+    unknown = sorted(have - expected)
+    if not missing and not unknown:
+        return None
+    return {"missing": missing, "unknown": unknown}
+
+
+# ---------------------------------------------------------------- shortlist
+#: Deep-fetch shortlist weights. Tier dominates: a Tier-1 primary document is
+#: worth more full text than any curation item. Theme hits buy their way up
+#: because the scorers only read what the lexicon can see. The duplicate
+#: penalty exceeds the tier gap so the third rewrite of one story loses to
+#: fresh coverage of anything.
+TIER_WEIGHT = {1: 4.0, 2: 2.0, 3: 0.0}
+THEME_HIT_WEIGHT = 1.5
+DUP_PENALTY = 5.0
+
+
+def shortlist(items: list, budget: int, themes: tuple,
+              known_sigs: frozenset | set = frozenset()) -> list:
+    """Pick which docs get the deep-fetch budget, by value rather than arrival.
+
+    Recency-only selection spent the budget on whatever came last, including
+    five rewrites of the same story; this shortlist buys coverage of what the
+    scorers will actually read. `known_sigs` carries title signatures already
+    deep-fetched, so a story does not get the budget twice across runs.
+
+    Pure function over objects with .tier/.title/.published_at — the same
+    Item shape both ingest paths hold.
+    """
+    from .. import lexicon as _lex
+
+    if budget <= 0 or not items:
+        return []
+    # Score in recency order so, within a duplicate cluster, the newest copy is
+    # the one that escapes the penalty; the final sort is stable, which makes
+    # recency the tie-break for equal scores.
+    ordered = sorted(items, key=lambda it: it.published_at or "", reverse=True)
+    seen: dict[str, int] = {}
+    scored: list[tuple[float, Any]] = []
+    for it in ordered:
+        sig = _lex.title_signature(it.title or "")
+        dups = seen.get(sig, 0) + (1 if sig in known_sigs else 0)
+        seen[sig] = seen.get(sig, 0) + 1
+        s = TIER_WEIGHT.get(it.tier, 0.0)
+        s += THEME_HIT_WEIGHT * sum(1 for t in themes
+                                    if _lex.match_theme(it.title or "", t))
+        s -= DUP_PENALTY * dups
+        scored.append((s, it))
+    scored.sort(key=lambda p: p[0], reverse=True)
+    return [it for _, it in scored[:budget]]
+
+
+def _deep_sigs(con, line: str, start_d: str) -> set[str]:
+    """Title signatures of docs this line already holds in full, so the
+    shortlist does not spend budget re-fetching a story it can already read."""
+    from .. import lexicon as _lex
+
+    rows = db.q(con, "SELECT title FROM documents WHERE line=? AND published_d>=? "
+                     "AND (body_chars>1500 OR body_sha256 IS NOT NULL)",
+                (line, start_d))
+    return {_lex.title_signature(r["title"] or "") for r in rows}
+
+
+def _deep_fetch(w: Wisburg, it: Item, report: dict, blobs) -> bool:
+    """Merge the full detail document into `it`, archiving the raw bytes first.
+
+    The archive happens BEFORE any stripping: `_strip_html` and the 60k
+    truncation are lossy, and the whole value of the archive is that it holds
+    what the vendor served, not what the pipeline kept.
+    """
+    try:
+        md = (w.article_detail(it.source_id) if it.line == "articles"
+              else w.detail(it.source_id, it.category))
+        md = md if isinstance(md, str) else json.dumps(md, ensure_ascii=False)
+    except Exception as e:  # noqa: BLE001 - detail is best-effort
+        report.setdefault("detail_errors", {})[it.doc_id] = str(e)[:120]
+        return False
+    if not md.strip():
+        return False
+    if blobs is not None:
+        errs: dict = {}
+        it.body_sha256, it.raw_uri = archive_raw(blobs, it.line, it.source_id,
+                                                 md, errs)
+        if errs:
+            report.setdefault("archive_errors", {}).update(errs)
+    if len(md) > len(it.body):
+        it.body = _strip_html(md)[:60_000]
+        sec = parse_detail(md)
+        it.meta = {**it.meta, **{f"sec_{k}": v for k, v in sec.items()
+                                 if isinstance(v, (int, float, str))
+                                 and k.startswith("n_")}}
+        it.sections = sec
+        found = extract_assets(md)
+        it.assets = list(dict.fromkeys([*(it.assets or []), *found]))
+    return True
+
+
+# ---------------------------------------------------------------- rows
+def _doc_row(i: Item, now: str) -> dict:
+    """One `documents` row. `body_sha256`/`raw_uri` are deliberately absent:
+    the upsert sets every listed column, so including them as NULL on a shallow
+    re-ingest would erase an archive reference written by an earlier deep
+    fetch. They are applied by `_apply_archive_refs` instead."""
+    return {
+        "doc_id": i.doc_id, "line": i.line, "category": i.category,
+        "source_id": i.source_id, "tier": i.tier, "title": i.title,
+        "institution": i.institution, "published_at": i.published_at,
+        "published_d": i.published_d, "ingested_at": now, "url": i.url,
+        "summary": i.summary, "body": i.body, "body_chars": len(i.body),
+        "content_hash": i.content_hash, "retrieval": i.retrieval,
+        "meta": {**i.meta, **({"sections": i.sections} if i.sections else {}),
+                 **({"n_assets": len(i.assets)} if i.assets else {})},
+    }
+
+
+def _asset_rows(items: list[Item]) -> list[dict]:
+    rows = []
+    for i in items:
+        for u in (i.assets or []):
+            rows.append({
+                "asset_id": hashlib.sha1(u.encode()).hexdigest(),
+                "doc_id": i.doc_id, "url": u,
+                "kind": "chart" if i.line == "images" else "figure",
+                "host": u.split("/", 3)[2] if "://" in u else None,
+                "caption": (i.summary or "")[:2000] if i.line == "images" else None,
+                "title": i.title, "published_d": i.published_d,
+            })
+    return rows
+
+
+def _apply_archive_refs(con, items: list[Item]) -> None:
+    for i in items:
+        if i.body_sha256:
+            con.execute("UPDATE documents SET body_sha256=?, raw_uri=? "
+                        "WHERE doc_id=?", (i.body_sha256, i.raw_uri, i.doc_id))
+
+
 # ---------------------------------------------------------------- ingest
 def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS,
            lines: Iterable[str] | None = None, fetch_bodies: int = 0,
-           verbose: bool = True) -> dict:
+           verbose: bool = True, blobs: Any = None, events: Any = None) -> dict:
     """Pull every source line for [as_of-lookback+1, as_of] and upsert documents.
 
-    `fetch_bodies` optionally deep-fetches the N most recent Tier-1/2 items per
-    line via get-report-detail, so N's causal-depth scoring has real text.
+    `fetch_bodies` optionally deep-fetches N Tier-1/2 items per line via
+    get-report-detail — chosen by `shortlist`, not by recency — so N's
+    causal-depth scoring has real text. `blobs`/`events` are platform ports;
+    when absent they are resolved best-effort so the CLI paths need no change.
     """
     w = Wisburg()
     w.initialize()
+    _ensure_doc_columns(con)
+    if blobs is None:
+        blobs = _default_blobs()
     start = as_of - timedelta(days=lookback_days - 1)
     lines = list(lines or config.SOURCE_LINES)
     report: dict[str, Any] = {"as_of": as_of.isoformat(), "start": start.isoformat(),
                               "lines": {}, "total": 0, "new": 0, "errors": {}}
     now = config.now_hkt().isoformat()
+
+    drift = tool_drift(w)
+    if drift:
+        report["tool_drift"] = drift
+        if verbose:
+            print(f"  ⚠ 工具漂移：缺失 {drift.get('missing') or '-'} / "
+                  f"新增 {drift.get('unknown') or '-'}")
+        if events is not None:
+            try:
+                events.publish("ingest.tool_drift",
+                               {"as_of": as_of.isoformat(), **drift})
+            except Exception:  # noqa: BLE001 - a drift alert must not fail ingest
+                pass
 
     window = [start + timedelta(days=k) for k in range((as_of - start).days + 1)]
 
@@ -609,51 +854,21 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
 
         # Deep-fetch the full markdown for the lines that feed N's causal depth.
         # Only Tier 1/2 gets this treatment: those are the documents allowed to
-        # establish a new fact, and the ones whose sectioned body we score.
+        # establish a new fact, and the ones whose sectioned body we score. The
+        # budget is unchanged; what changed is who gets it — see `shortlist`.
         if fetch_bodies and config.SOURCE_LINES[line]["tier"] in config.FACT_TIERS:
-            for it in keep[:fetch_bodies]:
-                if it.source_id is None or it.body_is_deep:
-                    continue
-                try:
-                    md = (w.article_detail(it.source_id) if line == "articles"
-                          else w.detail(it.source_id, it.category))
-                    md = md if isinstance(md, str) else json.dumps(md, ensure_ascii=False)
-                    if len(md) > len(it.body):
-                        it.body = _strip_html(md)[:60_000]
-                        sec = parse_detail(md)
-                        it.meta = {**it.meta, **{f"sec_{k}": v for k, v in sec.items()
-                                                 if isinstance(v, (int, float, str))
-                                                 and k.startswith("n_")}}
-                        it.sections = sec
-                        found = extract_assets(md)
-                        it.assets = list(dict.fromkeys([*(it.assets or []), *found]))
-                except Exception as e:  # noqa: BLE001 - detail is best-effort
-                    report.setdefault("detail_errors", {})[it.doc_id] = str(e)[:120]
+            cand = [i for i in keep if i.source_id is not None and not i.body_is_deep]
+            from .. import lexicon as _lex
+            chosen = shortlist(cand, fetch_bodies, _lex.all_themes(as_of),
+                               known_sigs=_deep_sigs(con, line, start.isoformat()))
+            for it in chosen:
+                _deep_fetch(w, it, report, blobs)
 
         before = con.execute("SELECT COUNT(*) c FROM documents").fetchone()["c"]
-        rows = [{
-            "doc_id": i.doc_id, "line": i.line, "category": i.category,
-            "source_id": i.source_id, "tier": i.tier, "title": i.title,
-            "institution": i.institution, "published_at": i.published_at,
-            "published_d": i.published_d, "ingested_at": now, "url": i.url,
-            "summary": i.summary, "body": i.body, "body_chars": len(i.body),
-            "content_hash": i.content_hash, "retrieval": i.retrieval,
-            "meta": {**i.meta, **({"sections": i.sections} if i.sections else {}),
-                     **({"n_assets": len(i.assets)} if i.assets else {})},
-        } for i in keep]
-        db.upsert_many(con, "documents", rows, ["doc_id"])
+        db.upsert_many(con, "documents", [_doc_row(i, now) for i in keep], ["doc_id"])
+        _apply_archive_refs(con, keep)
 
-        asset_rows = []
-        for i in keep:
-            for u in (i.assets or []):
-                asset_rows.append({
-                    "asset_id": hashlib.sha1(u.encode()).hexdigest(),
-                    "doc_id": i.doc_id, "url": u,
-                    "kind": "chart" if i.line == "images" else "figure",
-                    "host": u.split("/", 3)[2] if "://" in u else None,
-                    "caption": (i.summary or "")[:2000] if i.line == "images" else None,
-                    "title": i.title, "published_d": i.published_d,
-                })
+        asset_rows = _asset_rows(keep)
         if asset_rows:
             db.upsert_many(con, "assets", asset_rows, ["asset_id"])
             report["assets"] = report.get("assets", 0) + len(asset_rows)
@@ -670,6 +885,103 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
                   f"window={len(keep):<4} new={after-before:<4} [{days}]")
 
     db.kv_set(con, f"ingest:{as_of.isoformat()}", report)
+    return report
+
+
+def ingest_incremental(con, *, budget_details: int = 3,
+                       lines: Iterable[str] | None = None,
+                       blobs: Any = None, verbose: bool = False) -> dict:
+    """First-page-only pull of every source line, for the monitor cadence.
+
+    The economics are the design: one page (~20 items) per line and a small
+    global deep-fetch budget keep a pass cheap enough to run a hundred times a
+    day, which is what turns the corpus from a weekly snapshot into a rolling
+    one. Completeness is deliberately NOT this function's job — the daily
+    full-window `ingest` remains the backstop that paginates the whole window,
+    so anything a first page misses costs freshness, never coverage.
+
+    Per-line cursors (last seen source_id / published_at) live in the kv store
+    under `ingest:cursor:{line}`. The source_id prefilter assumes the vendor's
+    ids are monotonic per line; if that assumption ever breaks, the DB existence
+    check below still prevents duplicates and the daily ingest heals any skip.
+    """
+    _ensure_doc_columns(con)
+    if blobs is None:
+        blobs = _default_blobs()
+    w = Wisburg()
+    w.initialize()
+    today = config.now_hkt().date()
+    start = today - timedelta(days=config.OBSERVATION_WINDOW_DAYS - 1)
+    now = config.now_hkt().isoformat()
+    report: dict[str, Any] = {"at": now, "new": 0, "deep": 0,
+                              "lines": {}, "errors": {}}
+
+    fresh_all: list[Item] = []
+    cursors: dict[str, dict] = {}
+    for line in (lines or config.SOURCE_LINES):
+        try:
+            items = w.list_line(line, start, today, limit=20, max_pages=1)
+        except Exception as e:  # noqa: BLE001 - one dead line must not kill the pass
+            report["errors"][line] = str(e)[:200]
+            continue
+        cur = db.kv_get(con, f"ingest:cursor:{line}") or {}
+        last_sid = cur.get("source_id")
+        fresh: list[Item] = []
+        for it in items:
+            if not it.published_d or not (start.isoformat() <= it.published_d
+                                          <= today.isoformat()):
+                continue
+            # `images` ids are content-derived hashes, not server sequence
+            # numbers, so the monotonic prefilter would skip new charts at
+            # random there — the DB check is the only valid test for that line.
+            if (line != "images" and last_sid is not None
+                    and it.source_id is not None and it.source_id <= last_sid):
+                continue
+            if db.q1(con, "SELECT 1 FROM documents WHERE doc_id=?", (it.doc_id,)):
+                continue
+            fresh.append(it)
+        fresh_all.extend(fresh)
+        sids = [i.source_id for i in items if i.source_id is not None]
+        stamps = [i.published_at for i in items if i.published_at]
+        cursors[line] = {
+            "source_id": max([*sids, *([last_sid] if last_sid else [])], default=None),
+            "published_at": max([*stamps, *([cur.get("published_at")]
+                                            if cur.get("published_at") else [])],
+                                default=None),
+            "checked_at": now,
+        }
+        report["lines"][line] = {"listed": len(items), "new": len(fresh)}
+
+    # One global budget across lines: at this cadence the interesting question
+    # is "what, of everything new this quarter-hour, deserves full text", not
+    # "the newest per line" — the shortlist answers it with the same scorer the
+    # daily ingest uses.
+    cand = [i for i in fresh_all
+            if config.SOURCE_LINES[i.line]["tier"] in config.FACT_TIERS
+            and i.source_id is not None and not i.body_is_deep]
+    from .. import lexicon as _lex
+    known = set()
+    for line in {i.line for i in cand}:
+        known |= _deep_sigs(con, line, start.isoformat())
+    for it in shortlist(cand, budget_details, _lex.all_themes(today),
+                        known_sigs=known):
+        if _deep_fetch(w, it, report, blobs):
+            report["deep"] += 1
+
+    if fresh_all:
+        db.upsert_many(con, "documents", [_doc_row(i, now) for i in fresh_all],
+                       ["doc_id"])
+        _apply_archive_refs(con, fresh_all)
+        asset_rows = _asset_rows(fresh_all)
+        if asset_rows:
+            db.upsert_many(con, "assets", asset_rows, ["asset_id"])
+            report["assets"] = len(asset_rows)
+    report["new"] = len(fresh_all)
+    for line, cur in cursors.items():
+        db.kv_set(con, f"ingest:cursor:{line}", cur)
+    if verbose:
+        print(f"  增量语料 +{report['new']} 条（深抓 {report['deep']}）"
+              if report["new"] else "  增量语料 无新增")
     return report
 
 

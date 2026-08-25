@@ -1,0 +1,150 @@
+今天是 2026-08-26。你的任务是把主题拆成可观测的传导链。
+
+主题 EARNINGS-QUALITY：盈利兑现与质量分化
+核心问题：未来1–6个月，盈利上修能否扩散到指数之外并由现金流验证
+相关敞口：美股质量因子、美股等权/广度、美股低波动、美国医疗保健
+打分A 依据：
+
+相关原始材料（新到旧）：
+ec:102606 [2026-08-25]  拼多多2026年第二季度财报电话会纪要 — 
+am:102608 [2026-08-25]  选择性 — 
+feed:102606 [2026-08-25]  拼多多2026年第二季度财报电话会纪要 — 拼多多(PDD.US)Q2营收1124亿元，同比增8%；净利272亿元，同比降12%，主因加码生态投资。动态：推进“千亿扶持”与“包邮进村”打通下沉物流；应对欧盟关税逆风，加速海外本地化仓储建设。指引：无具体财务指引，强调坚持长期高质量发展，耐心推进自营品牌与全球供应链布局。
+feed:102608 [2026-08-25]  选择性 — **威灵顿资管**最新报告《选择性》指出，尽管**VIX指数保持低位**，但**个股和行业层面的波动率大幅上升**，主要股票相关性降至异常低位。报告认为，市场分化扩大为主动投资者带来机会，并提示关注盈利预期、杠杆ETF及AI驱动分化等风险。
+company:102493 [2026-08-24]  紫金矿业：上半年业绩符合预期，自由现金流强劲，维持买入评级 — 
+company:102495 [2026-08-24]  预期二季度业绩符合预期，下半年重新加速增长仍存疑问 — 
+company:102497 [2026-08-24]  Chorus：FY26业绩符合预期，维持中性评级，目标价9.75新西兰元 — 
+company:102502 [2026-08-24]  稳健的季度表现：长青游戏驱动利润率扩张，维持买入评级 — 
+company:102507 [2026-08-24]  亚太科技追踪：安克创新与领益智造获增持，存储芯片股东回报提升 — 
+company:102513 [2026-08-24]  英伟达F2Q27前瞻：GB300放量与Vera Rubin推进助力业绩超预期，中国出货成潜在上行变量 — 
+company:102514 [2026-08-24]  Marvell Technology：预计F2Q27业绩稳健，Trainium 3放量及光模块强劲支撑CY27/28数据中心展望上调；维持超配评级 — 
+company:102520 [2026-08-24]  AI系列#67：中国云服务商财报要点、中美对比及AI实验室业绩前瞻 — 
+company:102534 [2026-08-24]  美洲零售：IR/管理层会议要点及2026年二季度中期业绩总结 — 
+company:102542 [2026-08-24]  拼多多(PDD)：2026年第二季度业绩初评 — 
+company:102549 [2026-08-24]  拼多多2026年第二季度业绩快报：营收略低于预期，利润超预期，维持买入评级 — 
+company:102554 [2026-08-24]  拼多多：2026年第二季度业绩符合预期，国内业务稳健，Temu转型进行中 — 
+company:102558 [2026-08-24]  拼多多2Q26业绩点评：国内电商企稳，海外增速放缓，维持买入评级 — 
+company:102560 [2026-08-24]  小鹏汽车：二季度业绩略逊预期，机器人业务分拆融资缓解资金压力 — 
+company:102574 [2026-08-24]  小鹏汽车：2026年第二季度业绩符合预期，毛利率与运营费用优于预期 — 
+ib:102493 [2026-08-24]  紫金矿业：上半年业绩符合预期，自由现金流强劲，维持买入评级 — 
+ib:102495 [2026-08-24]  预期二季度业绩符合预期，下半年重新加速增长仍存疑问 — 
+ib:102497 [2026-08-24]  Chorus：FY26业绩符合预期，维持中性评级，目标价9.75新西兰元 — 
+ib:102502 [2026-08-24]  稳健的季度表现：长青游戏驱动利润率扩张，维持买入评级 — 
+ib:102507 [2026-08-24]  亚太科技追踪：安克创新与领益智造获增持，存储芯片股东回报提升 — 
+
+可买清单（instrument_id | 名称 | 暴露 | 载体）：
+CASH-PLUS | Cash Plus / Money Market | 美元现金等价 | 现金
+CHINA-ALPHA | China Selective Alpha Fund | 中国选择性alpha | 公募
+CNY-DURATION | CNY Government Bond Duration | 人民币国债久期 | 公募
+EUROPE-GRID | European Grid & Electrification Fund | 欧洲电网与电气化 | 公募
+EUROPE-INCOME | Pan-European Income Equity | 欧洲金融与价值 | 公募
+GLOBAL-SEMI | Global Semiconductor Supply Chain Fund | 全球半导体股 | 公募
+HELO | Hedged Equity Overlay Fund | 对冲权益 | 公募
+JANUS-BIOTECH | Janus Henderson Biotechnology | 生物科技 | 公募
+L03028 | P/E FX Strategy UCITS Fund | 外汇趋势策略 | 私募 / UCITS
+SMD-AM-JAPAN | SMD-AM Japan High Conviction | 日本高确信度选股 | 公募
+02800 | Tracker Fund of Hong Kong | 香港大盘股 | ETF
+02840 | SPDR Gold Trust (HK) | 黄金 | ETF
+03033 | GX Hang Seng TECH ETF | 香港科技股 | ETF
+03199 | CSOP FactSet China Semiconductor | 中国半导体自主可控 | ETF
+09439 | GX China Electric Vehicle | 中国电动车产业链 | ETF
+ACWI | iShares MSCI ACWI ETF | 全球股票 | ETF
+AGG | iShares Core US Aggregate Bond | 美国综合债 | ETF
+AMLP | Alerian MLP ETF | 能源中游基础设施 | ETF
+ARKW | ARK Next Generation Internet | 下一代科技股 | ETF
+BIL | SPDR 1-3 Month T-Bill | 美元现金等价 | ETF
+BKLN | Invesco Senior Loan ETF | 美元杠杆贷款 | ETF
+BTAL | AGF US Market Neutral Anti-Beta | 股票市场中性 | ETF
+CIBR | First Trust Nasdaq Cybersecurity | 网络安全股 | ETF
+COPX | Global X Copper Miners | 铜矿股 | ETF
+CPER | United States Copper Index | 铜价格 | ETF
+DBC | Invesco DB Commodity Index | 广义商品篮子 | ETF
+DBMF | iMGP DBi Managed Futures Strategy | 跨资产趋势策略 | ETF
+DXJ | WisdomTree Japan Hedged Equity | 日本出口股（对冲汇率） | ETF
+EEM | iShares MSCI Emerging Markets | 新兴市场股票 | ETF
+EMB | iShares JPM USD EM Bond | 新兴市场美元债 | ETF
+EMLC | VanEck JPM EM Local Currency Bond | 新兴市场本币债 | ETF
+EUFN | iShares MSCI Europe Financials | 欧洲金融股 | ETF
+EWG | iShares MSCI Germany | 德国股票 | ETF
+EWH | iShares MSCI Hong Kong | 香港股票 | ETF
+EWJ | iShares MSCI Japan | 日本股票 | ETF
+EWT | iShares MSCI Taiwan | 台湾股票 | ETF
+EWY | iShares MSCI South Korea | 韩国股票 | ETF
+EZU | iShares MSCI Eurozone | 欧元区股票 | ETF
+FEZ | SPDR EURO STOXX 50 | 欧元区大盘股 | ETF
+FXE | Invesco CurrencyShares Euro | 欧元 | ETF
+FXI | iShares China Large-Cap | 中国大盘股 | ETF
+FXY | Invesco CurrencyShares Japanese Yen | 日元 | ETF
+GLD | SPDR Gold Shares | 黄金 | ETF
+GRID | First Trust Clean Edge Smart Grid | 智能电网与电气化 | ETF
+HYG | iShares iBoxx High Yield | 美元高收益债 | ETF
+ICLN | iShares Global Clean Energy | 清洁能源 | ETF
+IEF | iShares 7-10 Year Treasury | 美国中久期国债 | ETF
+IGV | iShares Expanded Tech-Software | 软件股 | ETF
+INDA | iShares MSCI India | 印度股票 | ETF
+ITA | iShares US Aerospace & Defense | 国防军工 | ETF
+IYR | iShares US Real Estate | 美国房地产 | ETF
+KBE | SPDR S&P Bank ETF | 美国银行股 | ETF
+KIE | SPDR S&P Insurance | 保险股 | ETF
+KMLM | KFA Mount Lucas Managed Futures | 跨资产趋势策略 | ETF
+KRE | SPDR S&P Regional Banking | 区域银行 | ETF
+KWEB | KraneShares CSI China Internet | 中国互联网平台 | ETF
+LQD | iShares iBoxx Investment Grade | 美元投资级信用 | ETF
+MBB | iShares MBS ETF | 美国机构按揭证券 | ETF
+MCHI | iShares MSCI China | 中国股票 | ETF
+MOO | VanEck Agribusiness | 农业产业链 | ETF
+MTUM | iShares MSCI USA Momentum | 美股动量因子 | ETF
+NLR | VanEck Uranium+Nuclear | 核电运营与燃料 | ETF
+OIH | VanEck Oil Services | 油服设备 | ETF
+PAVE | Global X US Infrastructure Development | 电网与工程基础设施 | ETF
+PDBC | Invesco Optimum Yield Diversified Commodity | 广义商品篮子 | ETF
+PPA | Invesco Aerospace & Defense | 国防军工 | ETF
+QQQ | Invesco QQQ Trust | 美国成长股 | ETF
+QUAL | iShares MSCI USA Quality Factor | 美股质量因子 | ETF
+RSP | Invesco S&P 500 Equal Weight | 美股等权/广度 | ETF
+SHY | iShares 1-3 Year Treasury | 美国短久期国债 | ETF
+SKYY | First Trust Cloud Computing | 云计算股 | ETF
+SLV | iShares Silver Trust | 白银 | ETF
+SMH | VanEck Semiconductor | 全球半导体股 | ETF
+SOXX | iShares Semiconductor | 美国半导体股 | ETF
+SPLV | Invesco S&P 500 Low Volatility | 美股低波动 | ETF
+SPY | SPDR S&P 500 ETF | 美国大盘股 | ETF
+STIP | iShares 0-5 Year TIPS | 美国短久期通胀保值债 | ETF
+TAN | Invesco Solar | 太阳能 | ETF
+TIP | iShares TIPS Bond | 美国通胀保值债 | ETF
+TLT | iShares 20+ Year Treasury | 美国长久期国债 | ETF
+URA | Global X Uranium | 铀矿与核能股 | ETF
+USFR | WisdomTree Floating Rate Treasury | 美元浮息国债 | ETF
+USHY | iShares Broad USD High Yield | 美元高收益债 | ETF
+USMV | iShares MSCI USA Min Vol | 美股低波动 | ETF
+USO | United States Oil Fund | 原油价格 | ETF
+UUP | Invesco DB US Dollar Bullish | 美元指数 | ETF
+VGK | Vanguard FTSE Europe | 欧洲股票 | ETF
+VIXY | ProShares VIX Short-Term Futures | 股票波动率 | ETF
+VLUE | iShares MSCI USA Value Factor | 美股价值因子 | ETF
+WEAT | Teucrium Wheat | 小麦价格 | ETF
+XAR | SPDR S&P Aerospace & Defense | 国防军工 | ETF
+XBI | SPDR S&P Biotech | 生物科技 | ETF
+XHB | SPDR S&P Homebuilders | 美国住宅建筑 | ETF
+XLE | Energy Select Sector SPDR | 能源生产商 | ETF
+XLF | Financial Select Sector SPDR | 美国金融股 | ETF
+XLI | Industrial Select Sector SPDR | 美国工业股 | ETF
+XLP | Consumer Staples Select Sector SPDR | 必需消费 | ETF
+XLU | Utilities Select Sector SPDR | 电力公用事业 | ETF
+XLV | Health Care Select Sector SPDR | 美国医疗保健 | ETF
+XOP | SPDR S&P Oil & Gas E&P | 石油天然气勘探生产 | ETF
+XSD | SPDR S&P Semiconductor | 半导体等权 | ETF
+
+每一条想法必须是一条完整的传导链，四个环节都要点名：
+  1. 主题——材料里的哪一件事；
+  2. 宏观中间变量——它必须是有人定期公布、能查到数的东西（利差、收益率、库存、运价、产能利用率、政策利率、发行量……），不能是「风险偏好」「市场情绪」这类读不到的说法；
+  3. 价格通道——这个变量通过什么机制传到资产价格（估值折现、成本转嫁、资金流、汇率、供需缺口……）；
+  4. 可买工具——清单里的哪一个标的承接了这个通道。
+另外给一个 falsifier：一个月内可以读到的一个数值，如果读到它，就说明这条链没在走。
+四环里有任何一环你只能写得含糊，或者 falsifier 写不出具体读数，这一条就丢掉不要交。少交几条比交一条无法验证的链要好——无法验证的链一个月后既不能算对也不能算错。
+
+就这个主题给出最多 20 条持有期一个月的做多想法。标的原样取自上面的清单；每条要有一个月内的上行与下行幅度（百分数）和上行/持平/下行三档概率（相加为 1）；同一主题内不要重复标的。
+
+每条想法必须带 citations 字段：从上面材料里挑最支撑这条论点的 1-3 条，原样填它们的 doc_id（形如 feed:100994）。没有任何材料支撑的想法不要写。
+
+只输出 JSON 数组，形如：
+[{"instrument_id":"清单里的 id","chain":"主题 → 中间变量 → 价格通道 → 这个工具（四环都写出来）","watch_variable":"中间变量的名字 + 在哪里能读到（数据源/发布方）","falsifier":"一个月内能读到的哪个数值，会说明这条链没在走","thesis":"为什么这条链在一个月内推动这个标的上行","upside_pct":8.0,"downside_pct":-5.0,"p_up":0.40,"p_base":0.40,"p_down":0.20}]

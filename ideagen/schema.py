@@ -162,6 +162,13 @@ ADD_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Rows predating this column stay NULL, meaning "unknown", and `universe.eligible`
     # counts them rather than assuming they were always there.
     ("instruments", "first_seen_d", "TEXT"),
+    # The verbatim archive (sources/wisburg.py): sha256 of the detail markdown as
+    # served, and the content-addressed blob key holding those exact bytes.
+    # `content_hash` stays untouched — it is a normalised title+summary digest
+    # serving near-dup detection, a different job from proving what the vendor
+    # sent. Rows never deep-fetched stay NULL.
+    ("documents", "body_sha256", "TEXT"),
+    ("documents", "raw_uri", "TEXT"),
 )
 
 

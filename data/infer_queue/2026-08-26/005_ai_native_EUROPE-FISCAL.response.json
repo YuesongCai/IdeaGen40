@@ -1,0 +1,9 @@
+[
+{"instrument_id":"EUFN","thesis":"欧央行调查:通胀预期全面回落锚定（1y 2.9%、5y 2.4%）,给欧央行政策空间;欧洲金融股是利率正常化+财政扩张的双重受益者,估值仍在价值区。","upside_pct":5.0,"downside_pct":-4.0,"p_up":0.43,"p_base":0.36,"p_down":0.21,"citations":["feed:102607"]},
+{"instrument_id":"EUROPE-GRID","thesis":"TTF 冬季平衡需 100 欧元以上的定价压力,正是欧洲电网/电气化投资加速的经济动因:能源贵→电气化与网架投资的回报率抬升。公募载体直接对口。","upside_pct":5.5,"downside_pct":-4.5,"p_up":0.41,"p_base":0.36,"p_down":0.23,"citations":["feed:102494"]},
+{"instrument_id":"EWG","thesis":"德国是欧洲财政扩张与电网资本开支的最大单一受益市场;能源安全叙事下工业电气化订单向德企集中。","upside_pct":4.5,"downside_pct":-4.0,"p_up":0.41,"p_base":0.37,"p_down":0.22,"citations":["feed:102494","feed:102607"]},
+{"instrument_id":"FEZ","thesis":"欧元区大盘:通胀预期锚定+美元承压（美银:沟通失败美元走弱）组合下,欧元资产的汇率与估值双修复。","upside_pct":4.0,"downside_pct":-3.5,"p_up":0.42,"p_base":0.37,"p_down":0.21,"citations":["feed:102607","feed:102572"]},
+{"instrument_id":"FXE","thesis":"德银 CORAX:对冲基金已转向增持欧元、抛售美元。资金流与美联储沟通风险同向,欧元一个月赔率不差。","upside_pct":2.5,"downside_pct":-2.0,"p_up":0.44,"p_base":0.36,"p_down":0.20,"citations":["feed:102588","feed:102572"]},
+{"instrument_id":"EUROPE-INCOME","thesis":"欧洲金融与价值的公募表达:与 EUFN 同论点不同载体,收益导向结构在利率高原期多吃股息。","upside_pct":4.0,"downside_pct":-3.5,"p_up":0.42,"p_base":0.37,"p_down":0.21,"citations":["feed:102607"]},
+{"instrument_id":"GRID","thesis":"美股载体的全球电网篮子:欧洲电气化订单外溢给全球设备商,与 EUROPE-GRID 构成同一传导的两端。","upside_pct":5.0,"downside_pct":-4.5,"p_up":0.40,"p_base":0.37,"p_down":0.23,"citations":["feed:102494"]}
+]

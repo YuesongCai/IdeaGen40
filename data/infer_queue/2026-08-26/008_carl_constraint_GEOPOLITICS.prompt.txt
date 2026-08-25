@@ -1,0 +1,160 @@
+今天是 2026-08-26。按下面四步做，每一条想法都要把四步都写出来。
+
+主题 GEOPOLITICS：地缘冲突与国防补库
+核心问题：未来1–6个月，地缘冲突能否转化为国防订单与实际预算支出
+相关敞口：国防军工、黄金
+打分A 依据：
+
+相关原始材料（新到旧）：
+archive:102604 [2026-08-25]  新论文探讨外国对美国债务需求的变化 — 
+archive:102607 [2026-08-25] ECB 欧洲央行消费者预期调查结果：2026年7月 — 
+ec:102606 [2026-08-25]  拼多多2026年第二季度财报电话会纪要 — 
+am:102603 [2026-08-25]  通胀风险持续，7月PCE数据即将公布 — 
+am:102608 [2026-08-25]  选择性 — 
+feed:102603 [2026-08-25] Fed 通胀风险持续，7月PCE数据即将公布 — **7月PCE数据即将公布**，通胀风险仍存。7月CPI显示通胀降温，但美联储9月加息概率仍达**35%**，年底前加息概率**68%**。能源价格短期回落，但地缘风险或推升油价。核心商品反弹，AI相关价格上涨。医疗保健等核心服务持续施压。消费者支出强劲但零售销售疲软，PCE数据将提供更全面通胀图景。
+feed:102604 [2026-08-25]  新论文探讨外国对美国债务需求的变化 — 布鲁金斯学会工作论文指出，美国净国际投资头寸占GDP比重由2010年的-19%扩大至2025年底的-70%。**外国官方对美债需求减弱，私人投资者占比上升**，或加剧收益率波动。报告称，若财政与地缘风险推高利率，美国可能面临**债务螺旋和财政危机**。
+feed:102606 [2026-08-25]  拼多多2026年第二季度财报电话会纪要 — 拼多多(PDD.US)Q2营收1124亿元，同比增8%；净利272亿元，同比降12%，主因加码生态投资。动态：推进“千亿扶持”与“包邮进村”打通下沉物流；应对欧盟关税逆风，加速海外本地化仓储建设。指引：无具体财务指引，强调坚持长期高质量发展，耐心推进自营品牌与全球供应链布局。
+ib:102518 [2026-08-24]  美加贸易谈判破裂：新关税生效与USMCA前景展望 — 
+ib:102519 [2026-08-24]  美股衍生品策略：曲线陡峭化、纳指上行潜力、地缘对冲及MRNA均值回归 — 
+ib:102559 [2026-08-24]  外汇快照：加元关税影响可能减弱，看好澳元兑加元 — 
+ib:102562 [2026-08-24]  油轮航运：原油补库瓶颈；景气周期或穿越2027 — 
+feed:102494 [2026-08-24] GoldmanSachs 天然气评论：霍尔木兹海峡正常化延迟迫使价格驱动修复 — **高盛**指出，因**霍尔木兹海峡**LNG出口受阻，**欧洲天然气价格(TTF)**需上涨以抑制**亚洲**需求。目前TTF反弹已促使美国LNG转向欧洲，但**西北欧储气库**8月注入量仍不及预期，预计月底填充率为**51%**。若中东出口未明显改善，冬季TTF或需升至**100欧元/兆瓦时**以上以平衡市场。
+feed:102501 [2026-08-24] Nomura 日本2027财年一般会计预算申请额预计超130万亿日元：偿债成本假设利率升至3.8% — 野村研报指出，日本**2027财年一般会计预算申请额预计超130万亿日元**，较2026财年显著增加。财务省申请**偿债成本36.6万亿日元**，隐含**假设利率升至3.8%**，反映利率上行预期。各部省支出普遍增长，社保与国防压力凸显，最终预算规模或达139.5万亿-141.5万亿日元。
+feed:102508 [2026-08-24] UBS 美国经济展望：聚焦通胀的图表集 — **UBS预测美国通胀将持续放缓**，7月整体CPI降至**3.36%**，核心CPI接近**2.5%**。预计9月PCE方法论修订将下调核心PCE约**0.25-0.40%**。尽管短期受油价和供应链影响，但随关税效应减弱及AI提升生产率，预计**2028年底**核心PCE将回归美联储**2%**目标。美联储利率预计年内维持**3.50%-3.75%**。
+feed:102518 [2026-08-24]  美加贸易谈判破裂：新关税生效与USMCA前景展望 — **美加贸易谈判破裂**，美国对加部分进口商品征收**50%**额外关税，涉及金额约**200亿美元**，致使美加权平均关税率升至**11.4%**。加拿大宣布**9月8日**起实施对等报复性关税。此举加剧双边紧张，令**USMCA**重新谈判陷入僵局，快速达成协议可能性降低。
+feed:102519 [2026-08-24] JPMorgan 美股衍生品策略：曲线陡峭化、纳指上行潜力、地缘对冲及MRNA均值回归 — **摩根大通**发布美股衍生品策略，建议**买入IYR看跌期权**对冲收益率曲线熊市陡峭化风险；看好**NDX上行**，建议构建看涨期权价差；鉴于地缘政治风险，推荐**买入XLE/XOP看涨期权价差**及SX5E/SPX方差价差作为对冲；针对**MRNA**股价暴涨，认为系技术性反弹，建议**买入看跌期权**博弈均值回归。
+feed:102523 [2026-08-24]  日元日内评论：美元/日元高位震荡，财政大臣留任预期支撑日债与日元 — **美元/日元**在**158**上方区间震荡，市场等待伊朗制裁及**杰克逊霍尔年会**指引。**日本国债**对预算请求超**130万亿日元**报道反应平淡。**财务大臣片山皋月**留任预期升温，利好**日债**与**日元**。高市内阁支持率止跌，但财政担忧仍存。
+feed:102534 [2026-08-24] GoldmanSachs 美洲零售：IR/管理层会议要点及2026年二季度中期业绩总结 — **高盛维持BJ's和Walmart买入评级**。BJ's Q2加油量逆势增长**10.5%**，份额持续提升；Walmart获**29亿美元**关税退款并用于价格战，美区电商销售激增**52%**。HD与LOW虽受毛利率压力但前景稳健，Target因服装品类疲软被维持中性，AAP因DIY需求萎靡被维持卖出。
+feed:102556 [2026-08-24] DeutscheBank 美联储内部意见分歧，9月会议成政策关键节点 — **德银研报指出美联储内部分歧加剧**，7月纪要显示多数官员支持持币，但警惕通胀粘性。**圣路易斯联储主席Musalem持鹰派**，称当前政策偏松，基础通胀2.5%-3.0%过高。**德银维持年内两次加息预测**（9月及12月），市场定价9月加息概率约**60%**。主席Warsh即将在杰克逊霍尔的演讲成关键风向标。
+feed:102559 [2026-08-24] HSBC 外汇快照：加元关税影响可能减弱，看好澳元兑加元 — **汇丰看空加元**，认为美加贸易谈判破裂的影响已**被市场定价**，非长期拖累。相比美元，更建议**买入AUD-CAD**，目标看向**平价以上**。支撑逻辑包括**澳元高收益率**、**RBA鹰派立场**及**金价回升**潜力。USD-CAD预计维持在**1.40**附近。
+feed:102562 [2026-08-24] MorganStanley 油轮航运：原油补库瓶颈；景气周期或穿越2027 — **摩根士丹利看好油轮航运景气周期延续至2027年后**。受能源安全驱动，补库存及航程拉长将推升需求，预计2027年运力仍偏紧。**首选中远海能及招商轮船**，认为其最受益于运价上涨。当前VLCC即期运价超11万美元/天，远高于3万美元盈亏平衡线。若霍尔木兹海峡重开，短期运价或剧烈波动，但长期基本面强劲。
+
+已排定事件（可作为触发日期）：
+2026-08-26 1-Year 11-Month Note 拍卖，预期 拍卖需求正常
+2026-08-26 17-Week Bill 拍卖，预期 拍卖需求正常
+2026-08-26 5-Year Note 拍卖，预期 拍卖需求正常
+2026-08-27 4-Week Bill 拍卖，预期 拍卖需求正常
+2026-08-27 7-Year Note 拍卖，预期 拍卖需求正常
+2026-08-27 8-Week Bill 拍卖，预期 拍卖需求正常
+
+当前参考水平（可作为触发阈值）：
+高收益债 OAS = 269.0bp（2026-08-24）
+CPI 未季调 = 333.918index（2026-07-01）
+美元广义指数 = 118.0628index（2026-08-21）
+10 年美债 = 4.74pct（2026-08-21）
+30 年美债 = 5.27pct（2026-08-21）
+
+可买清单（instrument_id | 名称 | 暴露 | 载体）：
+CASH-PLUS | Cash Plus / Money Market | 美元现金等价 | 现金
+CHINA-ALPHA | China Selective Alpha Fund | 中国选择性alpha | 公募
+CNY-DURATION | CNY Government Bond Duration | 人民币国债久期 | 公募
+EUROPE-GRID | European Grid & Electrification Fund | 欧洲电网与电气化 | 公募
+EUROPE-INCOME | Pan-European Income Equity | 欧洲金融与价值 | 公募
+GLOBAL-SEMI | Global Semiconductor Supply Chain Fund | 全球半导体股 | 公募
+HELO | Hedged Equity Overlay Fund | 对冲权益 | 公募
+JANUS-BIOTECH | Janus Henderson Biotechnology | 生物科技 | 公募
+L03028 | P/E FX Strategy UCITS Fund | 外汇趋势策略 | 私募 / UCITS
+SMD-AM-JAPAN | SMD-AM Japan High Conviction | 日本高确信度选股 | 公募
+02800 | Tracker Fund of Hong Kong | 香港大盘股 | ETF
+02840 | SPDR Gold Trust (HK) | 黄金 | ETF
+03033 | GX Hang Seng TECH ETF | 香港科技股 | ETF
+03199 | CSOP FactSet China Semiconductor | 中国半导体自主可控 | ETF
+09439 | GX China Electric Vehicle | 中国电动车产业链 | ETF
+ACWI | iShares MSCI ACWI ETF | 全球股票 | ETF
+AGG | iShares Core US Aggregate Bond | 美国综合债 | ETF
+AMLP | Alerian MLP ETF | 能源中游基础设施 | ETF
+ARKW | ARK Next Generation Internet | 下一代科技股 | ETF
+BIL | SPDR 1-3 Month T-Bill | 美元现金等价 | ETF
+BKLN | Invesco Senior Loan ETF | 美元杠杆贷款 | ETF
+BTAL | AGF US Market Neutral Anti-Beta | 股票市场中性 | ETF
+CIBR | First Trust Nasdaq Cybersecurity | 网络安全股 | ETF
+COPX | Global X Copper Miners | 铜矿股 | ETF
+CPER | United States Copper Index | 铜价格 | ETF
+DBC | Invesco DB Commodity Index | 广义商品篮子 | ETF
+DBMF | iMGP DBi Managed Futures Strategy | 跨资产趋势策略 | ETF
+DXJ | WisdomTree Japan Hedged Equity | 日本出口股（对冲汇率） | ETF
+EEM | iShares MSCI Emerging Markets | 新兴市场股票 | ETF
+EMB | iShares JPM USD EM Bond | 新兴市场美元债 | ETF
+EMLC | VanEck JPM EM Local Currency Bond | 新兴市场本币债 | ETF
+EUFN | iShares MSCI Europe Financials | 欧洲金融股 | ETF
+EWG | iShares MSCI Germany | 德国股票 | ETF
+EWH | iShares MSCI Hong Kong | 香港股票 | ETF
+EWJ | iShares MSCI Japan | 日本股票 | ETF
+EWT | iShares MSCI Taiwan | 台湾股票 | ETF
+EWY | iShares MSCI South Korea | 韩国股票 | ETF
+EZU | iShares MSCI Eurozone | 欧元区股票 | ETF
+FEZ | SPDR EURO STOXX 50 | 欧元区大盘股 | ETF
+FXE | Invesco CurrencyShares Euro | 欧元 | ETF
+FXI | iShares China Large-Cap | 中国大盘股 | ETF
+FXY | Invesco CurrencyShares Japanese Yen | 日元 | ETF
+GLD | SPDR Gold Shares | 黄金 | ETF
+GRID | First Trust Clean Edge Smart Grid | 智能电网与电气化 | ETF
+HYG | iShares iBoxx High Yield | 美元高收益债 | ETF
+ICLN | iShares Global Clean Energy | 清洁能源 | ETF
+IEF | iShares 7-10 Year Treasury | 美国中久期国债 | ETF
+IGV | iShares Expanded Tech-Software | 软件股 | ETF
+INDA | iShares MSCI India | 印度股票 | ETF
+ITA | iShares US Aerospace & Defense | 国防军工 | ETF
+IYR | iShares US Real Estate | 美国房地产 | ETF
+KBE | SPDR S&P Bank ETF | 美国银行股 | ETF
+KIE | SPDR S&P Insurance | 保险股 | ETF
+KMLM | KFA Mount Lucas Managed Futures | 跨资产趋势策略 | ETF
+KRE | SPDR S&P Regional Banking | 区域银行 | ETF
+KWEB | KraneShares CSI China Internet | 中国互联网平台 | ETF
+LQD | iShares iBoxx Investment Grade | 美元投资级信用 | ETF
+MBB | iShares MBS ETF | 美国机构按揭证券 | ETF
+MCHI | iShares MSCI China | 中国股票 | ETF
+MOO | VanEck Agribusiness | 农业产业链 | ETF
+MTUM | iShares MSCI USA Momentum | 美股动量因子 | ETF
+NLR | VanEck Uranium+Nuclear | 核电运营与燃料 | ETF
+OIH | VanEck Oil Services | 油服设备 | ETF
+PAVE | Global X US Infrastructure Development | 电网与工程基础设施 | ETF
+PDBC | Invesco Optimum Yield Diversified Commodity | 广义商品篮子 | ETF
+PPA | Invesco Aerospace & Defense | 国防军工 | ETF
+QQQ | Invesco QQQ Trust | 美国成长股 | ETF
+QUAL | iShares MSCI USA Quality Factor | 美股质量因子 | ETF
+RSP | Invesco S&P 500 Equal Weight | 美股等权/广度 | ETF
+SHY | iShares 1-3 Year Treasury | 美国短久期国债 | ETF
+SKYY | First Trust Cloud Computing | 云计算股 | ETF
+SLV | iShares Silver Trust | 白银 | ETF
+SMH | VanEck Semiconductor | 全球半导体股 | ETF
+SOXX | iShares Semiconductor | 美国半导体股 | ETF
+SPLV | Invesco S&P 500 Low Volatility | 美股低波动 | ETF
+SPY | SPDR S&P 500 ETF | 美国大盘股 | ETF
+STIP | iShares 0-5 Year TIPS | 美国短久期通胀保值债 | ETF
+TAN | Invesco Solar | 太阳能 | ETF
+TIP | iShares TIPS Bond | 美国通胀保值债 | ETF
+TLT | iShares 20+ Year Treasury | 美国长久期国债 | ETF
+URA | Global X Uranium | 铀矿与核能股 | ETF
+USFR | WisdomTree Floating Rate Treasury | 美元浮息国债 | ETF
+USHY | iShares Broad USD High Yield | 美元高收益债 | ETF
+USMV | iShares MSCI USA Min Vol | 美股低波动 | ETF
+USO | United States Oil Fund | 原油价格 | ETF
+UUP | Invesco DB US Dollar Bullish | 美元指数 | ETF
+VGK | Vanguard FTSE Europe | 欧洲股票 | ETF
+VIXY | ProShares VIX Short-Term Futures | 股票波动率 | ETF
+VLUE | iShares MSCI USA Value Factor | 美股价值因子 | ETF
+WEAT | Teucrium Wheat | 小麦价格 | ETF
+XAR | SPDR S&P Aerospace & Defense | 国防军工 | ETF
+XBI | SPDR S&P Biotech | 生物科技 | ETF
+XHB | SPDR S&P Homebuilders | 美国住宅建筑 | ETF
+XLE | Energy Select Sector SPDR | 能源生产商 | ETF
+XLF | Financial Select Sector SPDR | 美国金融股 | ETF
+XLI | Industrial Select Sector SPDR | 美国工业股 | ETF
+XLP | Consumer Staples Select Sector SPDR | 必需消费 | ETF
+XLU | Utilities Select Sector SPDR | 电力公用事业 | ETF
+XLV | Health Care Select Sector SPDR | 美国医疗保健 | ETF
+XOP | SPDR S&P Oil & Gas E&P | 石油天然气勘探生产 | ETF
+XSD | SPDR S&P Semiconductor | 半导体等权 | ETF
+
+第一步 · 异常检测：材料里什么是罕见的、偏离常态的？不是问什么最重要——被反复讨论的事大概已经在价格里了，罕见的事才可能还没有。
+第二步 · 真实动机：谁在动手，什么东西逼着他动（考核与授权、资金来源、监管要求、政治与选举周期）？写他被什么约束着，不要写他公开说了什么。
+第三步 · 约束边界：这条链上真正绑死的约束是哪一条？它在什么水平上断掉？给出能读到的数字。
+第四步 · 触发条件：给一个带日期或带水平的触发条件，并写清触发后做什么。「如果情绪转弱」「若风险偏好回升」不算触发条件——一个月后没有人能判断它到底有没有发生。
+
+就这个主题给出 20 条持有期一个月的做多想法。标的原样取自上面的清单；每条要有一个月内的上行与下行幅度（百分数）和上行/持平/下行三档概率（相加为 1）；同一主题内不要重复标的。四步里任何一步写不出具体内容，就不要凑这一条——宁可少给几条。
+
+每条想法必须带 citations 字段：从上面材料里挑最支撑这条论点的 1-3 条，原样填它们的 doc_id（形如 feed:100994）。没有任何材料支撑的想法不要写。
+
+只输出 JSON 数组，形如：
+[{"instrument_id":"清单里的 id","anomaly":"这份材料里罕见/偏离常态的地方","motive":"谁在动手，被什么逼着动（授权/资金/监管/政治）","constraint":"真正绑死的约束，以及它在什么水平上断掉","trigger":"带日期或带水平的触发条件 + 触发后做什么","thesis":"把上面四步串成一个月的做多逻辑","upside_pct":8.0,"downside_pct":-5.0,"p_up":0.40,"p_base":0.40,"p_down":0.20}]

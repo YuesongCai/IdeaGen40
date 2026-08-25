@@ -1,0 +1,141 @@
+今天是 2026-08-26。你的任务是把主题拆成可观测的传导链。
+
+主题 INFLATION：通胀路径与再加速风险
+核心问题：未来1–6个月，核心通胀能否维持在央行目标附近而不再加速
+相关敞口：美国通胀保值债、美国短久期通胀保值债、广义商品篮子
+打分A 依据：
+
+相关原始材料（新到旧）：
+archive:102607 [2026-08-25] ECB 欧洲央行消费者预期调查结果：2026年7月 — 
+am:102603 [2026-08-25]  通胀风险持续，7月PCE数据即将公布 — 
+am:102605 [2026-08-25]  餐饮业：消费者支出有何变化？ — 
+feed:102603 [2026-08-25] Fed 通胀风险持续，7月PCE数据即将公布 — **7月PCE数据即将公布**，通胀风险仍存。7月CPI显示通胀降温，但美联储9月加息概率仍达**35%**，年底前加息概率**68%**。能源价格短期回落，但地缘风险或推升油价。核心商品反弹，AI相关价格上涨。医疗保健等核心服务持续施压。消费者支出强劲但零售销售疲软，PCE数据将提供更全面通胀图景。
+feed:102607 [2026-08-25] ECB 欧洲央行消费者预期调查结果：2026年7月 — 欧洲央行7月消费者预期调查显示，**过去12个月感知通胀中位数降至3.5%**，**未来12个月通胀预期降至2.9%**，三年预期降至2.7%，五年预期持平于2.4%。**名义收入增长预期降至1.0%**，支出增长预期持平于3.6%，失业率预期持平于11.2%。
+ib:102508 [2026-08-24]  美国经济展望：聚焦通胀的图表集 — 
+ib:102577 [2026-08-24]  交易催化剂：聚焦英伟达财报、杰克逊霍尔会议及PCE数据 — 
+feed:102508 [2026-08-24] UBS 美国经济展望：聚焦通胀的图表集 — **UBS预测美国通胀将持续放缓**，7月整体CPI降至**3.36%**，核心CPI接近**2.5%**。预计9月PCE方法论修订将下调核心PCE约**0.25-0.40%**。尽管短期受油价和供应链影响，但随关税效应减弱及AI提升生产率，预计**2028年底**核心PCE将回归美联储**2%**目标。美联储利率预计年内维持**3.50%-3.75%**。
+feed:102548 [2026-08-24] Citi 每日更新：杰克逊霍尔会议，一次没有指引的演讲？ — **花旗研究**预计美联储主席**沃什**在杰克逊霍尔演讲中将重申**反对前瞻性指引**。但风险偏**鸽派**，若其提及**核心PCE**降温或关注更广泛通胀指标，可能引发市场积极反应。预计核心PCE环比**0.21%**，9月同比或因方法论调整下调**20-30bp**。核心CPI有望回归**2.3%**。
+feed:102556 [2026-08-24] DeutscheBank 美联储内部意见分歧，9月会议成政策关键节点 — **德银研报指出美联储内部分歧加剧**，7月纪要显示多数官员支持持币，但警惕通胀粘性。**圣路易斯联储主席Musalem持鹰派**，称当前政策偏松，基础通胀2.5%-3.0%过高。**德银维持年内两次加息预测**（9月及12月），市场定价9月加息概率约**60%**。主席Warsh即将在杰克逊霍尔的演讲成关键风向标。
+feed:102569 [2026-08-24] MorganStanley 企业高管在说什么？：AI投资聚焦ROI与变现，指引上调显示需求强劲 — **摩根士丹利**：美企**2Q指引上调**提及率达**25%**新高，**Russell 3000**中位数**EPS增14%**。AI建设持续，焦点转向**ROI与变现**，**电力**成瓶颈。**Amazon**、**Alphabet**等大幅上调**Capex**指引。宏观上**通胀**压力可控，消费者呈**K型分化**，衰退担忧 subdued。
+feed:102572 [2026-08-24] BofA 债券与杰克逊霍尔：沃什掌握主动权 — **美银美林**指出，**杰克逊霍尔会议**是债市与美元关键风险点。若美联储主席**沃什**明确通胀反应函数，**9月加息概率**或升，**美债收益率**有望企稳；若沟通失败，**10年期美债**可能突破**5.5%**，**美元**将进一步走弱。
+feed:102577 [2026-08-24] BofA 交易催化剂：聚焦英伟达财报、杰克逊霍尔会议及PCE数据 — **美银美林**维持**英伟达(NVDA)**“买入”评级，目标价**350美元**。预计其Q2营收将达**940-950亿美元**，超预期30-40亿美元，并上调下季指引至**1070-1080亿美元**。驱动因素包括Vera Rubin芯片出货及AI需求强劲。本周宏观焦点为**杰克逊霍尔会议**及PCE数据。
+feed:102586 [2026-08-24] HSBC 当美债波动时：亚洲央行的应对与展望 — **汇丰研报**指出，美债波动波及亚洲，若美元走弱将减轻亚洲央行紧缩压力。**日本央行**下次加息预计提前至**9月**，**韩国央行**本周料按兵不动但**10月**或再加息。**菲律宾**因高通胀预计**加息**，**泰国**料维持利率不变。**马来西亚**经济强劲，全年GDP增速预测上调至**5.2%**。
+feed:102599 [2026-08-24] BofA 韩国观察：预计韩国央行8月鹰派暂停，10月再次加息 — **美银美林预测韩国央行8月将鹰派暂停加息**。尽管Q2 GDP同比增长**3.7%**超预期，但鉴于**美元兑韩元跌至1400以下**及7月CPI降至**2.8%**，加息紧迫性降低。预计央行维持利率不变，但点阵图暗示**10月可能再次加息**，中位数利率预测升至**3.25%**。
+
+可买清单（instrument_id | 名称 | 暴露 | 载体）：
+CASH-PLUS | Cash Plus / Money Market | 美元现金等价 | 现金
+CHINA-ALPHA | China Selective Alpha Fund | 中国选择性alpha | 公募
+CNY-DURATION | CNY Government Bond Duration | 人民币国债久期 | 公募
+EUROPE-GRID | European Grid & Electrification Fund | 欧洲电网与电气化 | 公募
+EUROPE-INCOME | Pan-European Income Equity | 欧洲金融与价值 | 公募
+GLOBAL-SEMI | Global Semiconductor Supply Chain Fund | 全球半导体股 | 公募
+HELO | Hedged Equity Overlay Fund | 对冲权益 | 公募
+JANUS-BIOTECH | Janus Henderson Biotechnology | 生物科技 | 公募
+L03028 | P/E FX Strategy UCITS Fund | 外汇趋势策略 | 私募 / UCITS
+SMD-AM-JAPAN | SMD-AM Japan High Conviction | 日本高确信度选股 | 公募
+02800 | Tracker Fund of Hong Kong | 香港大盘股 | ETF
+02840 | SPDR Gold Trust (HK) | 黄金 | ETF
+03033 | GX Hang Seng TECH ETF | 香港科技股 | ETF
+03199 | CSOP FactSet China Semiconductor | 中国半导体自主可控 | ETF
+09439 | GX China Electric Vehicle | 中国电动车产业链 | ETF
+ACWI | iShares MSCI ACWI ETF | 全球股票 | ETF
+AGG | iShares Core US Aggregate Bond | 美国综合债 | ETF
+AMLP | Alerian MLP ETF | 能源中游基础设施 | ETF
+ARKW | ARK Next Generation Internet | 下一代科技股 | ETF
+BIL | SPDR 1-3 Month T-Bill | 美元现金等价 | ETF
+BKLN | Invesco Senior Loan ETF | 美元杠杆贷款 | ETF
+BTAL | AGF US Market Neutral Anti-Beta | 股票市场中性 | ETF
+CIBR | First Trust Nasdaq Cybersecurity | 网络安全股 | ETF
+COPX | Global X Copper Miners | 铜矿股 | ETF
+CPER | United States Copper Index | 铜价格 | ETF
+DBC | Invesco DB Commodity Index | 广义商品篮子 | ETF
+DBMF | iMGP DBi Managed Futures Strategy | 跨资产趋势策略 | ETF
+DXJ | WisdomTree Japan Hedged Equity | 日本出口股（对冲汇率） | ETF
+EEM | iShares MSCI Emerging Markets | 新兴市场股票 | ETF
+EMB | iShares JPM USD EM Bond | 新兴市场美元债 | ETF
+EMLC | VanEck JPM EM Local Currency Bond | 新兴市场本币债 | ETF
+EUFN | iShares MSCI Europe Financials | 欧洲金融股 | ETF
+EWG | iShares MSCI Germany | 德国股票 | ETF
+EWH | iShares MSCI Hong Kong | 香港股票 | ETF
+EWJ | iShares MSCI Japan | 日本股票 | ETF
+EWT | iShares MSCI Taiwan | 台湾股票 | ETF
+EWY | iShares MSCI South Korea | 韩国股票 | ETF
+EZU | iShares MSCI Eurozone | 欧元区股票 | ETF
+FEZ | SPDR EURO STOXX 50 | 欧元区大盘股 | ETF
+FXE | Invesco CurrencyShares Euro | 欧元 | ETF
+FXI | iShares China Large-Cap | 中国大盘股 | ETF
+FXY | Invesco CurrencyShares Japanese Yen | 日元 | ETF
+GLD | SPDR Gold Shares | 黄金 | ETF
+GRID | First Trust Clean Edge Smart Grid | 智能电网与电气化 | ETF
+HYG | iShares iBoxx High Yield | 美元高收益债 | ETF
+ICLN | iShares Global Clean Energy | 清洁能源 | ETF
+IEF | iShares 7-10 Year Treasury | 美国中久期国债 | ETF
+IGV | iShares Expanded Tech-Software | 软件股 | ETF
+INDA | iShares MSCI India | 印度股票 | ETF
+ITA | iShares US Aerospace & Defense | 国防军工 | ETF
+IYR | iShares US Real Estate | 美国房地产 | ETF
+KBE | SPDR S&P Bank ETF | 美国银行股 | ETF
+KIE | SPDR S&P Insurance | 保险股 | ETF
+KMLM | KFA Mount Lucas Managed Futures | 跨资产趋势策略 | ETF
+KRE | SPDR S&P Regional Banking | 区域银行 | ETF
+KWEB | KraneShares CSI China Internet | 中国互联网平台 | ETF
+LQD | iShares iBoxx Investment Grade | 美元投资级信用 | ETF
+MBB | iShares MBS ETF | 美国机构按揭证券 | ETF
+MCHI | iShares MSCI China | 中国股票 | ETF
+MOO | VanEck Agribusiness | 农业产业链 | ETF
+MTUM | iShares MSCI USA Momentum | 美股动量因子 | ETF
+NLR | VanEck Uranium+Nuclear | 核电运营与燃料 | ETF
+OIH | VanEck Oil Services | 油服设备 | ETF
+PAVE | Global X US Infrastructure Development | 电网与工程基础设施 | ETF
+PDBC | Invesco Optimum Yield Diversified Commodity | 广义商品篮子 | ETF
+PPA | Invesco Aerospace & Defense | 国防军工 | ETF
+QQQ | Invesco QQQ Trust | 美国成长股 | ETF
+QUAL | iShares MSCI USA Quality Factor | 美股质量因子 | ETF
+RSP | Invesco S&P 500 Equal Weight | 美股等权/广度 | ETF
+SHY | iShares 1-3 Year Treasury | 美国短久期国债 | ETF
+SKYY | First Trust Cloud Computing | 云计算股 | ETF
+SLV | iShares Silver Trust | 白银 | ETF
+SMH | VanEck Semiconductor | 全球半导体股 | ETF
+SOXX | iShares Semiconductor | 美国半导体股 | ETF
+SPLV | Invesco S&P 500 Low Volatility | 美股低波动 | ETF
+SPY | SPDR S&P 500 ETF | 美国大盘股 | ETF
+STIP | iShares 0-5 Year TIPS | 美国短久期通胀保值债 | ETF
+TAN | Invesco Solar | 太阳能 | ETF
+TIP | iShares TIPS Bond | 美国通胀保值债 | ETF
+TLT | iShares 20+ Year Treasury | 美国长久期国债 | ETF
+URA | Global X Uranium | 铀矿与核能股 | ETF
+USFR | WisdomTree Floating Rate Treasury | 美元浮息国债 | ETF
+USHY | iShares Broad USD High Yield | 美元高收益债 | ETF
+USMV | iShares MSCI USA Min Vol | 美股低波动 | ETF
+USO | United States Oil Fund | 原油价格 | ETF
+UUP | Invesco DB US Dollar Bullish | 美元指数 | ETF
+VGK | Vanguard FTSE Europe | 欧洲股票 | ETF
+VIXY | ProShares VIX Short-Term Futures | 股票波动率 | ETF
+VLUE | iShares MSCI USA Value Factor | 美股价值因子 | ETF
+WEAT | Teucrium Wheat | 小麦价格 | ETF
+XAR | SPDR S&P Aerospace & Defense | 国防军工 | ETF
+XBI | SPDR S&P Biotech | 生物科技 | ETF
+XHB | SPDR S&P Homebuilders | 美国住宅建筑 | ETF
+XLE | Energy Select Sector SPDR | 能源生产商 | ETF
+XLF | Financial Select Sector SPDR | 美国金融股 | ETF
+XLI | Industrial Select Sector SPDR | 美国工业股 | ETF
+XLP | Consumer Staples Select Sector SPDR | 必需消费 | ETF
+XLU | Utilities Select Sector SPDR | 电力公用事业 | ETF
+XLV | Health Care Select Sector SPDR | 美国医疗保健 | ETF
+XOP | SPDR S&P Oil & Gas E&P | 石油天然气勘探生产 | ETF
+XSD | SPDR S&P Semiconductor | 半导体等权 | ETF
+
+每一条想法必须是一条完整的传导链，四个环节都要点名：
+  1. 主题——材料里的哪一件事；
+  2. 宏观中间变量——它必须是有人定期公布、能查到数的东西（利差、收益率、库存、运价、产能利用率、政策利率、发行量……），不能是「风险偏好」「市场情绪」这类读不到的说法；
+  3. 价格通道——这个变量通过什么机制传到资产价格（估值折现、成本转嫁、资金流、汇率、供需缺口……）；
+  4. 可买工具——清单里的哪一个标的承接了这个通道。
+另外给一个 falsifier：一个月内可以读到的一个数值，如果读到它，就说明这条链没在走。
+四环里有任何一环你只能写得含糊，或者 falsifier 写不出具体读数，这一条就丢掉不要交。少交几条比交一条无法验证的链要好——无法验证的链一个月后既不能算对也不能算错。
+
+就这个主题给出最多 20 条持有期一个月的做多想法。标的原样取自上面的清单；每条要有一个月内的上行与下行幅度（百分数）和上行/持平/下行三档概率（相加为 1）；同一主题内不要重复标的。
+
+每条想法必须带 citations 字段：从上面材料里挑最支撑这条论点的 1-3 条，原样填它们的 doc_id（形如 feed:100994）。没有任何材料支撑的想法不要写。
+
+只输出 JSON 数组，形如：
+[{"instrument_id":"清单里的 id","chain":"主题 → 中间变量 → 价格通道 → 这个工具（四环都写出来）","watch_variable":"中间变量的名字 + 在哪里能读到（数据源/发布方）","falsifier":"一个月内能读到的哪个数值，会说明这条链没在走","thesis":"为什么这条链在一个月内推动这个标的上行","upside_pct":8.0,"downside_pct":-5.0,"p_up":0.40,"p_base":0.40,"p_down":0.20}]

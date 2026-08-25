@@ -1,0 +1,53 @@
+下面是本周全部候选想法（来自 5 个主题、4 种生成方法）。
+请为一个月期的组合挑出正好 10 条，构成实际持仓。
+
+要求：
+- 只能使用清单里出现过的 id，原样抄写，不要改写、不要新增。
+- 恰好 10 条，不多不少。
+- 每条给一句中文理由，说明为什么它进组合（而不是复述 thesis）。
+
+只输出 JSON：{"picks":[{"id":"...","reason":"..."}]}
+
+候选（id | 标的 | 敞口 | 主题 | 方法 | 上行%/下行% | p_up/p_base/p_down | 逻辑）：
+pool:AMLP | AMLP Alerian MLP ETF | 能源中游基础设施 | GEOPOLITICS | merged | 4.0/-3.0 | 0.45/0.37/0.18 | 中游管道现金流对油价方向钝感、对运量敏感——地缘导致的贸易流重排（美 LNG 转欧）反而抬运量。高股息在利率恐慌月提供缓冲。
+pool:BTAL | BTAL AGF US Market Neutral Anti-Beta | 股票市场中性 | POLICY-PATH | merged | 4.0/-2.5 | 0.41/0.395/0.19 | 威灵顿:相关性异常低=选股市场。反贝塔策略在高分化低相关环境的alpha空间最大,与多头腿互补。
+pool:DBC | DBC Invesco DB Commodity Index | 广义商品篮子 | INFLATION | merged | 6.25/-4.5 | 0.41/0.34/0.25 | 能源价格短期回落但地缘风险或推升油价（Fed 日报原话），叠加核心商品反弹——广义商品篮子对『通胀再加速』情形是杠杆最高的多头。
+pool:DBMF | DBMF iMGP DBi Managed Futures Strategy | 跨资产趋势策略 | POLICY-PATH | ai_native | 3.5/-2.5 | 0.42/0.38/0.2 | 趋势策略当前的持仓结构（空债券、多能源、空日元转向）与加息重定价方向一致；若 9 月加息落地，债券下行趋势延续为其主要盈利腿。
+pool:EUFN | EUFN iShares MSCI Europe Financials | 欧洲金融股 | EUROPE-FISCAL | merged | 5.0/-4.0 | 0.43/0.36/0.21 | 欧央行调查:通胀预期全面回落锚定（1y 2.9%、5y 2.4%）,给欧央行政策空间;欧洲金融股是利率正常化+财政扩张的双重受益者,估值仍在价值区。
+pool:EUROPE-GRID | EUROPE-GRID European Grid & Electrification Fund | 欧洲电网与电气化 | EUROPE-FISCAL | merged | 5.75/-4.5 | 0.41/0.355/0.23 | TTF 冬季平衡需 100 欧元以上的定价压力,正是欧洲电网/电气化投资加速的经济动因:能源贵→电气化与网架投资的回报率抬升。公募载体直接对口。
+pool:EUROPE-INCOME | EUROPE-INCOME Pan-European Income Equity | 欧洲金融与价值 | EUROPE-FISCAL | ai_native | 4.0/-3.5 | 0.42/0.37/0.21 | 欧洲金融与价值的公募表达:与 EUFN 同论点不同载体,收益导向结构在利率高原期多吃股息。
+pool:EWG | EWG iShares MSCI Germany | 德国股票 | EUROPE-FISCAL | merged | 4.5/-4.0 | 0.41/0.37/0.22 | 德国是欧洲财政扩张与电网资本开支的最大单一受益市场;能源安全叙事下工业电气化订单向德企集中。
+pool:EWJ | EWJ iShares MSCI Japan | 日本股票 | POLICY-PATH | merged | 5.25/-4.0 | 0.42/0.35/0.23 | 日央行加快加息 + 终端利率上调的组合利好日本金融与内需股，且日元升值直接抬高美元计价的 EWJ；对冲版 DXJ 在此情形反受损。
+pool:EWT | EWT iShares MSCI Taiwan | 台湾股票 | EARNINGS-QUALITY | merged | 6.0/-5.0 | 0.42/0.35/0.24 | 亚太科技链盈利上修（存储芯片股东回报提升、AI 链条）直接映射台湾权重股;英伟达超预期外溢的第一站。
+pool:EWY | EWY iShares MSCI South Korea | 韩国股票 | GEOPOLITICS | gap | 5.5/-4.5 | 0.42/0.35/0.23 | 共识按『央行暂停』定价韩国,韩元走强+出口链条的组合利好没被合并定价。
+pool:FEZ | FEZ SPDR EURO STOXX 50 | 欧元区大盘股 | EUROPE-FISCAL | ai_native | 4.0/-3.5 | 0.42/0.37/0.21 | 欧元区大盘:通胀预期锚定+美元承压（美银:沟通失败美元走弱）组合下,欧元资产的汇率与估值双修复。
+pool:FXE | FXE Invesco CurrencyShares Euro | 欧元 | EUROPE-FISCAL | merged | 2.65/-2.0 | 0.445/0.36/0.19 | 德银 CORAX:对冲基金已转向增持欧元、抛售美元。资金流与美联储沟通风险同向,欧元一个月赔率不差。
+pool:FXY | FXY Invesco CurrencyShares Japanese Yen | 日元 | POLICY-PATH | merged | 4.75/-2.0 | 0.505/0.315/0.18 | 日央行 9 月加息概率已飙至 82%，而美元兑日元还停在 158-159。政策落差一旦兑现，日元是本月最不对称的多头之一；财务大臣留任预期也在托底。
+pool:GLD | GLD SPDR Gold Shares | 黄金 | INFLATION | merged | 5.0/-3.5 | 0.425/0.35/0.23 | 地缘 + 美加贸易破裂 + 美债需求结构恶化（布鲁金斯：外国官方需求减弱）——黄金同时是地缘对冲与『美债信任对冲』。
+pool:GLOBAL-SEMI | GLOBAL-SEMI Global Semiconductor Supply Chain Fund | 全球半导体股 | EARNINGS-QUALITY | merged | 7.0/-6.0 | 0.42/0.33/0.25 | 公募载体表达同一半导体盈利上修逻辑:适合不便持 ETF 的资金池,与 SMH/SOXX 同向。
+pool:GRID | GRID First Trust Clean Edge Smart Grid | 智能电网与电气化 | EUROPE-FISCAL | ai_native | 5.0/-4.5 | 0.4/0.37/0.23 | 美股载体的全球电网篮子:欧洲电气化订单外溢给全球设备商,与 EUROPE-GRID 构成同一传导的两端。
+pool:IEF | IEF iShares 7-10 Year Treasury | 美国中久期国债 | POLICY-PATH | merged | 3.25/-2.5 | 0.365/0.33/0.305 | 反向一手：UBS 与花旗都指出 9 月 PCE 方法论修订将机械下调核心 PCE 20-40bp，若杰克逊霍尔偏鸽 + PCE 走低，中久期国债的加息定价（60%）有快速回吐空间。赔率型仓位。
+pool:ITA | ITA iShares US Aerospace & Defense | 国防军工 | GEOPOLITICS | merged | 5.0/-4.25 | 0.42/0.36/0.215 | 日本 2027 预算国防压力凸显、欧洲再武装持续——国防订单周期是少数不依赖利率方向的增长故事。注意拥挤度高,仓位宜标准而非超配。
+pool:KMLM | KMLM KFA Mount Lucas Managed Futures | 跨资产趋势策略 | POLICY-PATH | ai_native | 4.0/-3.0 | 0.4/0.38/0.22 | 与 DBMF 同类但商品腿更重的趋势策略：若地缘推升油价与美债下行同时发生（本周语料的组合情形），双腿同向。
+pool:MCHI | MCHI iShares MSCI China | 中国股票 | EARNINGS-QUALITY | merged | 6.0/-5.0 | 0.405/0.345/0.25 | 中国盈利面企稳的边际证据:PDD 国内电商企稳、利润超预期,云厂商财报临近。低估值 + 盈利不再下修,一个月的均值回归窗口。
+pool:MTUM | MTUM iShares MSCI USA Momentum | 美股动量因子 | EARNINGS-QUALITY | ai_native | 5.0/-4.5 | 0.42/0.36/0.22 | 盈利上修驱动的行情里动量因子自然聚集赢家;大摩的指引上调广度意味着动量篮子的成分质量在提升。
+pool:OIH | OIH VanEck Oil Services | 油服设备 | GEOPOLITICS | ai_native | 7.0/-6.0 | 0.4/0.34/0.26 | 油服是油价上行的二阶导：上游资本开支跟随油价与能源安全叙事,补库瓶颈（大摩油轮报告）暗示实物链条紧张延续。
+pool:PDBC | PDBC Invesco Optimum Yield Diversified Commodity | 广义商品篮子 | INFLATION | ai_native | 5.5/-4.5 | 0.4/0.35/0.25 | 与 DBC 同构但免 K-1 的商品篮子；持仓略偏能源，通胀再加速情形下与 DBC 同向，可作为同一论点的第二载体分散基金层面风险。
+pool:PPA | PPA Invesco Aerospace & Defense | 国防军工 | GEOPOLITICS | ai_native | 5.0/-4.5 | 0.41/0.37/0.22 | 与 ITA 同主题不同权重（含更多电子战/供应链标的）：国防补库逻辑相同,双载体降低单一 ETF 结构风险。
+pool:QQQ | QQQ Invesco QQQ Trust | 美国成长股 | EARNINGS-QUALITY | ai_native | 6.0/-5.0 | 0.42/0.34/0.24 | 摩根大通看好 NDX 上行并建议看涨结构;英伟达财报若如美银预期超 30-40 亿,成长股指数是最直接的受益面。
+pool:QUAL | QUAL iShares MSCI USA Quality Factor | 美股质量因子 | INFLATION | merged | 4.0/-3.0 | 0.44/0.37/0.19 | 盈利质量分化环境（威灵顿:个股波动大升、相关性异常低）下,高质量因子既吃盈利兑现又避开分化的输家。
+pool:RSP | RSP Invesco S&P 500 Equal Weight | 美股等权/广度 | EARNINGS-QUALITY | merged | 4.5/-3.5 | 0.44/0.36/0.2 | 大摩:Russell 3000 中位数 EPS 增 14%、指引上调提及率 25% 创新高——盈利上修正在扩散到指数之外,等权指数正是『扩散』的直接载体。
+pool:SMH | SMH VanEck Semiconductor | 全球半导体股 | EARNINGS-QUALITY | merged | 8.5/-6.5 | 0.44/0.32/0.24 | 美银:英伟达 Q2 营收将超预期 30-40 亿并上调指引至 1070-1080 亿,Vera Rubin 放量;Marvell 亦获数据中心上调。财报周半导体是盈利上修最密集的地方。
+pool:SOXX | SOXX iShares Semiconductor | 美国半导体股 | EARNINGS-QUALITY | ai_native | 7.5/-6.5 | 0.42/0.33/0.25 | 与 SMH 同主题第二载体:等权重更高的半导体篮子,分散英伟达单一权重风险同时保留财报周 beta。
+pool:SPLV | SPLV Invesco S&P 500 Low Volatility | 美股低波动 | INFLATION | ai_native | 3.0/-2.5 | 0.42/0.4/0.18 | 若周五 PCE 超预期引发利率恐慌，低波是权益内最浅的回撤路径；若 PCE 因方法论下调走低，低波也不掉队。两种通胀结局下都可持有。
+pool:STIP | STIP iShares 0-5 Year TIPS | 美国短久期通胀保值债 | INFLATION | merged | 1.5/-0.75 | 0.5/0.38/0.12 | 核心服务通胀持续施压 + AI 相关价格上涨，而 PCE 数据周五公布。短 TIPS 拿通胀应计而几乎不担利率久期，是通胀粘性最直接的表达。
+pool:TIP | TIP iShares TIPS Bond | 美国通胀保值债 | INFLATION | ai_native | 2.5/-2.0 | 0.42/0.36/0.22 | 中长 TIPS：若通胀粘性坐实而联储被迫更鹰，实际收益率上行伤名义久期更重，TIPS 相对名义债胜出；若 UBS 的放缓路径兑现则盈亏平衡收窄有限。相对安全的通胀腿。
+pool:USFR | USFR WisdomTree Floating Rate Treasury | 美元浮息国债 | POLICY-PATH | merged | 0.6/-0.1 | 0.58/0.4/0.02 | 通胀粘性直接映射为政策利率更久更高，浮息票息同步重置。与 STIP 一起构成『不赌方向的通胀受益』组合。
+pool:USMV | USMV iShares MSCI USA Min Vol | 美股低波动 | POLICY-PATH | ai_native | 3.5/-3.0 | 0.4/0.42/0.18 | 利率不确定性月份的防守腿：低波因子在加息周期回撤显著小于大盘，且与 VLUE 的价值倾斜互补。
+pool:USO | USO United States Oil Fund | 原油价格 | GEOPOLITICS | merged | 7.0/-5.5 | 0.4/0.34/0.26 | 原油价格本体：地缘风险推升油价是本周 Fed 日报明示的尾部。相比股票载体少一层市场 beta,纯度最高。
+pool:VIXY | VIXY ProShares VIX Short-Term Futures | 股票波动率 | POLICY-PATH | merged | 11.0/-8.0 | 0.325/0.315/0.36 | 美加关税 9/8 生效 + 杰克逊霍尔 + 伊朗制裁三个事件挤在一个月内,波动率月度采买有具体触发点而非泛泛对冲。衰减成本限制仓位与持有期。
+pool:VLUE | VLUE iShares MSCI USA Value Factor | 美股价值因子 | POLICY-PATH | merged | 5.0/-4.0 | 0.42/0.37/0.2 | 通胀高企期价值因子的盈利久期短、对贴现率钝感——UBS 与德银的分歧无论谁对，价值相对成长的赔率都不差。
+pool:XAR | XAR SPDR S&P Aerospace & Defense | 国防军工 | GEOPOLITICS | ai_native | 5.5/-5.0 | 0.4/0.37/0.23 | 国防等权版本:若补库订单向二线供应商扩散,等权比市值加权多吃扩散收益。
+pool:XLE | XLE Energy Select Sector SPDR | 能源生产商 | POLICY-PATH | merged | 6.0/-4.0 | 0.44/0.35/0.21 | 摩根大通直接推荐 XLE/XOP 看涨结构作为地缘对冲；霍尔木兹正常化延迟令能源供给风险有真实期限结构，而非情绪。
+pool:XLV | XLV Health Care Select Sector SPDR | 美国医疗保健 | INFLATION | gap | 4.0/-3.0 | 0.43/0.38/0.19 | 共识把医疗当防守股定价,而语料说它是通胀的『施压方』——定价权被当成拖累。
+pool:XOP | XOP SPDR S&P Oil & Gas E&P | 石油天然气勘探生产 | GEOPOLITICS | merged | 8.0/-6.0 | 0.42/0.33/0.25 | 勘探生产商是油价上行 beta 最高的载体：霍尔木兹受阻 + 冬季 TTF 需 100 欧元以上平衡市场，供给风险直接进上游利润。

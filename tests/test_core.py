@@ -222,11 +222,18 @@ class TestValidation(unittest.TestCase):
         ideas.grade_batch(rows)
         return ideas.validate_batch(self.con, rows, date(2026, 8, 6))
 
-    def test_wrong_count_fails(self):
+    def test_any_positive_count_passes_but_empty_fails(self):
+        """The forced-40 quota is gone — it was the defect the 08-07 review
+        named: thin days padded with ideas nobody believed. A batch carries
+        however many ideas selection produced; only empty is invalid."""
         rep = self._validate([self._idea(1)])
-        self.assertFalse(rep["pass"])
-        self.assertIn("idea_count_40",
-                      [c["check"] for c in rep["checks"] if not c["ok"]])
+        self.assertNotIn("idea_count",
+                         [c["check"] for c in rep["checks"] if not c["ok"]],
+                         "a one-idea batch must not fail on count")
+        rep0 = self._validate([])
+        self.assertIn("idea_count",
+                      [c["check"] for c in rep0["checks"] if not c["ok"]],
+                      "an empty batch is the only invalid size")
 
     def test_probabilities_must_sum_to_100(self):
         bad = self._idea(1, central={"p": [30, 50, 25], "r": [6.0, 1.0, -5.0]})
@@ -1707,3 +1714,107 @@ class TestTrancheWeight(unittest.TestCase):
         per = min(cap, cap, spec["tranche_frac"] * cap) / 10
         self.assertAlmostEqual(per * 10, cap * 0.25,
                                msg="第一周只许铺四分之一，其余吃货币基金收益")
+
+
+class TestCorpusArchiveAndShortlist(unittest.TestCase):
+    """升级件的守规矩测试：内容寻址存档不可变，深抓预算按价值分配。"""
+
+    @staticmethod
+    def _item(tier, title, published, line="ib", sid=1):
+        return wisburg.Item(
+            line=line, category="ib", tier=tier, source_id=sid, title=title,
+            published_at=published, url=None, summary="", body="",
+            institution=None, meta={})
+
+    @staticmethod
+    def _theme(term):
+        return lexicon.Theme(id="T-TEST", label="t", key_question="q",
+                             terms=(term,), price_indicator="US.SMH")
+
+    def test_shortlist_tier_and_theme_beat_recency(self):
+        """The budget goes to a T1 theme hit, not to whatever came last."""
+        themes = (self._theme("AI资本开支"),)
+        fresher_t3 = self._item(3, "美联储纪要要点回顾", "2026-08-26T10:00:00+08:00",
+                                line="feed", sid=9)
+        old_t1 = self._item(1, "AI资本开支追踪：订单与现金流", "2026-08-24T09:00:00+08:00",
+                            line="ec", sid=7)
+        chosen = wisburg.shortlist([fresher_t3, old_t1], 1, themes)
+        self.assertEqual(chosen, [old_t1])
+        # And within one tier, the theme hit outranks the fresher blank.
+        fresher_t1 = self._item(1, "会议纪要观察", "2026-08-26T11:00:00+08:00", sid=8)
+        chosen = wisburg.shortlist([fresher_t1, old_t1], 1, themes)
+        self.assertEqual(chosen, [old_t1])
+
+    def test_shortlist_penalises_rewrites_of_one_story(self):
+        """Five rewrites of the same story must not eat the whole budget."""
+        dup1 = self._item(2, "英伟达发布新一代芯片，市场关注", "2026-08-26T10:00:00+08:00", sid=1)
+        dup2 = self._item(2, "英伟达发布新一代芯片：市场关注！", "2026-08-26T09:00:00+08:00", sid=2)
+        dup3 = self._item(2, "英伟达发布新一代芯片（市场关注）", "2026-08-26T08:00:00+08:00", sid=3)
+        other = self._item(2, "欧洲电网设备订单积压创纪录", "2026-08-25T08:00:00+08:00", sid=4)
+        chosen = wisburg.shortlist([dup1, dup2, dup3, other], 2, ())
+        self.assertIn(other, chosen, "coverage must beat the third rewrite")
+        self.assertEqual(len([c for c in chosen if c is not other]), 1,
+                         "the duplicate cluster gets at most one slot")
+        # A story already deep-fetched in a previous run gets no budget again.
+        known = {lexicon.title_signature(dup1.title)}
+        chosen = wisburg.shortlist([dup1, other], 1, (), known_sigs=known)
+        self.assertEqual(chosen, [other])
+
+    def test_archive_raw_is_content_addressed_and_idempotent(self):
+        import hashlib as _h
+
+        class FakeBlobs:
+            def __init__(self):
+                self.objects = {}
+            def exists(self, key):
+                return key in self.objects
+            def put(self, key, data, **kw):
+                if key in self.objects:
+                    raise RuntimeError(f"{key} already exists")
+                self.objects[key] = data
+                return self.uri(key)
+            def uri(self, key):
+                return f"fake://{key}"
+
+        blobs = FakeBlobs()
+        md = "# 报告\n\n原文正文，含 <b>HTML</b> 与全部细节。"
+        sha1_, uri1 = wisburg.archive_raw(blobs, "ec", 42, md)
+        self.assertEqual(sha1_, _h.sha256(md.encode()).hexdigest())
+        self.assertEqual(uri1, f"fake://corpus/raw/ec/42_{sha1_[:12]}.md")
+        # Same content again: silent skip, still one object, no error recorded.
+        errs: dict = {}
+        sha2_, uri2 = wisburg.archive_raw(blobs, "ec", 42, md, errs)
+        self.assertEqual((sha1_, uri1), (sha2_, uri2))
+        self.assertEqual(len(blobs.objects), 1)
+        self.assertEqual(errs, {})
+        # Changed content: a different sha yields a different key; both survive.
+        sha3_, uri3 = wisburg.archive_raw(blobs, "ec", 42, md + "（修订）")
+        self.assertNotEqual(sha3_, sha1_)
+        self.assertEqual(len(blobs.objects), 2)
+        self.assertEqual(blobs.objects[uri1.replace("fake://", "")].decode(), md)
+
+    def test_doc_columns_evolve_and_cursor_round_trip(self):
+        con = mem()
+        for _ in range(2):                       # must be idempotent
+            wisburg._ensure_doc_columns(con)
+        cols = {r[1] for r in con.execute("PRAGMA table_info(documents)")}
+        self.assertLessEqual({"body_sha256", "raw_uri"}, cols)
+        cur = {"source_id": 99610, "published_at": "2026-08-26T10:00:00+08:00",
+               "checked_at": "2026-08-26T10:05:00+08:00"}
+        db.kv_set(con, "ingest:cursor:ib", cur)
+        self.assertEqual(db.kv_get(con, "ingest:cursor:ib"), cur)
+
+    def test_tool_drift_names_missing_and_unknown(self):
+        class StubW:
+            def __init__(self, names):
+                self._names = names
+            def tools(self):
+                return self._names
+
+        expected = ({s["tool"] for s in config.SOURCE_LINES.values()}
+                    | set(wisburg._DETAIL_TOOLS))
+        self.assertIsNone(wisburg.tool_drift(StubW(sorted(expected))))
+        drifted = (expected - {"list-earning-calls"}) | {"list-podcasts"}
+        d = wisburg.tool_drift(StubW(sorted(drifted)))
+        self.assertEqual(d["missing"], ["list-earning-calls"])
+        self.assertEqual(d["unknown"], ["list-podcasts"])

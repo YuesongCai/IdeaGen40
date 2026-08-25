@@ -50,7 +50,18 @@ def payload_from_candidates(cands: list[dict[str, Any]],
     ideas = []
     for n, c in enumerate(cands, 1):
         up, dn = float(c["upside_pct"]), float(c["downside_pct"])
-        ps = [float(c["p_up"]), float(c["p_base"]), float(c["p_down"])]
+        # Stage B stores probabilities as fractions (0-1); the legacy idea
+        # contract speaks percentages (0-100). The odds ratio is scale-free so a
+        # mismatch never showed up in numbers — it showed up as a validation
+        # refusal, which is exactly what the contract check is for.
+        ps = [round(float(c["p_up"]) * 100, 1), round(float(c["p_base"]) * 100, 1),
+              round(float(c["p_down"]) * 100, 1)]
+        # Independent rounding leaves the sum at 99.9 or 100.1 often enough to
+        # trip the sum-to-100 contract. The残差 goes to the largest scenario,
+        # where a tenth of a point distorts the stated view least.
+        drift = round(100.0 - sum(ps), 1)
+        if abs(drift) >= 0.1:
+            ps[ps.index(max(ps))] = round(max(ps) + drift, 1)
         ideas.append({
             "id": n,
             "instrument_key": str(c["instrument_id"]),

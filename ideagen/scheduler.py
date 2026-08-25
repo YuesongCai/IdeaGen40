@@ -461,12 +461,52 @@ def _ingest_corpus(p: plat.Platform, as_of: date, *,
         return {"skipped": "WISBURG_MCP_TOKEN 未设置，跳过 ingest"}
     try:
         from .sources import wisburg
-        rep = wisburg.ingest(con, as_of, fetch_bodies=8, verbose=False)
+        # The platform ports go along so the verbatim archive lands in the same
+        # blob store as the run's artifacts, and tool drift reaches the bus.
+        rep = wisburg.ingest(con, as_of, fetch_bodies=8, verbose=False,
+                             blobs=p.blobs, events=p.events)
         log(f"  ingest  {rep.get('total', 0)} 条（新 {rep.get('new', 0)}）")
         return {"total": rep.get("total"), "new": rep.get("new"),
-                "errors": len(rep.get("errors") or {})}
+                "errors": len(rep.get("errors") or {}),
+                "tool_drift": rep.get("tool_drift")}
     except Exception as e:  # noqa: BLE001 — see docstring
         log(f"  ! ingest 失败（继续跑，用库里已有语料）：{type(e).__name__}: {e}")
+        return {"failed": f"{type(e).__name__}: {e}"}
+
+
+def _ingest_incremental(p: plat.Platform, con: Any, problems: list[str], *,
+                        dry_run: bool, log: Callable[[str], None]) -> dict[str, Any]:
+    """Continuous corpus intake on the monitor cadence.
+
+    First pages only, three deep fetches a pass: cheap enough that running it a
+    hundred times a day costs less than one daily ingest, while closing the gap
+    where a document published Thursday morning is invisible until the next full
+    pull. The daily full-window ingest remains the completeness backstop — this
+    pass is allowed to miss things, it is not allowed to be expensive or to take
+    the monitor down with it: every failure degrades the pass into `problems`
+    rather than failing it.
+    """
+    if dry_run:
+        return {"skipped": "dry-run：不触网"}
+    if con is None:
+        return {"skipped": "state 端口不是 SQLite，增量 ingest 需要 sqlite3 连接"}
+    if not os.environ.get("WISBURG_MCP_TOKEN"):
+        # An expected local condition, not a degradation: recorded so the report
+        # says why nothing was pulled, but the pass stays healthy.
+        return {"skipped": "WISBURG_MCP_TOKEN 未设置，跳过增量语料"}
+    try:
+        from .sources import wisburg
+        rep = wisburg.ingest_incremental(con, budget_details=3, blobs=p.blobs,
+                                         verbose=False)
+        n, m = rep.get("new", 0), rep.get("deep", 0)
+        log(f"  增量语料 +{n} 条（深抓 {m}）" if n else "  增量语料 无新增")
+        if rep.get("errors"):
+            problems.append(f"增量语料部分线路失败：{', '.join(rep['errors'])}")
+        return {"new": n, "deep": m, "lines": rep.get("lines"),
+                "errors": rep.get("errors") or None}
+    except Exception as e:  # noqa: BLE001 — degrade the pass, never fail the tick
+        problems.append(f"增量语料失败：{type(e).__name__}: {e}")
+        log(f"  ! 增量语料失败（继续盯市）：{type(e).__name__}: {e}")
         return {"failed": f"{type(e).__name__}: {e}"}
 
 
@@ -538,6 +578,8 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
         detail["prices"] = _warm_prices(p, con, now_hkt, problems)
         detail["marks"] = _advance_books(con, now_hkt, problems, log=log)
         detail["alerts"] = _check_triggers(con, now_hkt, problems, log=log)
+    detail["ingest"] = _ingest_incremental(p, con, problems, dry_run=dry_run,
+                                           log=log)
 
     if not dry_run:
         _insert_run_row(p, run_id=run_id, as_of=now_hkt.date().isoformat(),

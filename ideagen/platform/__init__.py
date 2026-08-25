@@ -105,9 +105,19 @@ def load(*, platform: str | None = None) -> Platform:
         dsn = g("IDEAGEN_PG_DSN")
         state = port_or_unavailable("state", lambda: (
             PostgresStateStore(dsn) if dsn else SqliteStateStore(cfg.DB_PATH)))
-        inference = port_or_unavailable("inference", lambda: ModelArkInference(
-            api_key=g("ARK_API_KEY", "") or "",
-            model=g("IDEAGEN_ARK_MODEL", "seed-1-6-flash")))
+        # Cloud inference is disabled by standing instruction: GLM burned two
+        # weekly windows producing nothing while charging per token. Generation
+        # now happens in the operator's Claude Code session via the prompt queue
+        # (`ideagen weekly-prepare` / `weekly-complete`); a port that cannot be
+        # constructed cannot be called by accident from a scheduled run.
+        if (g("IDEAGEN_INFERENCE_MODE", "claude") or "claude").lower() == "claude":
+            inference = Unavailable(
+                "inference", "云端推理已停用——生成走 Claude Code 队列"
+                             "（weekly-prepare / weekly-complete）")
+        else:
+            inference = port_or_unavailable("inference", lambda: ModelArkInference(
+                api_key=g("ARK_API_KEY", "") or "",
+                model=g("IDEAGEN_ARK_MODEL", "seed-1-6-flash")))
         events = port_or_unavailable("events", lambda: (
             KafkaEventBus(servers=g("IDEAGEN_KAFKA_SERVERS", "") or "",
                           topic=g("IDEAGEN_KAFKA_TOPIC", "ideagen.runs") or "",
@@ -132,9 +142,13 @@ def load(*, platform: str | None = None) -> Platform:
         name="local",
         blobs=port_or_unavailable("blobs", lambda: LocalBlobStore(root / "blobs")),
         state=port_or_unavailable("state", lambda: SqliteStateStore(cfg.DB_PATH)),
-        inference=port_or_unavailable("inference", lambda: DirectInference(
-            api_key=key, base_url=base,
-            model=g("IDEAGEN_INFERENCE_MODEL", "claude-opus-5"))),
+        inference=(Unavailable("inference",
+                               "云端推理已停用——生成走 Claude Code 队列")
+                   if (g("IDEAGEN_INFERENCE_MODE", "claude") or "claude").lower()
+                   == "claude" else
+                   port_or_unavailable("inference", lambda: DirectInference(
+                       api_key=key, base_url=base,
+                       model=g("IDEAGEN_INFERENCE_MODEL", "claude-opus-5")))),
         events=port_or_unavailable("events", lambda: FileEventBus(root / "events.jsonl")),
         cache=port_or_unavailable("cache", lambda: FileCache(root / "cache")),
         secrets=secrets)

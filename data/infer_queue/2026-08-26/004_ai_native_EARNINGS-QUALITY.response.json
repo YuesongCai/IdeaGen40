@@ -1,0 +1,12 @@
+[
+{"instrument_id":"SMH","thesis":"美银:英伟达 Q2 营收将超预期 30-40 亿并上调指引至 1070-1080 亿,Vera Rubin 放量;Marvell 亦获数据中心上调。财报周半导体是盈利上修最密集的地方。","upside_pct":8.0,"downside_pct":-6.5,"p_up":0.44,"p_base":0.32,"p_down":0.24,"citations":["feed:102577","company:102513","company:102514"]},
+{"instrument_id":"RSP","thesis":"大摩:Russell 3000 中位数 EPS 增 14%、指引上调提及率 25% 创新高——盈利上修正在扩散到指数之外,等权指数正是『扩散』的直接载体。","upside_pct":4.5,"downside_pct":-3.5,"p_up":0.44,"p_base":0.36,"p_down":0.20,"citations":["feed:102569"]},
+{"instrument_id":"QUAL","thesis":"盈利质量分化环境（威灵顿:个股波动大升、相关性异常低）下,高质量因子既吃盈利兑现又避开分化的输家。","upside_pct":4.0,"downside_pct":-3.0,"p_up":0.44,"p_base":0.37,"p_down":0.19,"citations":["feed:102608","feed:102569"]},
+{"instrument_id":"QQQ","thesis":"摩根大通看好 NDX 上行并建议看涨结构;英伟达财报若如美银预期超 30-40 亿,成长股指数是最直接的受益面。","upside_pct":6.0,"downside_pct":-5.0,"p_up":0.42,"p_base":0.34,"p_down":0.24,"citations":["feed:102519","feed:102577"]},
+{"instrument_id":"SOXX","thesis":"与 SMH 同主题第二载体:等权重更高的半导体篮子,分散英伟达单一权重风险同时保留财报周 beta。","upside_pct":7.5,"downside_pct":-6.5,"p_up":0.42,"p_base":0.33,"p_down":0.25,"citations":["company:102513","company:102507"]},
+{"instrument_id":"GLOBAL-SEMI","thesis":"公募载体表达同一半导体盈利上修逻辑:适合不便持 ETF 的资金池,与 SMH/SOXX 同向。","upside_pct":7.0,"downside_pct":-6.0,"p_up":0.42,"p_base":0.33,"p_down":0.25,"citations":["feed:102577","company:102514"]},
+{"instrument_id":"MTUM","thesis":"盈利上修驱动的行情里动量因子自然聚集赢家;大摩的指引上调广度意味着动量篮子的成分质量在提升。","upside_pct":5.0,"downside_pct":-4.5,"p_up":0.42,"p_base":0.36,"p_down":0.22,"citations":["feed:102569"]},
+{"instrument_id":"BTAL","thesis":"威灵顿:相关性异常低=选股市场。反贝塔策略在高分化低相关环境的alpha空间最大,与多头腿互补。","upside_pct":3.5,"downside_pct":-2.5,"p_up":0.42,"p_base":0.40,"p_down":0.18,"citations":["feed:102608"]},
+{"instrument_id":"MCHI","thesis":"中国盈利面企稳的边际证据:PDD 国内电商企稳、利润超预期,云厂商财报临近。低估值 + 盈利不再下修,一个月的均值回归窗口。","upside_pct":5.5,"downside_pct":-5.0,"p_up":0.40,"p_base":0.35,"p_down":0.25,"citations":["feed:102606","company:102558","company:102520"]},
+{"instrument_id":"EWT","thesis":"亚太科技链盈利上修（存储芯片股东回报提升、AI 链条）直接映射台湾权重股;英伟达超预期外溢的第一站。","upside_pct":6.0,"downside_pct":-5.0,"p_up":0.41,"p_base":0.35,"p_down":0.24,"citations":["company:102507","feed:102577"]}
+]

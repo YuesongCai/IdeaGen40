@@ -1,0 +1,5 @@
+[
+{"instrument_id":"EUFN","thesis":"共识仍给欧洲银行『低利率时代』的估值折价,通胀预期锚定带来的政策空间没被重估。","implied_consensus":"欧洲金融股相对美国同行长期折价——市场默认欧洲银行永远赚不到正常息差。","contradiction":"欧央行调查显示通胀预期全曲线锚定:这给了欧央行不再紧缩的余地,而财政供给撑着长端——正常息差环境成立了,折价还在。","unexpressed":"欧洲银行的股息+回购收益率已达高个位数,『收益率本身』在低预期下就是回报,不需要叙事兑现。","upside_pct":5.0,"downside_pct":-4.0,"p_up":0.43,"p_base":0.36,"p_down":0.21,"citations":["feed:102607"]},
+{"instrument_id":"FXE","thesis":"共识按利差定价欧元,资金流已经先走一步——CORAX 的欧元增持还没进汇价。","implied_consensus":"EURUSD 横盘=市场按静态利差模型定价,认为欧元没有独立行情。","contradiction":"德银流量数据:对冲基金已在系统性增持欧元、抛售美元;配置型流动不看短期利差。","unexpressed":"『流量先行于价格』的缺口:CORAX 转向历史上领先汇价 2-6 周,正落在持有期内。","upside_pct":2.8,"downside_pct":-2.0,"p_up":0.45,"p_base":0.36,"p_down":0.19,"citations":["feed:102588"]},
+{"instrument_id":"EUROPE-GRID","thesis":"共识把欧洲能源贵定价为工业利空,没定价它同时是电气化投资的加速器。","implied_consensus":"TTF 上行=欧洲资产利空,这是市场的单向解读。","contradiction":"气价越高,电网/自发电/储能项目的回报率越高——同一个价格信号对旧经济是成本、对转型资产是收入。","unexpressed":"欧洲版『能源安全资本开支周期』的订单弹性——美国 PAVE 类资产已重估,欧洲对应物没有。","upside_pct":6.0,"downside_pct":-4.5,"p_up":0.41,"p_base":0.35,"p_down":0.24,"citations":["feed:102494"]}
+]

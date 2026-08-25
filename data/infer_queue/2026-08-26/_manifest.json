@@ -1,0 +1,142 @@
+[
+ {
+  "file": "001_ai_native_POLICY-PATH",
+  "method": "ai_native",
+  "topic_id": "POLICY-PATH",
+  "sha": "e8496b0db187be79",
+  "n_docs": 20
+ },
+ {
+  "file": "002_ai_native_INFLATION",
+  "method": "ai_native",
+  "topic_id": "INFLATION",
+  "sha": "f47d6e11df22c67e",
+  "n_docs": 15
+ },
+ {
+  "file": "003_ai_native_GEOPOLITICS",
+  "method": "ai_native",
+  "topic_id": "GEOPOLITICS",
+  "sha": "77a6b4fbd2c6736f",
+  "n_docs": 22
+ },
+ {
+  "file": "004_ai_native_EARNINGS-QUALITY",
+  "method": "ai_native",
+  "topic_id": "EARNINGS-QUALITY",
+  "sha": "f431ad5af5b556b4",
+  "n_docs": 72
+ },
+ {
+  "file": "005_ai_native_EUROPE-FISCAL",
+  "method": "ai_native",
+  "topic_id": "EUROPE-FISCAL",
+  "sha": "9c900174156e9ba4",
+  "n_docs": 4
+ },
+ {
+  "file": "006_carl_constraint_POLICY-PATH",
+  "method": "carl_constraint",
+  "topic_id": "POLICY-PATH",
+  "sha": "dfa9facefc60cbb8",
+  "n_docs": 20
+ },
+ {
+  "file": "007_carl_constraint_INFLATION",
+  "method": "carl_constraint",
+  "topic_id": "INFLATION",
+  "sha": "c67ab17a6edc194d",
+  "n_docs": 15
+ },
+ {
+  "file": "008_carl_constraint_GEOPOLITICS",
+  "method": "carl_constraint",
+  "topic_id": "GEOPOLITICS",
+  "sha": "c71eb4df71b62cf2",
+  "n_docs": 22
+ },
+ {
+  "file": "009_carl_constraint_EARNINGS-QUALITY",
+  "method": "carl_constraint",
+  "topic_id": "EARNINGS-QUALITY",
+  "sha": "fd8b6bae26af1652",
+  "n_docs": 72
+ },
+ {
+  "file": "010_carl_constraint_EUROPE-FISCAL",
+  "method": "carl_constraint",
+  "topic_id": "EUROPE-FISCAL",
+  "sha": "b31d5d70d9b86e6d",
+  "n_docs": 4
+ },
+ {
+  "file": "011_chain_POLICY-PATH",
+  "method": "chain",
+  "topic_id": "POLICY-PATH",
+  "sha": "3f8e3e5386b5ecd8",
+  "n_docs": 20
+ },
+ {
+  "file": "012_chain_INFLATION",
+  "method": "chain",
+  "topic_id": "INFLATION",
+  "sha": "c3849e986035456d",
+  "n_docs": 15
+ },
+ {
+  "file": "013_chain_GEOPOLITICS",
+  "method": "chain",
+  "topic_id": "GEOPOLITICS",
+  "sha": "d73043159b424427",
+  "n_docs": 22
+ },
+ {
+  "file": "014_chain_EARNINGS-QUALITY",
+  "method": "chain",
+  "topic_id": "EARNINGS-QUALITY",
+  "sha": "c61362aaa61b3f21",
+  "n_docs": 72
+ },
+ {
+  "file": "015_chain_EUROPE-FISCAL",
+  "method": "chain",
+  "topic_id": "EUROPE-FISCAL",
+  "sha": "8be0e21f88f97e2a",
+  "n_docs": 4
+ },
+ {
+  "file": "016_gap_POLICY-PATH",
+  "method": "gap",
+  "topic_id": "POLICY-PATH",
+  "sha": "ae5327e6beeb1444",
+  "n_docs": 20
+ },
+ {
+  "file": "017_gap_INFLATION",
+  "method": "gap",
+  "topic_id": "INFLATION",
+  "sha": "2940ed960fe30631",
+  "n_docs": 15
+ },
+ {
+  "file": "018_gap_GEOPOLITICS",
+  "method": "gap",
+  "topic_id": "GEOPOLITICS",
+  "sha": "9cb5739820875299",
+  "n_docs": 22
+ },
+ {
+  "file": "019_gap_EARNINGS-QUALITY",
+  "method": "gap",
+  "topic_id": "EARNINGS-QUALITY",
+  "sha": "ed88100b51c342e2",
+  "n_docs": 72
+ },
+ {
+  "file": "020_gap_EUROPE-FISCAL",
+  "method": "gap",
+  "topic_id": "EUROPE-FISCAL",
+  "sha": "2527f414a00ab76b",
+  "n_docs": 4
+ }
+]

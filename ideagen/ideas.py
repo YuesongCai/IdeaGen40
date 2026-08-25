@@ -412,7 +412,12 @@ def validate_batch(con, rows: list[dict], as_of: date, payload: dict | None = No
                        "detail": detail})
 
     n = len(rows)
-    chk("idea_count_40", n == 40, {"n": n})
+    # A batch carries however many ideas its selection produced. The old rule
+    # (exactly 40) was the daily methodology's forced quota — the same forced
+    # quota the 08-07 review flagged as a defect, because it padded thin days
+    # with ideas nobody believed. Weekly selector batches hold ~10 by design,
+    # and an empty batch is the only genuinely invalid size.
+    chk("idea_count", n >= 1, {"n": n})
     ids = [r["local_id"] for r in rows]
     chk("ids_unique", len(set(ids)) == n, {"dupes": sorted({i for i in ids
                                                             if ids.count(i) > 1})})

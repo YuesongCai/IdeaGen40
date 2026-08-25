@@ -766,6 +766,51 @@ tr.expandable{cursor:pointer}
 /* 状态点展开里的数据源行 */
 .feed-line{display:flex;align-items:baseline;gap:8px;font:400 12px/18px var(--font-sans);color:var(--color-text-metadata);padding:2px 0}
 .feed-line .fdot{width:8px;height:8px;flex:none;border-radius:var(--radius-pill);position:relative;top:0}
+
+/* ── 语料浏览器 ─────────────────────────────────────────────── */
+.corpus-panel{width:640px;max-width:94vw}
+.corpus-search{
+  width:100%;height:36px;flex:none;
+  border:1px solid var(--color-border-default);border-radius:var(--radius-lg);
+  padding:0 var(--space-3);
+  font:400 14px/20px var(--font-sans);color:var(--color-text-primary);
+  background:var(--color-surface-white);
+  margin-bottom:var(--space-2);
+}
+.corpus-search:focus{outline:none;border-color:var(--color-focus-ring);box-shadow:inset 0 0 0 1px var(--color-focus-ring)}
+.tier-chips{display:flex;gap:6px;margin-bottom:var(--space-3);flex:none;flex-wrap:wrap}
+.tier-chip{
+  height:28px;padding:0 var(--space-3);border-radius:var(--radius-pill);
+  border:1px solid var(--color-border-default);
+  font:500 12px/16px var(--font-sans);color:var(--color-text-secondary);
+  transition:var(--duration-fast) var(--ease-standard);
+  transition-property:background-color,border-color,color;
+}
+.tier-chip:hover{border-color:var(--color-border-brand-subtle);color:var(--color-text-brand)}
+.tier-chip.on{background:var(--color-surface-brand-highlight);border-color:var(--color-border-brand-subtle);color:var(--color-text-brand)}
+.doc-row{
+  display:flex;gap:10px;padding:6px 2px;align-items:baseline;cursor:pointer;
+  border-top:1px solid var(--color-border-subtle);
+  font:400 12px/18px var(--font-sans);
+}
+.doc-row:first-child{border-top:none}
+.doc-row:hover{background:var(--color-surface-subtle)}
+.doc-title{color:var(--color-text-secondary);min-width:0}
+.doc-detail{
+  background:var(--color-surface-subtle);border-radius:var(--radius-md);
+  padding:10px 12px;margin:2px 0 8px;
+  font:400 12px/18px var(--font-sans);color:var(--color-text-secondary);
+}
+.doc-cred{
+  font:400 12px/18px var(--font-mono);color:var(--color-text-metadata);
+  background:var(--color-surface-muted);border-radius:var(--radius-sm);
+  padding:4px 8px;margin-top:6px;overflow-x:auto;white-space:nowrap;
+}
+.doc-body{
+  white-space:pre-wrap;max-height:320px;overflow-y:auto;margin-top:8px;
+  border-top:1px solid var(--color-border-default);padding-top:8px;
+  font:400 12px/20px var(--font-sans);color:var(--color-text-secondary);
+}
 </style>
 </head>
 <body>
@@ -806,6 +851,7 @@ tr.expandable{cursor:pointer}
   </main>
 </div>
 <div id="helpRoot"></div>
+<div id="corpusRoot"></div>
 
 <script>
 'use strict';
@@ -1469,14 +1515,11 @@ function evidenceListHTML(tid,ri){
   var ev=(((S||{}).weekly||{}).evidence||{})[tid];
   if(!ev)return '';
   var docs=ev.docs||[];
-  var rows=docs.map(function(d){
-    return '<div class="ev-row"><span class="d num">'+esc((d.published_d||'').slice(5))+'</span>'
-      +tierTag(d.tier)
-      +'<span>'+esc(d.title||'')+(d.institution?'<span style="color:var(--color-text-tertiary)">　'+esc(d.institution)+'</span>':'')+'</span>'
-      +'</div>';
+  var rows=docs.map(function(d,di){
+    return docRowHTML(d,'ev'+ri+'-'+di);
   }).join('');
   return '<div class="ev-wrap" id="ev-'+ri+'" style="display:none">'
-    +'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:6px">口径：'+esc(ev.matched_on||'标题关键词')+'——和打分内部的证据计数不是同一套口径，两个数都摆出来</div>'
+    +'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:6px">口径：'+esc(ev.matched_on||'标题关键词')+'——和打分内部的证据计数不是同一套口径，两个数都摆出来；点任意一篇看摘要、凭据和全文</div>'
     +'<div class="ev-list scroll-thin">'+rows+'</div>'
     +(ev.truncated?'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px">另有 '+fmtInt(ev.truncated)+' 条未显示</div>':'')
     +'</div>';
@@ -1589,6 +1632,7 @@ function selectSub(i,anchor){
 }
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape')return;
+  if(typeof corpusOpen!=='undefined'&&corpusOpen){closeCorpus();return}
   if(typeof helpOpen!=='undefined'&&helpOpen){toggleHelp();return}
   if(tocOpen)toggleToc();
 });
@@ -1652,14 +1696,20 @@ function panelCorpus(){
       }).join('')
       +'</div></div>';
   }
+  var fgroups={};
+  rows.forEach(function(f){var k=f.feed+'|'+f.as_of;(fgroups[k]=fgroups[k]||[]).push(f)});
   var feedTable=rows.length
     ?'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
       +'<thead><tr><th>来源</th><th>期次</th><th class="r">条数</th><th>状态</th></tr></thead><tbody>'
-      +rows.map(function(f){
-        return '<tr><td class="primary">研报语料（'+esc(f.feed)+'）</td>'
+      +Object.keys(fgroups).map(function(k){
+        var g=fgroups[k],f=g[0];
+        return '<tr class="expandable" onclick="openCorpus(\''+esc(f.as_of)+'\')" title="点开浏览这一期存了哪些研报">'
+          +'<td class="primary">研报语料（'+esc(f.feed)+'）</td>'
           +'<td class="mono">'+esc(f.as_of||'')+'</td>'
           +'<td class="r num">'+fmtInt(f.n_rows)+'</td>'
-          +'<td>'+(f.ok?badge('success','正常'):badge('error','异常'))+'</td></tr>';
+          +'<td>'+(f.ok?badge('success','正常'):badge('error','异常'))
+          +(g.length>1?' <span class="card-note">第 '+g.length+' 次尝试</span>':'')
+          +' <span class="exp-btn">浏览 ›</span></td></tr>';
       }).join('')+'</tbody></table></div>'
     :'';
   return '<div class="card"><h2 class="card-title">1 · 读研报</h2>'+body+breakdown+topicChips+feedTable
@@ -2257,6 +2307,128 @@ function fallbackCopy(text){
   document.body.appendChild(ta);ta.select();
   try{document.execCommand('copy')}catch(e){}
   document.body.removeChild(ta);
+}
+
+/* ── 语料浏览器:每一条研报都能溯源 ─────────────────────────── */
+var corpusOpen=false,corpusCache={},corpusQuery='',corpusTier=null,corpusAsOf=null,corpusLoading=false,corpusError=null;
+var docReg={},docCache={};
+function openCorpus(asOf){
+  corpusOpen=true;corpusAsOf=asOf;corpusQuery='';corpusTier=null;corpusError=null;
+  if(!corpusCache[asOf]){
+    corpusLoading=true;renderCorpus();
+    fetch('/api/corpus?as_of='+encodeURIComponent(asOf),{cache:'no-store'}).then(function(r){
+      if(!r.ok)throw new Error('HTTP '+r.status);return r.json();
+    }).then(function(j){corpusCache[asOf]=j;corpusLoading=false;renderCorpus()})
+    .catch(function(e){corpusLoading=false;corpusError=e&&e.message?e.message:String(e);renderCorpus()});
+  }else renderCorpus();
+}
+function closeCorpus(){corpusOpen=false;renderCorpus()}
+function setCorpusTier(t){corpusTier=t;renderCorpus()}
+function corpusInput(el){corpusQuery=el.value;renderCorpusList()}
+function corpusFiltered(){
+  var d=corpusCache[corpusAsOf];if(!d)return [];
+  var q=corpusQuery.trim().toLowerCase();
+  return (d.docs||[]).filter(function(x){
+    if(corpusTier&&x.tier!==corpusTier)return false;
+    if(!q)return true;
+    return ((x.title||'')+' '+(x.institution||'')).toLowerCase().indexOf(q)>=0;
+  });
+}
+function renderCorpus(){
+  var root=$('corpusRoot');if(!root)return;
+  if(!corpusOpen){root.innerHTML='';return}
+  var d=corpusCache[corpusAsOf];
+  var body;
+  if(corpusLoading){
+    body='<div class="quiet" style="padding:var(--space-6) 0">正在读取语料清单……</div>';
+  }else if(corpusError){
+    body='<div class="quiet" style="padding:var(--space-6) 0">取不到语料清单——服务没响应（'+esc(corpusError)+'）。'
+      +'<button type="button" class="exp-btn" onclick="openCorpus(\''+esc(corpusAsOf)+'\')">再试一次</button></div>';
+  }else if(d&&(d.docs||[]).length){
+    var counts={1:0,2:0,3:0};(d.docs||[]).forEach(function(x){counts[x.tier]=(counts[x.tier]||0)+1});
+    body='<input type="search" class="corpus-search" placeholder="搜标题或机构……" value="'+esc(corpusQuery)+'" oninput="corpusInput(this)" aria-label="搜索语料">'
+      +'<div class="tier-chips">'
+      +[[null,'全部 '+fmtInt((d.docs||[]).length)],[1,'T1 一手 '+fmtInt(counts[1]||0)],[2,'T2 投行 '+fmtInt(counts[2]||0)],[3,'T3 资讯 '+fmtInt(counts[3]||0)]]
+        .map(function(c){return '<button type="button" class="tier-chip'+(corpusTier===c[0]?' on':'')+'" onclick="setCorpusTier('+(c[0]===null?'null':c[0])+')">'+c[1]+'</button>'}).join('')
+      +'</div><div id="corpusList" class="scroll-thin" style="flex:1;overflow-y:auto;min-height:0"></div>';
+  }else{
+    body='<div class="quiet" style="padding:var(--space-6) 0">这一期还没有语料。</div>';
+  }
+  var win=(d&&d.window&&d.window.length)?('（窗口 '+esc(d.window[d.window.length-1].slice(5))+' ~ '+esc(d.window[0].slice(5))+'）'):'';
+  root.innerHTML='<div class="toc-scrim" onclick="closeCorpus()"></div>'
+    +'<div class="help-panel corpus-panel" role="dialog" aria-label="语料浏览器">'
+    +'<div class="toc-h"><span>'+esc(corpusAsOf||'')+' 期语料'+(d?' · '+fmtInt(d.n)+' 条'+win:'')+'</span>'
+    +'<button type="button" class="copy-btn" onclick="closeCorpus()">关闭</button></div>'
+    +body+'</div>';
+  if(d&&!corpusLoading&&!corpusError)renderCorpusList();
+}
+function renderCorpusList(){
+  var el=$('corpusList');if(!el)return;
+  var arr=corpusFiltered();
+  var cap=300,shown=arr.slice(0,cap);
+  el.innerHTML=(shown.map(function(x,i){return docRowHTML(x,'cb'+i)}).join('')
+      ||'<div class="quiet" style="padding:var(--space-4) 0">没有匹配——换个词试试。</div>')
+    +(arr.length>cap?'<div class="quiet" style="padding:8px 0">只显示前 '+cap+' 条（共 '+fmtInt(arr.length)+' 条匹配）——继续输入缩小范围</div>':'');
+}
+/* 共用文档组件:一份渲染,两个入口(语料浏览器 / 主题证据清单) */
+function docRowHTML(d,uid){
+  docReg[uid]=d;
+  return '<div class="doc-row" onclick="toggleDoc(\''+uid+'\')" title="点开看摘要与凭据">'
+    +'<span class="num" style="font-family:var(--font-mono);color:var(--color-text-tertiary);flex:none">'+esc((d.published_d||'').slice(5))+'</span>'
+    +tierTag(d.tier)
+    +'<span class="doc-title">'+esc(d.title||'')
+    +(d.institution?'<span style="color:var(--color-text-tertiary)">　'+esc(d.institution)+'</span>':'')+'</span>'
+    +'</div><div class="doc-detail" id="docd-'+uid+'" style="display:none"></div>';
+}
+function toggleDoc(uid){
+  var el=$('docd-'+uid);if(!el)return;
+  if(el.style.display!=='none'){el.style.display='none';return}
+  el.style.display='';
+  if(el.getAttribute('data-loaded'))return;
+  var d=docReg[uid]||{};
+  if(d.retrieval!==undefined||d.sha!==undefined){
+    el.innerHTML=docDetailHTML(d,uid);el.setAttribute('data-loaded','1');
+  }else{
+    el.innerHTML='<span class="quiet">正在取这篇的档案……</span>';
+    fetchDoc(d.doc_id).then(function(j){
+      docReg[uid]=j;el.innerHTML=docDetailHTML(j,uid);el.setAttribute('data-loaded','1');
+    }).catch(function(){
+      el.innerHTML='<span class="quiet">取不到这篇的档案——服务没响应，收起后再点一次可重试。</span>';
+    });
+  }
+}
+function fetchDoc(id){
+  if(docCache[id])return Promise.resolve(docCache[id]);
+  return fetch('/api/doc?id='+encodeURIComponent(id),{cache:'no-store'}).then(function(r){
+    if(!r.ok)throw new Error('HTTP '+r.status);return r.json();
+  }).then(function(j){docCache[id]=j;return j});
+}
+function docDetailHTML(d,uid){
+  var sha=String(d.sha||d.content_hash||'').slice(0,12);
+  var hasBody=(d.body_len||0)>0;
+  return (d.summary?'<div>'+esc(d.summary)+'</div>':'<div class="quiet">没有存摘要</div>')
+    +'<div class="doc-cred scroll-thin">检索式：'+esc(d.retrieval||'—')+(sha?' · sha '+esc(sha):'')+'</div>'
+    +(hasBody
+      ?(d.body!==undefined
+        ?'<div style="margin-top:6px"><button type="button" class="exp-btn" onclick="toggleDocBody(\''+uid+'\')">读全文（'+fmtInt(d.body_len)+' 字）›</button></div>'
+          +'<div class="doc-body scroll-thin" id="docb-'+uid+'" style="display:none">'+esc(d.body)+'</div>'
+        :'<div style="margin-top:6px"><button type="button" class="exp-btn" onclick="loadDocBody(\''+uid+'\')">读全文（'+fmtInt(d.body_len)+' 字）›</button></div>'
+          +'<div id="docb-'+uid+'"></div>')
+      :'<div class="quiet" style="margin-top:6px">只存了标题与摘要（全文仅对每日重点深抓）</div>');
+}
+function toggleDocBody(uid){
+  var el=$('docb-'+uid);if(el)el.style.display=el.style.display==='none'?'':'none';
+}
+function loadDocBody(uid){
+  var d=docReg[uid]||{};
+  var el=$('docb-'+uid);if(!el)return;
+  el.innerHTML='<span class="quiet">正在取全文……</span>';
+  fetchDoc(d.doc_id).then(function(j){
+    docReg[uid]=j;
+    el.outerHTML='<div class="doc-body scroll-thin" id="docb-'+uid+'">'+esc(j.body||'（全文为空）')+'</div>';
+  }).catch(function(){
+    el.innerHTML='<span class="quiet">取不到全文——服务没响应，稍后再试。</span>';
+  });
 }
 
 /* ── 1s ticker: countdown + clock ────────────────────────────── */

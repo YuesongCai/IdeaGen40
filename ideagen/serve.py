@@ -44,6 +44,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not p.exists():
                 report.build(db.init())
             return self._raw(p.read_bytes(), "application/json; charset=utf-8")
+        if path == "/api/corpus":
+            from urllib.parse import parse_qs, urlparse
+            from . import review
+            q = parse_qs(urlparse(self.path).query)
+            return self._json(review.corpus_list(
+                db.init(), as_of=(q.get("as_of") or [None])[0]))
+        if path == "/api/doc":
+            from urllib.parse import parse_qs, urlparse
+            from . import review
+            q = parse_qs(urlparse(self.path).query)
+            return self._json(review.doc_detail(
+                db.init(), doc_id=(q.get("id") or [""])[0]))
         if path == "/api/state":
             from . import review
             return self._json(review.state(db.init()))

@@ -436,3 +436,47 @@ def state(con=None, p=None) -> dict[str, Any]:
                           for a in ASSUMPTIONS]
     out["fixes"] = [dict(zip(("issue", "state", "how"), f)) for f in FIXES]
     return out
+
+
+# ---------------------------------------------------------------- corpus API
+def corpus_list(con=None, as_of: str | None = None) -> dict[str, Any]:
+    """Every stored document for one period's window — the shelf itself.
+
+    The feed table said "841 条 · 正常" and stopped there, which is a claim
+    without an exhibit: the operator asked, reasonably, to see what was actually
+    stored. Titles and summaries are ours to show (they are the working corpus);
+    what stays out of any public artifact is the verbatim body, which is
+    licensed material — served only per-document, locally, on demand.
+    """
+    con = con or db.init()
+    if not as_of:
+        r = db.q1(con, "SELECT MAX(published_d) d FROM documents")
+        as_of = r["d"] if r else None
+    from datetime import date as _date, timedelta as _td
+    aof = _date.fromisoformat(as_of)
+    days = [(aof - _td(days=i)).isoformat() for i in range(3)]
+    rows = db.q(con,
+                "SELECT doc_id, published_d, title, "
+                "COALESCE(institution, line) AS institution, tier, "
+                "substr(COALESCE(summary,''),1,240) AS summary, "
+                "substr(COALESCE(content_hash,''),1,12) AS sha, retrieval, "
+                "length(COALESCE(body,'')) AS body_len "
+                "FROM documents WHERE published_d IN (%s) "
+                "ORDER BY published_d DESC, tier, doc_id"
+                % ",".join("?" * len(days)), days)
+    return {"as_of": as_of, "window": days, "n": len(rows),
+            "docs": [dict(r) for r in rows]}
+
+
+def doc_detail(con=None, doc_id: str = "") -> dict[str, Any]:
+    """One document in full, for local audit."""
+    con = con or db.init()
+    r = db.q1(con, "SELECT doc_id, published_d, title, "
+                   "COALESCE(institution, line) AS institution, tier, summary, "
+                   "body, content_hash, retrieval FROM documents WHERE doc_id=?",
+              (doc_id,))
+    if not r:
+        return {"error": f"没有 doc_id={doc_id!r} 的文档"}
+    d = dict(r)
+    d["body_len"] = len(d.get("body") or "")
+    return d

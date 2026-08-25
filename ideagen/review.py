@@ -329,6 +329,46 @@ def state(con=None, p=None) -> dict[str, Any]:
             {"name": v["strategy"], "chosen": json.loads(v["chosen"])}
             for v in p.state.q("SELECT strategy, chosen FROM verdicts "
                                "WHERE run_id=? AND kind='idea_selector'", (rid,))]
+    # -- evidence drill-down: which actual documents back each chosen topic.
+    # Without this the dashboard's "29 条证据" is a dead end — a count nobody
+    # can audit. The reconciliation chain the operator wants (841 docs → this
+    # topic's 29 → this topic's ideas → this topic's picks → positions) has to
+    # start from real line items, so they are served here, matched by the same
+    # theme vocabulary the scorers themselves use.
+    if weekly and weekly.get("topics"):
+        try:
+            from datetime import date as _date, timedelta as _td
+            from . import lexicon
+            aof = _date.fromisoformat(weekly["as_of"])
+            days = [(aof - _td(days=i)).isoformat() for i in range(3)]
+            docs = db.q(con,
+                        "SELECT doc_id, published_d, title, institution, tier "
+                        "FROM documents WHERE published_d IN (%s)"
+                        % ",".join("?" * len(days)), days)
+            themes_by_id = {t.id: t for t in lexicon.all_themes(aof)}
+            chosen_ids = {tid for tv in weekly["topics"] for tid in tv["chosen"]}
+            ev: dict[str, Any] = {}
+            for tid in chosen_ids:
+                th = themes_by_id.get(tid)
+                if not th:
+                    continue
+                terms = [str(x).lower() for x in (th.terms or [])]
+                hits = []
+                for d in docs:
+                    blob = f"{d['title'] or ''}".lower()
+                    if any(w in blob for w in terms):
+                        hits.append({k: d[k] for k in
+                                     ("doc_id", "published_d", "title",
+                                      "institution", "tier")})
+                hits.sort(key=lambda x: (x["tier"] or 3, x["published_d"] or ""),
+                          reverse=False)
+                ev[tid] = {"n": len(hits), "docs": hits[:60],
+                           "truncated": max(0, len(hits) - 60),
+                           "matched_on": "标题关键词（与打分同一套主题词表）"}
+            weekly["evidence"] = ev
+            weekly["corpus_total"] = len(docs)
+        except Exception as e:  # noqa: BLE001 — drill-down must not break the API
+            weekly["evidence_error"] = f"{type(e).__name__}: {e}"
     out["weekly"] = weekly
 
     # -- books: equity curves + open positions ---------------------------

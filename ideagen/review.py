@@ -384,11 +384,17 @@ def state(con=None, p=None) -> dict[str, Any]:
         eq = [{"d": m["d"], "equity": m["equity"]} for m in db.q(
             con, "SELECT d, equity FROM equity WHERE book_id=? ORDER BY d",
             (b["book_id"],))]
+        # `avg_px` is the entry; the latest mark lives in `mtm`, one row per
+        # position per session — joined on the max marked date so an unfilled
+        # order shows an honest NULL rather than a stale guess.
         pos = [dict(x) for x in db.q(
-            con, "SELECT p.code, p.qty, p.entry_px, p.last_px, p.stop_px, "
-                 "p.take_px, p.opened_d, p.unrealized, i.thesis, i.theme_id, "
-                 "i.tool_desc AS instrument_name "
-                 "FROM positions p LEFT JOIN ideas i USING(idea_uid) "
+            con, "SELECT p.code, p.qty, p.avg_px AS entry_px, m.px AS last_px, "
+                 "p.stop_px, p.take_px, p.opened_d, m.upnl AS unrealized, "
+                 "i.thesis, i.theme_id, i.tool_desc AS instrument_name "
+                 "FROM positions p "
+                 "LEFT JOIN ideas i USING(idea_uid) "
+                 "LEFT JOIN mtm m ON m.pos_id = p.pos_id AND m.d = "
+                 "  (SELECT MAX(d) FROM mtm WHERE pos_id = p.pos_id) "
                  "WHERE p.book_id=? AND p.status='open' ORDER BY p.code",
             (b["book_id"],))]
         latest_batch = db.q1(

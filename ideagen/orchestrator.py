@@ -205,6 +205,42 @@ def weekly(
                         "unit": e.get("unit"), "source": e.get("source"),
                         "as_of": e.get("as_of"), "feed": e.get("feed")})
 
+            # Theme discovery runs before scoring, every week, in the run itself.
+            # The founding requirement is that topics emerge from the corpus
+            # rather than living in a frozen dictionary — and a discovery step
+            # that exists only as a manual CLI command is a frozen dictionary
+            # with extra steps, because nobody runs it (the registry sat still
+            # from 08-08 until this was wired). Candidates passing every gate
+            # (docs/institutions/days/lift) are registered append-only with
+            # registered_d = as_of, so replays of earlier weeks still cannot
+            # see them.
+            if not dry_run and corpus:
+                try:
+                    from . import db as _db, themes as _themes
+                    _con = _db.init()
+                    disc = _themes.candidates(_con, as_of)
+                    newly = []
+                    for c in (disc.get("candidates") or []):
+                        try:
+                            t = _themes.register(_con, c, as_of)
+                            newly.append(t.id)
+                        except Exception as e:  # noqa: BLE001 — one bad candidate
+                            j.step("theme_register_failed",
+                                   candidate=c.get("id"), error=str(e)[:200])
+                    j.step("theme_discovery",
+                           coverage_pct=disc.get("coverage_pct"),
+                           unmatched=disc.get("unmatched"),
+                           candidates=len(disc.get("candidates") or []),
+                           registered=newly)
+                    if newly:
+                        log(f"  主题发现  新注册 {len(newly)} 个: {', '.join(newly)}")
+                    else:
+                        log(f"  主题发现  无新主题（语料覆盖率 "
+                            f"{disc.get('coverage_pct')}%）")
+                except Exception as e:  # noqa: BLE001 — discovery must not cost the run
+                    j.step("theme_discovery", error=f"{type(e).__name__}: {e}")
+                    log(f"  ⚠ 主题发现失败（本周用既有注册表继续）: {e}")
+
             # A run with no corpus is a failed run, not a successful empty one.
             # Every input validates cleanly at zero rows, so without this check the
             # sequence "no corpus → no topics → no ideas → done" reports success, and

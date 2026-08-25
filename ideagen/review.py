@@ -137,7 +137,7 @@ def _books(con) -> str:
         pos = db.q1(con, "SELECT COUNT(*) n, COALESCE(SUM(qty*COALESCE(last_px,0)),0) mv "
                          "FROM positions WHERE book_id=? AND status='open'",
                     (b["book_id"],)) or {"n": 0, "mv": 0}
-        eq = db.q1(con, "SELECT equity, d FROM mtm WHERE book_id=? "
+        eq = db.q1(con, "SELECT equity, d FROM equity WHERE book_id=? "
                         "ORDER BY d DESC LIMIT 1", (b["book_id"],))
         realized = db.q1(con, "SELECT COALESCE(SUM(realized),0) r FROM positions "
                               "WHERE book_id=? AND status='closed'",
@@ -382,7 +382,7 @@ def state(con=None, p=None) -> dict[str, Any]:
     for b in db.q(con, "SELECT book_id, label, capital FROM books "
                        "WHERE book_id LIKE 'sel-%' ORDER BY book_id"):
         eq = [{"d": m["d"], "equity": m["equity"]} for m in db.q(
-            con, "SELECT d, equity FROM mtm WHERE book_id=? ORDER BY d",
+            con, "SELECT d, equity FROM equity WHERE book_id=? ORDER BY d",
             (b["book_id"],))]
         pos = [dict(x) for x in db.q(
             con, "SELECT p.code, p.qty, p.entry_px, p.last_px, p.stop_px, "

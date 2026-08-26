@@ -33,8 +33,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # noqa: A003
         print(f"  {self.address_string()} {fmt % args}")
 
+    def _authorized(self) -> bool:
+        """Remote requests need the shared key; localhost stays open.
+
+        The dashboard's API serves licensed research bodies and a partner's
+        product identifiers. A public URL without a gate would republish content
+        that is not ours — the same boundary the publish-safety check enforces
+        for GitHub Pages, applied to the live server. The key is a capability,
+        not identity: one secret, rotated by editing ~/.ideagen.env.
+        """
+        import os
+        from .platform.local import EnvSecretStore
+        from . import platform as plat_mod
+        key = (os.environ.get("IDEAGEN_DASH_KEY")
+               or EnvSecretStore(plat_mod._ENV_FILE).get("IDEAGEN_DASH_KEY",
+                                                         required=False))
+        # A tunnel daemon connects from loopback, so the socket address alone
+        # cannot distinguish "the operator's own browser" from "the entire
+        # internet arriving through cloudflared". Any forwarding header means the
+        # request crossed the tunnel and gets remote treatment — trusting the
+        # socket here was a fully open backdoor, found because the very first
+        # no-key probe through the tunnel returned 200.
+        forwarded = bool(self.headers.get("CF-Connecting-IP")
+                         or self.headers.get("X-Forwarded-For"))
+        local = (self.client_address[0] in ("127.0.0.1", "::1")
+                 and not forwarded)
+        if not key:
+            return local
+        if local:
+            return True
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        supplied = ((q.get("key") or [None])[0]
+                    or self.headers.get("X-Dash-Key")
+                    or (self.headers.get("Cookie") or "").replace(
+                        "dashkey=", "").split(";")[0].strip())
+        ok = bool(supplied) and supplied == key
+        if ok and (q.get("key") or [None])[0]:
+            # Move the key out of the URL into a cookie so links shared from the
+            # browser afterwards don't carry it.
+            self._set_cookie = f"dashkey={key}; Path=/; HttpOnly; SameSite=Strict"
+        return ok
+
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        if path != "/healthz" and not self._authorized():
+            return self._raw("访问需要钥匙：在链接后加 ?key=<钥匙>（仅首次，之后走 Cookie）"
+                             .encode(), "text/plain; charset=utf-8", status=401)
         if path in ("/", "/index.html"):
             return self._live_dashboard()
         if path == "/api/status":
@@ -98,6 +143,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _raw(self, body: bytes, ctype: str, status: int = 200) -> None:
         self.send_response(status)
+        if getattr(self, "_set_cookie", None):
+            self.send_header("Set-Cookie", self._set_cookie)
+            self._set_cookie = None
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")

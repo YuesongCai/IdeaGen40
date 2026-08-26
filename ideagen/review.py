@@ -201,47 +201,11 @@ python3 -m ideagen.scheduler catch-up --since 2026-07-22             # 缺口记
 
 
 def build(con=None, p=None) -> "config.Path":
-    con = con or db.init()
-    p = p or plat.load()
-    now = _hkt_now()
-    body = "".join([
-        _alive(p),
-        _latest_weekly(p),
-        _books(con),
-        _runs(p),
-        _card("假设登记表（哪些还只是先验）",
-              _tbl(["假设", "性质", "验证状态"], [list(a) for a in ASSUMPTIONS])),
-        _card("问题修复账（含 Jon 评审全部条目）",
-              _tbl(["问题", "状态", "处理"], [list(f) for f in FIXES])),
-        _card("Routine 手册", RUNBOOK.replace("\n", "")
-              if False else RUNBOOK),
-    ])
-    page = f"""<!doctype html><html lang=zh><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1">
-<title>IdeaGen 复盘板</title>
-<style>
-body{{font:14px/1.6 -apple-system,"PingFang SC",sans-serif;margin:0;background:#f5f6f8;color:#1a1d21}}
-.wrap{{max-width:1080px;margin:0 auto;padding:24px 16px}}
-h1{{font-size:20px}} h4{{margin:14px 0 6px}}
-.card{{background:#fff;border-radius:10px;padding:16px 18px;margin:14px 0;box-shadow:0 1px 3px rgba(0,0,0,.07)}}
-.card.good{{border-left:4px solid #16a34a}} .card.bad{{border-left:4px solid #dc2626}}
-.card.warn{{border-left:4px solid #d97706}}
-.ct{{font-weight:700;margin-bottom:8px}}
-table{{border-collapse:collapse;width:100%;font-size:13px}}
-th,td{{border-bottom:1px solid #e5e7eb;padding:5px 8px;text-align:left;vertical-align:top}}
-th{{background:#f0f1f3}}
-.pill{{display:inline-block;border-radius:99px;padding:1px 10px;margin:2px;font-size:12px}}
-.pill.ok{{background:#dcfce7;color:#166534}} .pill.no{{background:#fee2e2;color:#991b1b}}
-.dim{{color:#6b7280;font-size:12px}}
-pre{{background:#f0f1f3;border-radius:6px;padding:10px;overflow-x:auto;font-size:12px}}
-code{{background:#f0f1f3;border-radius:4px;padding:0 4px}}
-</style><div class=wrap>
-<h1>IdeaGen 复盘板</h1>
-<p class=dim>生成于 {now.strftime('%Y-%m-%d %H:%M:%S')} HKT · 全部数字来自活库直查，本页不自算任何东西</p>
-{body}</div></html>"""
-    out = config.WEB / "review.html"
-    out.write_text(page, encoding="utf-8")
-    return out
+    """Compatibility shim. The dashboard is `web/dash.html` + the live /api/state;
+    there is nothing to pre-render any more. Kept because the scheduler's monitor
+    pass still calls it, and a missing symbol would fail every tick for a page
+    that no longer needs building."""
+    return config.WEB / "dash.html"
 
 
 # ---------------------------------------------------------------- state API

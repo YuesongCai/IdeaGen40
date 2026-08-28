@@ -6,7 +6,7 @@ set -u
 LOG=/Users/yuesongcai/IdeaGen40/data/logs/tunnel.log
 URLFILE=/Users/yuesongcai/IdeaGen40/data/logs/tunnel_url.txt
 : > "$LOG"
-/opt/homebrew/bin/cloudflared tunnel --url http://localhost:8765 >> "$LOG" 2>&1 &
+/opt/homebrew/bin/cloudflared tunnel --protocol http2 --url http://localhost:8765 >> "$LOG" 2>&1 &
 CFPID=$!
 for i in $(seq 1 30); do
   URL=$(grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" "$LOG" | head -1)

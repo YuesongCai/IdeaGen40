@@ -82,8 +82,18 @@ def cohort_books(con) -> list[str]:
         (config.COHORT_PREFIX + "%",))]
 
 
+def selector_books(con) -> list[str]:
+    return [r["book_id"] for r in db.q(
+        con, "SELECT book_id FROM books WHERE book_id LIKE ? ORDER BY book_id",
+        (config.SELECTOR_PREFIX + "%",))]
+
+
 def all_books(con) -> list[str]:
-    return [*config.BOOKS, *cohort_books(con)]
+    # Selector books are included because "all" means all: this list is what the
+    # daily marking loop walks, and a book family missing from it is a family
+    # whose orders sit pending forever while prices move on — 114 orders sat
+    # unfilled for two sessions exactly this way.
+    return [*config.BOOKS, *cohort_books(con), *selector_books(con)]
 
 
 def _cost_bps(code: str, kind: str) -> float:

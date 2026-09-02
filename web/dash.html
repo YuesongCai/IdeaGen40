@@ -1397,11 +1397,12 @@ function currentBooks(){
 function aggBooks(){
   var bs=currentBooks();
   if(!bs.length)return null;
-  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={};
+  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={},wins=0;
   bs.forEach(function(b){
     cap+=(b.capital||0);
     openN+=(b.open_positions||[]).length;
     closedN+=(b.closed_n||0);
+    wins+=(b.wins||0);
     realized+=(b.realized||0);
     (b.open_positions||[]).forEach(function(p){unreal+=(p.unrealized||0)});
     Object.keys(b.exits||{}).forEach(function(k){exits[k]=(exits[k]||0)+(b.exits[k]||0)});
@@ -1418,7 +1419,7 @@ function aggBooks(){
       return {d:e.d,equity:s};
     });
   }
-  return {books:bs,capital:cap,openN:openN,closedN:closedN,realized:realized,unrealized:unreal,exits:exits,equity:eq};
+  return {books:bs,capital:cap,openN:openN,closedN:closedN,wins:wins,realized:realized,unrealized:unreal,exits:exits,equity:eq};
 }
 /* 持仓代码 → 候选池条目（US.BTAL → BTAL） */
 function candByCode(code){
@@ -1805,6 +1806,7 @@ function raceHero(ag){
   var agg=ag?'<div class="agg-line">'+books.length+' 本合计：浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
     +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
     +(ret!==null?' · 合计收益 <span class="num '+pctCls(ret)+'">'+fmtPct(ret)+'</span>':'')
+    +' · 胜率 '+fmtWinRate(ag.wins||0,ag.closedN||0)
     +'（实验总规模的体温计，无实盘含义——没有哪一本叫「本周组合」）'
     +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">能信多少？ ›</button></div>':'';
   return '<div class="card section" id="whoWins">'+head+sentence
@@ -2098,6 +2100,7 @@ function bookCard(b,bi){
       +'<div class="meta-kv"><div class="k">已实现</div><div class="v num '+pctCls(b.realized)+'">'+signedMoney(b.realized)+'</div></div>'
       +'<div class="meta-kv"><div class="k">开仓 / 已平</div><div class="v num">'+fmtInt(pos.length)+' / '+fmtInt(b.closed_n)+'</div></div>'
     +'</div>'
+      +'<div class="meta-kv"><div class="k">胜率</div><div class="v">'+fmtWinRate(b.wins||0,b.closed_n||0)+'</div></div>'
     +(exitChips?'<div style="margin-top:var(--space-3);display:flex;gap:6px;flex-wrap:wrap">'+exitChips+'</div>':'')
     +(pos.length
       ?'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
@@ -2105,6 +2108,14 @@ function bookCard(b,bi){
         +'<tbody>'+posRows+'</tbody></table></div>'
       :'<div class="empty-sm" style="margin-top:var(--space-4)">当前无持仓——门槛未达则留现金</div>')
     +'</div>';
+}
+function fmtWinRate(wins,closed){
+  // Jon 的硬门槛是胜率>50%。样本太小时不上色：1 平 1 亏染红整块面板，
+  // 读出来是「这方法不行」，而真相是「还没什么可下结论的」。
+  if(!closed)return '<span class="num" title="还没有已平仓的单子，胜率无从谈起">—</span>';
+  var r=wins/closed,txt=(r*100).toFixed(0)+'%（'+wins+'/'+closed+'）';
+  var cls=closed>=5?(r>0.5?'up':'down'):'';
+  return '<span class="num '+cls+'" title="已平仓中赚钱的比例；打平算输。Jon 的门槛：>50% 才拿去见 PM'+(closed<5?'。样本仍太小（<5 单），先别下结论':'')+'">'+txt+'</span>';
 }
 function togglePos(pid){
   var row=document.querySelector('tr.thesis-row[data-pid="'+pid+'"]');

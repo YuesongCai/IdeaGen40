@@ -498,7 +498,12 @@ def state(con=None, p=None) -> dict[str, Any]:
             con, "SELECT i.batch_id, i.as_of FROM orders o "
                  "JOIN ideas i USING(idea_uid) WHERE o.book_id=? "
                  "ORDER BY i.as_of DESC LIMIT 1", (b["book_id"],))
-        realized = db.q1(con, "SELECT COALESCE(SUM(realized),0) r, COUNT(*) n "
+        # A win is a close that made money after costs; ties count as losses,
+        # because a method that only breaks even must not clear Jon's >50% bar
+        # on rounding. win_rate stays null until something has actually closed —
+        # 0% would read as "always loses" when the truth is "no verdicts yet".
+        realized = db.q1(con, "SELECT COALESCE(SUM(realized),0) r, COUNT(*) n, "
+                              "COALESCE(SUM(realized > 0), 0) w "
                               "FROM positions WHERE book_id=? AND status='closed'",
                          (b["book_id"],))
         exits = {x["exit_reason"]: x["n"] for x in db.q(
@@ -515,6 +520,9 @@ def state(con=None, p=None) -> dict[str, Any]:
                       "open_positions": pos,
                       "realized": realized["r"] if realized else 0,
                       "closed_n": realized["n"] if realized else 0,
+                      "wins": realized["w"] if realized else 0,
+                      "win_rate": (round(realized["w"] / realized["n"], 4)
+                                   if realized and realized["n"] else None),
                       "exits": exits})
     out["books"] = books
     if not books:

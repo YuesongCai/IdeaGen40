@@ -746,6 +746,24 @@ def _deep_fetch(w: Wisburg, it: Item, report: dict, blobs) -> bool:
 
 
 # ---------------------------------------------------------------- rows
+def _excerpt(body: str, limit: int = 500) -> str:
+    """Mechanical opening excerpt — the document's own words, no model.
+
+    Several readers (stance coding, calib's evidence match) see only
+    title+summary; report lines list without a summary, so a deep-fetched
+    report would otherwise be fifteen title words to them.
+    """
+    text = (body or "").strip()
+    if not text:
+        return ""
+    cut = text[:limit]
+    for stop in ("。", ". ", "！", "!", "？", "?"):
+        i = cut.rfind(stop)
+        if i >= limit // 2:
+            return cut[: i + len(stop)].strip()
+    return cut.strip()
+
+
 def _doc_row(i: Item, now: str) -> dict:
     """One `documents` row. `body_sha256`/`raw_uri` are deliberately absent:
     the upsert sets every listed column, so including them as NULL on a shallow
@@ -756,7 +774,8 @@ def _doc_row(i: Item, now: str) -> dict:
         "source_id": i.source_id, "tier": i.tier, "title": i.title,
         "institution": i.institution, "published_at": i.published_at,
         "published_d": i.published_d, "ingested_at": now, "url": i.url,
-        "summary": i.summary, "body": i.body, "body_chars": len(i.body),
+        "summary": i.summary or _excerpt(i.body),
+        "body": i.body, "body_chars": len(i.body),
         "content_hash": i.content_hash, "retrieval": i.retrieval,
         "meta": {**i.meta, **({"sections": i.sections} if i.sections else {}),
                  **({"n_assets": len(i.assets)} if i.assets else {})},
@@ -867,7 +886,8 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
                 _deep_fetch(w, it, report, blobs)
 
         before = con.execute("SELECT COUNT(*) c FROM documents").fetchone()["c"]
-        db.upsert_many(con, "documents", [_doc_row(i, now) for i in keep], ["doc_id"])
+        db.upsert_many(con, "documents", [_doc_row(i, now) for i in keep], ["doc_id"],
+                       keep_if_blank=("summary", "body", "body_chars"))
         _apply_archive_refs(con, keep)
 
         asset_rows = _asset_rows(keep)
@@ -972,7 +992,8 @@ def ingest_incremental(con, *, budget_details: int = 3,
 
     if fresh_all:
         db.upsert_many(con, "documents", [_doc_row(i, now) for i in fresh_all],
-                       ["doc_id"])
+                       ["doc_id"],
+                       keep_if_blank=("summary", "body", "body_chars"))
         _apply_archive_refs(con, fresh_all)
         asset_rows = _asset_rows(fresh_all)
         if asset_rows:

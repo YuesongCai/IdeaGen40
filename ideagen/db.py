@@ -373,13 +373,25 @@ def upsert(con: sqlite3.Connection, table: str, row: dict[str, Any], keys: Seque
 
 
 def upsert_many(con: sqlite3.Connection, table: str, rows: Iterable[dict[str, Any]],
-                keys: Sequence[str]) -> int:
+                keys: Sequence[str],
+                keep_if_blank: Sequence[str] = ()) -> int:
+    """`keep_if_blank` columns only overwrite when the incoming value is
+    non-blank (not NULL/''/0). A shallow re-listing of a document the pipeline
+    already deep-fetched arrives with an empty body; without this guard the
+    upsert's set-every-column rule quietly erases the expensive fetch — which
+    is exactly what happened to 442 of 654 archived report bodies before this
+    parameter existed."""
     rows = list(rows)
     if not rows:
         return 0
     cols = list(rows[0])
     ph = ",".join("?" * len(cols))
-    updates = ",".join(f"{c}=excluded.{c}" for c in cols if c not in keys)
+    def _upd(c: str) -> str:
+        if c in keep_if_blank:
+            return (f"{c}=CASE WHEN excluded.{c} IS NULL OR excluded.{c}='' "
+                    f"OR excluded.{c}=0 THEN {table}.{c} ELSE excluded.{c} END")
+        return f"{c}=excluded.{c}"
+    updates = ",".join(_upd(c) for c in cols if c not in keys)
     sql = (
         f"INSERT INTO {table}({','.join(cols)}) VALUES({ph}) "
         f"ON CONFLICT({','.join(keys)}) DO UPDATE SET {updates}"

@@ -2349,3 +2349,47 @@ class TestHgepEvidenceProvenance(unittest.TestCase):
         self.assertEqual(sorted(row["doc_ids"]), ["d0", "d1", "d2"])
         self.assertEqual(row["n_evidence"], len(row["doc_ids"]),
                          "the frozen list and the count must be the same set")
+
+
+class TestUpsertKeepIfBlank(unittest.TestCase):
+    """A shallow re-listing must not erase a deep-fetched document body.
+
+    upsert_many sets every column; before keep_if_blank, a document that
+    reappeared in a list fetch after deep-fetching arrived with body='' and
+    silently lost its text (442 of 654 archived reports, found 2026-09-03).
+    """
+
+    def _con(self):
+        import sqlite3
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.execute("CREATE TABLE d (id TEXT PRIMARY KEY, body TEXT, "
+                    "body_chars INT, summary TEXT, title TEXT)")
+        return con
+
+    def test_blank_incoming_keeps_stored_value(self):
+        from ideagen import db
+        con = self._con()
+        db.upsert_many(con, "d", [{"id": "x", "body": "深抓正文", "body_chars": 4,
+                                   "summary": "摘要", "title": "旧标题"}], ["id"])
+        db.upsert_many(con, "d", [{"id": "x", "body": "", "body_chars": 0,
+                                   "summary": "", "title": "新标题"}], ["id"],
+                       keep_if_blank=("body", "body_chars", "summary"))
+        row = dict(con.execute("SELECT * FROM d").fetchone())
+        self.assertEqual(row["body"], "深抓正文")
+        self.assertEqual(row["body_chars"], 4)
+        self.assertEqual(row["summary"], "摘要")
+        self.assertEqual(row["title"], "新标题",
+                         "unguarded columns must still update normally")
+
+    def test_nonblank_incoming_still_overwrites(self):
+        from ideagen import db
+        con = self._con()
+        db.upsert_many(con, "d", [{"id": "x", "body": "旧", "body_chars": 1,
+                                   "summary": "s", "title": "t"}], ["id"])
+        db.upsert_many(con, "d", [{"id": "x", "body": "新正文", "body_chars": 3,
+                                   "summary": "s2", "title": "t"}], ["id"],
+                       keep_if_blank=("body", "body_chars", "summary"))
+        row = dict(con.execute("SELECT * FROM d").fetchone())
+        self.assertEqual(row["body"], "新正文")
+        self.assertEqual(row["summary"], "s2")

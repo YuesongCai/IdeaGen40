@@ -2414,3 +2414,70 @@ class TestMysqlPasswordOnlyIsStagedNotBroken(unittest.TestCase):
         vals = {"IDEAGEN_MYSQL_HOST": "h", "IDEAGEN_MYSQL_PASSWORD": "x"}
         with self.assertRaises(NotConfigured):
             _mysql_options(lambda k, d=None: vals.get(k, d))
+
+
+class TestGeneratorTopUpRound(unittest.TestCase):
+    """Under-delivery triggers exactly one top-up call, deduped by instrument.
+
+    The mandate is 20 ideas per topic; a single call reliably returned 4-11
+    (observed on 2026-08-26 across all four methods), quietly shrinking the
+    stage-C pool to a quarter of its intended size.
+    """
+
+    def _idea(self, inst, up=5, dn=-3):
+        return {"instrument_id": inst, "thesis": "理由", "upside_pct": up,
+                "downside_pct": dn, "p_up": .4, "p_base": .4, "p_down": .2}
+
+    def test_topup_fills_shortfall_without_duplicates(self):
+        import datetime as dtm
+        from unittest import mock
+        from ideagen import strategy as strat
+        from ideagen.strategies import _gen
+
+        uni = [{"instrument_id": f"E{i}", "name": f"E{i}", "vehicle": "ETF",
+                "exposure": "x"} for i in range(30)]
+        ctx = strat.RunContext(
+            as_of=dtm.date(2026, 8, 26), inputs_sha="x",
+            topics=[{"topic_id": "T1", "label": "主题", "terms": ["词"]}],
+            universe=uni, corpus=[])
+        first = [self._idea("E0"), self._idea("E1")]
+        second = [self._idea("E1")] + [self._idea(f"E{i}") for i in range(2, 25)]
+        calls = []
+
+        def fake_ask(c, prompt):
+            calls.append(prompt)
+            return (first if len(calls) == 1 else second), 1
+
+        with mock.patch.object(_gen, "ask_json", side_effect=fake_ask):
+            v = _gen.generate_per_topic(ctx, "ai_native", lambda c, t: ("提示词", 1))
+
+        self.assertEqual(len(calls), 2, "exactly one top-up call")
+        self.assertIn("补充轮", calls[1])
+        self.assertEqual(v.meta["per_topic"]["T1"], _gen.PER_TOPIC)
+        ids = [i["instrument_id"] for i in v.produced]
+        self.assertEqual(len(ids), len(set(ids)), "no duplicate instruments")
+        self.assertEqual(v.meta["topup_per_topic"]["T1"], _gen.PER_TOPIC - 2)
+
+    def test_full_first_batch_makes_no_second_call(self):
+        import datetime as dtm
+        from unittest import mock
+        from ideagen import strategy as strat
+        from ideagen.strategies import _gen
+
+        uni = [{"instrument_id": f"E{i}", "name": f"E{i}", "vehicle": "ETF",
+                "exposure": "x"} for i in range(30)]
+        ctx = strat.RunContext(
+            as_of=dtm.date(2026, 8, 26), inputs_sha="x",
+            topics=[{"topic_id": "T1", "label": "主题", "terms": ["词"]}],
+            universe=uni, corpus=[])
+        full = [self._idea(f"E{i}") for i in range(_gen.PER_TOPIC)]
+        calls = []
+
+        def fake_ask(c, prompt):
+            calls.append(prompt)
+            return full, 1
+
+        with mock.patch.object(_gen, "ask_json", side_effect=fake_ask):
+            v = _gen.generate_per_topic(ctx, "ai_native", lambda c, t: ("提示词", 1))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(v.meta["topup_per_topic"], {})

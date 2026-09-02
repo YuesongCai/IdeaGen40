@@ -333,6 +333,7 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
     per_topic: dict[str, int] = {}
     errors: dict[str, str] = {}
     over: dict[str, int] = {}
+    topups: dict[str, int] = {}
     unmatched: list[str] = []
 
     for t in ctx.topics:
@@ -357,9 +358,38 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
         # for ideas the harness threw away.
         if len(got) > PER_TOPIC:
             over[tid] = len(got) - PER_TOPIC
-        ideas.extend(got[:PER_TOPIC])
+        got = got[:PER_TOPIC]
+        # One bounded top-up when the model under-delivers. The mandate says 20
+        # per topic; a single call reliably returns 4-11 (observed 08-26 across
+        # all four methods), and stage C then selects from a pool a quarter of
+        # the intended size. One extra call asking for the shortfall on fresh
+        # instruments is the cheapest honest fix; a second failure is recorded
+        # and accepted rather than looped on.
+        if 0 < len(got) < PER_TOPIC:
+            used = [i["instrument_id"] for i in got]
+            try:
+                prompt2 = (prompt
+                           + f"\n\n【补充轮】上一轮合格的想法只有 {len(got)} 条"
+                           + f"（目标 {PER_TOPIC}）。请再给 {PER_TOPIC - len(got)} 条"
+                           + "满足同样格式与要求的新想法，标的必须来自可用清单且"
+                           + "不得重复已用标的：" + "、".join(used) + "。")
+                raw2, n2 = ask_json(ctx, prompt2)
+                calls += n2
+                if isinstance(raw2, dict):
+                    raw2 = raw2.get("ideas") or raw2.get("data") or []
+                got2, bad2 = mint(raw2, ctx, t, method, extra_keys=extra_keys,
+                                  require_keys=require_keys)
+                have = {i["instrument_id"] for i in got}
+                fresh = [i for i in got2
+                         if i["instrument_id"] not in have][:PER_TOPIC - len(got)]
+                topups[tid] = len(fresh)
+                got.extend(fresh)
+                dropped.update({f"{tid}/补充轮/{k}": v for k, v in bad2.items()})
+            except Exception as e:  # noqa: BLE001 — the first batch still stands
+                errors[f"{tid}/补充轮"] = f"{type(e).__name__}: {e}"
+        ideas.extend(got)
         dropped.update({f"{tid}/{k}": v for k, v in bad.items()})
-        per_topic[tid] = len(got[:PER_TOPIC])
+        per_topic[tid] = len(got)
 
     if errors and not ideas:
         raise RuntimeError("所有主题都失败：" + "; ".join(
@@ -370,6 +400,7 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
         chosen=[i["id"] for i in ideas], produced=ideas,
         rejected=dropped, calls=calls,
         meta={"per_topic": per_topic, "target_per_topic": PER_TOPIC,
+              "topup_per_topic": topups,
               "horizon_days": HORIZON_DAYS, "topic_errors": errors,
               "truncated": over, "universe_size": len(ctx.universe),
               # Topics whose own vocabulary matched no document: those prompts fell

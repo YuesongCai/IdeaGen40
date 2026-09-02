@@ -30,8 +30,11 @@ fi
 
 "$PYBIN" -m ideagen.cli daily
 
-# Publish the refreshed dashboard to GitHub Pages. Non-fatal: a push failure must
-# not mark the whole run failed, since the marks and attribution already landed.
-if ! scripts/publish_pages.sh --yes; then
-  echo "WARN: gh-pages publish failed; local dashboard is still current"
+# Publish the refreshed dashboard snapshot to GitHub Pages. Non-fatal: a push
+# failure must not mark the whole run failed, since the marks and attribution
+# already landed. publish_snapshot.sh is the current path (state+journal baked
+# into a static page, scrubbed, gated); publish_pages.sh publishes the legacy
+# report whose partner shelf data the gate rightly refuses every day.
+if ! scripts/publish_snapshot.sh; then
+  echo "WARN: gh-pages snapshot publish failed; local dashboard is still current"
 fi

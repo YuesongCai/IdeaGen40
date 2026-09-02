@@ -6,88 +6,69 @@
 
 ```mermaid
 flowchart TB
-  subgraph W["每周三 07:00 香港时间 · 一次 run"]
+  subgraph W["每周三 07:00 香港时间 · 自动运行"]
     IN1["Wisburg 语料<br/>周一至周三"]
     IN2["可买清单<br/>Olive · iARK · Futu"]
     IN3["宏观日历<br/>事件 · 一致预期 · 利差水平"]
-    IN1 --> A["筛选A<br/>出 5 个宏观主题"]
+    IN1 --> A["筛选A · 选主题<br/>HGEP 语义打分 出 5 个<br/>纯数数对照并行落库"]
     IN3 --> A
-    A --> B["筛选B · 四种出想法的方式<br/>每个主题各出 20 条"]
+    A --> B["筛选B · 出想法 × 4 方式<br/>每主题各 20 条"]
     IN2 --> GATE["授权载体门<br/>公募 · ETF · 日度私募"]
     GATE --> B
     IN3 --> B
-    B --> POOL["合并成候选池<br/>一个标的只留一条"]
-    POOL --> C["筛选C · 四种挑法<br/>各挑出自己的 10 条"]
+    B --> POOL["合并候选池<br/>一标一条 · 赔率取中位数"]
+    POOL --> C["筛选C · 10 本并行账本<br/>各选 ~10 条"]
   end
-  C --> LIVE["实盘 = 当前采用的那一种<br/>本批占组合 25% 等权"]
-  C --> SHADOW["其余挑法<br/>纸上记账，不花钱"]
-  LIVE --> EXIT{"三种退出"}
+  C --> BOOK["自动建仓<br/>等权买入 · σ×2 止损 σ×3 止盈"]
+  BOOK --> MARK["逐日盯市"]
+  MARK --> EXIT{"三种退出"}
   EXIT -->|到期| ROLL["第 5 周换第 1 周"]
-  EXIT -->|价格| JPST["JPST 货币基金"]
-  EXIT -->|事件| JPST
-  ROLL --> LIVE
-  SHADOW --> CMP["同批对比<br/>决定要不要换"]
-  LIVE --> CMP
+  EXIT -->|价格 σ止损/止盈| JPST["JPST 货币基金"]
+  EXIT -->|事件 thesis证伪| JPST
+  MARK --> DASH["运行台<br/>本机 + 钥匙门公网"]
+  MARK --> CMP["同批配对对比<br/>样本够了才宣布赢家"]
 ```
-
-完整方案见 [`docs/spec_v05.xml`](docs/spec_v05.xml)（飞书同步版含画板）。
 
 ---
 
 ## 三段筛选
 
-**筛选A · 选主题** —— 读完这一周的语料，选出 5 个值得下注的宏观主题。四个维度：热度要高、分歧要高、实据要硬、已定价要低。主题不是从固定清单里挑的，系统自己从语料里发现新主题，达标就注册；注册日不可回填，所以回放某一周时那周还没出现的主题不会被看到。
+**筛选A · 选主题** —— 读完这一周的语料，选出 5 个值得下注的宏观主题。四个维度：热度要高、分歧要高、实据要硬、已定价要低。主题不是从固定清单里挑的，系统自己从语料里发现新主题，达标就注册；注册日不可回填，回放某周时那周还没出现的主题不可见。**「纯数数」对照臂每周并行落库**（零模型成本）——「语义打分是否胜过纯提及计数」是被检验的假设，不是前提。
 
 **筛选B · 出想法** —— 四种方式同时跑，每个主题各出 20 条一个月期的做多想法：
 
 | # | 方式 | 怎么想 |
 |---|---|---|
-| 1 | AI 端到端 | 不规定任何推理步骤。整套系统的立论就是相信 AI 的语义分析，**加骨架到底是帮忙还是碍事，只能跟一个没加的比出来** |
-| 2 | 约束边界 | 异常 → 真实动机 → 绑住他的约束在哪绷断 → 有日期或有水平的触发条件。约束推出来的封顶是最强形式的「下行有限」 |
-| 3 | 传导链 | 强制写出：主题 → 一个能观测有数的中间变量 → 价格通道 → 可买工具，并写明一个月内什么读数会证伪它。链条缺一环就不要 |
-| 4 | 共识缺口 | 先说价格已经反映了市场相信什么，只在证据与之矛盾处出想法。**唯一从价格出发而非从叙事出发**的一种 |
+| 1 | AI 端到端 | 不规定任何推理步骤。**加骨架到底是帮忙还是碍事，只能跟一个没加的比出来** |
+| 2 | 约束边界 | 异常 → 真实动机 → 绑住他的约束在哪绷断 → 有日期或有水平的触发条件 |
+| 3 | 传导链 | 主题 → 可观测中间变量 → 价格通道 → 可买工具，并写明一个月内什么读数证伪它 |
+| 4 | 共识缺口 | 先说价格已反映了什么，只在证据与之矛盾处出想法。**唯一从价格出发**的一种 |
 
-四者只在「被要求怎么想」这一点上不同——语料、可买清单、解析、赔率校验、标的核对全部共用同一套代码。否则业绩差可能来自某一种的解析更宽松，而不是这种想法方式更好。
+四者只在「被要求怎么想」上不同——语料、清单、解析、赔率校验全部共用同一套代码。1 与 2 预注册为正式比较，3 与 4 是探索项。
 
-其中 **1 与 2 是预注册的正式比较**，3 与 4 是探索项。哪些比较算正式的必须事先定死：比较次数每多一个，看到假冠军的概率就往上跳一截，看完结果再挑就等于自己给自己发奖。
+**筛选C · 定持仓** —— 十本账本看完全相同的候选池，各选一份、各记一本：
 
-**筛选C · 定持仓** —— 四种挑法看完全相同的候选池，各挑一份、各记一本账：
+| 类别 | 账本 |
+|---|---|
+| 四种挑法（正式比较） | AI 端到端挑 · 按赚亏比排 · 组合去集中 · 证据赔率一致性 |
+| 按生成方式（观察生成器） | 只买 AI 端到端产的 · 只买约束边界产的 |
+| 常驻探索 | 只看最多亏多少 · 赚亏比严门槛 |
+| 量尺 | 不筛全买 · 随机抽 |
 
-| # | 挑法 | 怎么挑 |
-|---|---|---|
-| 5 | AI 端到端挑 | 直接让模型挑 10 条，每条一句理由 |
-| 6 | 按赚亏比排 | 概率加权的赚 ÷ 亏，基准是现金收益——放着不动本来就有 3.4% 年化 |
-| 7 | 组合去集中 | 唯一优化「这一组」而不是给单条排名次的。同主题最多 3 条、同敞口 3 条、同一种出想法方式 4 条 |
-| 8 | 证据赔率一致性 | 对证据太薄、信心过头、算得粗糙、不对称没来由这四件事扣分 |
-| 9 | 不筛全买 | **量尺**。它赢了意味着所有挑法都是白费劲 |
-| 10 | 随机抽 | **量尺**。它赢了意味着价值全在准入门槛，排序本身是噪音 |
-
-只有一种花真钱，其余纸上记账、不占资金、不下单。
+只有一种花真钱，其余纸上记账。量尺赢了 = 筛选没价值；随机赢了 = 价值全在准入门槛。
 
 ---
 
 ## 数一下
 
 ```
-5 主题 × 4 种出想法方式 × 20 条 = 400 条原始想法
-                                ↓ 只对应 96 个不同标的
-                        候选池 96 条（一标一条，赔率取中位数）
-                                ↓
-            8 本并行账本（4 方法 + 2 常驻探索 + 2 量尺）
+5 主题 × 4 方式 × 20 条 = 400 条原始想法 → 合并成 ~100 条候选池（一标一条）
+                        → 10 本并行账本，其中 4 本进正式比较
 ```
 
-**实际筛选比是 10 / 96 ≈ 10%，不是 10 / 20 = 50%。** 「每个主题 20 条」说的是筛选B 每个主题的产量；筛选C 面对的是全部主题、全部方式合并去重后的池子。这个差别不是措辞——50% 的筛选比里挑法能起的作用有限，10% 意味着挑法这一层的权重重得多。
+**实际筛选比 ≈ 10%，不是 50%。** 四种方式的重叠是实测的：约六分之一的标的四种方式都看中。合并时赔率取中位数而非最优——取最优等于把池子交给最激进的方式。
 
-四种方式的重叠是实测的：96 个标的里 **17 个是四种都看中的**，33 个三种，35 个两种，只有 11 个是某一种独有。合并时赔率取中位数而非最优——取最优等于把池子交给最激进的那一种，那看起来像本事，其实只是敢喊。
-
-**为什么不做 4×4 全交叉：**
-
-| 设计 | 账本 | 比较次数 | 至少出一个假赢家 |
-|---|---|---|---|
-| 全交叉 | 16 | 15 | **54%** |
-| 合并池（采用） | 8 | 4 | **18.5%** |
-
-只有四种挑法进正式比较，所以比较次数是 4 而不是 8——两个量尺是基准不是候选，两个常驻探索（只看最多亏多少、赚亏比·严门槛）只用来产生想法、不下统计结论。16 本账则意味着一半以上的时间你会看到一个假冠军。而且样本本来就紧：持有 30 天、每周跑一次，窗口重叠让每期只值 **0.23 个独立样本**——配对比较要约 17 次周跑（4 个月）才能分辨 2 个百分点，不配对要 20 个月。
+**为什么不做 4×4 全交叉**：16 本账 15 次比较 → 至少一个假赢家 54%；现在 4 次正式比较 → 18.5%。样本本来就紧：持有 30 天、每周跑，窗口重叠让每期只值 **0.23 个独立样本**——配对比较约 17 次周跑（4 个月）才能分辨 2 个百分点。**回测层在样本不足时拒绝宣布赢家。**
 
 ---
 
@@ -95,13 +76,13 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  subgraph STRAT["策略注册表 · 三类插件"]
-    S1["筛选A 主题打分"]
-    S2["筛选B 出想法 × 4"]
-    S3["筛选C 挑持仓 × 4<br/>+ 探索 × 2 + 量尺 × 2"]
+  subgraph STRAT["策略注册表"]
+    S1["主题打分 × 2<br/>HGEP + 纯数数"]
+    S2["出想法 × 4"]
+    S3["定持仓 × 10"]
   end
   subgraph FEED["数据源注册表"]
-    F1["语料"]
+    F1["语料"] 
     F2["可买清单"]
     F3["宏观日历"]
   end
@@ -114,177 +95,91 @@ flowchart TB
     P5["缓存与锁"]
     P6["凭证"]
   end
-  subgraph BP["BytePlus"]
-    B1["TOS"]
-    B2["RDS MySQL"]
-    B3["ModelArk"]
-    B4["MQ for Kafka"]
-    B5["Cache for Redis"]
-    B6["KMS"]
+  subgraph CLOUD["云（BytePlus / Volcengine 双命名）"]
+    B1["TOS 产物"]
+    B2["RDS MySQL / SQLite"]
+    B3["ModelArk 推理"]
+    B4["KMS"]
   end
   FEED --> ORCH
   STRAT --> ORCH
   ORCH --> PORT
-  PORT --> BP
-  ORCH --> EXE["执行层<br/>纸上 · 影子 · 实盘"]
+  PORT --> CLOUD
+  ORCH --> EXE["执行层<br/>纸上 · 影子 · 实盘(禁用)"]
   ORCH --> BT["回测层"]
-  SCHED["云上调度"] --> ORCH
+  SCHED["调度<br/>launchd / compose / ECS"] --> ORCH
+  SERVE["运行台 serve<br/>本机 + Caddy/隧道公网(钥匙门)"] --> PORT
 ```
-
-换一种打法是加一个文件，不是改流水线。`IDEAGEN_PLATFORM=local|byteplus` 切换整套适配器；建表语句与写入路径都可移植，换库只换 DSN。
 
 | 模块 | 做什么 |
 |---|---|
-| [`ideagen/strategy.py`](ideagen/strategy.py) | 策略注册表。策略声明版本、角色、要不要模型、默认参数。`RunContext` 不带数据库句柄也不带网络——**能查库的策略就是能不小心读到未来的策略** |
-| [`ideagen/feeds.py`](ideagen/feeds.py) | 数据源注册表，按种类校验，每行盖上期次与来源。`expect_rows` 声明下限，因为空返回满足所有校验规则，是最危险的一类失败 |
-| [`ideagen/orchestrator.py`](ideagen/orchestrator.py) | 一次运行走完三段。需要哪些端口由注册表推导，不由调用方声明 |
-| [`ideagen/schema.py`](ideagen/schema.py) | 可移植建表、建表前查撞名、可重复执行的加列、孤儿行检查、凭证审计 |
-| [`ideagen/execution.py`](ideagen/execution.py) | 想买什么与怎么下单分开。纸上 / 影子 / 实盘同一接口，**实盘适配器故意不能下单** |
-| [`ideagen/backtest.py`](ideagen/backtest.py) | 同一套策略跑历史，越界即报错，**样本不够拒绝给结论** |
-| [`ideagen/scheduler.py`](ideagen/scheduler.py) | 每周三跑策略、之间常态盯市。入口幂等，心跳单独写 |
-| [`ideagen/shelf_store.py`](ideagen/shelf_store.py) | Olive 或公开 fixture 的货架/NAV 统一写入 RDS + 不可变对象存储 |
-| [`ideagen/cloud_paper.py`](ideagen/cloud_paper.py) | MySQL 上的 NAV paper 下单、持仓、盯市、到期退出与权益曲线 |
-| [`ideagen/cloud_corpus.py`](ideagen/cloud_corpus.py) | Wisburg 的有界 RDS projection 与受控原文归档；默认不启用 |
+| [`ideagen/strategy.py`](ideagen/strategy.py) | 策略注册表。声明版本、角色、要不要模型。`RunContext` 无库无网——**能查库的策略就是能读到未来的策略** |
+| [`ideagen/feeds.py`](ideagen/feeds.py) | 数据源插件，按种类校验，每行盖期次。`expect_rows` 下限——空返回是最危险的失败 |
+| [`ideagen/orchestrator.py`](ideagen/orchestrator.py) | 一次运行走完三段；空语料算失败，不算安静 |
+| [`ideagen/poc_workflow.py`](ideagen/poc_workflow.py) | 周跑五种数据模式：public-synthetic → shelf-fixture → olive-live → olive-auto → wisburg-auto，演示到生产同一条管道 |
+| [`ideagen/schema.py`](ideagen/schema.py) | 可移植建表（SQLite / MySQL）、撞名前置检查、孤儿行检查、凭证审计 |
+| [`ideagen/booking.py`](ideagen/booking.py) | 周跑结论 → 每账本纸面建仓，σ 止损止盈钉死，两级幂等 |
+| [`ideagen/execution.py`](ideagen/execution.py) | 纸上 / 影子 / 实盘同一接口，**实盘适配器故意不能下单** |
+| [`ideagen/backtest.py`](ideagen/backtest.py) | 同一套策略跑历史，越界即报错，样本不够拒绝结论 |
+| [`ideagen/scheduler.py`](ideagen/scheduler.py) | 幂等 tick：周三自动周跑+建仓，其间盯市+心跳；错过的周期记永久缺失不回填 |
+| [`ideagen/cloud_corpus.py`](ideagen/cloud_corpus.py) / [`shelf_store.py`](ideagen/shelf_store.py) | 授权语料摄入私有云、货架存储 |
+| [`ideagen/olive_web.py`](ideagen/olive_web.py) | Olive OAuth/SSO 与网页视图 |
 
-### 四条规则，每条都是被违反过一次才立的
+### 铁律，每条都是被违反过一次才立的
 
 | 规则 | 违反的代价 |
 |---|---|
-| **产物不可变**，按 `runs/日期/run_id/` 寻址 | 原地替换一个批次曾把 58 个仓位绑到错的标的上，一条想法报出 +377% |
-| **as-of 一等公民**，价格钳制到已收盘交易日，注册日不可回填 | 08-08 注册的主题曾能影响 08-07 的回放 |
-| **凭证不进产物** | 一条体检信息曾把 Redis 连接串原文写进不可变 journal，口令会永久留存 |
-| **跑前体检**，需要哪些端口由注册表推导 | 调用方漏写标志，就会先把语料抓完、主题打完，才发现四个生成器一个都跑不了 |
-
-### 影子通道：纸上到实盘之间的那一档
-
-走纸面账本记账，同时把「如果真下单会是什么委托」完整录下来（券商代码、手数、单型、限价、有效期、预估滑点），一张都不发出去。它已经抓到东西了——**纸面成交 1803.9 股，实盘只能买 1799 整股**，这个零股与整手的差异正是这一档存在的意义。
-
-实盘适配器写成**不能下单**：默认可用的下单通道，等于一个 bug、一次重试、一条无人看管的定时任务就能触发的下单通道。
+| **产物不可变**，按 `runs/日期/run_id/` 寻址 | 原地替换批次曾把 58 个仓位绑错标的，一条想法报出 +377% |
+| **as-of 一等公民**，注册日/上架日不可回填 | 08-08 注册的主题曾影响 08-07 的回放 |
+| **凭证不进产物**，连接串与桶名服务端脱敏 | 一条体检信息曾把 Redis 连接串写进不可变 journal |
+| **「全部账本」必须真的是全部** | 盯市名单漏掉一族账本，114 张单挂两个交易日无人推进 |
+| **同一期只算一次**，由数据库唯一索引保证 | 锁能失效，索引不会 |
+| **空数据 ≠ 安静**，feed 断连如实报错、空语料算失败 | 数据源不通和「本周没料」曾长得一模一样 |
 
 ---
 
-## 现在的状态
+## 运行台
 
-### 已验证
+**四问首屏**：系统正不正常 → 这周持有什么、为什么 → 赚了没有 → 哪种挑法在赢。三层导航：本周（结论）→ 过程（为什么是这十条）→ 底账（运行史 / 假设登记 / 修复账 / Routine / 名词表）。
 
-| 项 | 实测 |
+- 本机：`http://localhost:8765/`（`ideagen serve`）
+- 公网：Caddy（ECS，见 [`deploy/RUNBOOK_ecs_dashboard.md`](deploy/RUNBOOK_ecs_dashboard.md)）或 cloudflared 隧道，均走**访问钥匙门**（`IDEAGEN_DASH_KEY`，本机免钥匙）
+- 持牌产品名默认脱敏（`IDEAGEN_DASH_SHOW_LICENSED_NAMES=false`）
+
+---
+
+## 当前状态（2026-09-02）
+
+| 项 | 实况 |
 |---|---|
-| 三段全流程 | 跑通。5 主题 → 四种方式各 100 条 → 合并 96 条 → 六种挑法各自出账，14 份产物落不可变存储，落库无孤儿行 |
-| 数据源 | 语料 311 条、FRED 水平 5 条、美债拍卖 5 条、可买清单 156 条，全部免 key |
-| 授权载体门 | 156 条中 101 条可用；排除 4 条个股、6 条无日度申赎证据的私募、45 条载体待确认 |
-| 云数据库适配 | SQLite、MySQL 与 PostgreSQL 三种方言；当前 POC 使用 RDS MySQL |
-| 同一期只算一次 | 由数据库唯一索引保证，不只靠锁。失败重试留历史，成功重复被拒 |
-| 凭证 | 交付前运行 `scripts/preflight_handover.py`，不得以文档中的历史数字代替当次扫描 |
-| 测试 | 运行 `python -m unittest discover -s tests` 验证当前环境 |
-
-### 容器化部署
-
-- ECS 常驻 `scheduler + dashboard + Caddy`，三个容器均使用
-  `restart: always`，整机重启后自动恢复。
-- RDS MySQL 是 queryable state，TOS 是不可变 artifact store；业务状态不依赖
-  容器本地卷。
-- 周度运行和历史窗口对比均从不可变输入快照产生，运行结果写入 RDS/TOS。
-- portable shelf fixture 支持 RDS/TOS 双写，RDS paper book 支持 NAV
-  成交持仓和持续盯市。
-- weekly 模式由 `IDEAGEN_POC_WEEKLY_MODE` 选择。
-- Wisburg 云端原文同步默认关闭；Olive 授权产品标识、名称和 thesis 在 Dashboard
-  默认脱敏。
-
-### 本地生产环
-
-- **推理**：OpenAI-compatible 推理端点和模型 ID 均通过环境变量注入。
-- **闭环**：周跑 → 各挑法出账 → 自动建仓（每挑法一本纸面账本，σ×2 止损 / σ×3 止盈在建仓时钉死）→ 逐日盯市 → 三种退出（到期 / 价格 / 事件）。
-- **常驻**：launchd 每 15 分钟一次幂等 tick，周三 07:00 HKT 自动跑当期并建仓；心跳单独写，停掉的系统和安静的一周长得不一样。
-- **云端存**：本地运行可使用 SQLite；BytePlus POC 已使用 RDS MySQL + TOS。
-- **错过不补**：错过的周期记为永久缺失。此时补跑会用已经印出来的 K 线成交进场区间——那是带后见之明的运行，不是迟到的运行。
-
-### 待外部完成
-
-- **Olive OAuth 授权。** 客户完成扫码后，先有界抓取一个产品，确认许可边界和
-  RDS/TOS snapshot，再启用 `olive-live`。
-- **Wisburg 云端语料许可。** 未明确允许前保持
-  `IDEAGEN_CLOUD_WISBURG_ENABLED=false`。
-- **Redis 是否启用。** 单 ECS 不需要；多副本调度时才需要分布式 lease。
-
-### 已知会让回放不干净的地方
-
-不是 bug，是历史数据本身缺了那一维，所以回放到那些期次时结论要打折看。系统每次都把这些数字报出来，不让它变成口头传说。
-
-- 可买清单没有上架日期（156 条全部未知）。字段已加、以后新入的会盖日期，但存量补不出来
-- 标的可计价标记是活的，回放看到的是「今天能不能计价」
-- 日历的发布时间用的是抓取时间：七月 CPI 日期是 7 月 1 日、八月中才公布
-- 语料深度不可重建：7592 篇里 5836 篇是 08-07 及以后补抓的
+| 生产环 | launchd 幂等 tick 常驻；周三 07:00 HKT 自动周跑+建仓；心跳判活 |
+| 真实周期 | 2026-08-26 起。GLM-5.2 真模型出想法，10 本账 **111 个纸面持仓**逐日计价 |
+| 风控实弹 | σ×2 止损已真实触发 **3 次**（3 个已平仓全部为 stop 退出） |
+| 测试 | **214 项全过** |
+| 凭证 | 全库扫描 0 命中；`.env.example` 敏感字段全空 |
+| 错过的周期 | 08-26 之前记永久缺失，不回填——补跑会用已印出的 K 线成交，那是后见之明 |
+| 结论 | **没有**。有效独立样本远低于门槛，回测层拒绝宣布任何挑法获胜 |
 
 ---
 
 ## 快速开始
 
 ```bash
-git clone <repository-url> IdeaGen40 && cd IdeaGen40
+git clone https://github.com/YuesongCai/IdeaGen40.git && cd IdeaGen40
 pip install -r requirements.txt
+cp .env.example ~/.ideagen.env && chmod 600 ~/.ideagen.env   # 填空，永不入库
 ```
-
-凭证放在 `~/.ideagen.env`，或被 Git 忽略且权限为 `0600` 的项目根 `.env`。
-只列变量名：
-
-```
-WISBURG_MCP_TOKEN                     语料源
-FUTU_HOST / FUTU_PORT                 行情（只用行情上下文，从不打开交易上下文）
-ARK_API_KEY                           ModelArk 推理
-BYTEPLUS_ACCESS_KEY / _SECRET_KEY     对象存储与云服务
-BYTEPLUS_REGION                       区域
-IDEAGEN_TOS_BUCKET / _PREFIX          TOS 产物桶与环境前缀
-IDEAGEN_TOS_ENDPOINT                  可选；同 VPC 可使用私网 endpoint
-IDEAGEN_STATE_ENGINE=mysql            状态库类型
-IDEAGEN_MYSQL_HOST / _PORT            RDS MySQL 连接地址与端口
-IDEAGEN_MYSQL_DATABASE / _USER        数据库与账号
-IDEAGEN_MYSQL_PASSWORD                数据库密码
-IDEAGEN_POC_WEEKLY_MODE               public-synthetic | shelf-fixture | olive-live | olive-auto | wisburg-auto
-IDEAGEN_CLOUD_WISBURG_ENABLED         wisburg-auto 必须为 true
-IDEAGEN_DASH_SHOW_LICENSED_NAMES      默认 false
-```
-
-先体检，全绿再跑：
 
 ```bash
-python3 -c "from ideagen import cli; cli.main(['platform','--env'])"
+python3 -m ideagen.cli platform          # 六端口体检，全绿再跑
+python3 -m ideagen.cli weekly --trade    # 一次周跑 + 自动建仓
+python3 -m ideagen.cli serve             # 运行台 http://localhost:8765
+python3 -m ideagen.scheduler tick        # 一次幂等调度 tick（cron/launchd 挂这个）
 ```
 
-跑一次周策略：
+无真实凭证也能看全流程：`IDEAGEN_POC_WEEKLY_MODE=public-synthetic` 用合成数据走完整管道。
 
-```bash
-python3 -c "from ideagen import cli; cli.main(['weekly'])"
-```
-
-BytePlus POC 的公开 shelf 与 paper 路径：
-
-```bash
-python3 -m ideagen.cli poc-load-shelf-fixture --as-of 2026-08-30
-python3 -m ideagen.cli poc-run-weekly --mode shelf-fixture --as-of 2026-08-30
-python3 -m ideagen.cli book
-python3 -m ideagen.cli cloud-monitor
-```
-
-BytePlus 上使用 Wisburg 真实研报、并让 Olive 货架自动切换：
-
-```bash
-python3 -m ideagen.cli cloud-ingest --incremental --details 3
-python3 -m ideagen.cli poc-run-weekly --mode wisburg-auto
-python3 -m ideagen.cli book
-python3 -m ideagen.cli cloud-monitor
-```
-
-只跑机械挑法、不落库：
-
-```bash
-python3 -c "from ideagen import cli; cli.main(['weekly','--dry-run','--selectors','omega_loose,spread,calib'])"
-```
-
-交接给别的账号之前，一条命令跑完脱敏清单：
-
-```bash
-python3 scripts/preflight_handover.py
-```
+交接前一条命令跑完脱敏清单：`python3 scripts/preflight_handover.py`
 
 ---
 
@@ -292,10 +187,11 @@ python3 scripts/preflight_handover.py
 
 | 文档 | 内容 |
 |---|---|
-| [`docs/spec_v05.xml`](docs/spec_v05.xml) | 运行规格总文档：三段筛选、组合、退出、验证、平台、当前状态 |
+| [`docs/spec_v05.xml`](docs/spec_v05.xml) | 运行规格总文档（飞书同步版含画板） |
 | [`docs/handover.md`](docs/handover.md) | 脱敏与换账号交接手册 |
-| [`deploy/agentkit_sandbox.md`](deploy/agentkit_sandbox.md) | 云上沙箱部署 |
-| [`tests/test_core.py`](tests/test_core.py) | 153 项测试。每个测试的名字说的是**它防住了什么** |
+| [`deploy/RUNBOOK_ecs_dashboard.md`](deploy/RUNBOOK_ecs_dashboard.md) | ECS + compose + Caddy 部署 |
+| [`deploy/agentkit_sandbox.md`](deploy/agentkit_sandbox.md) | 云沙箱部署 |
+| [`tests/`](tests/) | 214 项。每个测试的名字说的是**它防住了什么** |
 
 ---
 

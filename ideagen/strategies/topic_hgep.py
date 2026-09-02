@@ -94,6 +94,14 @@ def hgep(ctx: RunContext) -> Verdict:
             "n_evidence": len(ev), "n_institutions": len(insts),
             "indicator": t.price_indicator,
             "p_source": "prices" if px else "neutral_default",
+            # The audit trail for "为什么读了这些就选了它": exactly which
+            # documents scored this topic, strongest match first. Without this
+            # list, ask-the-run can only *re-derive* the evidence set and prove
+            # the counts agree; with it, the run states its own sources.
+            "doc_ids": [e.get("doc_id") for e in
+                        sorted(ev, key=lambda e: (e.get("hits", 0),
+                                                  str(e.get("published_d") or "")),
+                               reverse=True)],
         }
 
     ranked = sorted(scores.items(), key=lambda kv: -kv[1]["score"])

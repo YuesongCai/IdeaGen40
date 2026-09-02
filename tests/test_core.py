@@ -2318,3 +2318,34 @@ class TestCalibEvidenceAttribution(unittest.TestCase):
         # so the count is an honest 0 — the same unmatched-not-everything rule
         # corpus_block follows.
         self.assertEqual(ev["POLICY-PATH"]["n_docs"], 0)
+
+
+class TestHgepEvidenceProvenance(unittest.TestCase):
+    """筛选A must freeze *which* documents scored a topic, not just how many.
+
+    Jon's ask-the-run requirement is answering "为什么读了这些就选了它" from the
+    frozen record. A count alone forces reconstruction; the doc-id list makes
+    the run name its own sources.
+    """
+
+    def test_scores_carry_the_exact_doc_ids(self):
+        import datetime as dtm
+        from unittest import mock
+        from ideagen import strategy as strat, lexicon
+        from ideagen.strategies.topic_hgep import hgep
+
+        theme = lexicon.Theme(
+            id="T-FED", label="联储", key_question="q",
+            terms=("美联储", "降息"), price_indicator="TLT",
+            registered_d="2026-01-01")
+        docs = [{"doc_id": f"d{i}", "published_d": "2026-08-25", "tier": 1,
+                 "title": "美联储降息预期", "summary": "美联储官员讨论降息路径" * 20}
+                for i in range(3)]
+        ctx = strat.RunContext(as_of=dtm.date(2026, 8, 26), inputs_sha="x",
+                               corpus=docs)
+        with mock.patch.object(lexicon, "all_themes", return_value=[theme]):
+            v = hgep(ctx)
+        row = v.scores["T-FED"]
+        self.assertEqual(sorted(row["doc_ids"]), ["d0", "d1", "d2"])
+        self.assertEqual(row["n_evidence"], len(row["doc_ids"]),
+                         "the frozen list and the count must be the same set")

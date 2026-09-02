@@ -249,6 +249,15 @@ def _topic_context(materials, provenance_notes, con, p, run, topic_id):
                     for tid, sc in sorted((art.get("scores") or {}).items(),
                                           key=lambda kv: -(kv[1].get("score") or 0))),
             ]
+            # Runs from 2026-09-03 onward freeze the exact evidence set in the
+            # verdict itself. When the list exists the run names its own
+            # sources; older runs rely on the reconstruction below (which is
+            # verified against n_evidence, not assumed).
+            if row.get("doc_ids"):
+                ids = [str(x) for x in row["doc_ids"] if x]
+                lines.append(
+                    f"当期打分实际使用的证据文档（共 {len(ids)} 篇，按命中强度"
+                    f"排序，打分时冻结）：" + ", ".join(ids))
             _mk(materials, "verdict", f"筛选A 打分明细 · {topic_id}",
                 f"blob runs/{run['as_of']}/{run['run_id']}/A_topics.json",
                 "\n".join(lines))

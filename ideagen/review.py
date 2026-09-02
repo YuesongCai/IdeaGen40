@@ -525,6 +525,17 @@ def state(con=None, p=None) -> dict[str, Any]:
                                    if realized and realized["n"] else None),
                       "exits": exits})
     out["books"] = books
+    # The do-nothing alternative, over exactly the dates the books were marked.
+    # Jon's frame is not "did it go up" but "did the machinery beat parking the
+    # same cash in SPY" — without this series the aggregate return has no zero.
+    span = db.q1(con, "SELECT MIN(d) a, MAX(d) b FROM equity")
+    if span and span["a"]:
+        out["benchmark"] = {
+            "code": "US.SPY",
+            "series": [{"d": r["d"], "close": r["close"]} for r in db.q(
+                con, "SELECT d, close FROM prices WHERE code='US.SPY' "
+                     "AND d BETWEEN ? AND ? ORDER BY d",
+                (span["a"], span["b"]))]}
     if not books:
         try:
             out["books"] = cloud_paper.state_view(p.state)

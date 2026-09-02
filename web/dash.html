@@ -1807,6 +1807,7 @@ function raceHero(ag){
     +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
     +(ret!==null?' · 合计收益 <span class="num '+pctCls(ret)+'">'+fmtPct(ret)+'</span>':'')
     +' · 胜率 '+fmtWinRate(ag.wins||0,ag.closedN||0)
+    +spyLine(ret)
     +'（实验总规模的体温计，无实盘含义——没有哪一本叫「本周组合」）'
     +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">能信多少？ ›</button></div>':'';
   return '<div class="card section" id="whoWins">'+head+sentence
@@ -2108,6 +2109,19 @@ function bookCard(b,bi){
         +'<tbody>'+posRows+'</tbody></table></div>'
       :'<div class="empty-sm" style="margin-top:var(--space-4)">当前无持仓——门槛未达则留现金</div>')
     +'</div>';
+}
+function spyLine(ret){
+  // 同一段日期里「什么都不做、只买 SPY」的收益。合计收益没有这个零点就没有含义：
+  // 赚了 1% 而 SPY 涨了 3%，机器其实输了。
+  var bm=(S&&S.benchmark)||{},sr=bm.series||[];
+  if(sr.length<2)return '';
+  var r=(sr[sr.length-1].close/sr[0].close-1)*100;
+  var t=' · 同期只买 '+(bm.code||'SPY').replace('US.','')+' <span class="num '+pctCls(r)+'" title="'+sr[0].d+' 至 '+sr[sr.length-1].d+' 的 SPY 收盘价涨跌，作为「什么都不做」的参照">'+fmtPct(r)+'</span>';
+  if(ret!==null&&isFinite(ret)){
+    var d=ret-r;
+    t+=' <span class="num '+pctCls(d)+'" title="合计收益减去同期 SPY：正 = 机器跑赢了什么都不做">（'+(d>=0?'+':'−')+Math.abs(d).toFixed(1)+'pp vs SPY）</span>';
+  }
+  return t;
 }
 function fmtWinRate(wins,closed){
   // Jon 的硬门槛是胜率>50%。样本太小时不上色：1 平 1 亏染红整块面板，

@@ -125,6 +125,44 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = parse_qs(urlparse(self.path).query)
             return self._json(review.doc_detail(
                 db.init(), doc_id=(q.get("id") or [""])[0]))
+        if path == "/api/journal":
+            # The run journal is the "it really ran" evidence: each pipeline step
+            # with its wall-clock timestamp, model calls with durations, feed
+            # fetches with row counts. Served for the dashboard's run-log view.
+            # Host and storage URIs are scrubbed — provenance is the timestamps
+            # and step structure, not the machine identity behind them.
+            from . import review as _rv
+            import json as _j, re as _re
+            from urllib.parse import parse_qs, urlparse
+            q = parse_qs(urlparse(self.path).query)
+            from . import platform as _plat_mod
+            plat_ = _plat_mod.load()
+            rid = (q.get("run_id") or [None])[0]
+            row = (plat_.state.q(
+                "SELECT run_id, as_of FROM orch_runs WHERE run_id=?", (rid,))
+                if rid else plat_.state.q(
+                "SELECT run_id, as_of FROM orch_runs WHERE kind='weekly' AND ok=1 "
+                "ORDER BY as_of DESC LIMIT 1"))
+            if not row:
+                return self._json({"error": "没有可读的运行记录"})
+            r = row[0]
+            try:
+                j = _j.loads(plat_.blobs.get(
+                    f"runs/{r['as_of']}/{r['run_id']}/journal.json"))
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": f"journal 读取失败: {type(e).__name__}"})
+            j.pop("host", None)
+            def _scrub(o):
+                if isinstance(o, str):
+                    o = _re.sub(r"tos://[\w.-]+", "tos://<bucket>", o)
+                    return _re.sub(r"/Users/[\w.-]+", "~", o)
+                if isinstance(o, dict):
+                    return {k: _scrub(v) for k, v in o.items()}
+                if isinstance(o, list):
+                    return [_scrub(v) for v in o]
+                return o
+            return self._json({"run_id": r["run_id"], "as_of": r["as_of"],
+                               "journal": _scrub(j)})
         if path == "/api/state":
             from . import review
             return self._json(review.state(db.init()))

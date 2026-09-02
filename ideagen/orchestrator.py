@@ -514,6 +514,11 @@ def _merge_pool(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
             # generators that argued for it. A merged candidate with no record of
             # its contributors would make the generator comparison unrecoverable.
             "proposed_by": methods,
+            # Convergence as a number: distinct methods, not contributing rows
+            # (one method reaching the same instrument through two topics is
+            # persistence, not agreement). Stored so selectors and the panel
+            # read one field instead of each re-deriving it.
+            "n_methods": len(methods),
             "n_proposals": len(rows),
             "topics": topics,
             "theses": {str(r.get("method")): r.get("thesis") for r in rows},

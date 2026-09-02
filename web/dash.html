@@ -2560,7 +2560,7 @@ function poolMatch(c){
   if(t==='code')return c.instrument_id===v||c.instrument_id===bareCode(v);
   if(t==='method')return (c.proposed_by||[]).some(function(m){return m===v||methodName(m)===methodName(v)});
   if(t==='mt')return c.topic_id===v.topic&&(c.proposed_by||[]).some(function(m){return m===v.method||methodName(m)===methodName(v.method)});
-  if(t==='conv'){var uq={};(c.proposed_by||[]).forEach(function(m){uq[m]=1});return String(Object.keys(uq).length)===String(v)}
+  if(t==='conv'){var n=c.n_methods!=null?c.n_methods:(function(){var uq={};(c.proposed_by||[]).forEach(function(m){uq[m]=1});return Object.keys(uq).length})();return String(n)===String(v)}
   if(t==='selector'){
     var s=(((S||{}).weekly||{}).selectors||[]).find(function(x){return x.name===v});
     if(!s)return false;

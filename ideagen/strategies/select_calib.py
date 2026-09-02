@@ -24,7 +24,6 @@ inspected is an idea that cannot be argued with.
 from __future__ import annotations
 
 import math
-import re
 import statistics as st
 
 from ..strategy import RunContext, Verdict, register
@@ -64,19 +63,29 @@ def _clamp(x: float) -> float:
 def _topic_evidence(ctx: RunContext) -> dict[str, dict]:
     """Per topic: how many corpus documents back it, and how much they disagree.
 
-    Attribution copies `_gen.corpus_block`'s rule (tokens of the topic id, matched
-    against title + summary) so the count here is the evidence the generator was
+    Attribution uses the same theme-term vocabulary as `_gen.corpus_block`
+    (via `topic_terms`), so the count here is the evidence the generator was
     actually shown for that topic — a different rule would penalise ideas for
     documents their author never saw.
     """
     from .. import lexicon                      # stance coding only; no file read
 
-    labels = {str(t.get("topic_id")): str(t.get("label") or "")
-              for t in ctx.topics if isinstance(t, dict)}
+    from ._gen import topic_terms
+
+    # The shared vocabulary rule, actually shared. An earlier version rebuilt the
+    # matching from the topic slug and label: an English slug tokenises into words
+    # no Chinese document contains, and a Chinese label stays one long string that
+    # must appear verbatim — so every topic counted zero documents, the thin-
+    # evidence penalty became the same constant for every idea, and this arm's
+    # entire reason to exist silently stopped discriminating. Using the theme's
+    # registered terms via `topic_terms` is what "the evidence the generator was
+    # actually shown" really means.
+    topics_by_id = {str(t.get("topic_id")): t
+                    for t in ctx.topics if isinstance(t, dict)}
     out: dict[str, dict] = {}
     for tid in {str(c.get("topic_id")) for c in ctx.candidates}:
-        terms = [w for w in re.split(r"[^\w一-鿿]+", f"{tid} {labels.get(tid, '')}".lower())
-                 if len(w) > 2]
+        terms = [w.lower() for w in
+                 topic_terms(topics_by_id.get(tid, {"topic_id": tid}))]
         hits = [d for d in ctx.corpus
                 if any(w in f"{d.get('title','')} {d.get('summary','')}".lower()
                        for w in terms)] if terms else []

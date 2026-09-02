@@ -2276,3 +2276,45 @@ class TestCorpusArchiveAndShortlist(unittest.TestCase):
         d = wisburg.tool_drift(StubW(sorted(drifted)))
         self.assertEqual(d["missing"], ["list-earning-calls"])
         self.assertEqual(d["unknown"], ["list-podcasts"])
+
+
+class TestCalibEvidenceAttribution(unittest.TestCase):
+    """calib's thin-evidence penalty is only a penalty if documents can be found.
+
+    The original implementation tokenised the topic slug and label instead of
+    using the theme's registered terms: an English slug matches no Chinese
+    document, and a Chinese label survives the split as one long string that
+    must appear verbatim — so every topic counted zero documents and the
+    penalty collapsed into a constant (observed live on the 2026-08-26 run).
+    """
+
+    def _ctx(self, topics):
+        from ideagen import strategy as strat
+        return strat.RunContext(
+            as_of=date(2026, 8, 26), inputs_sha="x", topics=topics,
+            corpus=[{"doc_id": "d1", "published_d": "2026-08-25", "tier": 1,
+                     "title": "联储会议纪要", "summary": "美联储官员讨论降息路径，上调空间有限"},
+                    {"doc_id": "d2", "published_d": "2026-08-25", "tier": 2,
+                     "title": "债市周报", "summary": "市场对美联储降息预期升温，利多债券"}],
+            candidates=[{"id": "i1", "instrument_id": "TLT",
+                         "topic_id": "POLICY-PATH", "thesis": "t",
+                         "upside_pct": 5, "downside_pct": -3,
+                         "p_up": .4, "p_base": .4, "p_down": .2}])
+
+    def test_terms_attribute_documents_the_slug_never_could(self):
+        from ideagen.strategies.select_calib import _topic_evidence
+        ev = _topic_evidence(self._ctx(
+            [{"topic_id": "POLICY-PATH", "label": "央行政策路径与流动性",
+              "terms": ["美联储", "降息"]}]))
+        self.assertEqual(ev["POLICY-PATH"]["n_docs"], 2,
+                         "theme terms must attribute Chinese documents that the "
+                         "English slug / verbatim-label rule silently missed")
+
+    def test_topic_without_terms_counts_nothing_rather_than_everything(self):
+        from ideagen.strategies.select_calib import _topic_evidence
+        ev = _topic_evidence(self._ctx(
+            [{"topic_id": "POLICY-PATH", "label": "央行政策路径与流动性"}]))
+        # topic_terms falls back to slug+label tokens; none appear in the corpus,
+        # so the count is an honest 0 — the same unmatched-not-everything rule
+        # corpus_block follows.
+        self.assertEqual(ev["POLICY-PATH"]["n_docs"], 0)

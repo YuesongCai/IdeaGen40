@@ -1,29 +1,15 @@
-"""Import the historical 2026-07-27 PM pack as batch #1.
-
-This gives the system a real, externally-authored starting batch: 40 ideas that
-were written before any of this code existed, so nothing about them can have been
-fitted to the engine. The paper book opens on them at the 2026-07-27 close and
-has been marked forward ever since.
+"""Import an explicitly supplied historical idea pack.
 
 The pack states entry / take-profit / stop as prose ("$73–76分两笔",
 "日收盘低于$69.50", "较最新NAV回撤3%–5%"). `parse_levels` recovers the numeric
 levels; every value it recovers is written into the idea row with an explicit
 `entry_src` tag so the worksheet requirement in 方法论 §4 is preserved.
-
-One discrepancy found while importing, and deliberately not papered over: the
-odds worksheet 底稿 (赔率展开版, 2026-07-27 10:16) states probability/return
-inputs that do **not** match `updatedIdeas` in the HTML it claims to reproduce,
-even though every row of the worksheet is annotated "原页面核对 … 一致". Example —
-idea 21 (P/E FX): the worksheet uses 30/45/25 with +10/+2/−6 and reports a
-central OR of 2.29, while the HTML carries 35/40/25 with +8/+2.5/−5, which
-recomputes to 2.65. The HTML is treated as authoritative here because it is the
-artefact the SHA-256 in the worksheet header actually pins. `ideagen verify-seed`
-reports the full list of divergences.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -31,63 +17,16 @@ from typing import Any
 
 from . import config, db, ideas as ideas_mod, universe
 
-SEED_PACK = config.SEED / "pack_2026-07-27.json"
-SEED_AS_OF = date(2026, 7, 27)
+SEED_PACK = Path(os.environ.get(
+    "IDEAGEN_SEED_PACK", config.SEED / "customer_seed_pack.json"))
+SEED_AS_OF = date.fromisoformat(
+    os.environ.get("IDEAGEN_SEED_AS_OF", "2026-07-27"))
 
-# Ticker aliases used in the pack's `tool` field that are not registry keys.
-TOOL_ALIAS = {
-    "P/E FX": "L03028",
-    "AQR DELPHI": "AQR-DELPHI",
-    "NB COMMODITIES": "NB-COMMODITIES",
-    "APAC DATA CENTER": "APAC-DC",
-    "PRIVATE CREDIT": "PRIVATE-CREDIT-SEC",
-    "JANUS": "JANUS-BIOTECH",
-    "XBI / JANUS": "XBI",
-    "SMD-AM JAPAN": "SMD-AM-JAPAN",
-    "GLOBAL SEMI": "GLOBAL-SEMI",
-    "EUROPE INCOME": "EUROPE-INCOME",
-    "EUROPE GRID": "EUROPE-GRID",
-    "CHINA ALPHA": "CHINA-ALPHA",
-    "CNY DURATION": "CNY-DURATION",
-    "MARKET NEUTRAL": "MARKET-NEUTRAL",
-    "MBB / AB MORTGAGE": "MBB",
-    "METI": "METI",
-    "HELO": "HELO",
-    "USFR": "USFR",
-    "CHINA SEMI": "03199",
-    "GERMANY": "EWG",
-    "159995": "03199",
-}
+# Customer-specific aliases belong beside the supplied pack, not in source.
+TOOL_ALIAS: dict[str, str] = {}
 
-# Levels hand-verified against the pack text during the 2026-08-03 check run.
-# Where the prose parser and this table disagree, the table wins and the
-# divergence is reported — the table was read by a human against the source.
-VERIFIED = {
-    "KRE":  {"entry": (73.0, 76.0),   "take": (82.0, 85.0),  "stop": 69.50},
-    "XLE":  {"entry": (56.50, 58.50), "take": (64.0, None),  "stop": 54.80},
-    "QUAL": {"entry": (207.0, 213.0), "take": (232.0, None), "stop": 199.0},
-    "PAVE": {"entry": (53.0, 56.0),   "take": (64.0, None),  "stop": 50.50},
-    "XOP":  {"entry": (163.0, 169.0), "take": (190.0, None), "stop": 157.0,
-             "breakout": 181.0},
-    "USMV": {"entry": (94.0, 97.0),   "take": (None, None),  "stop": None},
-    "COPX": {"entry": (70.0, 75.0),   "take": (88.0, None),  "stop": 65.0},
-    "XLU":  {"entry": (43.50, 45.50), "take": (50.0, None),  "stop": 41.80},
-    "CIBR": {"entry": (80.0, 85.0),   "take": (98.0, None),  "stop": 75.0},
-    "KWEB": {"entry": (24.50, 26.50), "take": (31.0, None),  "stop": 22.50},
-    "RSP":  {"entry": (207.0, 211.0), "take": (230.0, None), "stop": 199.0},
-    "AMLP": {"entry": (52.0, 54.0),   "take": (59.0, None),  "stop": 49.80},
-    "BKLN": {"entry": (20.15, 20.30), "take": (None, None),  "stop": 19.95},
-    "XLV":  {"entry": (156.0, 160.0), "take": (174.0, None), "stop": 151.0},
-    "URA":  {"entry": (37.0, 40.0),   "take": (47.0, None),  "stop": 34.0},
-    "DXJ":  {"entry": (None, None),   "take": (188.0, None), "stop": 164.0},
-    "STIP": {"entry": (100.50, 101.30), "take": (103.0, None), "stop": 99.80},
-    "MCHI": {"entry": (51.0, 54.0),   "take": (60.0, None),  "stop": 48.0},
-    "EWJ":  {"entry": (86.0, 90.0),   "take": (99.0, None),  "stop": 82.0},
-    "PDBC": {"entry": (16.80, 17.40), "take": (19.50, None), "stop": 15.75,
-             "breakout": 18.30},
-    "DBMF": {"entry": (None, None),   "take": (None, None),  "stop": None},
-    "DLR":  {"entry": (None, None),   "take": (None, None),  "stop": None},
-}
+# Optional human-verified overrides belong to the supplied customer pack.
+VERIFIED: dict[str, dict[str, Any]] = {}
 
 _MONEY = re.compile(r"\$\s*(\d+(?:\.\d+)?)")
 _RANGE = re.compile(r"(\d+(?:\.\d+)?)\s*[–\-~至]\s*(\d+(?:\.\d+)?)")

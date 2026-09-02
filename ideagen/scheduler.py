@@ -111,6 +111,11 @@ PRICE_WARM_DAYS = 30
 #: A feed with no successful result in this many days is stale rather than quiet.
 FEED_STALE_DAYS = 8
 
+#: A licensed shelf snapshot is captured once per HKT day after this time.
+#: Missing authorization is a normal skip, not a failed scheduler tick.
+OLIVE_SYNC_TRIGGER_HKT = time(7, 30)
+OLIVE_SYNC_RETRY_S = 3600
+
 HEARTBEAT_KEY = "scheduler:heartbeat"
 GAP_KIND = "weekly_missed"
 
@@ -337,6 +342,33 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
                           {"state": state})
 
     detail: dict[str, Any] = {"state": state, "dry_run": dry_run}
+    poc_mode = (os.environ.get("IDEAGEN_POC_WEEKLY_MODE") or "").strip().lower()
+    if poc_mode in ("public-synthetic", "shelf-fixture", "olive-live",
+                    "olive-auto", "wisburg-auto"):
+        from . import poc_workflow
+        if poc_mode == "wisburg-auto" and ingest and not dry_run:
+            detail["ingest"] = _ingest_corpus(p, as_of, log=log)
+        try:
+            injected = poc_workflow.weekly_kwargs(
+                as_of, p=p, mode=poc_mode)
+        except Exception as exc:  # noqa: BLE001
+            error = f"{type(exc).__name__}: {exc}"
+            detail["input_error"] = error
+            log(f"  周策略  输入准备失败：{error}")
+            return JobOutcome(
+                "weekly", as_of.isoformat(), "failed", error, detail)
+        supplied = dict(weekly_kwargs or {})
+        injected["params"] = {
+            **injected.get("params", {}),
+            **supplied.pop("params", {}),
+        }
+        weekly_kwargs = {**injected, **supplied}
+        ingest = False
+        detail["data_classification"] = injected["params"]["data_classification"]
+        detail["input_mode"] = injected["params"]["weekly_mode"]
+        detail["requested_input_mode"] = poc_mode
+        if injected["params"].get("shelf_mode"):
+            detail["shelf_mode"] = injected["params"]["shelf_mode"]
     if ingest and not dry_run:
         detail["ingest"] = _ingest_corpus(p, as_of, log=log)
 
@@ -384,14 +416,25 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
     # as degraded rather than fatal — the verdicts are already persisted, so a
     # booking failure is recoverable by `ideagen book`, while crashing the tick
     # here would also take the heartbeat down with it.
-    if not dry_run and execution.selected() == "paper":
+    legacy = _legacy_con(p)
+    if not dry_run and execution.selected() == "paper" and legacy is not None:
         try:
-            from . import booking, db as _db
-            bk = booking.book_run(_db.init(), p, res.run_id, verbose=True)
+            from . import booking
+            bk = booking.book_run(legacy, p, res.run_id, verbose=True)
             detail["booked"] = {k: v for k, v in bk["books"].items()}
         except Exception as e:  # noqa: BLE001
             detail["booking_error"] = f"{type(e).__name__}: {e}"
             log(f"  ⚠ 建仓失败（结论已保存，可用 `ideagen book` 补）：{e}")
+            p.events.publish("scheduler.weekly.booking_failed",
+                             {"run_id": res.run_id, "error": str(e)[:300]})
+    elif not dry_run and execution.selected() == "paper":
+        try:
+            from . import cloud_paper
+            bk = cloud_paper.book_run(p, res.run_id)
+            detail["booked"] = {k: v for k, v in bk["books"].items()}
+        except Exception as e:  # noqa: BLE001
+            detail["booking_error"] = f"{type(e).__name__}: {e}"
+            log(f"  ⚠ 云端建仓失败（结论已保存，可重试）：{e}")
             p.events.publish("scheduler.weekly.booking_failed",
                              {"run_id": res.run_id, "error": str(e)[:300]})
 
@@ -411,10 +454,14 @@ def _notify(text: str) -> None:
     liability; one that silently never fires is a dead man's misunderstanding —
     so failures are logged to stderr but never raised."""
     import subprocess, sys
+    user_id = os.environ.get("IDEAGEN_LARK_NOTIFY_USER_ID", "").strip()
+    if not user_id:
+        return
+    cli = os.environ.get("IDEAGEN_LARK_CLI", "lark-cli").strip()
     try:
         subprocess.run(
-            ["/opt/homebrew/bin/lark-cli", "im", "+messages-send", "--as", "bot",
-             "--user-id", "ou_8d0e4064f46c1d0de14c501c1f5db808",
+            [cli, "im", "+messages-send", "--as", "bot",
+             "--user-id", user_id,
              "--text", text], timeout=30, capture_output=True)
     except Exception as e:  # noqa: BLE001
         print(f"  (飞书通知失败: {e})", file=sys.stderr)
@@ -455,10 +502,25 @@ def _ingest_corpus(p: plat.Platform, as_of: date, *,
     """
     con = _legacy_con(p)
     if con is None:
-        return {"skipped": "state store is not SQLite; the ingest path needs a "
-                           "sqlite3 connection"}
-    if not os.environ.get("WISBURG_MCP_TOKEN"):
-        return {"skipped": "WISBURG_MCP_TOKEN 未设置，跳过 ingest"}
+        enabled = (os.environ.get("IDEAGEN_CLOUD_WISBURG_ENABLED") or "").strip(
+        ).lower() in ("1", "true", "yes", "on")
+        if not enabled:
+            return {
+                "skipped": (
+                    "cloud Wisburg persistence is disabled; licensed research "
+                    "must not be copied to cloud without explicit approval"
+                )
+            }
+        try:
+            from . import cloud_corpus
+            rep = cloud_corpus.ingest_window(p, as_of, detail_limit=8)
+            log(f"  ingest  {rep.get('rows', 0)} 条（新 {rep.get('new', 0)}）")
+            return rep
+        except Exception as e:  # noqa: BLE001
+            log(f"  ! cloud ingest 失败：{type(e).__name__}: {e}")
+            return {"failed": f"{type(e).__name__}: {e}"}
+    if not config.wisburg_configured():
+        return {"skipped": "Wisburg MCP key 未设置，跳过 ingest"}
     try:
         from .sources import wisburg
         # The platform ports go along so the verbatim archive lands in the same
@@ -489,11 +551,31 @@ def _ingest_incremental(p: plat.Platform, con: Any, problems: list[str], *,
     if dry_run:
         return {"skipped": "dry-run：不触网"}
     if con is None:
-        return {"skipped": "state 端口不是 SQLite，增量 ingest 需要 sqlite3 连接"}
-    if not os.environ.get("WISBURG_MCP_TOKEN"):
+        enabled = (os.environ.get("IDEAGEN_CLOUD_WISBURG_ENABLED") or "").strip(
+        ).lower() in ("1", "true", "yes", "on")
+        if not enabled:
+            return {
+                "skipped": (
+                    "云端 Wisburg 增量写入未获显式授权，保持关闭"
+                )
+            }
+        try:
+            from . import cloud_corpus
+            rep = cloud_corpus.ingest_incremental(
+                p, as_of=config.today_hkt(), detail_limit=3)
+            n, m = rep.get("new", 0), rep.get("deep", 0)
+            log(f"  增量语料 +{n} 条（深抓 {m}）" if n else "  增量语料 无新增")
+            if rep.get("errors"):
+                problems.append(
+                    f"增量语料部分线路失败：{', '.join(rep['errors'])}")
+            return rep
+        except Exception as e:  # noqa: BLE001
+            problems.append(f"增量语料失败：{type(e).__name__}: {e}")
+            return {"failed": f"{type(e).__name__}: {e}"}
+    if not config.wisburg_configured():
         # An expected local condition, not a degradation: recorded so the report
         # says why nothing was pulled, but the pass stays healthy.
-        return {"skipped": "WISBURG_MCP_TOKEN 未设置，跳过增量语料"}
+        return {"skipped": "Wisburg MCP key 未设置，跳过增量语料"}
     try:
         from .sources import wisburg
         rep = wisburg.ingest_incremental(con, budget_details=3, blobs=p.blobs,
@@ -571,15 +653,30 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
 
     con = _legacy_con(p)
     if con is None:
-        detail["marks"] = {"skipped": "state store is not SQLite; paper/monitor "
-                                      "need a sqlite3 connection"}
-        problems.append("盯市跳过：state 端口不是 SQLite")
+        if dry_run:
+            detail["marks"] = {"skipped": "dry-run: no RDS paper writes"}
+        else:
+            try:
+                from . import cloud_paper
+                detail["marks"] = cloud_paper.monitor(p, now_hkt.date())
+            except Exception as e:  # noqa: BLE001
+                detail["marks"] = {
+                    "failed": f"{type(e).__name__}: {e}",
+                }
+                problems.append(
+                    f"RDS 盯市失败：{type(e).__name__}: {e}")
+        detail["alerts"] = {
+            "n": detail["marks"].get("alerts", 0),
+            "source": "rds-portable-paper",
+        }
     else:
         detail["prices"] = _warm_prices(p, con, now_hkt, problems)
         detail["marks"] = _advance_books(con, now_hkt, problems, log=log)
         detail["alerts"] = _check_triggers(con, now_hkt, problems, log=log)
     detail["ingest"] = _ingest_incremental(p, con, problems, dry_run=dry_run,
                                            log=log)
+    detail["olive"] = _sync_olive_daily(
+        p, now_hkt, now_utc, problems, dry_run=dry_run, log=log)
 
     if not dry_run:
         _insert_run_row(p, run_id=run_id, as_of=now_hkt.date().isoformat(),
@@ -606,6 +703,107 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
     return JobOutcome("monitor", period, "ran", "; ".join(problems) or None, detail)
 
 
+def _sync_olive_daily(p: plat.Platform, now_hkt: datetime,
+                      now_utc: datetime, problems: list[str], *,
+                      dry_run: bool,
+                      log: Callable[[str], None]) -> dict[str, Any]:
+    """Capture one licensed shelf snapshot per HKT day after authorization."""
+    credentials = config.olive_credentials()
+    if not credentials.get("access_token"):
+        return {"skipped": "Olive 尚未授权"}
+    if now_hkt.timetz().replace(tzinfo=None) < OLIVE_SYNC_TRIGGER_HKT:
+        return {
+            "skipped": f"每日 {OLIVE_SYNC_TRIGGER_HKT:%H:%M} HKT 后同步",
+        }
+
+    from . import shelf_store
+
+    today = now_hkt.date()
+    existing = shelf_store.latest_snapshot(
+        p.state,
+        as_of=today,
+        classification=shelf_store.LIVE_CLASSIFICATION,
+        source=shelf_store.LIVE_SOURCE,
+    )
+    if existing and str(existing.get("as_of")) == today.isoformat():
+        return {
+            "skipped": "今日真实货架已同步",
+            "snapshot_id": existing.get("snapshot_id"),
+        }
+
+    attempts = p.state.q(
+        "SELECT started_at FROM orch_runs WHERE kind='olive_sync' AND as_of=? "
+        "ORDER BY started_at DESC LIMIT 1",
+        (today.isoformat(),),
+    )
+    if attempts:
+        age = _age_s(attempts[0].get("started_at"), now_utc)
+        if age is not None and age < OLIVE_SYNC_RETRY_S:
+            return {
+                "skipped": "上次同步尝试仍在节流窗口",
+                "retry_after_s": int(OLIVE_SYNC_RETRY_S - age),
+            }
+    if dry_run:
+        return {"skipped": "dry-run"}
+
+    run_id = f"olive-{today:%Y%m%d}-{now_utc:%H%M%S}"
+    started = plat.utcnow_iso()
+    _insert_run_row(
+        p,
+        run_id=run_id,
+        as_of=today.isoformat(),
+        kind="olive_sync",
+        started=started,
+        ended=None,
+        ok=0,
+        error=None,
+    )
+    try:
+        from .sources import olive
+
+        snapshot = olive.pull_snapshot(olive.OliveMCP(), detail_limit=1)
+        result = shelf_store.persist(
+            p,
+            snapshot,
+            as_of=today,
+            source=shelf_store.LIVE_SOURCE,
+            classification=shelf_store.LIVE_CLASSIFICATION,
+        )
+    except Exception as exc:  # noqa: BLE001 - monitoring degrades, never blocks
+        error = f"{type(exc).__name__}: Olive MCP sync failed"
+        _insert_run_row(
+            p,
+            run_id=run_id,
+            as_of=today.isoformat(),
+            kind="olive_sync",
+            started=started,
+            ended=plat.utcnow_iso(),
+            ok=0,
+            error=error,
+        )
+        problems.append(f"Olive 每日同步失败：{type(exc).__name__}")
+        return {"failed": error}
+
+    _insert_run_row(
+        p,
+        run_id=run_id,
+        as_of=today.isoformat(),
+        kind="olive_sync",
+        started=started,
+        ended=plat.utcnow_iso(),
+        ok=1,
+        error=None,
+    )
+    log(f"  Olive   {today}  产品 {result.get('items', 0)}  "
+        f"NAV {result.get('navs', 0)}")
+    return {
+        "snapshot_id": result.get("snapshot_id"),
+        "items": int(result.get("items") or 0),
+        "navs": int(result.get("navs") or 0),
+        "artifact_archived": bool(result.get("artifact_uri")),
+    }
+
+
 def _feed_health(p: plat.Platform, now_hkt: datetime,
                  problems: list[str]) -> list[dict[str, Any]]:
     """Latest result per registered feed, from SQL alone — no network, no cost.
@@ -622,15 +820,28 @@ def _feed_health(p: plat.Platform, now_hkt: datetime,
         problems.append(f"feed 健康查询失败：{type(e).__name__}: {e}")
         return []
     latest = {r["feed"]: r for r in rows}
+    latest_by_kind: dict[str, Any] = {}
+    for row in rows:
+        current = latest_by_kind.get(row["kind"])
+        if current is None or str(row["as_of"]) > str(current["as_of"]):
+            latest_by_kind[row["kind"]] = row
     out: list[dict[str, Any]] = []
     for spec in feeds.available():
         r = latest.get(spec["name"])
+        # Injected/replayed inputs use a source-specific feed name. For a
+        # required kind, a recent validated receipt of that kind is still proof
+        # that the run had data; requiring the registry's local adapter name
+        # would report "never ran" on every cloud deployment.
+        if not r and spec["required"]:
+            r = latest_by_kind.get(spec["kind"])
         item: dict[str, Any] = {"feed": spec["name"], "kind": spec["kind"],
                                 "required": spec["required"]}
         if not r:
             item["problem"] = "从未运行过"
         else:
             item.update(as_of=r["as_of"], n_rows=r["n_rows"], ok=bool(r["ok"]))
+            if r["feed"] != spec["name"]:
+                item["observed_feed"] = r["feed"]
             stale_d = (now_hkt.date() - date.fromisoformat(str(r["as_of"]))).days
             item["stale_days"] = stale_d
             if not r["ok"]:

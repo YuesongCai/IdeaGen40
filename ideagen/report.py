@@ -1302,7 +1302,7 @@ function viewBook(dd) {
 
   /* ---- every day, side by side ---- */
   const rows = Object.values(P.cohorts).sort((a, b) => a.as_of < b.as_of ? 1 : -1);
-  wrap.append(sec('每天一览', 
+  wrap.append(sec('每天一览',
     `${rows.length} 天，每天一个独立组合。这是「30 天后回来看」的那张表`,
     table([{ h: '日期' }, { h: lbl('生成器') }, { h: '条', n: 1 }, { h: '成交', n: 1 },
            { h: '持有(交易日)', n: 1 }, { h: '收益', n: 1 }, { h: 'SPY 同期', n: 1 },

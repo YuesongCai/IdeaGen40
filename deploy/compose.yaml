@@ -1,0 +1,74 @@
+# IdeaGen40 · ECS POC Compose（scheduler + dashboard + proxy）
+#
+# 事实源是 RDS MySQL + TOS，无持久卷。本文件不声明任何本地数据卷。
+# 运行时凭证只从 /opt/ideagen/config/runtime.env 注入，绝不写入本文件、镜像或 git。
+#
+# 用法（ECS Cloud Assistant / 网页终端）：
+#   export IMAGE_TAG=<git-short-sha>
+#   podman-compose up -d scheduler dashboard proxy
+#
+# IMAGE_TAG 固定到干净 commit SHA；不要用 latest。
+
+services:
+  dashboard:
+    image: "ideagen40:${IMAGE_TAG:?set IMAGE_TAG to the built git SHA}"
+    # 同一镜像默认 ENTRYPOINT 跑 scheduler；这里覆盖为只起网页。
+    entrypoint: ["python3", "-m", "ideagen.cli", "serve"]
+    env_file:
+      - /opt/ideagen/config/runtime.env
+    environment:
+      # 让反向代理能连到容器；仍受 IDEAGEN_DASH_KEY 门禁。
+      IDEAGEN_DASH_HOST: "0.0.0.0"
+      # 远端 OAuth 只在用户打开 /olive 并点击授权时触发。PKCE 回调必须
+      # 使用外部 HTTPS origin，token 写入宿主机专用 0700 目录。
+      IDEAGEN_PUBLIC_SITE: "${IDEAGEN_PUBLIC_SITE:-https://127.0.0.1}"
+      IDEAGEN_OLIVE_TOKEN_FILE: "/run/ideagen-oauth/tokens.json"
+    volumes:
+      - /opt/ideagen/oauth:/run/ideagen-oauth
+    expose:
+      - "8765"            # 仅 compose 内网可见，不映射到宿主
+    # Podman's podman-restart.service restores only policy=always at boot.
+    restart: always
+    # Dashboard 与 scheduler 是独立容器；这里覆盖为 HTTP 探针，不能读取
+    # scheduler 容器内的短期 FileCache 心跳。
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3).read()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  scheduler:
+    image: "ideagen40:${IMAGE_TAG:?set IMAGE_TAG to the built git SHA}"
+    env_file:
+      - /opt/ideagen/config/runtime.env
+    environment:
+      IDEAGEN_TICK_INTERVAL_S: "${IDEAGEN_TICK_INTERVAL_S:-300}"
+      IDEAGEN_OLIVE_TOKEN_FILE: "/run/ideagen-oauth/tokens.json"
+      # wisburg-auto 严格读取 RDS 中的 Wisburg 语料；Olive 未授权时仅在
+      # 货架侧使用 fixture，真实快照落库后自动切换，不由 scheduler 触发 OAuth。
+      IDEAGEN_POC_WEEKLY_MODE: "${IDEAGEN_POC_WEEKLY_MODE:-wisburg-auto}"
+      IDEAGEN_CLOUD_WISBURG_ENABLED: "${IDEAGEN_CLOUD_WISBURG_ENABLED:-true}"
+    volumes:
+      - /opt/ideagen/oauth:/run/ideagen-oauth
+    restart: always
+
+  proxy:
+    image: "caddy:2-alpine"
+    depends_on:
+      - dashboard
+    environment:
+      # :80 用于联调；生产设置为 https://<public-ip> 或正式域名。
+      IDEAGEN_PUBLIC_SITE: "${IDEAGEN_PUBLIC_SITE:-:80}"
+      # IP 客户端可能不发送 SNI；IP HTTPS 时设置为相同的公网 IP。
+      IDEAGEN_DEFAULT_SNI: "${IDEAGEN_DEFAULT_SNI:-localhost}"
+    ports:
+      - "80:80"
+      - "443:443"         # 配好域名与证书后启用；仅 HTTP 联调期可临时只留 80
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data   # 证书等由 Caddy 管理，非业务事实源
+    restart: always
+
+volumes:
+  caddy_data:

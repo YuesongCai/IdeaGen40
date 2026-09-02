@@ -1,0 +1,34 @@
+# Build context hygiene. The image must never carry credentials, local state,
+# licensed third-party dumps, or the git tree. git archive already excludes most
+# of these, but a build from an extracted/working tree may not — so exclude here
+# too. Keep in sync with .gitignore's secret/third-party sections.
+
+# secrets — never in an image layer
+.env
+*.env
+.ideagen.env
+
+# local state / generated — facts live in RDS/TOS, not the image
+data/
+web/index.html
+web/report.json
+web/artifact.html
+web/review.html
+seed/pack_2026-07-27.json
+
+# licensed / partner content — not ours to ship
+olive-dump/
+*-dump/
+discr_acct_bt*/
+*.zip
+
+# python / vcs / tooling
+.git/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# docs are not needed at runtime
+docs/

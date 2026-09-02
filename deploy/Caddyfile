@@ -1,0 +1,34 @@
+# IdeaGen40 · Caddy 反向代理配置
+#
+# dashboard 只在 compose 内网监听 8765，本代理转发到它。
+# Dashboard 自身仍要求 IDEAGEN_DASH_KEY，所以代理不重复鉴权。
+#
+# IDEAGEN_PUBLIC_SITE 默认为 :80，仅用于不发送 key 的联调。设置为
+# https://<public-ip> 可申请 Let's Encrypt 短期 IP 证书；设置为域名时
+# Caddy 自动申请域名证书。
+#
+# 默认运行日志会记录 5xx 请求的 headers。删除整个 request headers 字段，
+# 防止 X-Dash-Key、Cookie 或未来新增的认证头进入容器日志。
+{
+	# 部分客户端访问字面 IP 时不发送 SNI；为它们选择已签发的 IP 证书。
+	# 域名客户端会发送自己的 SNI，不受此默认值影响。
+	default_sni {$IDEAGEN_DEFAULT_SNI:localhost}
+
+	cert_issuer acme https://acme-v02.api.letsencrypt.org/directory {
+		profile shortlived
+	}
+
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri delete
+			}
+		}
+	}
+}
+
+{$IDEAGEN_PUBLIC_SITE::80} {
+	reverse_proxy dashboard:8765
+}

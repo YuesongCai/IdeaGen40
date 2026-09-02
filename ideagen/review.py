@@ -15,11 +15,13 @@ nobody can reproduce, so every figure is a straight query.
 from __future__ import annotations
 
 import html
+import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any
 
-from . import config, db, platform as plat
+from . import cloud_paper, config, db, platform as plat, shelf_store
 
 E = html.escape
 
@@ -39,6 +41,64 @@ def _tbl(head: list[str], rows: list[list[str]], escape: bool = True) -> str:
         f"<td>{E(str(c)) if escape else c}</td>" for c in r) + "</tr>"
         for r in rows)
     return f'<table><tr>{h}</tr>{b}</table>'
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if value in (None, ""):
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _licensed(classification: Any) -> bool:
+    value = str(classification or "")
+    return (value.startswith("licensed-")
+            or "licensed-private-corpus" in value
+            or "+licensed-live-" in value)
+
+
+def _opaque(prefix: str, value: Any) -> str:
+    digest = hashlib.sha256(str(value).encode()).hexdigest()[:8].upper()
+    return f"{prefix}-{digest}"
+
+
+def _backtest_state(p) -> dict[str, Any]:
+    """Latest replay result, read only from the durable cloud state."""
+    try:
+        rows = p.state.q(
+            "SELECT backtest_id, as_of, window_start, window_end, methodology, "
+            "data_classification, inputs_sha, artifact_uri, started_at, ended_at, "
+            "summary FROM backtest_runs WHERE ok=1 "
+            "ORDER BY as_of DESC, ended_at DESC LIMIT 1")
+        if not rows:
+            return {}
+        run = dict(rows[0])
+        backtest_id = run["backtest_id"]
+        points = [dict(row) for row in p.state.q(
+            "SELECT arm, d, equity, period_ret, drawdown, n_positions "
+            "FROM backtest_points WHERE backtest_id=? ORDER BY d, arm",
+            (backtest_id,))]
+        positions = [dict(row) for row in p.state.q(
+            "SELECT arm, period, instrument_id, entry_d, exit_d, entry_nav, "
+            "exit_nav, return_pct, status, thesis FROM backtest_positions "
+            "WHERE backtest_id=? ORDER BY period DESC, arm, instrument_id",
+            (backtest_id,))]
+    except Exception:  # noqa: BLE001 - old deployments may not have these tables
+        return {}
+
+    summary = _json_value(run.pop("summary", None), {})
+    run["artifact_archived"] = bool(run.pop("artifact_uri", None))
+    run["inputs_sha"] = str(run.get("inputs_sha") or "")[:16]
+    run["summary"] = summary
+    run["points"] = points
+    run["positions"] = positions
+    run["latest_period"] = max(
+        (str(row["period"]) for row in positions), default=None)
+    return run
 
 
 # ---------------------------------------------------------------- sections
@@ -231,6 +291,24 @@ def state(con=None, p=None) -> dict[str, Any]:
         hb = json.loads(raw) if raw else None
     except Exception:  # noqa: BLE001
         pass
+    if not hb:
+        try:
+            rows = p.state.q(
+                "SELECT started_at, platform FROM orch_runs WHERE kind='monitor' "
+                "ORDER BY started_at DESC LIMIT 1")
+            if rows:
+                at = datetime.fromisoformat(str(rows[0]["started_at"]))
+                if at.tzinfo is None:
+                    at = at.replace(tzinfo=timezone.utc)
+                hb = {
+                    "at_utc": at.astimezone(timezone.utc).isoformat(),
+                    "at_hkt": at.astimezone(config.TZ).isoformat(),
+                    "platform": rows[0].get("platform") or p.name,
+                    "venue": "paper",
+                    "source": "rds-monitor",
+                }
+        except Exception:  # noqa: BLE001
+            pass
     age = None
     if hb:
         age = (datetime.now(timezone.utc)
@@ -255,14 +333,29 @@ def state(con=None, p=None) -> dict[str, Any]:
         "SELECT as_of FROM orch_runs WHERE run_id LIKE 'gap-%' ORDER BY as_of")]
 
     # -- latest weekly, all three stages ---------------------------------
-    wk = p.state.q("SELECT run_id, as_of, ok, ended_at, calls FROM orch_runs "
+    wk = p.state.q("SELECT run_id, as_of, ok, ended_at, calls, "
+                   "data_classification FROM orch_runs "
                    "WHERE kind='weekly' ORDER BY started_at DESC LIMIT 1")
     weekly: dict[str, Any] = {}
     if wk:
         r = wk[0]
         rid = r["run_id"]
+        classification = (
+            r.get("data_classification")
+            or ("public-synthetic"
+                if str(rid).startswith("mock-public-") else "live")
+        )
+        hide_licensed = _licensed(classification)
         weekly = {"run_id": rid, "as_of": r["as_of"], "ok": bool(r["ok"]),
-                  "in_flight": r["ended_at"] is None, "calls": r["calls"]}
+                  "in_flight": r["ended_at"] is None, "calls": r["calls"],
+                  "data_classification": classification}
+        corpus_receipts = p.state.q(
+            "SELECT n_rows FROM feed_runs WHERE run_id=? AND kind='corpus'",
+            (rid,))
+        weekly["corpus_total"] = (
+            sum(int(row["n_rows"] or 0) for row in corpus_receipts)
+            if corpus_receipts else None
+        )
         weekly["topics"] = [
             {"scorer": v["strategy"], "chosen": json.loads(v["chosen"]),
              "scores": json.loads(v["scores"] or "{}")}
@@ -277,20 +370,44 @@ def state(con=None, p=None) -> dict[str, Any]:
                                (rid,))]
         cands = [json.loads(c["payload"]) for c in p.state.q(
             "SELECT payload FROM candidates WHERE run_id=?", (rid,))]
+        candidate_alias = {
+            str(candidate.get("id")): _opaque("CAND", candidate.get("id"))
+            for candidate in cands
+        }
         weekly["pool"] = {
             "n": len(cands),
             "convergence": {},
-            "candidates": [{k: c.get(k) for k in
-                            ("id", "instrument_id", "instrument_name", "topic_id",
-                             "upside_pct", "downside_pct", "p_up", "p_base",
-                             "p_down", "proposed_by", "n_proposals", "thesis")}
-                           for c in cands]}
+            "candidates": [{
+                **{k: c.get(k) for k in
+                   ("topic_id", "upside_pct", "downside_pct", "p_up", "p_base",
+                    "p_down", "proposed_by", "n_proposals")},
+                "id": (candidate_alias[str(c.get("id"))]
+                       if hide_licensed else c.get("id")),
+                "instrument_id": (
+                    shelf_store.public_alias(c.get("instrument_id"))
+                    if hide_licensed else c.get("instrument_id")),
+                "instrument_name": (
+                    "Licensed shelf instrument"
+                    if hide_licensed else c.get("instrument_name")),
+                "thesis": (
+                    None if hide_licensed else c.get("thesis")),
+            } for c in cands]}
         for c in cands:
             k = str(len(c.get("proposed_by") or []) or 1)
             weekly["pool"]["convergence"][k] = \
                 weekly["pool"]["convergence"].get(k, 0) + 1
         weekly["selectors"] = [
-            {"name": v["strategy"], "chosen": json.loads(v["chosen"])}
+            {
+                "name": v["strategy"],
+                "chosen": [
+                    candidate_alias.get(
+                        str(candidate_id),
+                        _opaque("CAND", candidate_id),
+                    )
+                    if hide_licensed else str(candidate_id)
+                    for candidate_id in json.loads(v["chosen"])
+                ],
+            }
             for v in p.state.q("SELECT strategy, chosen FROM verdicts "
                                "WHERE run_id=? AND kind='idea_selector'", (rid,))]
     # -- evidence drill-down: which actual documents back each chosen topic.
@@ -305,12 +422,20 @@ def state(con=None, p=None) -> dict[str, Any]:
             from . import lexicon
             aof = _date.fromisoformat(weekly["as_of"])
             days = [(aof - _td(days=i)).isoformat() for i in range(3)]
-            docs = db.q(con,
-                        "SELECT doc_id, published_d, title, "
-                        "COALESCE(institution, line) AS institution, tier, "
-                        "content_hash, retrieval "
-                        "FROM documents WHERE published_d IN (%s)"
-                        % ",".join("?" * len(days)), days)
+            if hide_licensed:
+                docs = p.state.q(
+                    "SELECT doc_id, published_d, title, "
+                    "COALESCE(institution, line) AS institution, tier, "
+                    "content_hash, retrieval "
+                    "FROM corpus_documents WHERE published_d IN (%s)"
+                    % ",".join("?" * len(days)), days)
+            else:
+                docs = db.q(con,
+                            "SELECT doc_id, published_d, title, "
+                            "COALESCE(institution, line) AS institution, tier, "
+                            "content_hash, retrieval "
+                            "FROM documents WHERE published_d IN (%s)"
+                            % ",".join("?" * len(days)), days)
             themes_by_id = {t.id: t for t in lexicon.all_themes(aof)}
             chosen_ids = {tid for tv in weekly["topics"] for tid in tv["chosen"]}
             ev: dict[str, Any] = {}
@@ -336,9 +461,17 @@ def state(con=None, p=None) -> dict[str, Any]:
                            "truncated": max(0, len(hits) - 60),
                            "matched_on": "标题关键词（与打分同一套主题词表）"}
             weekly["evidence"] = ev
-            weekly["corpus_total"] = len(docs)
+            weekly["current_corpus_total"] = len(docs)
         except Exception as e:  # noqa: BLE001 — drill-down must not break the API
             weekly["evidence_error"] = f"{type(e).__name__}: {e}"
+    if weekly and weekly.get("corpus_total") is None:
+        rows = p.state.q(
+            "SELECT n_rows FROM feed_runs WHERE run_id=? AND kind='corpus'",
+            (weekly["run_id"],))
+        weekly["corpus_total"] = (
+            sum(int(row["n_rows"] or 0) for row in rows)
+            if rows else weekly.get("current_corpus_total")
+        )
     out["weekly"] = weekly
 
     # -- books: equity curves + open positions ---------------------------
@@ -384,20 +517,37 @@ def state(con=None, p=None) -> dict[str, Any]:
                       "closed_n": realized["n"] if realized else 0,
                       "exits": exits})
     out["books"] = books
+    if not books:
+        try:
+            out["books"] = cloud_paper.state_view(p.state)
+        except Exception:  # noqa: BLE001 - pre-migration deployments stay readable
+            out["books"] = []
+    out["backtest"] = _backtest_state(p)
+    try:
+        out["shelf"] = shelf_store.dashboard_state(
+            p.state,
+            as_of=now.date(),
+            show_names=(
+                os.environ.get("IDEAGEN_DASH_SHOW_LICENSED_NAMES") or ""
+            ).strip().lower() in ("1", "true", "yes", "on"),
+        )
+    except Exception:  # noqa: BLE001 - old schema or unavailable state
+        out["shelf"] = {}
 
     # -- feeds ------------------------------------------------------------
     out["feeds"] = [dict(r) for r in p.state.q(
         "SELECT feed, kind, as_of, n_rows, ok, error FROM feed_runs "
-        "ORDER BY rowid DESC LIMIT 12")]
+        "ORDER BY as_of DESC, run_id DESC, feed ASC LIMIT 12")]
 
     # -- schedule: the server says when, the page only displays -----------
     try:
-        from .scheduler import weekly_period
+        from .scheduler import MONITOR_INTERVAL_S, TICK_INTERVAL_S, weekly_period
         period_start, trigger = weekly_period(now)
         out["schedule"] = {"current_period": period_start.date().isoformat()
                            if hasattr(period_start, "date") else str(period_start),
                            "trigger_hkt": trigger.isoformat(),
-                           "tick_interval_s": 900}
+                           "tick_interval_s": TICK_INTERVAL_S,
+                           "monitor_interval_s": MONITOR_INTERVAL_S}
     except Exception:  # noqa: BLE001
         out["schedule"] = None
 
@@ -409,7 +559,7 @@ def state(con=None, p=None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- corpus API
-def corpus_list(con=None, as_of: str | None = None) -> dict[str, Any]:
+def corpus_list(con=None, as_of: str | None = None, p=None) -> dict[str, Any]:
     """Every stored document for one period's window — the shelf itself.
 
     The feed table said "841 条 · 正常" and stopped there, which is a claim
@@ -418,6 +568,38 @@ def corpus_list(con=None, as_of: str | None = None) -> dict[str, Any]:
     what stays out of any public artifact is the verbatim body, which is
     licensed material — served only per-document, locally, on demand.
     """
+    p = p or plat.load()
+    portable = []
+    try:
+        if not as_of:
+            latest = p.state.q(
+                "SELECT MAX(published_d) AS d FROM corpus_documents")
+            as_of = latest[0]["d"] if latest else None
+        if as_of:
+            from datetime import date as _date, timedelta as _td
+            aof = _date.fromisoformat(as_of)
+            days = [(aof - _td(days=i)).isoformat() for i in range(3)]
+            portable = p.state.q(
+                "SELECT doc_id, published_d, title, "
+                "COALESCE(institution, line) AS institution, tier, summary, "
+                "content_hash, retrieval, body "
+                "FROM corpus_documents WHERE published_d IN (%s) "
+                "ORDER BY published_d DESC, tier, doc_id"
+                % ",".join("?" * len(days)), days)
+            if portable:
+                docs = [{
+                    **{key: row.get(key) for key in (
+                        "doc_id", "published_d", "title", "institution",
+                        "tier", "retrieval")},
+                    "summary": str(row.get("summary") or "")[:240],
+                    "sha": str(row.get("content_hash") or "")[:12],
+                    "body_len": len(str(row.get("body") or "")),
+                } for row in portable]
+                return {"as_of": as_of, "window": days, "n": len(docs),
+                        "docs": docs}
+    except Exception:  # noqa: BLE001 - local legacy state remains supported
+        pass
+
     con = con or db.init()
     if not as_of:
         r = db.q1(con, "SELECT MAX(published_d) d FROM documents")
@@ -438,8 +620,27 @@ def corpus_list(con=None, as_of: str | None = None) -> dict[str, Any]:
             "docs": [dict(r) for r in rows]}
 
 
-def doc_detail(con=None, doc_id: str = "") -> dict[str, Any]:
+def doc_detail(con=None, doc_id: str = "", p=None) -> dict[str, Any]:
     """One document in full, for local audit."""
+    p = p or plat.load()
+    try:
+        rows = p.state.q(
+            "SELECT doc_id, published_d, title, "
+            "COALESCE(institution, line) AS institution, tier, summary, "
+            "body, content_hash, retrieval FROM corpus_documents "
+            "WHERE doc_id=?",
+            (doc_id,))
+        if rows:
+            d = dict(rows[0])
+            d["body_len"] = len(d.get("body") or "")
+            # The protected dashboard can audit title, summary, hash and
+            # retrieval receipt. Verbatim licensed text remains server-side for
+            # scoring and is never copied into a browser response.
+            d["body"] = ""
+            return d
+    except Exception:  # noqa: BLE001 - local legacy state remains supported
+        pass
+
     con = con or db.init()
     r = db.q1(con, "SELECT doc_id, published_d, title, "
                    "COALESCE(institution, line) AS institution, tier, summary, "

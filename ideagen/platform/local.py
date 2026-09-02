@@ -93,6 +93,7 @@ class LocalBlobStore(BlobStore):
 
 class SqliteStateStore(StateStore):
     paramstyle = "qmark"
+    dialect = "sqlite"
 
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -164,11 +165,14 @@ class DirectInference(Inference):
     """
 
     def __init__(self, *, api_key: str | None, base_url: str | None,
-                 model: str, name: str = "openai-compatible"):
+                 model: str, name: str = "openai-compatible",
+                 timeout: float = 180.0, max_retries: int = 2):
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
         self.name = name
+        self.timeout = timeout
+        self.max_retries = max_retries
         self._client = None
 
     def _c(self):
@@ -180,13 +184,9 @@ class DirectInference(Inference):
             except ImportError as e:
                 raise NotConfigured(
                     "openai SDK not installed; pip install openai") from e
-            # 180s per call, 2 retries. The default 600s timeout means one hung
-            # call eats a sixth of the weekly window; twenty of them eat the day.
-            # A generation that cannot finish in three minutes is not going to
-            # finish, and the per-topic error handling upstream already knows how
-            # to lose one topic without losing the run.
             self._client = OpenAI(api_key=self.api_key, base_url=self.base_url,
-                                  timeout=180.0, max_retries=2)
+                                  timeout=self.timeout,
+                                  max_retries=self.max_retries)
         return self._client
 
     def complete(self, prompt: str, *, system: str | None = None,
@@ -328,38 +328,62 @@ def _pid_alive(pid: int) -> bool:
 
 
 class EnvSecretStore(SecretStore):
-    """Reads from the process environment and a chmod-600 file outside the repo.
+    """Reads configuration from the environment and chmod-600 env files.
 
-    The file path is deliberately outside the working tree: a secret inside the
-    repo is one `git add -A` away from being published, and this repo is public.
+    Process variables have highest priority. When multiple files are supplied,
+    later files override earlier ones; the project-local ignored `.env` can
+    therefore override the operator-wide `~/.ideagen.env` without changing it.
     """
 
-    def __init__(self, env_file: Path | None = None):
-        self.env_file = Path(env_file) if env_file else None
+    def __init__(self, env_file: Path | str | Iterable[Path | str] | None = None):
+        if env_file is None:
+            files: list[Path] = []
+        elif isinstance(env_file, (str, Path)):
+            files = [Path(env_file)]
+        else:
+            files = [Path(p) for p in env_file]
+        self.env_files = files
+        # Backward compatibility for callers and diagnostics that expect one path.
+        self.env_file = files[-1] if files else None
         self._file: dict[str, str] = {}
-        if self.env_file and self.env_file.exists():
-            for line in self.env_file.read_text(encoding="utf-8").splitlines():
+        self._sources: dict[str, Path] = {}
+        for path in files:
+            if not path.exists():
+                continue
+            for line in path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, _, v = line.partition("=")
-                    self._file[k.strip()] = v.strip().strip('"').strip("'")
+                    key = k.strip()
+                    self._file[key] = v.strip().strip('"').strip("'")
+                    self._sources[key] = path
 
     def get(self, name: str, *, required: bool = True) -> str | None:
         v = os.environ.get(name) or self._file.get(name)
         if not v and required:
             raise NotConfigured(
-                f"{name} is not set (checked environment and {self.env_file})")
+                f"{name} is not set (checked environment and "
+                f"{', '.join(map(str, self.env_files)) or 'no env file'})")
         return v
 
+    def source(self, name: str) -> str | None:
+        """Where a key came from, without exposing its value."""
+        if os.environ.get(name):
+            return "env"
+        path = self._sources.get(name)
+        return str(path) if self._file.get(name) and path else None
+
     def check(self) -> Health:
-        mode = None
-        if self.env_file and self.env_file.exists():
-            mode = oct(self.env_file.stat().st_mode & 0o777)
+        found: list[dict[str, str]] = []
+        for path in self.env_files:
+            if not path.exists():
+                continue
+            mode = oct(path.stat().st_mode & 0o777)
+            found.append({"file": str(path), "mode": mode})
             if mode not in ("0o600", "0o400"):
                 return Health(False, "secrets",
-                              f"{self.env_file} is {mode}; must be 600",
-                              {"file": str(self.env_file), "mode": mode})
+                              f"{path} is {mode}; must be 600",
+                              {"files": found})
         return Health(True, "secrets",
-                      f"env + {self.env_file or 'no file'} ({len(self._file)} keys)",
-                      {"file": str(self.env_file) if self.env_file else None,
-                       "mode": mode, "file_keys": len(self._file)})
+                      f"env + {len(found)} file(s) ({len(self._file)} keys)",
+                      {"files": found, "file_keys": len(self._file)})

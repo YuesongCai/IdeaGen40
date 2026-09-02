@@ -69,6 +69,7 @@ def weekly(
     generators: Iterable[str] | None = None,
     selectors: Iterable[str] | None = None,
     corpus: list[dict[str, Any]] | None = None,
+    universe: list[dict[str, Any]] | None = None,
     candidates: list[dict[str, Any]] | None = None,
     calendar: list[dict[str, Any]] | None = None,
     prices: dict[str, Any] | None = None,
@@ -86,6 +87,7 @@ def weekly(
     """
     p = p or plat.load()
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+    params = params or {}
 
     # Which ports this run needs is derived from the strategies it will actually
     # run, not asserted by the caller. A caller who forgets the flag would get a run
@@ -128,8 +130,6 @@ def weekly(
 
         try:
             schema.migrate(p.state)
-            params = params or {}
-
             # The run row is opened now, with ok=0, and closed at the end. Writing
             # it only on success leaves the rows a failed run already produced —
             # feed results, verdicts — with no parent to mark them untrustworthy,
@@ -142,7 +142,9 @@ def weekly(
                     "kind": "weekly", "platform": p.name,
                     "started_at": j._t0.isoformat(), "ended_at": None,
                     "ok": 0, "error": None, "inputs_sha": None,
-                    "journal_uri": None, "calls": 0}, replace=False)
+                    "journal_uri": None, "calls": 0,
+                    "data_classification": params.get(
+                        "data_classification", "live")}, replace=False)
 
             # Feeds run through the registry unless inputs were injected. Injection
             # is what lets a replay of an old week reuse stored rows instead of
@@ -151,14 +153,33 @@ def weekly(
             if corpus is None:
                 corpus, rs = feeds.fetch_kind("corpus", as_of)
                 feed_results += rs
+            else:
+                feed_results.append(feeds.FeedResult(
+                    feed=f"{params.get('input_source') or 'injected'}-corpus",
+                    kind="corpus", as_of=as_of.isoformat(), rows=corpus,
+                    meta={"data_classification": params.get(
+                        "data_classification", "injected")}))
             if calendar is None:
                 calendar, rs = feeds.fetch_kind("calendar", as_of)
                 feed_results += rs
-            universe: list[dict[str, Any]] = []
+            else:
+                feed_results.append(feeds.FeedResult(
+                    feed=f"{params.get('input_source') or 'injected'}-calendar",
+                    kind="calendar", as_of=as_of.isoformat(), rows=calendar,
+                    meta={"data_classification": params.get(
+                        "data_classification", "injected")}))
             if candidates is None:
-                universe, rs = feeds.fetch_kind("universe", as_of)
-                feed_results += rs
+                if universe is None:
+                    universe, rs = feeds.fetch_kind("universe", as_of)
+                    feed_results += rs
+                else:
+                    feed_results.append(feeds.FeedResult(
+                        feed=f"{params.get('input_source') or 'injected'}-universe",
+                        kind="universe", as_of=as_of.isoformat(), rows=universe,
+                        meta={"data_classification": params.get(
+                            "data_classification", "injected")}))
             corpus = corpus or []
+            universe = universe or []
             candidates = candidates or []
             calendar = calendar or []
             prices = prices or {}
@@ -214,7 +235,7 @@ def weekly(
             # (docs/institutions/days/lift) are registered append-only with
             # registered_d = as_of, so replays of earlier weeks still cannot
             # see them.
-            if not dry_run and corpus:
+            if not dry_run and corpus and not params.get("skip_theme_discovery"):
                 try:
                     from . import db as _db, themes as _themes
                     _con = _db.init()

@@ -1,0 +1,8 @@
+# Release archives are deployment inputs, not repository backups. Exclude
+# historical/generated material before a source bundle enters TOS or an ECS.
+/data export-ignore
+/docs export-ignore
+/tests export-ignore
+/seed/pack_2026-07-27.json export-ignore
+/web/artifact.html export-ignore
+/web/review.html export-ignore

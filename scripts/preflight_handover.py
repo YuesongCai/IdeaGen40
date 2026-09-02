@@ -352,7 +352,8 @@ def _check_docker_context() -> None:
                    + ("；.dockerignore 存在，逐条核对它是否挡住了 data/" if has_ignore else ""))
         else:
             R.ok(f"{rel} 按路径逐个 COPY（{copies}），data/ 不进镜像")
-        if any(c.strip("./") == "seed" for c in copies):
+        private_seed_packs = list((ROOT / "seed").glob("pack_*.json"))
+        if any(c.strip("./") == "seed" for c in copies) and private_seed_packs:
             R.warn(f"{rel} 会把 seed/ 拷进镜像，而 seed/pack_*.json 含合作方"
                    f"货架产品代码 —— 见本节最后几条")
         if re.search(r"(?im)^\s*(?:ENV|ARG)\s+\w*(KEY|SECRET|TOKEN|PASSWORD)", body):
@@ -456,6 +457,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="IdeaGen40 交接前脱敏体检")
     ap.add_argument("--quick", action="store_true",
                     help="跳过 git 历史扫描（最慢的一步；正式交接前必须跑完整版）")
+    ap.add_argument("--source-only", action="store_true",
+                    help="只检查发布源码；跳过运行环境和业务空跑检查")
     args = ap.parse_args()
 
     print("IdeaGen40 交接前体检   root=" + str(ROOT))
@@ -472,8 +475,12 @@ def main() -> int:
     check_identity()
     check_data_boundary()
     check_publishing()
-    check_platform()
-    check_silent_success()
+    if args.source_only:
+        R.section("8-9. 运行环境检查")
+        R.skip("--source-only：跳过平台端口和业务空跑检查")
+    else:
+        check_platform()
+        check_silent_success()
 
     print("\n" + "=" * 72)
     print(f"结论：{len(R.fails)} 项 FAIL，{len(R.warns)} 项 WARN")

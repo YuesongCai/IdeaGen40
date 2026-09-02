@@ -25,14 +25,411 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timedelta
+import time
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+import requests
+
 from .. import config, db
+from .wisburg import _parse_sse, _unwrap_content
 
 SNAPSHOT_DIR = config.SNAPSHOTS
 MAX_NAV_STALE_DAYS = 10
+
+
+class OliveMCPError(RuntimeError):
+    pass
+
+
+class OliveMCP:
+    """Streamable-HTTP MCP client with Noah SSO OAuth token refresh."""
+
+    def __init__(self, url: str | None = None, access_token: str | None = None,
+                 refresh_token: str | None = None, client_id: str | None = None,
+                 token_url: str | None = None, timeout: int = 90):
+        credentials = config.olive_credentials()
+        self.url = url or config.OLIVE_MCP_URL
+        if not self.url:
+            raise OliveMCPError("OLIVE_MCP_URL is not configured")
+        self.access_token = (
+            access_token if access_token is not None
+            else credentials.get("access_token") or config.olive_access_token()
+        )
+        self.refresh_token = (refresh_token
+                              if refresh_token is not None
+                              else credentials.get("refresh_token", ""))
+        self.client_id = (client_id
+                          if client_id is not None
+                          else credentials.get("client_id", ""))
+        self.token_url = token_url or config.OLIVE_OAUTH_TOKEN_URL
+        self.timeout = timeout
+        self.session_id: str | None = None
+        self.refreshed_tokens: dict[str, Any] | None = None
+        self._id = 0
+        self.s = requests.Session()
+        self.s.headers.update({
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "User-Agent": "IdeaGen40/1.0",
+        })
+        self._set_access_token(self.access_token)
+
+    def _set_access_token(self, token: str) -> None:
+        self.access_token = token
+        self.s.headers["Authorization"] = f"Bearer {token}"
+
+    def _refresh(self) -> None:
+        if not self.refresh_token or not self.client_id:
+            raise OliveMCPError(
+                "Olive access token expired and no refresh token/client id is configured")
+        if not self.token_url:
+            raise OliveMCPError("OLIVE_OAUTH_TOKEN_URL is not configured")
+        response = requests.post(
+            self.token_url,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+                "client_id": self.client_id,
+                "resource": self.url,
+            },
+            headers={"Accept": "application/json"},
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            raise OliveMCPError(
+                f"OAuth refresh HTTP {response.status_code}: {response.text[:200]}")
+        tokens = response.json()
+        access = tokens.get("access_token")
+        if not access:
+            raise OliveMCPError("OAuth refresh response has no access_token")
+        self.refresh_token = tokens.get("refresh_token") or self.refresh_token
+        self.refreshed_tokens = tokens
+        self._set_access_token(access)
+        if config.olive_token_file() is not None:
+            expires = int(tokens.get("expires_in") or 0)
+            current = config.olive_credentials()
+            config.store_olive_credentials({
+                **current,
+                "access_token": access,
+                "refresh_token": self.refresh_token,
+                "client_id": self.client_id,
+                "expires_at": (
+                    datetime.now(timezone.utc) + timedelta(seconds=expires)
+                ).isoformat() if expires else current.get("expires_at", ""),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    def _post(self, payload: dict, *, notification: bool = False,
+              retries: int = 3) -> Any:
+        last: Exception | None = None
+        refreshed = False
+        for attempt in range(retries):
+            try:
+                headers = ({"Mcp-Session-Id": self.session_id}
+                           if self.session_id else None)
+                response = self.s.post(self.url, json=payload, headers=headers,
+                                       timeout=self.timeout)
+                if response.status_code == 401 and not refreshed:
+                    self._refresh()
+                    refreshed = True
+                    continue
+                if response.status_code == 429 or response.status_code >= 500:
+                    last = OliveMCPError(
+                        f"HTTP {response.status_code}: {response.text[:200]}")
+                    if attempt + 1 < retries:
+                        time.sleep(1.5 * (attempt + 1))
+                        continue
+                    raise last
+                response.raise_for_status()
+                session_id = response.headers.get("Mcp-Session-Id")
+                if session_id:
+                    self.session_id = session_id
+                if notification or not response.content:
+                    return None
+                obj = _parse_sse(response.content.decode("utf-8",
+                                                          errors="replace"))
+                if "error" in obj:
+                    raise OliveMCPError(f"{payload['method']}: {obj['error']}")
+                return obj.get("result")
+            except OliveMCPError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                if attempt + 1 < retries:
+                    time.sleep(1.5 * (attempt + 1))
+        raise OliveMCPError(
+            f"{payload.get('method')} failed after {retries} attempts: {last}")
+
+    def _rpc(self, method: str, params: dict | None = None) -> Any:
+        self._id += 1
+        return self._post({
+            "jsonrpc": "2.0",
+            "id": self._id,
+            "method": method,
+            "params": params or {},
+        })
+
+    def initialize(self) -> dict:
+        result = self._rpc("initialize", {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "ideagen40", "version": "1.0"},
+        })
+        protocol = (result or {}).get("protocolVersion")
+        if protocol:
+            self.s.headers["MCP-Protocol-Version"] = str(protocol)
+        self._post({"jsonrpc": "2.0", "method": "notifications/initialized"},
+                   notification=True)
+        return result or {}
+
+    def tool_specs(self) -> list[dict]:
+        result = self._rpc("tools/list")
+        return [tool for tool in (result or {}).get("tools", [])
+                if isinstance(tool, dict)]
+
+    def tools(self) -> list[str]:
+        return [str(tool.get("name")) for tool in self.tool_specs()
+                if tool.get("name")]
+
+    def call(self, tool: str, args: dict | None = None) -> Any:
+        result = self._rpc("tools/call", {
+            "name": tool,
+            "arguments": args or {},
+        })
+        return _unwrap_content(result)
+
+
+def register_oauth_client(redirect_uri: str, *,
+                          issuer: str = config.OLIVE_OAUTH_ISSUER,
+                          timeout: int = 30) -> dict:
+    """Register the local public PKCE client through OAuth DCR."""
+    if not issuer:
+        raise OliveMCPError("OLIVE_OAUTH_ISSUER is not configured")
+    response = requests.post(
+        f"{issuer.rstrip('/')}/api/oauth/register",
+        json={
+            "client_name": "IdeaGen40 MCP Client",
+            "redirect_uris": [redirect_uri],
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "none",
+            "scope": "tools:read tools:write",
+        },
+        headers={"Accept": "application/json"},
+        timeout=timeout,
+    )
+    if response.status_code >= 400:
+        raise OliveMCPError(
+            f"OAuth registration HTTP {response.status_code}: "
+            f"{response.text[:200]}")
+    result = response.json()
+    if not result.get("client_id"):
+        raise OliveMCPError("OAuth registration response has no client_id")
+    return result
+
+
+def oauth_authorization(client_id: str, redirect_uri: str, *,
+                        issuer: str = config.OLIVE_OAUTH_ISSUER,
+                        resource_url: str = config.OLIVE_MCP_URL,
+                        ) -> tuple[str, str, str]:
+    """Return (authorization URL, PKCE verifier, state)."""
+    import base64
+    import hashlib
+    import secrets
+    from urllib.parse import urlencode
+
+    if not issuer or not resource_url:
+        raise OliveMCPError(
+            "OLIVE_OAUTH_ISSUER and OLIVE_MCP_URL must be configured")
+    verifier = secrets.token_urlsafe(64)[:86]
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    state = secrets.token_urlsafe(32)
+    query = urlencode({
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "tools:read tools:write",
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "resource": resource_url,
+    })
+    return f"{issuer.rstrip('/')}/api/oauth/authorize?{query}", verifier, state
+
+
+def exchange_oauth_code(code: str, verifier: str, client_id: str,
+                        redirect_uri: str, *,
+                        token_url: str = config.OLIVE_OAUTH_TOKEN_URL,
+                        resource_url: str = config.OLIVE_MCP_URL,
+                        timeout: int = 30) -> dict:
+    if not token_url or not resource_url:
+        raise OliveMCPError(
+            "OLIVE_OAUTH_TOKEN_URL and OLIVE_MCP_URL must be configured")
+    response = requests.post(
+        token_url,
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "code_verifier": verifier,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "resource": resource_url,
+        },
+        headers={"Accept": "application/json"},
+        timeout=timeout,
+    )
+    if response.status_code >= 400:
+        raise OliveMCPError(
+            f"OAuth token HTTP {response.status_code}: {response.text[:200]}")
+    tokens = response.json()
+    if not tokens.get("access_token"):
+        raise OliveMCPError("OAuth token response has no access_token")
+    return tokens
+
+
+OLIVE_DETAIL_TOOLS = (
+    "get_fund_detail",
+    "get_fund_summary",
+    "get_fund_performance",
+    "get_fund_portfolio",
+)
+
+
+def parse_catalog(markdown: str) -> list[dict]:
+    """Parse the markdown table returned by Olive's ``list_funds`` tool."""
+    rows = []
+    for line in (markdown or "").splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.split("|")[1:-1]]
+        if len(cells) < 2 or not re.fullmatch(r"[A-Z]\d{4,6}", cells[0]):
+            continue
+        cells += [""] * (9 - len(cells))
+        rows.append({
+            "productCode": cells[0],
+            "productName": cells[1],
+            "marketType": cells[2],
+            "strategy": cells[3],
+            "series": cells[4],
+            "subscriptionStart": cells[5],
+            "subscriptionEnd": cells[6],
+            "channel": cells[7],
+            "bookingName": cells[8],
+        })
+    return rows
+
+
+def _latest_chart_point(summary: dict) -> dict:
+    points = (((summary.get("card") or {}).get("chartData") or {})
+              .get("dataPoints") or [])
+    usable = [point for point in points if isinstance(point, dict)
+              and point.get("date") and point.get("value") is not None]
+    return max(usable, key=lambda point: str(point["date"])) if usable else {}
+
+
+def _metric_value(metrics: dict, key: str) -> Any:
+    value = metrics.get(key)
+    return value.get("valueStr") if isinstance(value, dict) else value
+
+
+def _merge_fund(catalog: dict, details: dict[str, Any]) -> dict:
+    detail = details.get("get_fund_detail") or {}
+    summary = details.get("get_fund_summary") or {}
+    performance = details.get("get_fund_performance") or {}
+    detail = detail if isinstance(detail, dict) else {}
+    summary = summary if isinstance(summary, dict) else {}
+    performance = performance if isinstance(performance, dict) else {}
+    overview = detail.get("fundOverview") or {}
+    card = summary.get("card") or {}
+    perf = performance.get("performance") or {}
+    perf_meta = perf.get("meta") or {}
+    point = _latest_chart_point(summary)
+    main = detail.get("mainMetrics") or card.get("mainMetrics") or {}
+    metrics = main.get("metrics") or main
+
+    merged = {
+        **catalog,
+        "productEnglishName": (overview.get("fundName")
+                               or summary.get("fundName")
+                               or catalog.get("productName")),
+        "currency": perf_meta.get("currency") or "USD",
+        "riskLevel": _metric_value(metrics, "RISK_LEVEL")
+                     or (card.get("mainMetrics") or {}).get("riskLevel"),
+        "latestNav": point.get("value"),
+        "navDate": point.get("date"),
+        "performanceMap": {
+            "1month": _metric_value(metrics, "1M_RETURN"),
+            "1year": _metric_value(metrics, "12M_RETURN"),
+            "ytd": _metric_value(metrics, "YTD_RETURN"),
+            "sinceLaunch": _metric_value(metrics, "ITD_RETURN"),
+        },
+        "mcpTools": sorted(details),
+    }
+    return merged
+
+
+def _catalog_group(item: dict) -> str:
+    text = " ".join(str(item.get(key) or "")
+                    for key in ("productName", "marketType", "strategy"))
+    if "货币" in text or "cash" in text.lower():
+        return "cash"
+    if "结构" in text or "structured" in text.lower():
+        return "structured"
+    if "一级" in text or "private" in text.lower():
+        return "private"
+    return "funds"
+
+
+def pull_snapshot(client: OliveMCP, *, product_codes: Iterable[str] | None = None,
+                  detail_limit: int = 0) -> dict:
+    """Fetch the Olive catalog and an optional bounded detail sample.
+
+    The limit is explicit because a complete shelf pull is hundreds of MCP
+    calls. Monday's authenticated validation can start with one or two products
+    before enabling the full daily snapshot.
+    """
+    client.initialize()
+    raw = client.call("list_funds")
+    if not isinstance(raw, str):
+        raise OliveMCPError(
+            f"list_funds returned {type(raw).__name__}, expected markdown")
+    catalog = parse_catalog(raw)
+    wanted = {str(code) for code in (product_codes or []) if str(code)}
+    if wanted:
+        targets = [item for item in catalog if item["productCode"] in wanted]
+    else:
+        targets = catalog[:max(0, int(detail_limit))]
+
+    details_by_code: dict[str, dict[str, Any]] = {}
+    errors: dict[str, dict[str, str]] = {}
+    for item in targets:
+        code = item["productCode"]
+        details: dict[str, Any] = {}
+        for tool in OLIVE_DETAIL_TOOLS:
+            try:
+                details[tool] = client.call(tool, {"product_code": code})
+            except Exception as exc:  # noqa: BLE001 - one tool must not erase the shelf
+                errors.setdefault(code, {})[tool] = (
+                    f"{type(exc).__name__}: {exc}"[:240])
+        details_by_code[code] = details
+
+    groups: dict[str, list[dict]] = {}
+    for item in catalog:
+        merged = _merge_fund(item, details_by_code.get(item["productCode"], {}))
+        groups.setdefault(_catalog_group(merged), []).append(merged)
+    return {
+        **groups,
+        "metadata": {
+            "capturedAt": config.now_hkt().isoformat(),
+            "catalogCount": len(catalog),
+            "detailedCount": len(targets),
+            "detailTools": list(OLIVE_DETAIL_TOOLS),
+            "errors": errors,
+        },
+    }
 
 
 # ---------------------------------------------------------------- ingest

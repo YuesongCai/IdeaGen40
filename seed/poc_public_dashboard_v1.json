@@ -1,0 +1,667 @@
+{
+  "metadata": {
+    "format": "ideagen.public-poc-fixture/v1",
+    "fixture_id": "poc-public-dashboard-v1",
+    "classification": "public-synthetic",
+    "synthetic": true,
+    "generated_at": "2026-08-29T09:00:00Z",
+    "as_of": "2026-08-26",
+    "purpose": "Public POC data for validating TOS persistence, RDS persistence, and dashboard rendering.",
+    "disclaimer": "All documents, instruments, probabilities, scores, and decisions are synthetic examples. They are not investment advice and do not represent client data, licensed research, real accounts, or observed performance."
+  },
+  "inputs": {
+    "corpus": [
+      {
+        "doc_id": "SYN-DOC-001",
+        "published_d": "2026-08-24",
+        "title": "Scenario: AI infrastructure budgets shift toward utilization discipline",
+        "institution": "Public Scenario Lab",
+        "tier": 2,
+        "summary": "An invented research note tests whether utilization and cash conversion become the binding constraints on infrastructure spending."
+      },
+      {
+        "doc_id": "SYN-DOC-002",
+        "published_d": "2026-08-24",
+        "title": "Scenario: data-center power availability shapes project sequencing",
+        "institution": "Open Methods Desk",
+        "tier": 2,
+        "summary": "A fictional scenario considers power access, equipment lead times, and financing costs without using proprietary data."
+      },
+      {
+        "doc_id": "SYN-DOC-003",
+        "published_d": "2026-08-25",
+        "title": "Scenario: enterprise AI demand broadens beyond pilot deployments",
+        "institution": "Public Scenario Lab",
+        "tier": 3,
+        "summary": "An illustrative demand path is used only to exercise the topic-scoring and idea-generation workflow."
+      },
+      {
+        "doc_id": "SYN-DOC-004",
+        "published_d": "2026-08-26",
+        "title": "Scenario: AI capital intensity remains elevated while unit costs fall",
+        "institution": "Open Methods Desk",
+        "tier": 1,
+        "summary": "A fabricated policy-neutral case supplies causal evidence fields for the demonstration."
+      },
+      {
+        "doc_id": "SYN-DOC-005",
+        "published_d": "2026-08-24",
+        "title": "Scenario: gradual policy normalization supports intermediate duration",
+        "institution": "Public Scenario Lab",
+        "tier": 2,
+        "summary": "An invented rate path tests the system's ability to compare base, upside, and downside cases."
+      },
+      {
+        "doc_id": "SYN-DOC-006",
+        "published_d": "2026-08-25",
+        "title": "Scenario: inflation persistence keeps the long end volatile",
+        "institution": "Open Methods Desk",
+        "tier": 2,
+        "summary": "A fictional inflation-risk note provides a counterargument to the normalization scenario."
+      },
+      {
+        "doc_id": "SYN-DOC-007",
+        "published_d": "2026-08-25",
+        "title": "Scenario: cash yields remain a meaningful hurdle",
+        "institution": "Public Scenario Lab",
+        "tier": 3,
+        "summary": "This illustrative item tests opportunity-cost handling without asserting a real market forecast."
+      },
+      {
+        "doc_id": "SYN-DOC-008",
+        "published_d": "2026-08-26",
+        "title": "Scenario: policy communication reduces near-term rate dispersion",
+        "institution": "Open Methods Desk",
+        "tier": 1,
+        "summary": "A fabricated event path supplies a dated expectation and a measurable watchpoint."
+      },
+      {
+        "doc_id": "SYN-DOC-009",
+        "published_d": "2026-08-24",
+        "title": "Scenario: fiscal supply raises the term-premium debate",
+        "institution": "Open Methods Desk",
+        "tier": 2,
+        "summary": "An invented issuance scenario is used to test evidence disagreement and downside framing."
+      },
+      {
+        "doc_id": "SYN-DOC-010",
+        "published_d": "2026-08-25",
+        "title": "Scenario: balanced-duration portfolios absorb rate uncertainty",
+        "institution": "Public Scenario Lab",
+        "tier": 3,
+        "summary": "A fictional portfolio note exists solely to populate the public demonstration fixture."
+      },
+      {
+        "doc_id": "SYN-DOC-011",
+        "published_d": "2026-08-26",
+        "title": "Scenario: quality balance sheets offset financing volatility",
+        "institution": "Open Methods Desk",
+        "tier": 2,
+        "summary": "A fabricated cross-asset scenario tests candidate convergence across generation methods."
+      },
+      {
+        "doc_id": "SYN-DOC-012",
+        "published_d": "2026-08-26",
+        "title": "Scenario: defensive allocation retains dry powder",
+        "institution": "Public Scenario Lab",
+        "tier": 3,
+        "summary": "An illustrative allocation case tests the selector's ability to leave capital uncommitted."
+      }
+    ],
+    "universe": [
+      {
+        "instrument_id": "PUB-AI-INFRA",
+        "name": "AI Infrastructure ETF",
+        "vehicle": "ETF",
+        "exposure": "Global AI infrastructure"
+      },
+      {
+        "instrument_id": "PUB-EQ-QUALITY",
+        "name": "Global Quality Equity ETF",
+        "vehicle": "ETF",
+        "exposure": "Profitable global equities"
+      },
+      {
+        "instrument_id": "PUB-INT-DURATION",
+        "name": "Intermediate Government Bond ETF",
+        "vehicle": "ETF",
+        "exposure": "Intermediate-duration sovereign bonds"
+      },
+      {
+        "instrument_id": "PUB-SHORT-DURATION",
+        "name": "Short Duration Bond Fund",
+        "vehicle": "Public fund",
+        "exposure": "Short-duration high-quality bonds"
+      },
+      {
+        "instrument_id": "PUB-INFL-LINKED",
+        "name": "Inflation-Linked Bond ETF",
+        "vehicle": "ETF",
+        "exposure": "Inflation-linked government bonds"
+      },
+      {
+        "instrument_id": "PUB-MULTI-ASSET",
+        "name": "Defensive Multi-Asset Fund",
+        "vehicle": "Public fund",
+        "exposure": "Diversified defensive allocation"
+      }
+    ],
+    "calendar": [
+      {
+        "event_id": "SYN-EVENT-POLICY-202609",
+        "date": "2026-09-16",
+        "label": "Policy decision",
+        "kind": "policy",
+        "expectation": "Base case: unchanged policy setting with balanced guidance.",
+        "unit": "scenario",
+        "source": "public-synthetic"
+      },
+      {
+        "event_id": "SYN-EVENT-CAPEX-202609",
+        "date": "2026-09-24",
+        "label": "Infrastructure spending update",
+        "kind": "earnings",
+        "expectation": "Base case: spending growth remains positive while utilization improves.",
+        "unit": "scenario",
+        "source": "public-synthetic"
+      }
+    ]
+  },
+  "tables": {
+    "orch_runs": [
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "weekly",
+        "platform": "byteplus",
+        "started_at": "2026-08-26T07:00:00+08:00",
+        "ended_at": "2026-08-26T07:06:42+08:00",
+        "ok": 1,
+        "error": null,
+        "journal_uri": null,
+        "calls": 8
+      }
+    ],
+    "feed_runs": [
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "feed": "public-synthetic-corpus",
+        "kind": "corpus",
+        "as_of": "2026-08-26",
+        "n_rows": 12,
+        "ok": 1,
+        "error": null
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "feed": "public-synthetic-universe",
+        "kind": "universe",
+        "as_of": "2026-08-26",
+        "n_rows": 6,
+        "ok": 1,
+        "error": null
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "feed": "public-synthetic-calendar",
+        "kind": "calendar",
+        "as_of": "2026-08-26",
+        "n_rows": 2,
+        "ok": 1,
+        "error": null
+      }
+    ],
+    "verdicts": [
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "topic_scorer",
+        "strategy": "hgep",
+        "version": "poc-public-v1",
+        "role": "primary",
+        "chosen": [
+          "AI-CAPEX",
+          "POLICY-PATH",
+          "TERM-PREMIUM"
+        ],
+        "scores": {
+          "AI-CAPEX": {
+            "label": "AI资本开支与融资",
+            "score": 78.5,
+            "H": 84.0,
+            "G": 68.0,
+            "E": 82.0,
+            "P": 42.0,
+            "n_evidence": 4,
+            "n_institutions": 2,
+            "indicator": "PUB-AI-INFRA",
+            "p_source": "public_synthetic"
+          },
+          "POLICY-PATH": {
+            "label": "央行政策路径与流动性",
+            "score": 72.3,
+            "H": 70.0,
+            "G": 76.0,
+            "E": 75.0,
+            "P": 48.0,
+            "n_evidence": 4,
+            "n_institutions": 2,
+            "indicator": "PUB-INT-DURATION",
+            "p_source": "public_synthetic"
+          },
+          "TERM-PREMIUM": {
+            "label": "期限溢价与财政供给",
+            "score": 66.8,
+            "H": 64.0,
+            "G": 72.0,
+            "E": 66.0,
+            "P": 53.0,
+            "n_evidence": 4,
+            "n_institutions": 2,
+            "indicator": "PUB-INFL-LINKED",
+            "p_source": "public_synthetic"
+          }
+        },
+        "rejected": {},
+        "meta": {
+          "fixture_classification": "public-synthetic",
+          "method": "illustrative HGEP output",
+          "top_n": 3
+        },
+        "calls": 1
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "topic_scorer",
+        "strategy": "counting",
+        "version": "poc-public-v1",
+        "role": "control",
+        "chosen": [
+          "AI-CAPEX",
+          "TERM-PREMIUM",
+          "POLICY-PATH"
+        ],
+        "scores": {
+          "AI-CAPEX": {
+            "label": "AI资本开支与融资",
+            "score": 4
+          },
+          "TERM-PREMIUM": {
+            "label": "期限溢价与财政供给",
+            "score": 4
+          },
+          "POLICY-PATH": {
+            "label": "央行政策路径与流动性",
+            "score": 4
+          }
+        },
+        "rejected": {},
+        "meta": {
+          "fixture_classification": "public-synthetic",
+          "method": "illustrative mention count"
+        },
+        "calls": 0
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "idea_generator",
+        "strategy": "e2e",
+        "version": "poc-public-v1",
+        "role": "primary",
+        "chosen": [
+          "PUB-AI-INFRA",
+          "PUB-INT-DURATION",
+          "PUB-INFL-LINKED"
+        ],
+        "scores": {},
+        "rejected": [],
+        "meta": {
+          "fixture_classification": "public-synthetic",
+          "per_topic": {
+            "AI-CAPEX": 1,
+            "POLICY-PATH": 1,
+            "TERM-PREMIUM": 1
+          }
+        },
+        "calls": 2
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "idea_generator",
+        "strategy": "constraint",
+        "version": "poc-public-v1",
+        "role": "control",
+        "chosen": [
+          "PUB-EQ-QUALITY",
+          "PUB-SHORT-DURATION",
+          "PUB-MULTI-ASSET"
+        ],
+        "scores": {},
+        "rejected": [],
+        "meta": {
+          "fixture_classification": "public-synthetic",
+          "per_topic": {
+            "AI-CAPEX": 1,
+            "POLICY-PATH": 1,
+            "TERM-PREMIUM": 1
+          }
+        },
+        "calls": 2
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "idea_selector",
+        "strategy": "omega",
+        "version": "poc-public-v1",
+        "role": "primary",
+        "chosen": [
+          "PUB-AI-INFRA",
+          "PUB-INT-DURATION",
+          "PUB-MULTI-ASSET"
+        ],
+        "scores": {
+          "PUB-AI-INFRA": 2.1,
+          "PUB-INT-DURATION": 1.8,
+          "PUB-MULTI-ASSET": 1.6
+        },
+        "rejected": {
+          "PUB-INFL-LINKED": "Lower illustrative reward-to-risk rank",
+          "PUB-EQ-QUALITY": "Portfolio overlap in the sample scenario",
+          "PUB-SHORT-DURATION": "Retained as synthetic cash-equivalent reserve"
+        },
+        "meta": {
+          "fixture_classification": "public-synthetic",
+          "selection": "illustrative only"
+        },
+        "calls": 1
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "as_of": "2026-08-26",
+        "kind": "idea_selector",
+        "strategy": "left_tail",
+        "version": "poc-public-v1",
+        "role": "control",
+        "chosen": [
+          "PUB-EQ-QUALITY",
+          "PUB-SHORT-DURATION",
+          "PUB-INFL-LINKED"
+        ],
+        "scores": {
+          "PUB-EQ-QUALITY": 1.9,
+          "PUB-SHORT-DURATION": 1.7,
+          "PUB-INFL-LINKED": 1.6
+        },
+        "rejected": {
+          "PUB-AI-INFRA": "Higher synthetic downside sensitivity",
+          "PUB-INT-DURATION": "Higher synthetic duration sensitivity",
+          "PUB-MULTI-ASSET": "Lower synthetic upside"
+        },
+        "meta": {
+          "fixture_classification": "public-synthetic",
+          "selection": "illustrative only"
+        },
+        "calls": 1
+      }
+    ],
+    "candidates": [
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-AI-INFRA",
+        "as_of": "2026-08-26",
+        "instrument_id": "PUB-AI-INFRA",
+        "topic_id": "AI-CAPEX",
+        "method": "merged",
+        "direction": "long",
+        "upside_pct": 12.0,
+        "downside_pct": -6.0,
+        "p_up": 0.42,
+        "p_base": 0.38,
+        "p_down": 0.2,
+        "sigma_1m": 5.8,
+        "payload": {
+          "id": "PUB-AI-INFRA",
+          "instrument_id": "PUB-AI-INFRA",
+          "instrument_name": "AI Infrastructure ETF",
+          "topic_id": "AI-CAPEX",
+          "method": "merged",
+          "direction": "long",
+          "upside_pct": 12.0,
+          "downside_pct": -6.0,
+          "p_up": 0.42,
+          "p_base": 0.38,
+          "p_down": 0.2,
+          "proposed_by": [
+            "e2e",
+            "constraint"
+          ],
+          "n_proposals": 2,
+          "thesis": "Improving utilization offsets elevated infrastructure spending."
+        }
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-EQ-QUALITY",
+        "as_of": "2026-08-26",
+        "instrument_id": "PUB-EQ-QUALITY",
+        "topic_id": "AI-CAPEX",
+        "method": "constraint",
+        "direction": "long",
+        "upside_pct": 8.0,
+        "downside_pct": -4.5,
+        "p_up": 0.38,
+        "p_base": 0.42,
+        "p_down": 0.2,
+        "sigma_1m": 3.9,
+        "payload": {
+          "id": "PUB-EQ-QUALITY",
+          "instrument_id": "PUB-EQ-QUALITY",
+          "instrument_name": "Global Quality Equity ETF",
+          "topic_id": "AI-CAPEX",
+          "method": "constraint",
+          "direction": "long",
+          "upside_pct": 8.0,
+          "downside_pct": -4.5,
+          "p_up": 0.38,
+          "p_base": 0.42,
+          "p_down": 0.2,
+          "proposed_by": [
+            "constraint"
+          ],
+          "n_proposals": 1,
+          "thesis": "Balance-sheet quality limits financing sensitivity."
+        }
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-INT-DURATION",
+        "as_of": "2026-08-26",
+        "instrument_id": "PUB-INT-DURATION",
+        "topic_id": "POLICY-PATH",
+        "method": "merged",
+        "direction": "long",
+        "upside_pct": 7.0,
+        "downside_pct": -3.5,
+        "p_up": 0.4,
+        "p_base": 0.4,
+        "p_down": 0.2,
+        "sigma_1m": 2.8,
+        "payload": {
+          "id": "PUB-INT-DURATION",
+          "instrument_id": "PUB-INT-DURATION",
+          "instrument_name": "Intermediate Government Bond ETF",
+          "topic_id": "POLICY-PATH",
+          "method": "merged",
+          "direction": "long",
+          "upside_pct": 7.0,
+          "downside_pct": -3.5,
+          "p_up": 0.4,
+          "p_base": 0.4,
+          "p_down": 0.2,
+          "proposed_by": [
+            "e2e",
+            "constraint"
+          ],
+          "n_proposals": 2,
+          "thesis": "Gradual normalization supports intermediate duration."
+        }
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-SHORT-DURATION",
+        "as_of": "2026-08-26",
+        "instrument_id": "PUB-SHORT-DURATION",
+        "topic_id": "POLICY-PATH",
+        "method": "constraint",
+        "direction": "long",
+        "upside_pct": 3.2,
+        "downside_pct": -1.2,
+        "p_up": 0.34,
+        "p_base": 0.5,
+        "p_down": 0.16,
+        "sigma_1m": 0.9,
+        "payload": {
+          "id": "PUB-SHORT-DURATION",
+          "instrument_id": "PUB-SHORT-DURATION",
+          "instrument_name": "Short Duration Bond Fund",
+          "topic_id": "POLICY-PATH",
+          "method": "constraint",
+          "direction": "long",
+          "upside_pct": 3.2,
+          "downside_pct": -1.2,
+          "p_up": 0.34,
+          "p_base": 0.5,
+          "p_down": 0.16,
+          "proposed_by": [
+            "constraint"
+          ],
+          "n_proposals": 1,
+          "thesis": "Short duration preserves carry and optionality."
+        }
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-INFL-LINKED",
+        "as_of": "2026-08-26",
+        "instrument_id": "PUB-INFL-LINKED",
+        "topic_id": "TERM-PREMIUM",
+        "method": "e2e",
+        "direction": "long",
+        "upside_pct": 6.5,
+        "downside_pct": -3.0,
+        "p_up": 0.37,
+        "p_base": 0.43,
+        "p_down": 0.2,
+        "sigma_1m": 2.5,
+        "payload": {
+          "id": "PUB-INFL-LINKED",
+          "instrument_id": "PUB-INFL-LINKED",
+          "instrument_name": "Inflation-Linked Bond ETF",
+          "topic_id": "TERM-PREMIUM",
+          "method": "e2e",
+          "direction": "long",
+          "upside_pct": 6.5,
+          "downside_pct": -3.0,
+          "p_up": 0.37,
+          "p_base": 0.43,
+          "p_down": 0.2,
+          "proposed_by": [
+            "e2e"
+          ],
+          "n_proposals": 1,
+          "thesis": "Inflation linkage buffers a term-premium repricing."
+        }
+      },
+      {
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-MULTI-ASSET",
+        "as_of": "2026-08-26",
+        "instrument_id": "PUB-MULTI-ASSET",
+        "topic_id": "TERM-PREMIUM",
+        "method": "merged",
+        "direction": "long",
+        "upside_pct": 7.5,
+        "downside_pct": -3.8,
+        "p_up": 0.39,
+        "p_base": 0.42,
+        "p_down": 0.19,
+        "sigma_1m": 2.7,
+        "payload": {
+          "id": "PUB-MULTI-ASSET",
+          "instrument_id": "PUB-MULTI-ASSET",
+          "instrument_name": "Defensive Multi-Asset Fund",
+          "topic_id": "TERM-PREMIUM",
+          "method": "merged",
+          "direction": "long",
+          "upside_pct": 7.5,
+          "downside_pct": -3.8,
+          "p_up": 0.39,
+          "p_base": 0.42,
+          "p_down": 0.19,
+          "proposed_by": [
+            "e2e",
+            "constraint"
+          ],
+          "n_proposals": 2,
+          "thesis": "Diversified defensive exposure absorbs rate-path uncertainty."
+        }
+      }
+    ],
+    "events": [
+      {
+        "event_id": "SYN-EVENT-POLICY-202609",
+        "date": "2026-09-16",
+        "label": "Policy decision",
+        "kind": "policy",
+        "expectation": "Base case: unchanged policy setting with balanced guidance.",
+        "actual": null,
+        "unit": "scenario",
+        "source": "public-synthetic",
+        "as_of": "2026-08-26",
+        "feed": "public-synthetic-calendar"
+      },
+      {
+        "event_id": "SYN-EVENT-CAPEX-202609",
+        "date": "2026-09-24",
+        "label": "Infrastructure spending update",
+        "kind": "earnings",
+        "expectation": "Base case: spending growth remains positive while utilization improves.",
+        "actual": null,
+        "unit": "scenario",
+        "source": "public-synthetic",
+        "as_of": "2026-08-26",
+        "feed": "public-synthetic-calendar"
+      }
+    ],
+    "watchpoints": [
+      {
+        "watch_id": "SYN-WATCH-POLICY-202609",
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-INT-DURATION",
+        "event_id": "SYN-EVENT-POLICY-202609",
+        "expectation": "Balanced guidance in the synthetic base case.",
+        "deviation": "Policy guidance turns materially restrictive.",
+        "action": "Reduce illustrative duration exposure.",
+        "status": "armed",
+        "resolved_d": null,
+        "outcome": null
+      },
+      {
+        "watch_id": "SYN-WATCH-CAPEX-202609",
+        "run_id": "mock-public-weekly-20260826-v1",
+        "candidate_id": "PUB-AI-INFRA",
+        "event_id": "SYN-EVENT-CAPEX-202609",
+        "expectation": "Positive synthetic spending growth with improving utilization.",
+        "deviation": "Utilization falls while spending growth accelerates.",
+        "action": "Review or close the illustrative infrastructure position.",
+        "status": "armed",
+        "resolved_d": null,
+        "outcome": null
+      }
+    ]
+  }
+}

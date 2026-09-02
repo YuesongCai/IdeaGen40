@@ -116,7 +116,7 @@ flowchart TB
   end
   subgraph BP["BytePlus"]
     B1["TOS"]
-    B2["RDS PostgreSQL"]
+    B2["RDS MySQL"]
     B3["ModelArk"]
     B4["MQ for Kafka"]
     B5["Cache for Redis"]
@@ -142,6 +142,9 @@ flowchart TB
 | [`ideagen/execution.py`](ideagen/execution.py) | 想买什么与怎么下单分开。纸上 / 影子 / 实盘同一接口，**实盘适配器故意不能下单** |
 | [`ideagen/backtest.py`](ideagen/backtest.py) | 同一套策略跑历史，越界即报错，**样本不够拒绝给结论** |
 | [`ideagen/scheduler.py`](ideagen/scheduler.py) | 每周三跑策略、之间常态盯市。入口幂等，心跳单独写 |
+| [`ideagen/shelf_store.py`](ideagen/shelf_store.py) | Olive 或公开 fixture 的货架/NAV 统一写入 RDS + 不可变对象存储 |
+| [`ideagen/cloud_paper.py`](ideagen/cloud_paper.py) | MySQL 上的 NAV paper 下单、持仓、盯市、到期退出与权益曲线 |
+| [`ideagen/cloud_corpus.py`](ideagen/cloud_corpus.py) | Wisburg 的有界 RDS projection 与受控原文归档；默认不启用 |
 
 ### 四条规则，每条都是被违反过一次才立的
 
@@ -169,23 +172,39 @@ flowchart TB
 | 三段全流程 | 跑通。5 主题 → 四种方式各 100 条 → 合并 96 条 → 六种挑法各自出账，14 份产物落不可变存储，落库无孤儿行 |
 | 数据源 | 语料 311 条、FRED 水平 5 条、美债拍卖 5 条、可买清单 156 条，全部免 key |
 | 授权载体门 | 156 条中 101 条可用；排除 4 条个股、6 条无日度申赎证据的私募、45 条载体待确认 |
-| 换库只换 DSN | SQLite 与 PostgreSQL 两种方言实测生成正确语句 |
+| 云数据库适配 | SQLite、MySQL 与 PostgreSQL 三种方言；当前 POC 使用 RDS MySQL |
 | 同一期只算一次 | 由数据库唯一索引保证，不只靠锁。失败重试留历史，成功重复被拒 |
-| 凭证 | 51 个跟踪文件、254 个工作目录文件、266 个 git 历史 blob，**0 处命中** |
-| 测试 | 153 项全过 |
+| 凭证 | 交付前运行 `scripts/preflight_handover.py`，不得以文档中的历史数字代替当次扫描 |
+| 测试 | 运行 `python -m unittest discover -s tests` 验证当前环境 |
 
-### 生产环（已上线）
+### 容器化部署
 
-- **推理**：ModelArk `glm-5-2-260617`，六端口全绿。四种出想法的方式跑真模型。
+- ECS 常驻 `scheduler + dashboard + Caddy`，三个容器均使用
+  `restart: always`，整机重启后自动恢复。
+- RDS MySQL 是 queryable state，TOS 是不可变 artifact store；业务状态不依赖
+  容器本地卷。
+- 周度运行和历史窗口对比均从不可变输入快照产生，运行结果写入 RDS/TOS。
+- portable shelf fixture 支持 RDS/TOS 双写，RDS paper book 支持 NAV
+  成交持仓和持续盯市。
+- weekly 模式由 `IDEAGEN_POC_WEEKLY_MODE` 选择。
+- Wisburg 云端原文同步默认关闭；Olive 授权产品标识、名称和 thesis 在 Dashboard
+  默认脱敏。
+
+### 本地生产环
+
+- **推理**：OpenAI-compatible 推理端点和模型 ID 均通过环境变量注入。
 - **闭环**：周跑 → 各挑法出账 → 自动建仓（每挑法一本纸面账本，σ×2 止损 / σ×3 止盈在建仓时钉死）→ 逐日盯市 → 三种退出（到期 / 价格 / 事件）。
 - **常驻**：launchd 每 15 分钟一次幂等 tick，周三 07:00 HKT 自动跑当期并建仓；心跳单独写，停掉的系统和安静的一周长得不一样。
-- **云端存**：混合平台——产物落 TOS（不可变），状态 SQLite，推理 ModelArk。换到 RDS/Redis 只差一个 DSN，那是下一步的成本决定。
+- **云端存**：本地运行可使用 SQLite；BytePlus POC 已使用 RDS MySQL + TOS。
 - **错过不补**：错过的周期记为永久缺失。此时补跑会用已经印出来的 K 线成交进场区间——那是带后见之明的运行，不是迟到的运行。
 
-### 待人工决定
+### 待外部完成
 
-- **公开产物里有合作方货架数据。** 发布已被 [`scripts/check_publish_safety.py`](scripts/check_publish_safety.py) 拦住；当前版本怎么脱敏、公开历史要不要重写，需要决定。
-- **RDS / Redis 是否开通**（付费实例）：单机生产环不需要；要多沙箱并行才需要 Redis 锁。
+- **Olive OAuth 授权。** 客户完成扫码后，先有界抓取一个产品，确认许可边界和
+  RDS/TOS snapshot，再启用 `olive-live`。
+- **Wisburg 云端语料许可。** 未明确允许前保持
+  `IDEAGEN_CLOUD_WISBURG_ENABLED=false`。
+- **Redis 是否启用。** 单 ECS 不需要；多副本调度时才需要分布式 lease。
 
 ### 已知会让回放不干净的地方
 
@@ -201,11 +220,12 @@ flowchart TB
 ## 快速开始
 
 ```bash
-git clone https://github.com/YuesongCai/IdeaGen40.git && cd IdeaGen40
+git clone <repository-url> IdeaGen40 && cd IdeaGen40
 pip install -r requirements.txt
 ```
 
-凭证放在仓库之外的 `~/.ideagen.env`（chmod 600，不会被提交）。只列变量名：
+凭证放在 `~/.ideagen.env`，或被 Git 忽略且权限为 `0600` 的项目根 `.env`。
+只列变量名：
 
 ```
 WISBURG_MCP_TOKEN                     语料源
@@ -213,6 +233,15 @@ FUTU_HOST / FUTU_PORT                 行情（只用行情上下文，从不打
 ARK_API_KEY                           ModelArk 推理
 BYTEPLUS_ACCESS_KEY / _SECRET_KEY     对象存储与云服务
 BYTEPLUS_REGION                       区域
+IDEAGEN_TOS_BUCKET / _PREFIX          TOS 产物桶与环境前缀
+IDEAGEN_TOS_ENDPOINT                  可选；同 VPC 可使用私网 endpoint
+IDEAGEN_STATE_ENGINE=mysql            状态库类型
+IDEAGEN_MYSQL_HOST / _PORT            RDS MySQL 连接地址与端口
+IDEAGEN_MYSQL_DATABASE / _USER        数据库与账号
+IDEAGEN_MYSQL_PASSWORD                数据库密码
+IDEAGEN_POC_WEEKLY_MODE               public-synthetic | shelf-fixture | olive-live | olive-auto | wisburg-auto
+IDEAGEN_CLOUD_WISBURG_ENABLED         wisburg-auto 必须为 true
+IDEAGEN_DASH_SHOW_LICENSED_NAMES      默认 false
 ```
 
 先体检，全绿再跑：
@@ -225,6 +254,24 @@ python3 -c "from ideagen import cli; cli.main(['platform','--env'])"
 
 ```bash
 python3 -c "from ideagen import cli; cli.main(['weekly'])"
+```
+
+BytePlus POC 的公开 shelf 与 paper 路径：
+
+```bash
+python3 -m ideagen.cli poc-load-shelf-fixture --as-of 2026-08-30
+python3 -m ideagen.cli poc-run-weekly --mode shelf-fixture --as-of 2026-08-30
+python3 -m ideagen.cli book
+python3 -m ideagen.cli cloud-monitor
+```
+
+BytePlus 上使用 Wisburg 真实研报、并让 Olive 货架自动切换：
+
+```bash
+python3 -m ideagen.cli cloud-ingest --incremental --details 3
+python3 -m ideagen.cli poc-run-weekly --mode wisburg-auto
+python3 -m ideagen.cli book
+python3 -m ideagen.cli cloud-monitor
 ```
 
 只跑机械挑法、不落库：

@@ -37,3 +37,6 @@ venv/
 # Platform artifacts — run products live in TOS, not in git
 data/artifacts/
 data/exports/
+
+# cloud resource inventory (account ids, EIPs, resource ids) — operator-local
+data/cloud_inventory.md

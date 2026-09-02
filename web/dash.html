@@ -1584,6 +1584,7 @@ function statusStrip(){
   var wkOut=hbOutcome('weekly');
   var curPeriod=(S.schedule||{}).current_period;
   var weeklyFailed=wkOut&&wkOut.action==='failed';
+  var weeklyDelegated=wkOut&&wkOut.action==='delegated';
   var cls=!alive?(synthetic?'warn':'bad'):(inf?'run':((weeklyFailed||badPorts.length)?'warn':'ok'));
   var word,sub;
   var lw=lastOkWeekly();
@@ -1597,6 +1598,9 @@ function statusStrip(){
     var mins=inf.started_at?Math.max(0,Math.round((Date.now()-new Date(inf.started_at).getTime())/60000)):null;
     word='本期的选仓正在进行';
     sub='AI 正在读研报、写想法、挑持仓'+(mins!==null?'（已运行 '+mins+' 分钟）':'')+'，完成后自动建仓';
+  }else if(weeklyDelegated){
+    word='系统在跑（本机为观察节点）';
+    sub='本机只负责盯市与展示；本期周产由生产实例（云端）承担，这里展示的是本机账本截至最新收盘的计价'+(lw&&lw.as_of?'（本机最近一次完整周产：'+esc(lw.as_of)+' 期）':'');
   }else if(weeklyFailed){
     word='系统在跑，但本期周跑失败了';
     sub='心跳记录：'+esc(wkOut.period||curPeriod||'本期')+' 期周跑失败——页面显示的是上一期（'+esc(lw?lw.as_of:'—')+'）的成果，点开看失败线索';

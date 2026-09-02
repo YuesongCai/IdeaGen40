@@ -1074,6 +1074,21 @@ def tick(now_utc: datetime, *, p: plat.Platform | None = None,
                     continue
                 if job.name == "weekly":
                     as_of, _ = weekly_period(now_hkt)
+                    # A node can declare itself an observer: it marks, monitors
+                    # and serves the dashboard, but weekly production belongs to
+                    # another instance (the cloud runner). Without this, an
+                    # observer attempts the weekly every tick, fails on its
+                    # deliberately-absent model credentials, and the dashboard
+                    # reports a failure for a week the production node actually
+                    # completed — a lie manufactured by architecture, not data.
+                    role = (os.environ.get("IDEAGEN_WEEKLY_ROLE", "")
+                            or _env_file_get("IDEAGEN_WEEKLY_ROLE") or "runner")
+                    if role.lower() == "observer":
+                        why = "本机为观察节点：只盯市与服务面板，周产由生产实例承担"
+                        rep.outcomes.append(JobOutcome(
+                            job.name, as_of.isoformat(), "delegated", why))
+                        log(f"  {job.name:<7} 移交：{why}")
+                        continue
                     rep.outcomes.append(_run_weekly(
                         p, now_hkt, now_utc, as_of=as_of, dry_run=dry_run,
                         ingest=ingest, weekly_kwargs=weekly_kwargs, log=log))
@@ -1092,6 +1107,16 @@ def tick(now_utc: datetime, *, p: plat.Platform | None = None,
     return rep
 
 
+def _env_file_get(key: str) -> str | None:
+    """Read one key from ~/.ideagen.env without loading a platform."""
+    try:
+        from .platform.local import EnvSecretStore
+        from .platform import _ENV_FILE
+        return EnvSecretStore(_ENV_FILE).get(key, required=False)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _heartbeat(p: plat.Platform, rep: TickReport, *, interval_s: int) -> bool:
     """Proof of life, written every tick whatever else happened.
 
@@ -1105,13 +1130,46 @@ def _heartbeat(p: plat.Platform, rep: TickReport, *, interval_s: int) -> bool:
     the artifact tree with one object every five minutes.
     """
     ok = False
+    outcomes = [{"job": o.job, "period": o.period, "action": o.action}
+                for o in rep.outcomes]
+
+    # The weekly outcome must not evaporate between ticks. A failure happens on
+    # one tick; every later tick reports the weekly as merely "not due", so a
+    # heartbeat that carries only this tick's outcomes makes the failure appear
+    # and disappear — and the dashboard banner flickers with it. Material
+    # outcomes (ran/failed) are persisted per period and merged back into every
+    # subsequent heartbeat until the period rolls over.
+    STICKY = "scheduler:weekly_material"
+    try:
+        material = next((o for o in rep.outcomes
+                         if o.job == "weekly" and o.action in ("ran", "failed")),
+                        None)
+        if material:
+            p.cache.set(STICKY, json.dumps(
+                {"job": "weekly", "period": material.period,
+                 "action": material.action, "detail": material.detail_summary()
+                  if hasattr(material, "detail_summary") else str(material.why or "")[:200],
+                 "at_utc": rep.at_utc}).encode(), ttl_s=14 * 86400)
+        elif not any(o["job"] == "weekly" and o["action"] in ("ran", "failed")
+                     for o in outcomes):
+            raw = p.cache.get(STICKY)
+            if raw:
+                sticky = json.loads(raw)
+                cur = weekly_period(datetime.fromisoformat(rep.at_hkt))[0]
+                cur_str = (cur.date().isoformat() if hasattr(cur, "date")
+                           else str(cur))
+                if sticky.get("period") == cur_str:
+                    outcomes.append({k: sticky[k] for k in
+                                     ("job", "period", "action") if k in sticky})
+    except Exception:  # noqa: BLE001 — liveness must never fail on bookkeeping
+        pass
+
     payload = {
         "at_utc": rep.at_utc, "at_hkt": rep.at_hkt, "platform": rep.platform,
         "venue": rep.venue, "host": os.environ.get("HOSTNAME", ""),
         "interval_s": interval_s, "exit_code": rep.exit_code,
         "fatal": rep.fatal, "errors": rep.errors,
-        "outcomes": [{"job": o.job, "period": o.period, "action": o.action}
-                     for o in rep.outcomes],
+        "outcomes": outcomes,
     }
     try:
         p.cache.set(HEARTBEAT_KEY,

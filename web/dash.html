@@ -666,6 +666,31 @@ tr.expandable{cursor:pointer}
 .nav-item.active .nav-sub{color:var(--color-text-brand)}
 .hold-wrap{max-height:340px}
 
+/* ── 推理链（语料→主题→想法→候选→账本→持仓） ─────────────── */
+.chain-card{padding:var(--space-4) var(--space-5)}
+.chain-scroll{overflow-x:auto;padding-bottom:2px}
+.chain{display:flex;align-items:stretch;gap:0;min-width:min-content}
+.chain-node{
+  flex:1;min-width:96px;position:relative;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  padding:var(--space-2) var(--space-2);border-radius:var(--radius-md);
+  transition:background-color var(--duration-fast) var(--ease-standard);
+}
+button.chain-node:hover{background:var(--color-surface-brand-subtle)}
+.chain-node .cn-num{font:600 22px/28px var(--font-sans);color:var(--color-text-primary)}
+.chain-node .cn-num .u{font:500 12px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.chain-node.hot .cn-num{color:var(--color-text-brand)}
+.chain-node .cn-label{font:500 13px/18px var(--font-sans);color:var(--color-text-secondary);margin-top:2px}
+.chain-node .cn-sub{font:400 11px/15px var(--font-sans);color:var(--color-text-tertiary);margin-top:1px}
+.chain-node .cn-go{font:400 11px/15px var(--font-sans);color:var(--color-text-brand);opacity:0;transition:opacity var(--duration-fast) var(--ease-standard)}
+button.chain-node:hover .cn-go{opacity:1}
+.chain-arrow{
+  flex:none;align-self:center;color:var(--color-fill-tertiary);
+  padding:0 2px;display:flex;align-items:center;
+}
+.chain-story{font:400 13px/19px var(--font-sans);color:var(--color-text-metadata);margin-top:var(--space-3);border-top:1px solid var(--color-border-subtle);padding-top:var(--space-3)}
+.chain-story b{color:var(--color-text-primary);font-weight:600}
+
 /* ── 过程 view: 目录 overlay + 面板导航 ─────────────────────── */
 .proc-head{
   display:flex;align-items:center;gap:var(--space-4);
@@ -874,7 +899,6 @@ tr.expandable{cursor:pointer}
       <div id="deadBanner"></div>
 
       <section class="view" id="view-week"></section>
-      <section class="view" id="view-backtest"></section>
       <section class="view" id="view-process"></section>
       <section class="view" id="view-audit"></section>
     </div>
@@ -944,21 +968,24 @@ function hktParts(){
   return {y:+o.year,m:+o.month,d:+o.day,H:+o.hour%24,M:+o.minute,S:+o.second,wd:wdMap[o.weekday]};
 }
 var WD=['周日','周一','周二','周三','周四','周五','周六'];
-/* next weekly trigger from API schedule (fallback: computed Wed 07:00 HKT) */
+/* next weekly trigger — 只用 API 的 schedule.trigger_hkt 推算；API 没给就返回 null（不编时刻表） */
 function nextRunInfo(){
   var sch=(S&&S.schedule)||{};
   var t=sch.trigger_hkt?new Date(sch.trigger_hkt).getTime():NaN;
-  if(!isNaN(t)){
-    var now=Date.now();
-    while(t<=now) t+=7*86400000;
-    var ds=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Hong_Kong',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t));
-    return {secs:Math.max(0,Math.round((t-Date.now())/1000)),date:ds};
-  }
-  var p=hktParts(),da=(3-p.wd+7)%7,sn=p.H*3600+p.M*60+p.S,tg=7*3600;
-  if(da===0&&sn>=tg)da=7;
-  var base=Date.UTC(p.y,p.m-1,p.d)+da*86400000,dd=new Date(base);
-  return {secs:da*86400+tg-sn,
-    date:dd.getUTCFullYear()+'-'+String(dd.getUTCMonth()+1).padStart(2,'0')+'-'+String(dd.getUTCDate()).padStart(2,'0')};
+  if(isNaN(t))return null;
+  var now=Date.now();
+  while(t<=now) t+=7*86400000;
+  var d=new Date(t);
+  var ds=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Hong_Kong',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+  var hm=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Hong_Kong',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);
+  var wd=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Hong_Kong',weekday:'short'}).format(d);
+  var wdMap={Sun:'周日',Mon:'周一',Tue:'周二',Wed:'周三',Thu:'周四',Fri:'周五',Sat:'周六'};
+  return {secs:Math.max(0,Math.round((t-Date.now())/1000)),date:ds,hm:hm,wd:wdMap[wd]||''};
+}
+function nextRunPhrase(){
+  var nr=nextRunInfo();
+  if(!nr)return '下次时间未知（API 未提供时刻表）';
+  return '下次 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>）';
 }
 function cdShort(secs){
   var d=Math.floor(secs/86400),h=Math.floor(secs%86400/3600),m=Math.floor(secs%3600/60),s=secs%60;
@@ -976,7 +1003,8 @@ function epi(text){
 }
 function gloss(term,def){return '<span class="gloss" title="'+esc(def)+'">'+esc(term)+'</span>'}
 function methodName(m){
-  var map={'e2e':'AI 端到端','ai_e2e':'AI 端到端','constraint':'约束边界','boundary':'约束边界',
+  var map={'e2e':'AI 端到端','ai_e2e':'AI 端到端','ai_native':'AI 端到端',
+           'constraint':'约束边界','boundary':'约束边界','carl_constraint':'约束边界',
            'chain':'传导链','transmission':'传导链','gap':'共识缺口','consensus_gap':'共识缺口'};
   return map[m]||m;
 }
@@ -1003,23 +1031,59 @@ function inFlightRun(){
   }
   return (S.runs||[]).find(function(x){return x.kind==='weekly'&&!x.ended_at})||null;
 }
+/* 上次成功周跑：weekly 摘要本身就是最近一次的记录（runs 只保留近 30 条，可能已滚出） */
 function lastOkWeekly(){
   var rs=(S&&S.runs||[]).filter(function(r){return r.kind==='weekly'&&r.ok});
   rs.sort(function(a,b){return String(b.ended_at||'').localeCompare(String(a.ended_at||''))});
-  return rs[0]||null;
+  if(rs[0])return {as_of:rs[0].as_of,ended_at:rs[0].ended_at};
+  var w=(S&&S.weekly)||{};
+  if(w.ok&&w.as_of)return {as_of:w.as_of,ended_at:null};
+  return null;
+}
+/* 心跳里记录的各任务结果（weekly failed/ok/not_due 等）——runs 表不含失败的 weekly 尝试时，这是唯一凭据 */
+function hbOutcome(job){
+  var os=(((S||{}).alive||{}).heartbeat||{}).outcomes||[];
+  return os.find(function(o){return o.job===job})||null;
 }
 function currentBooks(){
   var bs=(S&&S.books)||[],rid=((S&&S.weekly)||{}).run_id;
   var current=rid?bs.filter(function(b){return b.booked_batch===rid}):[];
   return current.length?current:bs;
 }
-function liveBook(){
+/* 全账本合计（所有账本同一日期轴时逐日求和；否则不出曲线，只出可加总的量） */
+function aggBooks(){
   var bs=currentBooks();
   if(!bs.length)return null;
-  return bs.find(function(b){return b.live===true})
-    ||bs.find(function(b){return /live|real|naive|真/i.test(b.selector||'')})
-    ||bs[0];
+  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={};
+  bs.forEach(function(b){
+    cap+=(b.capital||0);
+    openN+=(b.open_positions||[]).length;
+    closedN+=(b.closed_n||0);
+    realized+=(b.realized||0);
+    (b.open_positions||[]).forEach(function(p){unreal+=(p.unrealized||0)});
+    Object.keys(b.exits||{}).forEach(function(k){exits[k]=(exits[k]||0)+(b.exits[k]||0)});
+  });
+  var axis=null,sameAxis=true;
+  bs.forEach(function(b){
+    var ds=(b.equity||[]).map(function(e){return e.d}).join(',');
+    if(axis===null)axis=ds;else if(ds!==axis)sameAxis=false;
+  });
+  var eq=null;
+  if(sameAxis&&axis){
+    eq=(bs[0].equity||[]).map(function(e,i){
+      var s=0;bs.forEach(function(b){s+=((b.equity[i]||{}).equity||0)});
+      return {d:e.d,equity:s};
+    });
+  }
+  return {books:bs,capital:cap,openN:openN,closedN:closedN,realized:realized,unrealized:unreal,exits:exits,equity:eq};
 }
+/* 持仓代码 → 候选池条目（US.BTAL → BTAL） */
+function candByCode(code){
+  var cands=((((S||{}).weekly||{}).pool)||{}).candidates||[];
+  var bare=String(code||'');var i=bare.indexOf('.');if(i>=0)bare=bare.slice(i+1);
+  return cands.find(function(c){return c.instrument_id===code||c.instrument_id===bare})||null;
+}
+function bareCode(code){var s=String(code||'');var i=s.indexOf('.');return i>=0?s.slice(i+1):s}
 function maxDrawdown(eq){
   if(!eq||eq.length<2)return null;
   var peak=-Infinity,mdd=0;
@@ -1069,10 +1133,9 @@ function renderDeadBanner(msg){
 
 /* ── navigation: 结论 / 推导 / 凭据 ──────────────────────────── */
 var VIEWS=[
-  {id:'week',label:'本周',sub:'现在怎么样',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>'},
-  {id:'backtest',label:'回测',sub:'历史窗口对比',icon:'<path d="M2 12.5h12"/><path d="M3 10l3-3 2 2 4-5"/>'},
-  {id:'process',label:'过程',sub:'为什么是这些候选',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>'},
-  {id:'audit',label:'档案',sub:'干了什么 · 什么还不能信',icon:'<path d="M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4l5-2Z"/><path d="M6 8l1.5 1.5L10.5 6.5"/>'}
+  {id:'week',label:'本周',sub:'持有什么？赚了没？',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>'},
+  {id:'process',label:'过程',sub:'这些仓怎么来的？',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>'},
+  {id:'audit',label:'底账',sub:'发生过什么？能信多少？',icon:'<path d="M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4l5-2Z"/><path d="M6 8l1.5 1.5L10.5 6.5"/>'}
 ];
 var current='week';
 function buildNav(){
@@ -1112,7 +1175,6 @@ function renderAll(){
   $('deadBanner').innerHTML='';
   renderStamp();
   renderWeek();
-  renderBacktest();
   renderProcess();
   renderAudit();
   var gaps=(S&&S.gaps)||[];
@@ -1120,55 +1182,106 @@ function renderAll(){
   if(gb){gb.style.display=gaps.length?'':'none';gb.textContent=gaps.length}
 }
 
-/* ════════════════════ ① 本周 — 结论 ════════════════════ */
+/* ════════════════════ ① 本周 — 结论（一条推理链讲完整个故事） ════════════════════ */
 function renderWeek(){
   if(!S){$('view-week').innerHTML='';return}
   var w=S.weekly||{};
-  var lb=liveBook();
-  var period=(lb&&lb.booked_as_of)||w.as_of||((S.schedule||{}).current_period)||'—';
-  var corpusFeeds=(S.feeds||[]).filter(function(f){
-    return f.kind==='corpus'&&f.as_of===w.as_of;
-  });
-  var corpusFeed=corpusFeeds.length?corpusFeeds[0]:null;
-  var corpusSource=corpusFeed&&String(corpusFeed.feed||'').indexOf('wisburg-mcp')>=0
-    ?'Wisburg MCP · RDS 快照'
-    :'当前语料源';
-  var corpusCount=w.corpus_total||(corpusFeed&&corpusFeed.n_rows)||0;
+  var ag=aggBooks();
+  var period=w.as_of||((S.schedule||{}).current_period)||'—';
 
   var html='';
-  /* H1 + 一句话解释（day-1 orientation） */
-  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 本周组合</div>'
-    +'<div class="wk-sub">AI 每周三读完全周宏观研报，形成一组'+gloss('候选持仓','一条候选持仓 = 一个带情景概率与风控条件的可交易表达')+'，再由多种挑法并行筛选。每周一盘，谁好谁差直接比。'
-    +(corpusFeed?'<br>研报来源：<b>'+esc(corpusSource)+'</b> · <span class="num">'+fmtInt(corpusCount)+'</span> 条':'')
-    +'</div>';
+  /* H1：这一期是哪一期 */
+  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合</div>'
+    +'<div class="wk-sub">AI 读完一周宏观研报 → 选主题 → 写想法 → 合并候选 → 多种挑法各记一本模拟账 → 自动建仓、逐日盯市。下面这条链就是全部过程，每个数字都能点进去看。</div>';
+
+  /* 状态条：系统现在在干什么（含本期失败的诚实陈述） */
   html+=statusStrip();
 
-  /* hero: KPI row + 净值曲线 */
-  html+=heroCard(lb);
+  /* 推理链：语料 → 主题 → 想法 → 候选 → 账本 → 持仓 → 盈亏 */
+  html+=chainStrip(ag);
 
-  /* 持仓明细 或 建仓进度 */
-  html+=holdingsCard(lb);
+  /* 赚了没：全账本合计 KPI + 合计净值曲线 */
+  html+=heroCard(ag);
 
-  /* 已持久化货架与 NAV，真实数据默认使用不可逆别名 */
-  html+=shelfCard();
+  /* 持有什么、为什么持有：按标的合并的持仓表（每行可展开完整推理链） */
+  html+=holdingsCard(ag);
 
   /* 哪种挑法在赢 */
   html+=whoWinsStrip();
 
+  /* 已持久化货架与 NAV */
+  html+=shelfCard();
+
   $('view-week').innerHTML=html;
 }
 
-/* 状态条：正不正常 + 时间锚点 */
+/* ── 推理链条 ── */
+function chainStrip(ag){
+  var w=S.weekly||{};
+  var gens=w.generators||[];
+  var nIdeas=gens.reduce(function(s,g){return s+(g.n||0)},0);
+  var nTopics=topicChosen('hgep').length;
+  var poolN=(w.pool||{}).n||0;
+  var books=ag?ag.books:[];
+  var uniq={};books.forEach(function(b){(b.open_positions||[]).forEach(function(p){uniq[p.code]=1})});
+  var nUniq=Object.keys(uniq).length;
+  var nr=nextRunInfo();
+
+  function node(val,unit,label,sub,click,hot){
+    var inner='<span class="cn-num num">'+val+(unit?'<span class="u"> '+unit+'</span>':'')+'</span>'
+      +'<span class="cn-label">'+label+'</span>'
+      +(sub?'<span class="cn-sub">'+sub+'</span>':'')
+      +(click?'<span class="cn-go">点开看 ›</span>':'');
+    return click
+      ?'<button type="button" class="chain-node'+(hot?' hot':'')+'" onclick="'+click+'">'+inner+'</button>'
+      :'<div class="chain-node'+(hot?' hot':'')+'">'+inner+'</div>';
+  }
+  var arrow='<span class="chain-arrow" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h7M7.5 4 11 7l-3.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+
+  var nodes=[];
+  nodes.push(node(w.corpus_total?fmtInt(w.corpus_total):'—','篇','读研报',w.corpus_total?'宏观语料':'本期未读入','gotoProc(0)'));
+  nodes.push(node(nTopics?fmtInt(nTopics):'—','个','选主题',nTopics?'HGEP 打分':'待筛选A','gotoProc(1)'));
+  nodes.push(node(nIdeas?fmtInt(nIdeas):'—','条','写想法',gens.length?gens.length+' 种方式':'待筛选B','gotoProc(2)'));
+  nodes.push(node(poolN?fmtInt(poolN):'—','条','合并候选',poolN?'一标一条':'待合并','gotoProc(3)'));
+  nodes.push(node(books.length?fmtInt(books.length):'—','本','账各自挑',(w.selectors||[]).length?(w.selectors||[]).length+' 种挑法':'待筛选C','gotoProc(4)'));
+  nodes.push(node(ag?fmtInt(ag.openN):'—','仓','现在持有',ag?(nUniq+' 个标的'):'尚未建仓','gotoWeekAnchor(\'holdCard\')',true));
+  nodes.push(node(ag?signedMoney(ag.unrealized):'—','','浮动盈亏',ag?'已实现 '+signedMoney(ag.realized):'','gotoWeekAnchor(\'heroCard\')',true));
+
+  var story;
+  if(ag&&books.length){
+    story='读了 <b class="num">'+fmtInt(w.corpus_total||0)+'</b> 篇研报 → 选出 <b class="num">'+fmtInt(nTopics)+'</b> 个主题 → '
+      +'<b class="num">'+gens.length+'</b> 种方式写了 <b class="num">'+fmtInt(nIdeas)+'</b> 条想法 → 合并成 <b class="num">'+fmtInt(poolN)+'</b> 条候选 → '
+      +'<b class="num">'+fmtInt(books.length)+'</b> 本账各自挑选 → 现在共持 <b class="num">'+fmtInt(ag.openN)+'</b> 仓（'+fmtInt(nUniq)+' 个标的），'
+      +'浮动盈亏 <b class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</b>。';
+  }else if(w.in_flight){
+    story='本期选仓正在进行——链条节点会随每一步完成逐个亮起。';
+  }else{
+    story='还没有入账的组合'+(nr?'——下次周跑 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）后，这条链会填上全部数字':'（API 未提供下次时刻）')+'。';
+  }
+  return '<div class="card chain-card section" aria-label="本期推理链">'
+    +'<div class="chain-scroll scroll-thin"><div class="chain">'+nodes.join(arrow)+'</div></div>'
+    +'<div class="chain-story">'+story+'</div>'
+  +'</div>';
+}
+function gotoProc(step){switchView('process');procStep=step;tocOpen=false;renderProcess();window.scrollTo(0,0)}
+function gotoWeekAnchor(id){
+  var el=$(id);
+  if(el)el.scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+/* 状态条：系统现在在干什么（心跳 + 本期结果 + 端口，全部照 API 说） */
 function statusStrip(){
   var a=S.alive||{},hb=a.heartbeat||{};
   var alive=!!a.ok;
   var synthetic=isSynthetic();
   var inf=inFlightRun();
-  var portBad=(a.ports||[]).some(function(p){return !p.ok});
-  var cls=!alive?(synthetic?'warn':'bad'):(inf?'run':(portBad?'warn':'ok'));
+  var badPorts=(a.ports||[]).filter(function(p){return !p.ok});
+  var wkOut=hbOutcome('weekly');
+  var curPeriod=(S.schedule||{}).current_period;
+  var weeklyFailed=wkOut&&wkOut.action==='failed';
+  var cls=!alive?(synthetic?'warn':'bad'):(inf?'run':((weeklyFailed||badPorts.length)?'warn':'ok'));
   if(!alive&&!synthetic&&!statusForced){statusOpen=true;statusForced=true}
   var word,sub;
-  var nr=nextRunInfo();
   var lw=lastOkWeekly();
   if(!alive&&synthetic){
     word='调度心跳丢失';
@@ -1178,17 +1291,23 @@ function statusStrip(){
     sub='最后心跳 '+ageWord(a.age_s)+'——点开看哪里断了';
   }else if(inf){
     var mins=inf.started_at?Math.max(0,Math.round((Date.now()-new Date(inf.started_at).getTime())/60000)):null;
-    word='本周的选仓正在进行';
+    word='本期的选仓正在进行';
     sub='AI 正在读研报、写想法、挑持仓'+(mins!==null?'（已运行 '+mins+' 分钟）':'')+'，完成后自动建仓';
+  }else if(weeklyFailed){
+    word='系统在跑，但本期周跑失败了';
+    sub='心跳记录：'+esc(wkOut.period||curPeriod||'本期')+' 期周跑失败——页面显示的是上一期（'+esc(lw?lw.as_of:'—')+'）的成果，点开看失败线索';
+  }else if(badPorts.length){
+    word='系统在跑，有告警';
+    sub=badPorts.map(function(p){return esc(p.name)}).join(' / ')+' 端口异常——点开看详情';
   }else{
     word='系统在跑';
-    sub='一切按周频自动运行';
+    sub='心跳、端口、数据源都正常，按周频自动运行';
   }
   var p=hktParts();
   var anchor='今天'+WD[p.wd]+' <span class="num js-now">'+String(p.H).padStart(2,'0')+':'+String(p.M).padStart(2,'0')+'</span>'
-    +' · 上次'+gloss('周跑','每周三 07:00 自动运行一次的全流程：读研报 → 选主题 → 写想法 → 挑持仓 → 建仓')
-    +(lw?' '+hktFmt(lw.ended_at,true)+' 成功':'：尚无成功记录')
-    +' · 下次 '+esc(nr.date)+'（周三 07:00，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>）';
+    +' · 上次成功'+gloss('周跑','每周自动运行一次的全流程：读研报 → 选主题 → 写想法 → 挑持仓 → 建仓')
+    +(lw?'：'+esc(lw.as_of)+' 期'+(lw.ended_at?'（'+hktFmt(lw.ended_at,true)+'）':''):'：尚无成功记录')
+    +' · '+nextRunPhrase();
 
   var ports=(a.ports||[]).map(function(pt){
     var warn=pt.ok&&pt.detail&&pt.detail.indexOf('⚠')>=0;
@@ -1207,9 +1326,14 @@ function statusStrip(){
       +'<div class="meta-row" style="margin-top:0">'
         +'<div class="meta-kv"><div class="k">最近心跳</div><div class="v num">'+hktFmt(hb.at_hkt,true)+' HKT · '+ageWord(a.age_s)+'</div></div>'
         +'<div class="meta-kv"><div class="k">平台 / 交易场</div><div class="v">'+esc(hb.platform||S.platform||'—')+' / '+esc(hb.venue||'—')+'</div></div>'
-        +'<div class="meta-kv"><div class="k">调度</div><div class="v">'+(String(hb.platform||S.platform||'').toLowerCase()==='byteplus'?'Docker singleton':'launchd')+' · 每 '+Math.round(((S.schedule||{}).tick_interval_s||900)/60)+' 分钟自检</div></div>'
+        +((S.schedule||{}).tick_interval_s?'<div class="meta-kv"><div class="k">自检节奏</div><div class="v">每 '+Math.round(((S.schedule||{}).tick_interval_s)/60)+' 分钟一次</div></div>':'')
+        +(hb.exit_code?'<div class="meta-kv"><div class="k">上次心跳退出码</div><div class="v num" style="color:var(--color-feedback-warning-text)">'+esc(hb.exit_code)+'（非 0 = 有任务失败）</div></div>':'')
       +'</div>'
+      +(weeklyFailed?'<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||'')+'）周跑在心跳里记为 failed。runs 表没有这次尝试的明细；下方数据源健康和「盯市」错误是目前 API 给出的全部线索。</div>':'')
+      +(hb.fatal?'<div style="margin-top:var(--space-2);font:400 12px/18px var(--font-sans);color:var(--color-feedback-error-text)">fatal：'+esc(hb.fatal)+'</div>':'')
+      +((hb.errors||[]).length?'<div style="margin-top:var(--space-2);font:400 12px/18px var(--font-sans);color:var(--color-feedback-error-text)">'+hb.errors.map(esc).join('<br>')+'</div>':'')
       +'<div class="port-row" aria-label="平台端口">'+ports+'</div>'
+      +latestMonitorLine()
       +'<div style="margin-top:var(--space-3)">'
       +'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">数据源</div>'
       +feedHealthRows().map(function(f){
@@ -1224,49 +1348,59 @@ function statusStrip(){
     +'</div>'
   +'</div>';
 }
+/* 最近一次盯市/监控的结果，失败时把错误摆出来 */
+function latestMonitorLine(){
+  var m=(S.runs||[]).find(function(r){return r.kind==='monitor'});
+  if(!m)return '';
+  return '<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-text-metadata)">'
+    +'最近盯市 '+hktFmt(m.started_at,true)+'：'+(m.ok?'正常':'<span style="color:var(--color-feedback-warning-text)">失败——'+esc(plainRunError(m.error)||m.error||'')+'</span>')
+    +'</div>';
+}
 function toggleStatus(){
   statusOpen=!statusOpen;
   var d=$('statusDetail');if(d)d.style.display=statusOpen?'':'none';
   var b=document.querySelector('.status-line');if(b)b.setAttribute('aria-expanded',statusOpen?'true':'false');
 }
 
-/* KPI 行 + 净值曲线 */
-function heroCard(lb){
-  var eq=lb?(lb.equity||[]):[];
-  var last=eq.length?eq[eq.length-1].equity:null;
-  var ret=(lb&&lb.capital&&last!==null)?((last/lb.capital-1)*100):null;
-  var mdd=maxDrawdown(eq);
-  var openN=lb?(lb.open_positions||[]).length:null;
-  var closedN=lb?lb.closed_n:null;
+/* KPI 行 + 净值曲线（全账本合计口径） */
+function heroCard(ag){
+  var eq=ag?(ag.equity||[]):[];
+  var last=eq&&eq.length?eq[eq.length-1].equity:null;
+  var ret=(ag&&ag.capital&&last!==null)?((last/ag.capital-1)*100):null;
+  var mdd=eq?maxDrawdown(eq):null;
   var w=S.weekly||{};
   var nr=nextRunInfo();
 
   function tile(val,valCls,label,cap){
     return '<div class="kpi-t"><div class="k-num num '+(valCls||'')+'">'+val+'</div><div class="k-label">'+label+'</div><div class="k-cap">'+cap+'</div></div>';
   }
+  var head='<div class="qhead"><h2 class="qtitle">赚了没？</h2>'
+    +'<button type="button" class="qlink" onclick="gotoWeekAnchor(\'whoWins\')">分账本看 →</button></div>';
   var row='<div class="kpi-row">'
-    +tile(ret===null?'—':fmtPct(ret),pctCls(ret),'组合收益','纸面成交 · 未计费用')
-    +tile('—','','SPY 同期','基准接入中')
-    +tile('—','','超额','组合 − SPY')
-    +tile(mdd===null?'—':fmtPct(mdd),pctCls(mdd),'最大回撤','日频净值')
-    +tile((closedN===null?'—':fmtInt(closedN))+' · '+(openN===null?'—':fmtInt(openN)),'','已平 · 在场','笔数')
+    +tile(ret===null?'—':fmtPct(ret),pctCls(ret),'合计收益',(ag?fmtInt(ag.books.length)+' 本模拟账 · ':'')+'纸面成交 · 未计费用')
+    +tile(ag?signedMoney(ag.unrealized):'—',ag?pctCls(ag.unrealized):'','浮动盈亏','在场持仓 · 最新盯市价')
+    +tile(ag?signedMoney(ag.realized):'—',ag?pctCls(ag.realized):'','已实现','已平仓位的落袋盈亏')
+    +tile(mdd===null?'—':fmtPct(mdd),pctCls(mdd),'最大回撤','日频合计净值')
+    +tile((ag?fmtInt(ag.closedN):'—')+' · '+(ag?fmtInt(ag.openN):'—'),'','已平 · 在场','笔数')
   +'</div>';
 
   var explain='';
-  if(!lb){
+  if(!ag){
     explain=w.in_flight
-      ?'<div class="quiet" style="margin-top:var(--space-3)">数字为空是因为本周还没建仓：周跑正在进行，筛选完成后自动下单，等收盘价到位后开始计价。</div>'
-      :'<div class="quiet" style="margin-top:var(--space-3)">数字为空是因为还没有建仓：首次建仓将于 '+esc(nr.date)+'（周三 07:00）自动发生，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>。</div>';
+      ?'<div class="quiet" style="margin-top:var(--space-3)">数字为空是因为本期还没建仓：周跑正在进行，筛选完成后自动下单，等收盘价到位后开始计价。</div>'
+      :'<div class="quiet" style="margin-top:var(--space-3)">数字为空是因为还没有任何账本入账'+(nr?'：下次周跑 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）自动建仓，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>':'（API 未提供下次时刻）')+'。</div>';
   }
 
   var curve;
-  if(eq.length>=2){
-    curve=singleCurveSVG(lb)+'<div class="card-note" style="margin-top:2px">净值指数：期初 = 100；SPY 对照曲线待基准数据接入</div>';
+  if(eq&&eq.length>=2){
+    curve=singleCurveSVG({equity:eq,capital:ag.capital})+'<div class="card-note" style="margin-top:2px">全账本合计净值指数：期初 = 100（API 暂无基准数据，无法画 SPY 对照）</div>';
+  }else if(ag&&!eq){
+    curve='<div class="quiet" style="margin-top:var(--space-4)">各账本净值日期轴不一致，合计曲线暂不可画——分账本曲线见下方「哪种挑法在赢」。</div>';
   }else{
     curve='<div class="quiet" style="margin-top:var(--space-4)">还没有净值曲线——第一批持仓建立后逐日'+gloss('盯市','每个交易日收盘后用最新价格重算一遍持仓盈亏')+'生成。</div>';
   }
 
-  return '<div class="card section">'+row+explain
+  return '<div class="card section" id="heroCard">'+head+row+explain
     +'<div style="margin-top:var(--space-4)">'+curve+'</div>'
     +epi('样本还短——这些数字是口径正确的证据，不是结论')
   +'</div>';
@@ -1295,49 +1429,79 @@ function singleCurveSVG(lb){
   return '<div class="funnel-wrap">'+svg+'</div>';
 }
 
-/* 持仓明细 / 建仓进度 */
-function holdingsCard(lb){
+/* 持有什么、为什么持有：按标的合并（38 个标的可能被多本账共持），每行展开一条完整推理链 */
+function holdingsCard(ag){
   var w=S.weekly||{};
-  var head='<div class="qhead"><h2 class="qtitle">这周持有什么，为什么？</h2>'
-    +'<button type="button" class="qlink" onclick="goto(\'process\')">为什么是这些候选 →</button></div>';
-  if(!lb||!(lb.open_positions||[]).length){
+  var head='<div class="qhead"><h2 class="qtitle">持有什么，为什么？</h2>'
+    +'<button type="button" class="qlink" onclick="goto(\'process\')">整个选仓过程 →</button></div>';
+  if(!ag||!ag.openN){
     var nr=nextRunInfo();
     var line=w.in_flight
-      ?'选仓正在进行——完成后这里出现候选持仓，每条都带一句「为什么买」。'
-      :'首次建仓将于 '+esc(nr.date)+'（周三 07:00）自动发生，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>——建仓后这里出现候选持仓，每条都带一句「为什么买」。';
-    return '<div class="card section">'+head
+      ?'选仓正在进行——完成后这里出现持仓，每条都带一句「为什么买」。'
+      :'还没有在场持仓'+(nr?'——下次建仓 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）自动发生，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>':'（API 未提供下次建仓时刻）')+'。';
+    return '<div class="card section" id="holdCard">'+head
       +stepperHTML()
       +'<div class="quiet" style="text-align:center;margin-top:var(--space-2)">'+line+'</div>'
     +'</div>';
   }
-  var pos=lb.open_positions||[];
-  var rows=pos.map(function(p,i){
-    var pid='wk'+i;
-    var name=p.instrument_name||p.code;
+  /* 按标的合并各账本的同名持仓 */
+  var byCode={},order=[];
+  ag.books.forEach(function(b){
+    (b.open_positions||[]).forEach(function(p){
+      var k=p.code;
+      if(!byCode[k]){byCode[k]={code:p.code,name:p.instrument_name,thesis:p.thesis,theme_id:p.theme_id,
+        entry_px:p.entry_px,last_px:p.last_px,stop_px:p.stop_px,take_px:p.take_px,opened_d:p.opened_d,
+        unrealized:0,books:[]};order.push(k)}
+      byCode[k].unrealized+=(p.unrealized||0);
+      byCode[k].books.push(b.selector||b.book_id);
+    });
+  });
+  order.sort(function(a,b){return byCode[b].unrealized-byCode[a].unrealized});
+  var rows=order.map(function(k,i){
+    var p=byCode[k],pid='wk'+i;
+    var name=p.name||p.code;
+    var chgPct=(p.entry_px&&p.last_px)?((p.last_px/p.entry_px-1)*100):null;
     var stopDist=(p.last_px&&p.stop_px)?((p.stop_px-p.last_px)/p.last_px*100):null;
-    return '<tr class="expandable" onclick="togglePos(\''+pid+'\')" title="点击展开完整论点与风控">'
+    var cand=candByCode(p.code);
+    /* 展开 = 这一仓的推理链：论点 → 主题 → 提出方式 → 赔率 → 风控 → 谁在持有 */
+    var chainRows='';
+    chainRows+='<div style="margin-bottom:6px;color:var(--color-text-secondary)"><b style="font-weight:600;color:var(--color-text-primary)">论点</b>　'+esc(p.thesis||'（这仓没有存论点）')+'</div>';
+    chainRows+='<div class="derive-kv" style="margin-top:0">'
+      +(p.theme_id?'<span>来自主题 <button type="button" class="exp-btn mono" onclick="event.stopPropagation();openTopicEvidence(\''+esc(p.theme_id)+'\')">'+esc(p.theme_id)+'</button>（'+esc(topicLabel(p.theme_id))+'）</span>':'<span style="color:var(--color-text-tertiary)">没有记录来源主题</span>')
+      +(cand?'<span>提出方式：'+(cand.proposed_by||[]).map(methodName).map(esc).join(' / ')+'（共 '+fmtInt(cand.n_proposals)+' 个提案）</span>':'')
+      +'</div>';
+    if(cand){
+      chainRows+='<div class="derive-kv">'
+        +'<span class="num">上行 '+fmtPct(cand.upside_pct)+'（P '+fmtProb(cand.p_up)+'）</span>'
+        +'<span class="num">下行 '+fmtPct(cand.downside_pct)+'（P '+fmtProb(cand.p_down)+'）</span>'
+        +'<span class="num">赚亏比 '+rrText(cand)+'</span>'
+        +'<span><button type="button" class="exp-btn" onclick="event.stopPropagation();filterPoolCode(\''+esc(bareCode(p.code))+'\')">在候选池里看这条 ›</button></span>'
+        +'</div>';
+    }else{
+      chainRows+='<div class="derive-kv"><span style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
+    }
+    chainRows+='<div class="derive-kv">'
+      +'<span class="num">止损 '+fmtMoney(p.stop_px)+'（σ×2，触发即自动卖）</span>'
+      +'<span class="num">止盈 '+fmtMoney(p.take_px)+'（σ×3）</span>'
+      +'<span>开仓 '+esc(p.opened_d||'—')+'</span>'
+      +'<span>'+fmtInt(p.books.length)+' 本账持有：'+p.books.map(function(x){return '<span class="tag">'+esc(x)+'</span>'}).join(' ')+'</span>'
+      +'</div>';
+    return '<tr class="expandable" onclick="togglePos(\''+pid+'\')" title="点击展开：为什么持有这一仓">'
       +'<td class="primary">'+esc(name)+'<span class="mono" style="color:var(--color-text-tertiary);font-size:12px">　'+esc(p.code)+'</span></td>'
-      +'<td style="max-width:380px"><span class="clamp1">'+esc(p.thesis||'—')+'</span></td>'
-      +'<td class="r num">'+fmtMoney(p.entry_px)+'</td>'
-      +'<td class="r num">'+fmtMoney(p.last_px)+'</td>'
+      +'<td style="max-width:340px"><span class="clamp1">'+esc(p.thesis||'—')+'</span></td>'
+      +'<td class="r num">'+fmtInt(p.books.length)+'</td>'
+      +'<td class="r num '+pctCls(chgPct)+'">'+(chgPct===null?'—':fmtPct(chgPct))+'</td>'
       +'<td class="r num '+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'</td>'
       +'<td class="r num down">'+(stopDist===null?'—':fmtPct(stopDist))+'</td>'
       +'</tr>'
-      +'<tr class="thesis-row" style="display:none" data-pid="'+pid+'"><td colspan="6">'
-      +(p.thesis?'<div style="margin-bottom:6px;color:var(--color-text-secondary)">'+esc(p.thesis)+'</div>':'')
-      +'<div class="derive-kv" style="margin-top:0">'
-      +'<span class="num">止损 '+fmtMoney(p.stop_px)+'（σ×2）</span>'
-      +'<span class="num">止盈 '+fmtMoney(p.take_px)+'（σ×3）</span>'
-      +'<span>开仓 '+esc(p.opened_d||'—')+'</span>'
-      +(p.theme_id?'<span>主题 '+esc(p.theme_id)+'</span>':'')
-      +'<span><button type="button" class="exp-btn" onclick="event.stopPropagation();filterPoolCode(\''+esc(p.code)+'\')">看候选池原始赔率 ›</button></span>'
-      +'</div></td></tr>';
+      +'<tr class="thesis-row" style="display:none" data-pid="'+pid+'"><td colspan="6">'+chainRows+'</td></tr>';
   }).join('');
-  return '<div class="card section">'+head
+  return '<div class="card section" id="holdCard">'+head
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">'+fmtInt(order.length)+' 个标的 · 被 '+fmtInt(ag.books.length)+' 本账共 '+fmtInt(ag.openN)+' 次持有 · 盈亏为全账本合计 · 按盈亏排序</div>'
     +'<div class="table-wrap scroll-y scroll-thin hold-wrap"><table>'
-    +'<thead><tr><th>标的</th><th>为什么买</th><th class="r">进场</th><th class="r">现价</th><th class="r">盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th></tr></thead>'
+    +'<thead><tr><th>标的</th><th>为什么买</th><th class="r" title="被几本账同时持有">几本持有</th><th class="r">涨跌</th><th class="r">合计盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
-    +epi('等权买入 · '+gloss('σ×2 止损 / σ×3 止盈','按标的近月波动率 σ 定距离：跌破进场价−2σ 自动卖出止损，涨过+3σ 止盈')+'自动执行 · 点行看完整论点')
+    +epi('等权买入 · '+gloss('σ×2 止损 / σ×3 止盈','按标的近月波动率 σ 定距离：跌破进场价−2σ 自动卖出止损，涨过+3σ 止盈')+'自动执行 · 点任意行看这一仓的完整推理链：论点 → 主题 → 提出方式 → 赔率 → 风控')
   +'</div>';
 }
 /* A→B→C→建仓 stepper */
@@ -1370,12 +1534,12 @@ function stepperHTML(){
 /* 哪种挑法在赢 */
 function whoWinsStrip(){
   var books=currentBooks();
-  var head='<div class="qhead"><h2 class="qtitle">哪种'+gloss('挑法','从同一个候选池里挑持仓的策略。4 个生成方法 + 2 个探索 + 2 个对照，各记一本模拟账')+'在赢？</h2>'
+  var head='<div class="qhead"><h2 class="qtitle">哪种'+gloss('挑法','从同一个候选池里挑持仓的策略，各记一本模拟账，同轴对比')+'在赢？</h2>'
     +'<button type="button" class="qlink" onclick="goto(\'audit\',\'sec-trust\')">比较规则 →</button></div>';
-  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一个候选池，多种挑法各记一本账，只有一种花真钱；样本够了才宣布赢家（预计 ~4 个月）。</div>';
+  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一个候选池，'+(books.length?fmtInt(books.length)+' 种':'多种')+'挑法各记一本账；样本够了才宣布赢家（预计 ~4 个月）。</div>';
   if(!books.length){
-    return '<div class="card section">'+head+sentence
-      +'<div class="quiet">首批账本入账后，这里出现 8 条同轴净值曲线——差异全部来自挑法本身。</div>'
+    return '<div class="card section" id="whoWins">'+head+sentence
+      +'<div class="quiet">还没有账本入账——首批账本入账后，这里出现同轴净值曲线，差异全部来自挑法本身。</div>'
     +'</div>';
   }
   var table='<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
@@ -1396,7 +1560,7 @@ function whoWinsStrip(){
         +'<td class="r num '+pctCls(vsAll)+'">'+(vsAll===null?'—':fmtPct(vsAll))+'</td></tr>';
     }).join('')
     +'</tbody></table></div>';
-  return '<div class="card section">'+head+sentence
+  return '<div class="card section" id="whoWins">'+head+sentence
     +pairedEquitySVG(books)
     +table
     +'<div style="margin-top:var(--space-4)"><button type="button" class="copy-btn" onclick="toggleCompare()">'+(cmpOpen?'收起对比详情':'展开对比详情')+'</button></div>'
@@ -1567,15 +1731,12 @@ function shelfCard(){
     +'</div>';
 }
 
-/* ════════════════════ ② 回测 — 可选历史窗口 ═════════════════════ */
-function renderBacktest(){
-  if(!S){$('view-backtest').innerHTML='';return}
+/* ════════════════════ 历史回测 — 底账内的一段（可选历史窗口） ═════════════════════ */
+function backtestSection(){
   var b=S.backtest||{},sum=b.summary||{},arms=sum.arms||{};
   if(!b.backtest_id){
-    $('view-backtest').innerHTML='<div class="view-intro">这一页展示相同历史输入下两种生成方法的配对回放。</div>'
-      +'<div class="card"><div class="empty"><div class="e-title">还没有云端回测记录</div>'
-      +'<div class="e-desc">回测 runner 完成后，曲线、指标和模拟持仓会从 RDS 自动出现在这里。</div></div></div>';
-    return;
+    return '<div class="card section" id="sec-backtest"><h2 class="card-title">历史回测</h2>'
+      +'<div class="empty-sm">还没有云端回测记录——回测 runner 完成后，两种生成方法在相同历史输入下的配对回放（曲线、指标、模拟持仓）会从 RDS 自动出现在这里。</div></div>';
   }
 
   var windowStart=backtestStart||b.window_start;
@@ -1636,8 +1797,8 @@ function renderBacktest(){
     +'<th class="r">进场 NAV</th><th class="r">退出 NAV</th><th class="r">收益</th><th>状态</th></tr></thead>'
     +'<tbody>'+posRows+'</tbody></table></div></div>';
 
-  $('view-backtest').innerHTML='<div class="view-intro">比较 Pure AI native 与 Carl constraint 两种生成方法在所选历史窗口内的表现。</div>'
-    +'<div class="card"><div class="card-title-row"><h2 class="card-title">历史回测</h2>'
+  return '<div id="sec-backtest">'
+    +'<div class="card section"><div class="card-title-row"><h2 class="card-title">历史回测</h2>'
     +'<div class="bt-date-control"><label for="backtestStart">起始日期</label>'
     +'<input id="backtestStart" type="date" min="'+esc(b.window_start)+'" max="'+esc(b.window_end)+'" value="'+esc(windowStart)+'" onchange="setBacktestStart(this.value)">'
     +badge('success','已完成')+'</div></div>'+meta
@@ -1646,13 +1807,14 @@ function renderBacktest(){
       +'<div class="bt-kpi"><div class="v num">'+fmtInt(points.length)+'</div><div class="k">净值点</div></div>'
       +'<div class="bt-kpi"><div class="v num">'+fmtInt(filteredPositions.length)+'</div><div class="k">模拟持仓记录</div></div>'
       +'<div class="bt-kpi"><div class="v num">'+fmtInt(sum.model_calls)+'</div><div class="k">回测模型调用</div></div>'
-    +'</div></div>'+curve+metrics+positionsCard;
+    +'</div></div>'+curve+metrics+positionsCard+'</div>';
 }
 function setBacktestStart(value){
   var b=(S&&S.backtest)||{};
   if(!value)return;
   backtestStart=value<b.window_start?b.window_start:(value>b.window_end?b.window_end:value);
-  renderBacktest();
+  renderAudit();
+  requestAnimationFrame(function(){var el=$('sec-backtest');if(el)el.scrollIntoView({block:'start'})});
 }
 function median(values){
   if(!values.length)return null;
@@ -1749,16 +1911,22 @@ function backtestCurveSVG(points){
 var procStep=null, tocOpen=false, poolFilter=null, topicRowIndex={};
 
 /* ── 候选池筛选（勾稽链的枢纽:任何一步的数字都能点进来） ── */
+/* selector.chosen 的条目形如 "pool:FXY"，候选池 instrument_id 是裸代码 "FXY"——统一归一 */
+function selChosenId(ch){
+  var id=typeof ch==='string'?ch:((ch&&ch.instrument_id)||'');
+  if(id.indexOf('pool:')===0)id=id.slice(5);
+  return id;
+}
 function poolMatch(c){
   if(!poolFilter)return true;
   var t=poolFilter.type,v=poolFilter.value;
   if(t==='topic')return c.topic_id===v;
-  if(t==='code')return c.instrument_id===v;
+  if(t==='code')return c.instrument_id===v||c.instrument_id===bareCode(v);
   if(t==='method')return (c.proposed_by||[]).some(function(m){return m===v||methodName(m)===methodName(v)});
   if(t==='selector'){
     var s=(((S||{}).weekly||{}).selectors||[]).find(function(x){return x.name===v});
     if(!s)return false;
-    return (s.chosen||[]).some(function(ch){var id=typeof ch==='string'?ch:(ch&&ch.instrument_id);return id===c.instrument_id});
+    return (s.chosen||[]).some(function(ch){return selChosenId(ch)===c.instrument_id});
   }
   return true;
 }
@@ -1934,8 +2102,9 @@ function panelCorpus(){
   var evAll=(w.evidence)||{};
 
   var body;
-  if(rows.length){
-    body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n||0)+'</b> 条研报，来自 Wisburg 聚合源。这是后面所有判断的原材料。</div>';
+  if(n){
+    body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期（'+esc(w.as_of||'')+'）一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n)+'</b> 条研报。这是后面所有判断的原材料。'
+      +'　<button type="button" class="exp-btn" onclick="openCorpus(\''+esc(w.as_of||'')+'\')">逐篇浏览这一期语料 ›</button></div>';
   }else{
     body='<div class="empty-sm">这一期的研报还没读入'+(w.in_flight?'——正在收集':'')+'</div>';
   }
@@ -2171,7 +2340,7 @@ function panelSelectors(){
           +'<span style="font:500 14px/20px var(--font-sans);color:var(--color-text-primary)">'+esc(s.name)+'</span>'
           +'<span class="card-note num">'+fmtInt(ch.length)+' 只</span></div>'
           +(ch.length?'<div style="display:flex;flex-wrap:wrap;gap:6px">'+ch.map(function(c){
-              var id=typeof c==='string'?c:(c&&c.instrument_id)||'';
+              var id=selChosenId(c);
               return '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="在候选池里看这一条" onclick="filterPoolCode(\''+esc(id)+'\')">'+esc(id)+' ›</button>';
             }).join('')+'</div>'
             +'<div style="margin-top:var(--space-2)"><button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+esc(s.name)+'\',\'挑法 '+esc(s.name)+'\')">它挑中的 '+fmtInt(ch.length)+' 条在池子里 ›</button></div>'
@@ -2242,7 +2411,7 @@ function renderCandBody(){
   $('candBody').innerHTML=arr.map(function(c,i){
     var pb=(c.proposed_by||[]).map(function(m){return '<span class="tag">'+esc(methodName(m))+'</span>'}).join(' ');
     var pickers=sels.map(function(s,si){return {s:s,si:si}}).filter(function(o){
-      return ((o.s.chosen)||[]).some(function(ch){var id=typeof ch==='string'?ch:(ch&&ch.instrument_id);return id===c.instrument_id});
+      return ((o.s.chosen)||[]).some(function(ch){return selChosenId(ch)===c.instrument_id});
     });
     return '<tr>'
       +'<td class="primary mono">'+esc(c.instrument_id)+'</td>'
@@ -2373,9 +2542,9 @@ function renderAudit(){
   var assum=S.assumptions||[],fixes=S.fixes||[];
   var curPeriod=(S.schedule||{}).current_period;
 
-  var intro='<div class="view-intro">这一页只回答两个问题：过去每周发生了什么？现在的数字能信到什么程度？</div>';
+  var intro='<div class="view-intro">这一页回答两个问题：过去每周发生了什么？现在的数字能信到什么程度？（工程细节、回测、Routine 手册都收在这里，不占主线。）</div>';
   var chips='<div class="anchor-chips">'
-    +[['sec-runs','周历'],['sec-trust','可信度']]
+    +[['sec-runs','周历'],['sec-trust','可信度'],['sec-backtest','历史回测']]
     .map(function(a){return '<button type="button" class="anchor-chip" onclick="goto(\'audit\',\''+a[0]+'\')">'+a[1]+'</button>'}).join('')
     +'</div>';
 
@@ -2391,6 +2560,19 @@ function renderAudit(){
     if(!periods[g])periods[g]={as_of:g,attempts:[],missed:true};
     else periods[g].missed=true;
   });
+  /* 上一次成功的周跑（weekly 摘要），runs 表可能已滚出 */
+  var wsum=S.weekly||{};
+  if(wsum.as_of&&!periods[wsum.as_of]){
+    periods[wsum.as_of]={as_of:wsum.as_of,attempts:[],missed:false,
+      summaryOk:!!wsum.ok,summaryCalls:wsum.calls,summaryRunId:wsum.run_id};
+  }
+  /* 本期结果只存在于心跳 outcomes 里（失败的 weekly 尝试不写 runs 表）时，也要在周历里出现 */
+  var wkOut=hbOutcome('weekly');
+  if(wkOut&&wkOut.period&&!periods[wkOut.period]){
+    periods[wkOut.period]={as_of:wkOut.period,attempts:[],missed:false,hbAction:wkOut.action};
+  }else if(wkOut&&wkOut.period&&periods[wkOut.period]&&!periods[wkOut.period].attempts.length){
+    periods[wkOut.period].hbAction=wkOut.action;
+  }
   /* 盯市一行置顶 */
   var todayStr=(function(){var p=hktParts();return p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0')})();
   var mons=runs.filter(function(r){return r.kind==='monitor'});
@@ -2416,6 +2598,9 @@ function renderAudit(){
     var state,chip;
     if(p.missed){chip=badge('error','永久缺失');state='错过了，不补：当时的研报现在取不回同样的深度，补跑等于开卷考试。'}
     else if(okRun){chip=badge('success','完成');state='顺利跑完，调用模型 '+fmtInt(okRun.calls)+' 次。'}
+    else if(p.summaryOk){chip=badge('success','完成');state='顺利跑完'+(p.summaryCalls?'，调用模型 '+fmtInt(p.summaryCalls)+' 次':'')+'（来自周跑摘要，明细运行记录已滚出近 30 条窗口）。'}
+    else if(p.hbAction==='failed'){chip=badge('error','失败');state='心跳记录：这期的周跑尝试失败。runs 表没有这次尝试的明细——线索见「本周」页状态条与数据源健康。'}
+    else if(p.hbAction){chip=badge('neutral',esc(p.hbAction));state='心跳记录的结果：'+esc(p.hbAction)+'。'}
     else if(flying){
       var mins=flying.started_at?Math.max(0,Math.round((Date.now()-new Date(flying.started_at).getTime())/60000)):null;
       chip=badge('info','进行中',true);
@@ -2431,7 +2616,12 @@ function renderAudit(){
         +(r.error?'<div style="color:var(--color-text-tertiary);font-size:12px;line-height:18px">原文：'+esc(r.error)+'</div>':'')
         +'</div>';
     }).join(''):'<div class="quiet">这一期没有运行记录。</div>';
-    var pf=feeds.filter(function(f){return f.as_of===p.as_of});
+    var pfSeen={};
+    var pf=feeds.filter(function(f){
+      if(f.as_of!==p.as_of)return false;
+      var k=f.feed+'|'+f.n_rows+'|'+f.ok;
+      if(pfSeen[k])return false;pfSeen[k]=1;return true;
+    });
     var pfHtml=pf.length
       ?'<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--color-border-subtle)">这期的数据源：'
         +pf.map(function(f){
@@ -2501,7 +2691,7 @@ function renderAudit(){
     +'</div>'
     +'</div>';
 
-  $('view-audit').innerHTML=intro+chips+runCard+trustCard;
+  $('view-audit').innerHTML=intro+chips+runCard+trustCard+backtestSection();
 }
 function hktDateOf(iso){
   var d=new Date(iso);if(isNaN(d))return '';
@@ -2720,7 +2910,7 @@ function loadDocBody(uid){
 function tick(){
   if(!S)return;
   var nr=nextRunInfo();
-  document.querySelectorAll('.js-cd').forEach(function(el){el.textContent=cdShort(nr.secs)});
+  if(nr)document.querySelectorAll('.js-cd').forEach(function(el){el.textContent=cdShort(nr.secs)});
   var p=hktParts();
   document.querySelectorAll('.js-now').forEach(function(el){
     el.textContent=String(p.H).padStart(2,'0')+':'+String(p.M).padStart(2,'0');
@@ -2730,6 +2920,7 @@ function tick(){
 /* ── boot ────────────────────────────────────────────────────── */
 buildNav();
 var initHash=(location.hash||'').replace('#','');
+if(initHash==='backtest')initHash='audit'; /* 旧链接：回测并入底账 */
 if(VIEWS.some(function(v){return v.id===initHash}))switchView(initHash);else switchView('week');
 refresh();
 setInterval(refresh,60000);

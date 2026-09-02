@@ -1416,6 +1416,20 @@ function maxDrawdown(eq){
 
 /* ── fetch loop ──────────────────────────────────────────────── */
 function refresh(){
+  /* 静态快照模式：GitHub Pages 没有后端。导出脚本把数据烙进页面
+     （window.__STATIC__），此时不发网络请求、不自动刷新，并在页眉
+     标注快照时刻——一张过期页面必须自己说明自己是快照，而不是装活。 */
+  if(window.__STATIC__){
+    S=window.__STATIC__.state||null;
+    J=window.__STATIC__.journal||null;JErr=J?null:'静态快照未包含运行日志';
+    fetchFailed=false;lastFetchOk=S&&S.generated_at?new Date(S.generated_at):new Date();
+    renderAll();
+    var st=$('stampText'),fs=$('footStamp');
+    var when=S&&S.generated_at?S.generated_at.slice(0,16).replace('T',' '):'?';
+    if(st)st.textContent='静态快照 · 截至 '+when+'（非实时）';
+    if(fs)fs.textContent='静态快照 · 截至 '+when;
+    return;
+  }
   /* 主状态到了就先渲染；运行日志（/api/journal）并行取，晚到就补渲染回执条，取不到如实显示原因 */
   fetch('/api/journal',{cache:'no-store'}).then(function(r){
     if(!r.ok)throw new Error('HTTP '+r.status);

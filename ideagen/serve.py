@@ -152,6 +152,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": f"journal 读取失败: {type(e).__name__}"})
             j.pop("host", None)
+            # Port-health meta carries raw machine facts (bucket names with the
+            # account id embedded). Display needs name/ok/detail only; the meta
+            # never leaves the server.
+            for h in (j.get("port_health") or []):
+                if isinstance(h, dict):
+                    h.pop("meta", None)
             def _scrub(o):
                 if isinstance(o, str):
                     o = _re.sub(r"tos://[\w.-]+", "tos://<bucket>", o)

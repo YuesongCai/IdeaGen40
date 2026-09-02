@@ -40,3 +40,4 @@ data/exports/
 
 # cloud resource inventory (account ids, EIPs, resource ids) — operator-local
 data/cloud_inventory.md
+web/_site/

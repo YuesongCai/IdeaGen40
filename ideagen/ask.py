@@ -614,6 +614,47 @@ def handle_context(params: dict[str, Any]) -> tuple[dict[str, Any], int]:
     return ctx, 200
 
 
+def _forward_upstream(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None:
+    """Relay /api/ask to the production instance, when one is configured.
+
+    IDEAGEN_ASK_UPSTREAM names the base URL (e.g. https://<prod-host>);
+    IDEAGEN_ASK_UPSTREAM_KEY, if set, is sent as the dash key. Returns None
+    when no upstream is configured or the relay itself fails, so the caller
+    falls back to the honest 503.
+    """
+    import os
+    import urllib.request
+    base = (os.environ.get("IDEAGEN_ASK_UPSTREAM") or "").strip().rstrip("/")
+    if not base:
+        return None
+    req = urllib.request.Request(
+        base + "/api/ask",
+        data=json.dumps(payload, ensure_ascii=False).encode(),
+        headers={"Content-Type": "application/json",
+                 # The upstream's CSRF check compares Origin against its own
+                 # external origin; a server-to-server relay has to say so.
+                 "Origin": base,
+                 **({"X-Dash-Key": k} if (k := os.environ.get(
+                     "IDEAGEN_ASK_UPSTREAM_KEY")) else {})},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            obj = json.loads(resp.read().decode())
+            status = resp.status
+    except urllib.error.HTTPError as e:  # upstream answered with an error code
+        try:
+            obj = json.loads(e.read().decode())
+        except Exception:  # noqa: BLE001
+            return None
+        status = e.code
+    except Exception:  # noqa: BLE001 — relay failure, keep the local 503
+        return None
+    if isinstance(obj, dict):
+        obj["answered_by"] = "upstream"
+        return obj, status
+    return None
+
+
 def handle_ask(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """POST /api/ask — one grounded Q&A, appended to the audit log."""
     from . import platform as plat
@@ -634,6 +675,13 @@ def handle_ask(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     try:
         out = answer(p, question, ctx, history)
     except RuntimeError as e:
+        # An observer node has no inference on purpose. If a production
+        # upstream is configured, the question travels there instead of dying
+        # here — the upstream assembles its own frozen context from the same
+        # durable stores, so the answer is grounded the same way.
+        fwd = _forward_upstream(payload)
+        if fwd is not None:
+            return fwd
         return {"error": str(e), "unavailable": True}, 503
     except Exception as e:  # noqa: BLE001 — bounded operator error, no traceback
         return {"error": _scrub_text(f"{type(e).__name__}: {e}"[:300])}, 502

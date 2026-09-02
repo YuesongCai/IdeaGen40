@@ -3790,7 +3790,7 @@ function askSend(pstr,q){
     .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
     .then(function(res){
       var h=ASKH[key]=ASKH[key]||[];
-      if(res.b&&res.b.answer)h.push({q:q,a:res.b.answer,cited:res.b.cited||[],model:res.b.model});
+      if(res.b&&res.b.answer)h.push({q:q,a:res.b.answer,cited:res.b.cited||[],model:res.b.model,via:res.b.answered_by});
       else h.push({q:q,err:(res.b&&res.b.error)||('HTTP 错误（'+(res.ok?'响应格式不对':'请求失败')+'）')});
     })
     .catch(function(e){(ASKH[key]=ASKH[key]||[]).push({q:q,err:e&&e.message?e.message:String(e)})})
@@ -3854,7 +3854,7 @@ function askDrawerBody(d){
     }else{
       html+='<div class="ask-a">'+askAnswerHTML(h.a)
         +((h.cited||[]).length?'<div class="ask-cites">引用材料：'+h.cited.map(function(c){return '<span class="tag mono" title="'+esc((c.title||'')+' — '+(c.source||''))+'">'+esc(c.id)+' '+esc(c.title||'')+'</span>'}).join('')+'</div>':'')
-        +(h.model?'<div style="margin-top:4px;font:400 11px/15px var(--font-sans);color:var(--color-text-metadata)">'+esc(h.model)+' · 仅依据上方材料作答</div>':'')
+        +(h.model?'<div style="margin-top:4px;font:400 11px/15px var(--font-sans);color:var(--color-text-metadata)">'+esc(h.model)+(h.via==='upstream'?' · 由生产实例作答':'')+' · 仅依据上方材料作答</div>':'')
         +'</div>';
     }
   });

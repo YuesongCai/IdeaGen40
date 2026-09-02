@@ -198,7 +198,10 @@ class TestPublicPocFixture(unittest.TestCase):
         self.assertIn("setBacktestStart", dashboard)
         self.assertIn("backtestArmMetrics", dashboard)
         self.assertIn("backtestPairedSummary", dashboard)
-        self.assertIn("String(corpusFeed.feed||'').indexOf('wisburg-mcp')", dashboard)
+        # The feed-labelling helper has been refactored (corpusFeed.feed →
+        # keyed lookup); the property under test is unchanged: the dashboard
+        # recognises the live wisburg-mcp feed and labels it as licensed data.
+        self.assertIn("String(key).indexOf('wisburg-mcp')", dashboard)
         self.assertIn("key==='wisburg-mcp'", dashboard)
         self.assertIn("function currentBooks()", dashboard)
         self.assertIn("b.booked_batch===rid", dashboard)

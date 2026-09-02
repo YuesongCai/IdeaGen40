@@ -33,7 +33,10 @@ deploy/entrypoint.sh  →  python3 -m ideagen.scheduler tick   （每 300s 一�
 | `BYTEPLUS_REGION` | 默认 `ap-southeast-1` | 新加坡，语料是订阅制研报，不进内地 |
 | `IDEAGEN_TOS_BUCKET` | 存 run 产物 / journal 的桶 | 产物不可变，只追加 |
 | `IDEAGEN_TOS_PREFIX` | 桶内前缀，如 `prod` / `staging` | staging 与 prod 必须分开，否则 replay 会撞 key |
-| `IDEAGEN_PG_DSN` | RDS for PostgreSQL 连接串 | **不设就退回本地 SQLite，而沙箱一销毁状态就没了** |
+| `IDEAGEN_TOS_ENDPOINT` | 可选的 TOS endpoint | 同 VPC 部署时可填写桶概览中的私网 endpoint |
+| `IDEAGEN_STATE_ENGINE` | 固定 `mysql` | 当前 POC 使用 RDS MySQL |
+| `IDEAGEN_MYSQL_HOST` / `IDEAGEN_MYSQL_PORT` | MySQL 连接地址与端口 | 端口默认 3306 |
+| `IDEAGEN_MYSQL_DATABASE` / `IDEAGEN_MYSQL_USER` / `IDEAGEN_MYSQL_PASSWORD` | 数据库与账号 | 任一缺失则 state 端口不可用 |
 | `IDEAGEN_REDIS_URL` | Cache for Redis | **不设就退回文件锁 = 幂等性失效**，见第五节 |
 
 ### 周策略要调模型时必填
@@ -77,7 +80,7 @@ docker push <your-cr-endpoint>/ideagen/scheduler:<tag>
 #      触发频率设成 UTC 的 每 15 分钟。不要在 cron 里表达"周三"——
 #      星期几由 scheduler 按 HKT 判断，见第三节。
 #    - 环境变量：按第一节注入（值只在 AgentKit 的 secret 配置里）
-#    - 网络：需要能访问 TOS / RDS / Redis / ModelArk / mcp.wisburg.com
+#    - 网络：需要能访问已配置的对象存储、数据库、缓存、推理与 MCP 端点
 ```
 
 `weekly` 与 `monitor` 共用一个沙箱，不要为周策略单独再配一个定时器：两个触发源就是
@@ -232,16 +235,13 @@ python3 -m ideagen.scheduler catch-up --since 2026-08-19 --run-recoverable
 |---|---|---|
 | `prices: OpenD 不可达` | Futu OpenD 是桌面网关，云沙箱连不到 | 只用库里已有的 K 线盯市，组合会显示落后若干交易日。要在云上盯市，需要一个常驻行情代理（见 `docs/byteplus_platform.xml` 里的 MCP 网关那条） |
 | `必需 feed wisburg：从未运行过 / 上次返回 0 行` | 语料库是空的，或 ingest 通道断了 | 周策略会跑完但 corpus 为 0 行——**这会被专门标出来**（`scheduler.weekly.thin_corpus` 事件），因为 0 行能通过所有 schema 校验，看起来就像"安静的一周" |
-| `盯市跳过：state 端口不是 SQLite` | `paper` / `monitor` 是手写 SQLite | 设了 `IDEAGEN_PG_DSN` 之后，盯市这一段跑不了。见下方 |
+| `盯市跳过：state 端口不是 SQLite` | `paper` / `monitor` 是手写 SQLite | 启用 RDS MySQL 后，legacy 盯市仍不迁移；POC 新表与编排结果不受影响 |
 
 ## 八、上生产之前必须先解决的三件事
 
-1. **`IDEAGEN_PG_DSN` 与现有 DML 不兼容。** `orchestrator.py` 与旧管线用的是
-   `INSERT OR REPLACE`（SQLite 语法），Postgres 会直接报语法错；`paper` / `monitor` /
-   `wisburg` 还要一个 `sqlite3` 连接。所以现在的可用组合是
-   **TOS + Redis + ModelArk 上云、状态先留 SQLite**（platform 层本来就支持一个端口一个端口地搬）。
-   在 DML 改成两边都认的写法之前，不要设 `IDEAGEN_PG_DSN`——否则周三第一条 insert 就会炸。
-   `ideagen/scheduler.py` 自己写的每一条语句都是 SELECT / INSERT / UPDATE，两边都能跑。
+1. **legacy `db.py` 仍是 SQLite。** 新编排层的六张 POC 表已经支持 MySQL
+   （专用 DDL + `ON DUPLICATE KEY UPDATE`），可落 `orch_runs`、feed、候选和 verdict；
+   `paper` / `monitor` / `wisburg` 的历史表仍需要 `sqlite3`，本期不迁移。
 2. **`IDEAGEN_REDIS_URL` 必须设。** 不设时 byteplus 适配器会退回文件锁，而文件锁只在
    单个沙箱内有效——幂等性的另一半（`orch_runs` 记录）还在，但"两个沙箱同时在跑"这一半
    就没了。心跳同理：退回文件缓存时，心跳会随沙箱一起消失，只剩 `orch_runs` 里

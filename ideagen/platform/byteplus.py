@@ -1,15 +1,13 @@
-"""BytePlus adapter: TOS, RDS for PostgreSQL, ModelArk, Kafka, Redis, KMS.
+"""BytePlus/Volcano adapter: TOS, RDS, ModelArk, Kafka, Redis, KMS.
 
 Written against the real SDK surfaces, verified by introspection rather than from
 memory:
 
   * `tos` 2.9.2 — `tos.TosClientV2(ak, sk, endpoint, region)`, with
     `put_object` / `get_object` / `head_object` / `list_objects_type2`.
-  * ModelArk is OpenAI-compatible: `https://ark.ap-southeast.bytepluses.com/api/v3`
-    with `ARK_API_KEY`, driven by the `openai` SDK. That compatibility is why the
-    local and production inference paths are the same code with a different base
-    URL, and why switching model vendors later is a config change.
-  * RDS for PostgreSQL over `psycopg`.
+  * The inference service is OpenAI-compatible and driven by the `openai` SDK.
+    Its endpoint and key are supplied by the deployment owner.
+  * RDS for MySQL over `PyMySQL`, with PostgreSQL compatibility via `psycopg`.
   * Message Queue for Kafka over `kafka-python`.
   * Cache for Redis over `redis`.
   * KMS over the `volcengine` SDK.
@@ -31,14 +29,46 @@ from typing import Any, Iterable, Iterator, Sequence
 from .base import (BlobStore, Cache, Completion, EventBus, Health, Inference,
                    NotConfigured, PlatformError, SecretStore, StateStore, redact_url)
 
-#: Regional endpoints. ap-southeast-1 (Singapore) is the default for a Hong Kong
-#: desk: lowest latency of the BytePlus regions and outside mainland data rules,
-#: which matters because the corpus is licensed subscription research.
-TOS_ENDPOINTS = {
-    "ap-southeast-1": "tos-ap-southeast-1.bytepluses.com",
-    "ap-southeast-3": "tos-ap-southeast-3.bytepluses.com",
-}
-ARK_BASE = "https://ark.ap-southeast.bytepluses.com/api/v3"
+# Deployment endpoints are intentionally absent from distributed source.
+TOS_ENDPOINTS: dict[str, str] = {}
+ARK_BASE = ""
+
+
+def _qmark_to_pyformat(sql: str) -> str:
+    """Translate portable qmark SQL while preserving literals and percent signs.
+
+    PyMySQL and psycopg both treat ``%`` as part of their parameter syntax, even
+    when the percent is a LIKE wildcard. Literal percent signs therefore become
+    ``%%`` before the query is passed to the driver. Question marks inside quoted
+    SQL strings stay literal rather than turning into phantom parameters.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(sql):
+        char = sql[i]
+        if quote:
+            if char == "%":
+                out.append("%%")
+            else:
+                out.append(char)
+            if char == quote:
+                if i + 1 < len(sql) and sql[i + 1] == quote:
+                    out.append(sql[i + 1])
+                    i += 1
+                else:
+                    quote = None
+        elif char in ("'", '"'):
+            quote = char
+            out.append(char)
+        elif char == "?":
+            out.append("%s")
+        elif char == "%":
+            out.append("%%")
+        else:
+            out.append(char)
+        i += 1
+    return "".join(out)
 
 
 class TosBlobStore(BlobStore):
@@ -59,7 +89,11 @@ class TosBlobStore(BlobStore):
         self.ak, self.sk = ak, sk
         self.bucket = bucket
         self.region = region
-        self.endpoint = endpoint or TOS_ENDPOINTS.get(region, TOS_ENDPOINTS["ap-southeast-1"])
+        self.endpoint = endpoint or TOS_ENDPOINTS.get(region)
+        if not self.endpoint:
+            raise NotConfigured(
+                f"no TOS endpoint mapping for region {region}; set "
+                "IDEAGEN_TOS_ENDPOINT explicitly")
         self.prefix = prefix.strip("/")
         self._client = None
 
@@ -140,11 +174,25 @@ class PostgresStateStore(StateStore):
     """
 
     paramstyle = "pyformat"
+    dialect = "postgres"
 
-    def __init__(self, dsn: str, *, connect_timeout: int = 10):
-        if not dsn:
-            raise NotConfigured("IDEAGEN_PG_DSN is not set")
+    def __init__(self, dsn: str | None = None, *, host: str | None = None,
+                 port: int = 5432, dbname: str | None = None,
+                 user: str | None = None, password: str | None = None,
+                 sslmode: str | None = None, connect_timeout: int = 10):
+        if not dsn and not all((host, dbname, user, password)):
+            raise NotConfigured(
+                "PostgreSQL needs IDEAGEN_PG_DSN, or "
+                "IDEAGEN_PG_HOST / DATABASE / USER / PASSWORD")
         self.dsn = dsn
+        self.connect_kwargs: dict[str, Any] = {}
+        if not dsn:
+            self.connect_kwargs = {
+                "host": host, "port": port, "dbname": dbname,
+                "user": user, "password": password,
+            }
+            if sslmode:
+                self.connect_kwargs["sslmode"] = sslmode
         self.connect_timeout = connect_timeout
         self._con = None
 
@@ -156,16 +204,19 @@ class PostgresStateStore(StateStore):
             except ImportError as e:
                 raise NotConfigured(
                     "psycopg missing; pip install 'psycopg[binary]'") from e
-            self._con = psycopg.connect(
-                self.dsn, row_factory=dict_row,
-                connect_timeout=self.connect_timeout, autocommit=True)
+            options = {
+                **self.connect_kwargs,
+                "row_factory": dict_row,
+                "connect_timeout": self.connect_timeout,
+                "autocommit": True,
+            }
+            self._con = (psycopg.connect(self.dsn, **options)
+                         if self.dsn else psycopg.connect(**options))
         return self._con
 
     @staticmethod
     def _sql(sql: str) -> str:
-        # Only translates the placeholder. A `?` inside a string literal would be
-        # mangled, so call sites with literal question marks must use %s directly.
-        return sql.replace("?", "%s")
+        return _qmark_to_pyformat(sql)
 
     def q(self, sql: str, args: Sequence[Any] = ()) -> list[dict[str, Any]]:
         with self._c().cursor() as cur:
@@ -219,6 +270,101 @@ class PostgresStateStore(StateStore):
                       {"engine": "postgres", "version": v, "tables": t})
 
 
+class MySQLStateStore(StateStore):
+    """RDS for MySQL, using PyMySQL and dictionary rows."""
+
+    paramstyle = "pyformat"
+    dialect = "mysql"
+
+    def __init__(self, *, host: str, database: str, user: str, password: str,
+                 port: int = 3306, ssl_ca: str | None = None,
+                 connect_timeout: int = 10):
+        if not all((host, database, user, password)):
+            raise NotConfigured(
+                "MySQL needs IDEAGEN_MYSQL_HOST / DATABASE / USER / PASSWORD")
+        self.connect_kwargs: dict[str, Any] = {
+            "host": host,
+            "port": port,
+            "database": database,
+            "user": user,
+            "password": password,
+            "charset": "utf8mb4",
+            "connect_timeout": connect_timeout,
+            "read_timeout": max(connect_timeout, 30),
+            "write_timeout": max(connect_timeout, 30),
+            "autocommit": True,
+        }
+        if ssl_ca:
+            self.connect_kwargs["ssl"] = {"ca": ssl_ca}
+        self._con = None
+
+    def _c(self):
+        if self._con is None or not getattr(self._con, "open", False):
+            try:
+                import pymysql
+                from pymysql.cursors import DictCursor
+            except ImportError as e:
+                raise NotConfigured(
+                    "PyMySQL missing; pip install PyMySQL") from e
+            self._con = pymysql.connect(
+                **self.connect_kwargs, cursorclass=DictCursor)
+        return self._con
+
+    @staticmethod
+    def _sql(sql: str) -> str:
+        return _qmark_to_pyformat(sql)
+
+    def q(self, sql: str, args: Sequence[Any] = ()) -> list[dict[str, Any]]:
+        with self._c().cursor() as cur:
+            cur.execute(self._sql(sql), tuple(args))
+            return list(cur.fetchall())
+
+    def execute(self, sql: str, args: Sequence[Any] = ()) -> int:
+        with self._c().cursor() as cur:
+            cur.execute(self._sql(sql), tuple(args))
+            return cur.rowcount
+
+    def executemany(self, sql: str, rows: Iterable[Sequence[Any]]) -> int:
+        with self._c().cursor() as cur:
+            cur.executemany(self._sql(sql), [tuple(r) for r in rows])
+            return cur.rowcount
+
+    @contextlib.contextmanager
+    def tx(self):
+        con = self._c()
+        con.begin()
+        try:
+            yield con
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+
+    def migrate(self, ddl: Sequence[str]) -> int:
+        n = 0
+        with self.tx() as con:
+            with con.cursor() as cur:
+                for stmt in ddl:
+                    s = stmt.strip()
+                    if s:
+                        cur.execute(s)
+                        n += 1
+        return n
+
+    def check(self) -> Health:
+        try:
+            v = self.q("SELECT VERSION() AS v")[0]["v"]
+            t = self.q(
+                "SELECT COUNT(*) AS n FROM information_schema.tables "
+                "WHERE table_schema=DATABASE()")[0]["n"]
+        except NotConfigured:
+            raise
+        except Exception as e:  # noqa: BLE001
+            return Health(False, "state", f"mysql unreachable: {e}")
+        return Health(True, "state", f"MySQL {v} ({t} tables)",
+                      {"engine": "mysql", "version": v, "tables": t})
+
+
 class ModelArkInference(Inference):
     """ModelArk via the OpenAI-compatible endpoint.
 
@@ -228,12 +374,16 @@ class ModelArkInference(Inference):
     schema/sampling behaviour correct.
     """
 
-    def __init__(self, *, api_key: str, model: str, base_url: str | None = None):
+    def __init__(self, *, api_key: str, model: str, base_url: str | None = None,
+                 timeout: float = 180.0, max_retries: int = 2):
         if not api_key:
             raise NotConfigured("ARK_API_KEY is not set")
+        if not (base_url or ARK_BASE):
+            raise NotConfigured("IDEAGEN_INFERENCE_BASE_URL is not set")
         from .local import DirectInference
         self._d = DirectInference(api_key=api_key, base_url=base_url or ARK_BASE,
-                                  model=model, name="modelark")
+                                  model=model, name="modelark", timeout=timeout,
+                                  max_retries=max_retries)
 
     def complete(self, prompt: str, **kw: Any) -> Completion:
         return self._d.complete(prompt, **kw)
@@ -358,9 +508,11 @@ class KmsSecretStore(SecretStore):
     """
 
     def __init__(self, *, ak: str, sk: str, region: str = "ap-southeast-1",
-                 keyring: str = "ideagen", fallback_env: bool = True):
+                 keyring: str = "ideagen", fallback_env: bool = True,
+                 fallback_store: SecretStore | None = None):
         self.ak, self.sk, self.region, self.keyring = ak, sk, region, keyring
         self.fallback_env = fallback_env
+        self.fallback_store = fallback_store
         self._svc = None
         self._cache: dict[str, str] = {}
         self.used_fallback: list[str] = []
@@ -389,7 +541,13 @@ class KmsSecretStore(SecretStore):
                 return v
         except Exception:  # noqa: BLE001 — fall through to env, then report
             pass
-        if self.fallback_env:
+        if self.fallback_store is not None:
+            v = self.fallback_store.get(name, required=False)
+            if v:
+                self.used_fallback.append(name)
+                self._cache[name] = v
+                return v
+        elif self.fallback_env:
             import os
             v = os.environ.get(name)
             if v:
@@ -398,7 +556,7 @@ class KmsSecretStore(SecretStore):
                 return v
         if required:
             raise NotConfigured(f"{name} not in KMS keyring {self.keyring!r} "
-                                f"and not in the environment")
+                                f"and not in fallback configuration")
         return None
 
     def check(self) -> Health:
@@ -408,7 +566,8 @@ class KmsSecretStore(SecretStore):
         detail = f"KMS keyring {self.keyring} @ {self.region}"
         if self.used_fallback:
             detail += (f"  ⚠ {len(self.used_fallback)} secret(s) came from the "
-                       f"environment, not KMS: {sorted(set(self.used_fallback))}")
+                       f"fallback configuration, not KMS: "
+                       f"{sorted(set(self.used_fallback))}")
         return Health(True, "secrets", detail,
                       {"keyring": self.keyring, "region": self.region,
                        "env_fallbacks": sorted(set(self.used_fallback))})

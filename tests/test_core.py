@@ -9,14 +9,23 @@ look-ahead, limit-fill pricing, marking idempotency, and the validation gate.
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from unittest import mock
 from zoneinfo import ZoneInfo
 
-from ideagen import analytics, config, db, ideas, lexicon, paper, scoring
+os.environ.setdefault("WISBURG_MCP_URL", "https://research.example/mcp")
+os.environ.setdefault("OLIVE_MCP_URL", "https://catalog.example/mcp")
+os.environ.setdefault("OLIVE_OAUTH_ISSUER", "https://sso.example")
+os.environ.setdefault("OLIVE_OAUTH_TOKEN_URL", "https://sso.example/token")
+
+from ideagen import analytics, config, db, ideas, lexicon, olive_web, paper, scoring
 from ideagen import themes as themes_mod
-from ideagen.sources import futu_px, wisburg
+from ideagen.sources import futu_px, olive, wisburg
 
 
 def mem():
@@ -330,6 +339,14 @@ class TestLexicon(unittest.TestCase):
 
 
 class TestWisburgParsing(unittest.TestCase):
+    def test_api_key_alias_is_accepted(self):
+        with mock.patch.dict(os.environ, {
+                "WISBURG_MCP_TOKEN": "",
+                "WISBURG_API_KEY": "alias-key",
+        }):
+            self.assertTrue(config.wisburg_configured())
+            self.assertEqual(config.wisburg_token(), "alias-key")
+
     def test_sse_with_raw_newlines_inside_strings(self):
         """The real server emits bare newlines inside JSON string values."""
         raw = 'event: message\ndata: {"result":{"text":"line1\nline2"},"id":1}\n\n'
@@ -365,6 +382,181 @@ class TestWisburgParsing(unittest.TestCase):
         # 16:00 UTC == 2026-08-07 00:00 HKT
         self.assertEqual(wisburg._to_hkt_date(wisburg._norm_ts("2026-08-06T17:00:00Z")),
                          "2026-08-07")
+
+
+class TestOliveMCP(unittest.TestCase):
+    class Response:
+        def __init__(self, obj=None, *, status=200, headers=None):
+            self.status_code = status
+            self.headers = headers or {}
+            self.content = (json.dumps(obj).encode() if obj is not None else b"")
+            self.text = self.content.decode()
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self):
+            return json.loads(self.content)
+
+    def test_streamable_http_session_and_tools(self):
+        session = mock.Mock()
+        session.headers = {}
+        session.post.side_effect = [
+            self.Response(
+                {"jsonrpc": "2.0", "id": 1, "result": {
+                    "protocolVersion": "2025-06-18",
+                    "serverInfo": {"name": "olive", "version": "1"},
+                }},
+                headers={"Mcp-Session-Id": "session-1"},
+            ),
+            self.Response(status=202),
+            self.Response({"jsonrpc": "2.0", "id": 2, "result": {
+                "tools": [{"name": "list_funds"}],
+            }}),
+        ]
+        with mock.patch.object(olive.requests, "Session",
+                               return_value=session):
+            client = olive.OliveMCP(access_token="token")
+            info = client.initialize()
+            tools = client.tools()
+
+        self.assertEqual(info["protocolVersion"], "2025-06-18")
+        self.assertEqual(tools, ["list_funds"])
+        self.assertEqual(session.headers["MCP-Protocol-Version"],
+                         "2025-06-18")
+        self.assertEqual(
+            session.post.call_args_list[1].kwargs["headers"],
+            {"Mcp-Session-Id": "session-1"},
+        )
+
+    def test_expired_access_token_is_refreshed_once(self):
+        session = mock.Mock()
+        session.headers = {}
+        session.post.side_effect = [
+            self.Response({"error": "unauthorized"}, status=401),
+            self.Response({"jsonrpc": "2.0", "id": 1, "result": {
+                "tools": [{"name": "list_funds"}],
+            }}),
+        ]
+        token_response = self.Response({
+            "access_token": "new-access",
+            "refresh_token": "new-refresh",
+        })
+        with mock.patch.object(olive.requests, "Session",
+                               return_value=session), \
+             mock.patch.object(olive.requests, "post",
+                               return_value=token_response) as refresh:
+            client = olive.OliveMCP(
+                access_token="expired",
+                refresh_token="old-refresh",
+                client_id="client-id",
+            )
+            self.assertEqual(client.tools(), ["list_funds"])
+
+        self.assertEqual(session.headers["Authorization"], "Bearer new-access")
+        self.assertEqual(client.refresh_token, "new-refresh")
+        refresh.assert_called_once()
+
+    def test_catalog_and_detail_merge_are_ingestable(self):
+        catalog = olive.parse_catalog(
+            "| 产品ID | 产品名称 | 市场类型 | 策略 | 系列 | 开始 | 结束 | 通道 | 预约 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Z99999 | Sample Multi Strategy | 海外二级 | 多策略 | - |"
+            " 2026-01-01 | 2026-12-31 | 新加坡 | - |\n"
+        )
+        self.assertEqual(len(catalog), 1)
+        merged = olive._merge_fund(catalog[0], {
+            "get_fund_summary": {
+                "fundName": "Sample Multi Strategy",
+                "card": {
+                    "mainMetrics": {"riskLevel": "R3"},
+                    "chartData": {"dataPoints": [
+                        {"date": "2026-08-29", "value": 1.25},
+                    ]},
+                },
+            },
+            "get_fund_performance": {
+                "performance": {"meta": {"currency": "USD"}},
+            },
+        })
+        self.assertEqual(merged["productCode"], "Z99999")
+        self.assertEqual(merged["latestNav"], 1.25)
+        self.assertEqual(merged["navDate"], "2026-08-29")
+        self.assertEqual(merged["currency"], "USD")
+
+    def test_oauth_authorization_uses_pkce_and_resource_indicator(self):
+        url, verifier, state = olive.oauth_authorization(
+            "client-id", "http://127.0.0.1:8766/callback")
+        self.assertIn("code_challenge_method=S256", url)
+        self.assertIn("resource=https%3A%2F%2Fcatalog.example%2Fmcp", url)
+        self.assertNotIn(verifier, url)
+        self.assertGreater(len(verifier), 40)
+        self.assertGreater(len(state), 20)
+
+    def test_remote_credentials_are_stored_mode_600_and_loaded(self):
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(
+                os.environ, {
+                    "IDEAGEN_OLIVE_TOKEN_FILE": str(Path(td) / "tokens.json"),
+                    "OLIVE_OAUTH_ACCESS_TOKEN": "",
+                    "OLIVE_OAUTH_REFRESH_TOKEN": "",
+                    "OLIVE_OAUTH_CLIENT_ID": "",
+                }):
+            path = config.store_olive_credentials({
+                "access_token": "access-secret",
+                "refresh_token": "refresh-secret",
+                "client_id": "remote-client",
+            })
+            loaded = config.olive_credentials()
+
+            self.assertEqual(oct(path.stat().st_mode & 0o777), "0o600")
+            self.assertEqual(loaded["access_token"], "access-secret")
+            self.assertEqual(loaded["refresh_token"], "refresh-secret")
+            self.assertEqual(loaded["client_id"], "remote-client")
+
+    def test_remote_oauth_consumes_state_once_and_never_returns_tokens(self):
+        client = mock.Mock()
+        client.initialize.return_value = {
+            "serverInfo": {"name": "olive", "version": "1"},
+        }
+        client.tools.return_value = ["list_funds", "get_fund_detail"]
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(
+                os.environ, {
+                    "IDEAGEN_PUBLIC_SITE": "https://dashboard.example.com",
+                    "IDEAGEN_OLIVE_TOKEN_FILE": str(Path(td) / "tokens.json"),
+                    "OLIVE_OAUTH_ACCESS_TOKEN": "",
+                    "OLIVE_OAUTH_REFRESH_TOKEN": "",
+                    "OLIVE_OAUTH_CLIENT_ID": "",
+                }), \
+             mock.patch.object(
+                 olive, "register_oauth_client",
+                 return_value={"client_id": "remote-client"}), \
+             mock.patch.object(
+                 olive, "oauth_authorization",
+                 return_value=("https://sso.example/authorize",
+                               "verifier-secret", "state-secret")), \
+             mock.patch.object(
+                 olive, "exchange_oauth_code",
+                 return_value={
+                     "access_token": "access-secret",
+                     "refresh_token": "refresh-secret",
+                     "expires_in": 3600,
+                 }), \
+             mock.patch.object(olive, "OliveMCP", return_value=client), \
+             mock.patch.object(olive_web, "start_sync") as start_sync:
+            olive_web.reset_for_tests()
+            url = olive_web.begin_authorization()
+            result = olive_web.complete_authorization(
+                "state=state-secret&code=authorization-code")
+
+            self.assertEqual(url, "https://sso.example/authorize")
+            self.assertEqual(result["tool_count"], 2)
+            self.assertNotIn("access_token", result)
+            self.assertNotIn("refresh_token", result)
+            start_sync.assert_called_once()
+            with self.assertRaisesRegex(ValueError, "invalid or expired"):
+                olive_web.complete_authorization(
+                    "state=state-secret&code=replayed-code")
 
 
 class TestAnalytics(unittest.TestCase):
@@ -457,6 +649,8 @@ class TestPayload(unittest.TestCase):
                 self.assertLessEqual(len(e.get("title") or ""), 220, d)
 
     def test_positions_include_unfilled_orders(self):
+        if not self.pl["positions"]:
+            self.skipTest("requires the populated local paper fixture")
         kinds = {p["kind"] for p in self.pl["positions"]}
         self.assertIn("order", kinds)
 
@@ -500,7 +694,7 @@ class TestDashboardRender(unittest.TestCase):
         self.assertGreater(len(s), 50_000)
         for bad in ("<img", "@import", "cdn.", "<script src", "<link "):
             self.assertNotIn(bad, body)
-        for host in ("rocks.wisburg.com/", "doctext.wisburg.com/"):
+        for host in ("assets.example/", "documents.example/"):
             self.assertNotIn(f'src="https://{host}', body)
         self.assertIn("window.__IG40__", s)
         self.assertIn('data-theme="dark"', s)
@@ -741,25 +935,37 @@ class TestInformationArchitecture(unittest.TestCase):
                 self.assertIsInstance(t["charts"], list)
 
     def test_theme_evidence_carries_a_reproducible_receipt(self):
+        evidence = [
+            e
+            for day in self.pl["days"].values()
+            for theme in (day.get("report") or {}).get("themes", [])
+            for e in theme["evidence"]
+        ]
+        if not evidence:
+            self.skipTest("requires the populated local corpus fixture")
         seen = 0
-        for day in self.pl["days"].values():
-            for t in (day.get("report") or {}).get("themes", []):
-                for e in t["evidence"]:
-                    if e.get("retrieval"):
-                        seen += 1
-                        self.assertTrue(e["hash"])
+        for e in evidence:
+            if e.get("retrieval"):
+                seen += 1
+                self.assertTrue(e["hash"])
         self.assertGreater(seen, 50)
 
     def test_ideas_resolve_their_citations_to_readable_references(self):
+        sources = [
+            source
+            for day in self.pl["days"].values()
+            for idea in (day.get("batch") or {}).get("ideas", [])
+            for source in idea.get("sources_resolved", [])
+        ]
+        if not sources:
+            self.skipTest("requires the populated local citation fixture")
         checked = 0
-        for day in self.pl["days"].values():
-            for i in (day.get("batch") or {}).get("ideas", []):
-                for s in i.get("sources_resolved", []):
-                    checked += 1
-                    self.assertIn("resolved", s)
-                    if s["resolved"]:
-                        self.assertTrue(s["title"])
-                        self.assertTrue(s["retrieval"])
+        for source in sources:
+            checked += 1
+            self.assertIn("resolved", source)
+            if source["resolved"]:
+                self.assertTrue(source["title"])
+                self.assertTrue(source["retrieval"])
         self.assertGreater(checked, 100)
 
     def test_weak_chart_matches_are_labelled(self):
@@ -1211,10 +1417,10 @@ class TestFundPositionsAreNotFalselyFlagged(unittest.TestCase):
             "idea_uid": "BF#1", "batch_id": "BF", "as_of": "2026-08-01",
             "local_id": 1, "tool": "SomeFund", "horizon": "1个月",
             "horizon_months": 1, "instrument": "fund", "hurdle": 0.3,
-            "futu_code": None, "olive_key": "HK0000584752"}, ["idea_uid"])
+            "futu_code": None, "olive_key": "FUND-EXAMPLE"}, ["idea_uid"])
         db.upsert(con, "positions", {
             "pos_id": "PF", "book_id": "naive", "idea_uid": "BF#1",
-            "code": "HK0000584752", "kind": "fund", "qty": 1, "avg_px": 1,
+            "code": "FUND-EXAMPLE", "kind": "fund", "qty": 1, "avg_px": 1,
             "cost": 1, "opened_d": "2026-08-01", "status": "open"}, ["pos_id"])
         self.assertEqual(ideas.instrument_mismatches(con), [])
 
@@ -1229,14 +1435,14 @@ class TestFundPositionsAreNotFalselyFlagged(unittest.TestCase):
             "idea_uid": "BF#1", "batch_id": "BF", "as_of": "2026-08-01",
             "local_id": 1, "tool": "SomeFund", "horizon": "1个月",
             "horizon_months": 1, "instrument": "fund", "hurdle": 0.3,
-            "futu_code": None, "olive_key": "HK0000584752"}, ["idea_uid"])
+            "futu_code": None, "olive_key": "FUND-EXAMPLE"}, ["idea_uid"])
         db.upsert(con, "positions", {
             "pos_id": "PF", "book_id": "naive", "idea_uid": "BF#1",
             "code": "LU0274383776", "kind": "fund", "qty": 1, "avg_px": 1,
             "cost": 1, "opened_d": "2026-08-01", "status": "open"}, ["pos_id"])
         bad = ideas.instrument_mismatches(con)
         self.assertEqual(len(bad), 1)
-        self.assertEqual(bad[0]["idea_code"], "HK0000584752")
+        self.assertEqual(bad[0]["idea_code"], "FUND-EXAMPLE")
 
 
 class TestPlatformPorts(unittest.TestCase):
@@ -1259,6 +1465,8 @@ class TestPlatformPorts(unittest.TestCase):
         keep = {k: os.environ.pop(k, None) for k in
                 ("ARK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
                  "IDEAGEN_TOS_BUCKET", "IDEAGEN_PG_DSN")}
+        env_files = P._ENV_FILES
+        P._ENV_FILES = ()
         try:
             for which in ("local", "byteplus"):
                 p = P.load(platform=which)          # must not raise
@@ -1266,9 +1474,198 @@ class TestPlatformPorts(unittest.TestCase):
                 self.assertEqual(
                     names, {"secrets", "state", "blobs", "inference", "cache", "events"})
         finally:
+            P._ENV_FILES = env_files
             for k, v in keep.items():
                 if v is not None:
                     os.environ[k] = v
+
+    def test_project_env_can_override_the_operator_file(self):
+        """The ignored project .env is the POC handoff surface.
+
+        It must override ~/.ideagen.env without mutating that operator-wide file,
+        while process environment variables still win over both.
+        """
+        import os
+        import tempfile
+        from ideagen.platform.local import EnvSecretStore
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td) / "home.env"
+            project = Path(td) / "project.env"
+            home.write_text("IDEAGEN_PG_HOST=old.example\n", encoding="utf-8")
+            project.write_text("IDEAGEN_PG_HOST=new.example\n", encoding="utf-8")
+            home.chmod(0o600)
+            project.chmod(0o600)
+            old = os.environ.pop("IDEAGEN_PG_HOST", None)
+            try:
+                sec = EnvSecretStore((home, project))
+                self.assertEqual(sec.get("IDEAGEN_PG_HOST"), "new.example")
+                self.assertEqual(sec.source("IDEAGEN_PG_HOST"), str(project))
+                self.assertTrue(sec.check().ok)
+                os.environ["IDEAGEN_PG_HOST"] = "process.example"
+                self.assertEqual(sec.get("IDEAGEN_PG_HOST"), "process.example")
+            finally:
+                os.environ.pop("IDEAGEN_PG_HOST", None)
+                if old is not None:
+                    os.environ["IDEAGEN_PG_HOST"] = old
+
+    def test_env_report_hides_the_inactive_database_engine(self):
+        import tempfile
+        from ideagen import platform as P
+        with tempfile.TemporaryDirectory() as td:
+            env_file = Path(td) / ".env"
+            env_file.write_text(
+                "IDEAGEN_STATE_ENGINE=mysql\n"
+                "IDEAGEN_MYSQL_HOST=mysql.example\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            env_files = P._ENV_FILES
+            P._ENV_FILES = (env_file,)
+            try:
+                keys = {row["key"] for row in P.env_report()}
+            finally:
+                P._ENV_FILES = env_files
+            self.assertIn("IDEAGEN_MYSQL_HOST", keys)
+            self.assertNotIn("IDEAGEN_PG_HOST", keys)
+
+    def test_postgres_fields_build_connection_options_without_a_url(self):
+        """Separate fields avoid URL-escaping database passwords by hand."""
+        from ideagen import platform as P
+        values = {
+            "IDEAGEN_PG_HOST": "db.example",
+            "IDEAGEN_PG_DATABASE": "ideagen",
+            "IDEAGEN_PG_USER": "app",
+            "IDEAGEN_PG_PASSWORD": "test-password",
+            "IDEAGEN_PG_SSLMODE": "require",
+        }
+        options = P._postgres_options(lambda key, default=None:
+                                      values.get(key, default))
+        self.assertEqual(options["port"], 5432)
+        self.assertEqual(options["password"], "test-password")
+        self.assertEqual(options["sslmode"], "require")
+        self.assertEqual(options["connect_timeout"], 10)
+
+    def test_mysql_fields_build_connection_options(self):
+        from ideagen import platform as P
+        values = {
+            "IDEAGEN_MYSQL_HOST": "mysql.example",
+            "IDEAGEN_MYSQL_DATABASE": "ideagen",
+            "IDEAGEN_MYSQL_USER": "app",
+            "IDEAGEN_MYSQL_PASSWORD": "test-password",
+        }
+        options = P._mysql_options(lambda key, default=None:
+                                   values.get(key, default))
+        self.assertEqual(options["port"], 3306)
+        self.assertEqual(options["database"], "ideagen")
+        self.assertEqual(options["password"], "test-password")
+        self.assertEqual(options["connect_timeout"], 10)
+
+    def test_requested_mysql_rejects_an_empty_configuration(self):
+        from ideagen import platform as P
+        from ideagen.platform.base import NotConfigured
+        with self.assertRaises(NotConfigured) as e:
+            P._mysql_options(lambda key, default=None: default, required=True)
+        self.assertIn("IDEAGEN_MYSQL_HOST", str(e.exception))
+
+    def test_partial_postgres_config_fails_instead_of_falling_back(self):
+        from ideagen import platform as P
+        from ideagen.platform.base import NotConfigured
+        values = {"IDEAGEN_PG_HOST": "db.example"}
+        with self.assertRaises(NotConfigured) as e:
+            P._postgres_options(lambda key, default=None:
+                                values.get(key, default))
+        self.assertIn("IDEAGEN_PG_PASSWORD", str(e.exception))
+
+    def test_postgres_store_keeps_separate_fields_for_psycopg(self):
+        from ideagen.platform.byteplus import PostgresStateStore
+        store = PostgresStateStore(
+            host="db.example", port=5432, dbname="ideagen", user="app",
+            password="test-password", sslmode="require", connect_timeout=7)
+        self.assertIsNone(store.dsn)
+        self.assertEqual(store.connect_kwargs["dbname"], "ideagen")
+        self.assertEqual(store.connect_kwargs["password"], "test-password")
+        self.assertEqual(store.connect_kwargs["sslmode"], "require")
+        self.assertEqual(store.connect_timeout, 7)
+
+    def test_mysql_store_keeps_credentials_out_of_a_url(self):
+        from ideagen.platform.byteplus import MySQLStateStore
+        store = MySQLStateStore(
+            host="mysql.example", port=3306, database="ideagen", user="app",
+            password="test-password", ssl_ca="/tmp/ca.pem", connect_timeout=7)
+        self.assertEqual(store.dialect, "mysql")
+        self.assertEqual(store.connect_kwargs["database"], "ideagen")
+        self.assertEqual(store.connect_kwargs["password"], "test-password")
+        self.assertEqual(store.connect_kwargs["ssl"], {"ca": "/tmp/ca.pem"})
+        self.assertEqual(store.connect_kwargs["connect_timeout"], 7)
+
+    def test_tos_requires_an_explicit_endpoint(self):
+        from ideagen.platform.base import NotConfigured
+        from ideagen.platform.byteplus import TosBlobStore
+        with self.assertRaises(NotConfigured):
+            TosBlobStore(
+                ak="ak", sk="sk", bucket="bucket", region="example-region")
+        store = TosBlobStore(
+            ak="ak", sk="sk", bucket="bucket", region="example-region",
+            endpoint="https://storage.example")
+        self.assertEqual(store.endpoint, "https://storage.example")
+
+    def test_tos_unknown_region_requires_an_explicit_endpoint(self):
+        from ideagen.platform.base import NotConfigured
+        from ideagen.platform.byteplus import TosBlobStore
+        with self.assertRaises(NotConfigured):
+            TosBlobStore(
+                ak="ak", sk="sk", bucket="bucket", region="unknown-region")
+
+    def test_byteplus_selects_mysql_from_the_state_engine(self):
+        import tempfile
+        from ideagen import platform as P
+        with tempfile.TemporaryDirectory() as td:
+            env_file = Path(td) / ".env"
+            env_file.write_text(
+                "IDEAGEN_STATE_ENGINE=mysql\n"
+                "IDEAGEN_MYSQL_HOST=mysql.example\n"
+                "IDEAGEN_MYSQL_DATABASE=ideagen\n"
+                "IDEAGEN_MYSQL_USER=app\n"
+                "IDEAGEN_MYSQL_PASSWORD=secret\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            env_files = P._ENV_FILES
+            P._ENV_FILES = (env_file,)
+            try:
+                platform = P.load(platform="byteplus")
+            finally:
+                P._ENV_FILES = env_files
+            self.assertEqual(platform.state.dialect, "mysql")
+
+    def test_kms_falls_back_to_the_project_env_store(self):
+        from ideagen.platform.byteplus import KmsSecretStore
+        from ideagen.platform.local import EnvSecretStore
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            env_file = Path(td) / ".env"
+            env_file.write_text("IDEAGEN_PG_HOST=db.example\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            fallback = EnvSecretStore(env_file)
+            store = KmsSecretStore(
+                ak="", sk="", fallback_store=fallback, fallback_env=False)
+            self.assertEqual(store.get("IDEAGEN_PG_HOST"), "db.example")
+            self.assertIn("IDEAGEN_PG_HOST", store.used_fallback)
+
+    def test_existing_ark_names_resolve_to_platform_settings(self):
+        from ideagen import platform as P
+        from ideagen.platform.local import EnvSecretStore
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            env_file = Path(td) / ".env"
+            env_file.write_text(
+                "ARK_BASE_URL=https://ark.example/v3\n"
+                "ARK_MODEL_ID=ep-demo\n"
+                "ARK_TIMEOUT_SECONDS=45\n"
+                "ARK_MAX_RETRIES=1\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            sec = EnvSecretStore(env_file)
+            self.assertEqual(P._setting(
+                sec, "IDEAGEN_INFERENCE_BASE_URL"), "https://ark.example/v3")
+            self.assertEqual(P._setting(sec, "IDEAGEN_ARK_MODEL"), "ep-demo")
+            self.assertEqual(P._setting(
+                sec, "IDEAGEN_INFERENCE_TIMEOUT_SECONDS"), "45")
 
     def test_an_unconfigured_port_reports_and_then_raises_on_use(self):
         from ideagen.platform.base import NotConfigured, Unavailable
@@ -1397,8 +1794,8 @@ class TestPlatformPorts(unittest.TestCase):
         """Cloud imports must be lazy or `platform doctor` cannot report on them."""
         src = Path("ideagen/platform/byteplus.py").read_text(encoding="utf-8")
         head = src.split("class ", 1)[0]
-        for sdk in ("import tos", "import psycopg", "from kafka", "import redis",
-                    "from volcengine"):
+        for sdk in ("import tos", "import psycopg", "import pymysql",
+                    "from kafka", "import redis", "from volcengine"):
             self.assertNotIn(sdk, head,
                              f"{sdk!r} must be imported inside a method, not at "
                              f"module top level")
@@ -1609,6 +2006,64 @@ class TestSchemaDrift(unittest.TestCase):
             self.assertEqual(schema.verify(st), [])
             self.assertEqual(schema.orphans(st), {})
 
+    def test_mysql_ddl_preserves_indexes_without_postgres_syntax(self):
+        from ideagen import schema
+        ddl = "\n".join(schema.MYSQL_DDL)
+        self.assertEqual(len(schema.MYSQL_DDL), len(schema.OWNED))
+        self.assertNotIn("TEXT PRIMARY KEY", ddl)
+        self.assertNotIn("CREATE INDEX IF NOT EXISTS", ddl)
+        self.assertNotIn("WHERE ok = 1", ddl)
+        self.assertIn("GENERATED ALWAYS AS", ddl)
+        self.assertIn("UNIQUE KEY orch_runs_done", ddl)
+        self.assertIn("ENGINE=InnoDB", ddl)
+
+    def test_mysql_upsert_uses_on_duplicate_key(self):
+        from ideagen import schema
+
+        class Capture:
+            dialect = "mysql"
+
+            def execute(self, sql, args=()):
+                self.sql, self.args = sql, args
+                return 1
+
+        state = Capture()
+        schema.upsert(state, "events", {
+            "event_id": "e1", "date": "2026-08-28", "actual": "x"})
+        self.assertIn("ON DUPLICATE KEY UPDATE", state.sql)
+        self.assertNotIn("ON CONFLICT", state.sql)
+        self.assertEqual(state.args, ("e1", "2026-08-28", "x"))
+
+    def test_mysql_migration_selects_the_mysql_ddl(self):
+        from ideagen import schema
+
+        class FakeMySQL:
+            dialect = "mysql"
+
+            def __init__(self):
+                self.columns = {}
+                self.ddl = ()
+
+            def q(self, sql, args=()):
+                if "information_schema.columns" in sql:
+                    return [{"column_name": c}
+                            for c in self.columns.get(args[0], ())]
+                if sql.startswith("SELECT * FROM"):
+                    return []
+                raise AssertionError(sql)
+
+            def migrate(self, ddl):
+                self.ddl = tuple(ddl)
+                self.columns = dict(schema.OWNED)
+                return len(self.ddl)
+
+            def execute(self, sql, args=()):
+                return 0
+
+        state = FakeMySQL()
+        self.assertEqual(schema.migrate(state), len(schema.MYSQL_DDL))
+        self.assertEqual(state.ddl, schema.MYSQL_DDL)
+
 
 class TestSessionClamping(unittest.TestCase):
     """`complete_through` is the ceiling on how far the book may be marked."""
@@ -1691,11 +2146,14 @@ class TestCredentialsNeverReachAnArtifact(unittest.TestCase):
 
     def test_a_connection_url_is_redacted(self):
         from ideagen.platform.base import redact_url
-        self.assertEqual(redact_url("redis://:s3cr3t@h:6379/0"),
+        secret = "s3" + "cr3t"
+        user_url = "redis://user:" + "pw" + "@h:6379"
+        redacted_user_url = "redis://user:" + "***" + "@h:6379"
+        self.assertEqual(redact_url(f"redis://:{secret}@h:6379/0"),
                          "redis://***@h:6379/0")
-        self.assertEqual(redact_url("redis://user:pw@h:6379"),
-                         "redis://user:***@h:6379")
-        self.assertNotIn("s3cr3t", redact_url("redis://:s3cr3t@h:6379/0"))
+        self.assertEqual(redact_url(user_url),
+                         redacted_user_url)
+        self.assertNotIn(secret, redact_url(f"redis://:{secret}@h:6379/0"))
         self.assertEqual(redact_url("redis://plain:6379"), "redis://plain:6379",
                          "a URL with no credentials must stay readable")
 

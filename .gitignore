@@ -21,6 +21,12 @@ web/report.json
 data/briefings/
 data/snapshots/
 
+# Local analysis material and partner dumps — not ours to republish, and this
+# repo is public. Kept local only; excluded so `git add -A` cannot leak them.
+olive-dump/
+discr_acct_bt*/
+discr_acct_bt*.zip
+
 # ---------------------------------------------------------------- python
 __pycache__/
 *.py[cod]
@@ -30,3 +36,4 @@ venv/
 
 # Platform artifacts — run products live in TOS, not in git
 data/artifacts/
+data/exports/

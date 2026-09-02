@@ -26,7 +26,7 @@ import requests
 
 from .. import config, db
 
-_UA = "IdeaGen40/1.0 (+https://github.com/YuesongCai/IdeaGen40)"
+_UA = "IdeaGen40/1.0"
 
 
 class WisburgError(RuntimeError):
@@ -78,6 +78,8 @@ class Wisburg:
 
     def __init__(self, url: str | None = None, token: str | None = None, timeout: int = 90):
         self.url = url or config.WISBURG_URL
+        if not self.url:
+            raise WisburgError("WISBURG_MCP_URL is not configured")
         self.token = token or config.wisburg_token()
         self.timeout = timeout
         self._id = 0
@@ -337,7 +339,7 @@ def parse_images_page(text: str) -> tuple[list[dict], str | None, bool]:
 
         title: 莱茵河水位创历史新低
           date: 2026-08-06T20:04:25+08:00
-          image: https://rocks.wisburg.com/<hash>.jpg
+          image: https://<asset-host>/<hash>.jpg
           <the platform's written interpretation of the chart>
 
     There is no numeric id, so the image URL hash is the stable identity.
@@ -1002,7 +1004,10 @@ def verify_assets(con, limit: int = 200, recheck_days: int = 14,
         return {"checked": 0, "ok": 0, "failed": 0}
 
     s = requests.Session()
-    s.headers.update({"User-Agent": _UA, "Referer": "https://www.wisburg.com/"})
+    headers = {"User-Agent": _UA}
+    if config.WISBURG_REFERER:
+        headers["Referer"] = config.WISBURG_REFERER
+    s.headers.update(headers)
     ok = bad = 0
     now = config.now_hkt().isoformat()
     out = []

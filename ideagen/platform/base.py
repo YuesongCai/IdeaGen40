@@ -13,8 +13,8 @@ pipeline talks to these six abstract ports and never imports a vendor SDK.
   SecretStore  credentials, never in the repo and never in an image layer
 
 Two adapters implement all six: `local` (filesystem + SQLite + direct API) and
-`byteplus` (TOS + RDS for PostgreSQL + ModelArk + Message Queue for Kafka +
-Cache for Redis + KMS). `IDEAGEN_PLATFORM` picks one.
+`byteplus` (TOS + RDS for MySQL/PostgreSQL + ModelArk + Message Queue for Kafka,
+Cache for Redis and KMS). `IDEAGEN_PLATFORM` picks one.
 
 Three rules the ports exist to enforce, each of which was violated at least once
 while this system was a laptop script:
@@ -124,12 +124,14 @@ class StateStore(abc.ABC):
     ORM migration would be paid in exactly the invariants (as-of clamping,
     cash constraints, mark ordering) that took the longest to get right.
 
-    `paramstyle` exists because SQLite uses `?` and psycopg uses `%s`. Modules
-    that need portable SQL call `q()` with `?` and let the adapter translate;
-    modules that are adapter-aware can read `paramstyle` and emit natively.
+    `paramstyle` exists because SQLite uses `?` while cloud drivers use `%s`.
+    Modules that need portable SQL call `q()` with `?` and let the adapter
+    translate; `dialect` handles the DDL/upsert differences that placeholders
+    cannot hide.
     """
 
     paramstyle: str = "qmark"
+    dialect: str = "unknown"
 
     @abc.abstractmethod
     def q(self, sql: str, args: Sequence[Any] = ()) -> list[dict[str, Any]]: ...

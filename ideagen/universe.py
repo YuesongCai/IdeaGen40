@@ -187,44 +187,9 @@ LISTED: list[Instrument] = [
 LISTED_BY_KEY = {i.key: i for i in LISTED}
 LISTED_BY_CODE = {i.futu_code: i for i in LISTED if i.futu_code}
 
-# Instrument categories the generator may reference but that carry no daily
-# mark. Populated from the live Olive shelf by `ideagen refresh-olive`; the
-# entries below are the shelf slots the original 2026-07-27 pack used, kept so
-# the seed batch reconciles.
-OLIVE_SEED: list[Instrument] = [
-    Instrument("L03028", "fund", "P/E FX Strategy UCITS Fund", "外汇趋势策略",
-               olive_key="L03028", vehicle="私募 / UCITS", tags=("fx", "systematic")),
-    Instrument("AQR-DELPHI", "fund", "AQR Delphi Long-Short Equity", "股票因子多空",
-               olive_key="AQR-DELPHI", vehicle="私募", tags=("factor", "market-neutral")),
-    Instrument("NB-COMMODITIES", "fund", "NB Commodities Strategy", "广义商品篮子",
-               olive_key="NB-COMMODITIES", vehicle="私募", tags=("commodity",)),
-    Instrument("METI", "fund", "Energy Transition Infrastructure Fund", "能源转型基础设施",
-               olive_key="METI", vehicle="私募", tags=("infra", "transition")),
-    Instrument("APAC-DC", "fund", "APAC Data Centre Fund", "亚太数据中心",
-               olive_key="APAC-DC", vehicle="私募", tags=("ai-power", "infra")),
-    Instrument("PRIVATE-CREDIT-SEC", "fund", "Private Credit Secondaries", "私募信贷二级",
-               olive_key="PRIVATE-CREDIT-SEC", vehicle="私募", tags=("credit",)),
-    Instrument("HELO", "fund", "Hedged Equity Overlay Fund", "对冲权益",
-               olive_key="HELO", vehicle="公募", tags=("options", "defensive")),
-    Instrument("JANUS-BIOTECH", "fund", "Janus Henderson Biotechnology", "生物科技",
-               olive_key="JANUS-BIOTECH", vehicle="公募", tags=("catalyst",)),
-    Instrument("SMD-AM-JAPAN", "fund", "SMD-AM Japan High Conviction", "日本高确信度选股",
-               olive_key="SMD-AM-JAPAN", vehicle="公募", tags=("japan",)),
-    Instrument("GLOBAL-SEMI", "fund", "Global Semiconductor Supply Chain Fund", "全球半导体股",
-               olive_key="GLOBAL-SEMI", vehicle="公募", tags=("ai-compute",)),
-    Instrument("EUROPE-INCOME", "fund", "Pan-European Income Equity", "欧洲金融与价值",
-               olive_key="EUROPE-INCOME", vehicle="公募", tags=("europe",)),
-    Instrument("EUROPE-GRID", "fund", "European Grid & Electrification Fund", "欧洲电网与电气化",
-               olive_key="EUROPE-GRID", vehicle="公募", tags=("infra", "transition")),
-    Instrument("CHINA-ALPHA", "fund", "China Selective Alpha Fund", "中国选择性alpha",
-               olive_key="CHINA-ALPHA", vehicle="公募", tags=("china",)),
-    Instrument("CNY-DURATION", "fund", "CNY Government Bond Duration", "人民币国债久期",
-               olive_key="CNY-DURATION", vehicle="公募", currency="CNY", tags=("rates",)),
-    Instrument("MARKET-NEUTRAL", "fund", "Equity Market Neutral Fund", "股票市场中性",
-               olive_key="MARKET-NEUTRAL", vehicle="私募", tags=("neutral",)),
-    Instrument("CASH-PLUS", "fund", "Cash Plus / Money Market", "美元现金等价",
-               olive_key="CASH-PLUS", vehicle="现金", tags=("cash",)),
-]
+# Account-specific shelf instruments are discovered at runtime and are never
+# distributed in source packages.
+OLIVE_SEED: list[Instrument] = []
 
 ALL: list[Instrument] = LISTED + OLIVE_SEED
 BY_KEY = {i.key: i for i in ALL}

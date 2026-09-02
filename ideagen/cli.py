@@ -24,15 +24,20 @@ The daily cycle, in order:
 from __future__ import annotations
 
 import argparse
+import hmac
+import http.server
 import json
+import os
 import sys
-from datetime import date, datetime, timedelta
+import webbrowser
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
-from . import (analytics, backfill, briefing, config, db, generator,
-               ideas as ideas_mod, lexicon, monitor, paper, replay,
-               report as report_mod, scoring, seed, serve as serve_mod, themes,
-               universe)
+from . import (analytics, backfill, briefing, cloud_corpus, cloud_paper, config,
+               db, generator, ideas as ideas_mod, lexicon, monitor, paper,
+               poc_fixture, poc_workflow, replay, report as report_mod, schema,
+               scoring, seed, serve as serve_mod, shelf_store, themes, universe)
 from . import platform as platform_mod
 from .sources import futu_px, olive, wisburg
 
@@ -107,16 +112,212 @@ def cmd_ingest(args) -> int:
 
 
 def cmd_olive_ingest(args) -> int:
-    con = _con()
     raw = (sys.stdin.read() if args.file == "-"
            else Path(args.file).read_text(encoding="utf-8"))
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
         payload = raw                      # olive._as_list handles wrapped text
-    rep = olive.ingest(con, payload, as_of=_as_of(args))
-    print(json.dumps({k: v for k, v in rep.items() if k != "snapshot"},
-                     ensure_ascii=False))
+    p = platform_mod.load()
+    if getattr(p.state, "paramstyle", "qmark") == "qmark":
+        rep = olive.ingest(_con(), payload, as_of=_as_of(args))
+        shown = {k: v for k, v in rep.items() if k != "snapshot"}
+    else:
+        rep = shelf_store.persist(
+            p,
+            payload,
+            as_of=_as_of(args),
+            source=shelf_store.LIVE_SOURCE,
+            classification=shelf_store.LIVE_CLASSIFICATION,
+        )
+        shown = {
+            key: value for key, value in rep.items()
+            if key != "artifact_uri"
+        } | {"artifact_archived": bool(rep.get("artifact_uri"))}
+    print(json.dumps(shown, ensure_ascii=False))
+    return 0
+
+
+def cmd_mcp_check(args) -> int:
+    """Handshake with configured MCP servers and report their tool names."""
+    providers = ("wisburg", "olive") if args.provider == "all" else (args.provider,)
+    results = {}
+    failed = False
+    for provider in providers:
+        try:
+            client = (wisburg.Wisburg() if provider == "wisburg"
+                      else olive.OliveMCP())
+            info = client.initialize()
+            tools = client.tools()
+            results[provider] = {
+                "ok": True,
+                "protocol": info.get("protocolVersion"),
+                "server": info.get("serverInfo"),
+                "tools": tools,
+            }
+        except Exception as exc:  # noqa: BLE001 - one provider must not hide the other
+            failed = True
+            results[provider] = {
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}"[:300],
+            }
+    if args.json:
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    else:
+        for provider, result in results.items():
+            if not result["ok"]:
+                print(f"  {provider:<8} FAIL  {result['error']}")
+                continue
+            server = result.get("server") or {}
+            print(f"  {provider:<8} OK    protocol={result.get('protocol')} "
+                  f"server={server.get('name')} {server.get('version')} "
+                  f"tools={len(result['tools'])}")
+            for tool in result["tools"]:
+                print(f"             {tool}")
+    return 1 if failed else 0
+
+
+def cmd_olive_pull(args) -> int:
+    """Capture an Olive MCP shelf snapshot without printing licensed data."""
+    as_of = _as_of(args)
+    codes = ([code.strip() for code in args.only.split(",") if code.strip()]
+             if args.only else None)
+    client = olive.OliveMCP()
+    snapshot = olive.pull_snapshot(
+        client,
+        product_codes=codes,
+        detail_limit=args.details,
+    )
+    out = (args.out or
+           config.SNAPSHOTS / f"olive_mcp_{as_of.isoformat()}.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    meta = snapshot["metadata"]
+    print(f"  olive MCP  catalog={meta['catalogCount']} "
+          f"detailed={meta['detailedCount']} errors={len(meta['errors'])}")
+    print(f"  snapshot   {out}")
+    if args.ingest:
+        p = platform_mod.load()
+        if getattr(p.state, "paramstyle", "qmark") == "qmark":
+            rep = olive.ingest(_con(), snapshot, as_of=as_of)
+            shown = {k: v for k, v in rep.items() if k != "snapshot"}
+        else:
+            rep = shelf_store.persist(
+                p,
+                snapshot,
+                as_of=as_of,
+                source=shelf_store.LIVE_SOURCE,
+                classification=shelf_store.LIVE_CLASSIFICATION,
+            )
+            shown = {
+                key: value for key, value in rep.items()
+                if key != "artifact_uri"
+            } | {"artifact_archived": bool(rep.get("artifact_uri"))}
+        print(json.dumps(shown, ensure_ascii=False))
+    return 1 if meta["errors"] else 0
+
+
+def cmd_olive_auth(args) -> int:
+    """Run Noah SSO Authorization Code + PKCE and persist tokens locally."""
+    env_file = args.env_file
+    values: dict[str, str] = {}
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.lstrip().startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip().strip("'\"")
+
+    redirect_uri = (values.get("OLIVE_OAUTH_REDIRECT_URI")
+                    or "http://127.0.0.1:8766/callback")
+    parsed = urlparse(redirect_uri)
+    if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
+        raise RuntimeError("Olive OAuth callback must use local HTTP loopback")
+    issuer = values.get("OLIVE_OAUTH_ISSUER") or config.OLIVE_OAUTH_ISSUER
+    resource = values.get("OLIVE_MCP_URL") or config.OLIVE_MCP_URL
+    client_id = values.get("OLIVE_OAUTH_CLIENT_ID", "")
+    if not client_id:
+        client_id = olive.register_oauth_client(
+            redirect_uri, issuer=issuer)["client_id"]
+
+    url, verifier, state = olive.oauth_authorization(
+        client_id, redirect_uri, issuer=issuer, resource_url=resource)
+    received: dict[str, str] = {}
+
+    class Callback(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            query = parse_qs(urlparse(self.path).query)
+            code = (query.get("code") or [""])[0]
+            returned_state = (query.get("state") or [""])[0]
+            ok = bool(code) and hmac.compare_digest(returned_state, state)
+            if ok:
+                received["code"] = code
+                body = "Olive MCP authorization completed. You can close this tab."
+                status = 200
+            else:
+                received["error"] = (
+                    (query.get("error_description") or query.get("error")
+                     or ["invalid state or missing code"])[0])
+                body = "Olive MCP authorization failed. Return to the terminal."
+                status = 400
+            raw = body.encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, fmt, *parts):  # noqa: A003
+            return
+
+    server = http.server.HTTPServer((parsed.hostname, parsed.port or 80), Callback)
+    server.timeout = args.timeout
+    print("Open this URL and complete Noah SSO authorization:")
+    print(url)
+    if not args.no_open:
+        webbrowser.open(url)
+    try:
+        server.handle_request()
+    finally:
+        server.server_close()
+    if "code" not in received:
+        raise RuntimeError(received.get("error") or "OAuth callback timed out")
+
+    tokens = olive.exchange_oauth_code(
+        received["code"], verifier, client_id, redirect_uri,
+        token_url=f"{issuer.rstrip('/')}/api/oauth/token",
+        resource_url=resource,
+    )
+    expires = int(tokens.get("expires_in") or 0)
+    updates = {
+        "OLIVE_MCP_URL": resource,
+        "OLIVE_OAUTH_ISSUER": issuer,
+        "OLIVE_OAUTH_CLIENT_ID": client_id,
+        "OLIVE_OAUTH_REDIRECT_URI": redirect_uri,
+        "OLIVE_OAUTH_ACCESS_TOKEN": tokens["access_token"],
+        "OLIVE_OAUTH_REFRESH_TOKEN": tokens.get("refresh_token", ""),
+        "OLIVE_OAUTH_TOKEN_EXPIRES_AT": (
+            datetime.now(timezone.utc) + timedelta(seconds=expires)
+        ).isoformat() if expires else "",
+    }
+    lines = env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
+    seen = set()
+    output = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key in updates:
+            output.append(f"{key}={updates[key]}")
+            seen.add(key)
+        else:
+            output.append(line)
+    if missing := [key for key in updates if key not in seen]:
+        output.extend(["", "# --- Olive MCP OAuth 2.1 ---"])
+        output.extend(f"{key}={updates[key]}" for key in missing)
+    temp = env_file.with_suffix(env_file.suffix + ".tmp")
+    temp.write_text("\n".join(output) + "\n", encoding="utf-8")
+    os.chmod(temp, 0o600)
+    temp.replace(env_file)
+    print(f"Olive OAuth tokens stored in {env_file} (mode 0600)")
     return 0
 
 
@@ -169,6 +370,7 @@ def cmd_platform(args) -> int:
     print(f"platform: {p.name}")
     print()
     worst = 0
+    probe_worst = 0
     for h in p.check():
         flag = "OK  " if h.ok else "FAIL"
         if not h.ok and h.name != "events":
@@ -182,14 +384,14 @@ def cmd_platform(args) -> int:
         print("\n环境变量（只显示是否设置，不打印值）")
         for row in platform_mod.env_report():
             mark = {"env": "env ", "file": "file"}.get(row["source"], "—   ")
-            print(f"  {mark} {row['key']:<30}{row['purpose']}")
+            via = f" (via {row['via']})" if row.get("via") else ""
+            print(f"  {mark} {row['key']:<38}{row['purpose']}{via}")
 
     if args.probe:
         # A real round-trip through the blob store. `check()` only proves the
         # endpoint answers; this proves we can actually write, read back the same
         # bytes, and that a second write to the same key is refused.
         import json as _j
-        from datetime import datetime, timezone
         key = f"selftest/{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
         body = _j.dumps({"probe": True, "platform": p.name}).encode()
         print("\n产物往返自检")
@@ -202,12 +404,207 @@ def cmd_platform(args) -> int:
                 p.blobs.put(key, b"overwrite")
                 print("  不可变性 FAIL —— 覆盖成功了，不该")
                 worst = 1
+                probe_worst = 1
             except platform_mod.PlatformError:
                 print("  不可变性 OK  —— 二次写入被拒")
         except Exception as e:  # noqa: BLE001
             print(f"  FAIL {type(e).__name__}: {e}")
             worst = 1
-    return worst
+            probe_worst = 1
+
+    if args.state_probe:
+        print("\n云数据库状态往返自检")
+        try:
+            if isinstance(p.state, platform_mod.Unavailable):
+                raise platform_mod.NotConfigured(p.state.check().detail)
+            dialect = getattr(p.state, "dialect", "unknown")
+            if dialect not in ("mysql", "postgres"):
+                raise platform_mod.NotConfigured(
+                    "state 仍是本地存储；请填写云数据库配置并使用 "
+                    "IDEAGEN_PLATFORM=byteplus")
+            schema.migrate(p.state)
+            import uuid
+            now = datetime.now(timezone.utc).isoformat()
+            run_id = f"probe-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
+            schema.upsert(p.state, "orch_runs", {
+                "run_id": run_id, "as_of": config.today_hkt().isoformat(),
+                "kind": "platform_probe", "platform": p.name,
+                "started_at": now, "ended_at": now, "ok": 1,
+                "error": None, "inputs_sha": None, "journal_uri": None,
+                "calls": 0,
+            }, replace=False)
+            row = p.state.q(
+                "SELECT run_id, kind, platform, ok, ended_at "
+                "FROM orch_runs WHERE run_id=?", (run_id,))
+            if len(row) != 1 or row[0]["run_id"] != run_id:
+                raise RuntimeError("write succeeded but read-back did not match")
+            print(f"  migrate OK  engine={dialect}  {len(schema.OWNED)} tables verified")
+            print(f"  write   OK  run_id={run_id}")
+            print(f"  read    OK  kind={row[0]['kind']} platform={row[0]['platform']}")
+        except Exception as e:  # noqa: BLE001
+            print(f"  FAIL {type(e).__name__}: {e}")
+            worst = 1
+            probe_worst = 1
+
+    if args.inference_probe:
+        print("\n火山模型最小调用自检")
+        try:
+            result = p.inference.complete(
+                "Reply with exactly READY and nothing else.",
+                temperature=0.0, max_tokens=16)
+            tokens = result.usage.get("total_tokens")
+            token_text = str(tokens) if tokens is not None else "not reported"
+            print(f"  call    OK  model={result.model}")
+            print(f"  latency     {result.latency_ms}ms")
+            print(f"  tokens      {token_text}")
+            print(f"  response    {len(result.text)} chars (content hidden)")
+        except Exception as e:  # noqa: BLE001
+            print(f"  FAIL {type(e).__name__}: {e}")
+            worst = 1
+            probe_worst = 1
+    return (probe_worst if (args.probe or args.state_probe
+                            or args.inference_probe) else worst)
+
+
+def cmd_poc_load_public_mock(args) -> int:
+    """Archive and import the public synthetic dashboard fixture."""
+    fixture = poc_fixture.read(args.fixture)
+    if args.verify_only:
+        print(f"fixture OK  id={fixture.fixture_id}")
+        print(f"  classification  {poc_fixture.CLASSIFICATION}")
+        print(f"  sha256         {fixture.sha256}")
+        return 0
+
+    p = platform_mod.load(platform="byteplus")
+    receipt = poc_fixture.load(p, args.fixture)
+    print(f"fixture imported  id={receipt['fixture_id']}")
+    print(f"  classification  {receipt['classification']}")
+    print(f"  sha256         {receipt['sha256']}")
+    print(f"  artifact       {receipt['artifact_uri']}")
+    print(f"  run_id         {receipt['run_id']}")
+    print("  RDS read-back  " + ", ".join(
+        f"{table}={count}" for table, count in receipt["rows"].items()))
+    return 0
+
+
+def cmd_poc_load_shelf_fixture(args) -> int:
+    """Persist a public synthetic shelf through the production RDS/TOS path."""
+    p = platform_mod.load(platform="byteplus")
+    receipt = shelf_store.persist_fixture(p, _as_of(args))
+    shown = {
+        key: value for key, value in receipt.items()
+        if key != "artifact_uri"
+    } | {"artifact_archived": bool(receipt.get("artifact_uri"))}
+    print(json.dumps(shown, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_cloud_ingest(args) -> int:
+    """Explicitly ingest Wisburg into portable RDS/TOS state.
+
+    This command is intentionally manual. The unattended scheduler keeps cloud
+    licensed-data persistence disabled unless IDEAGEN_CLOUD_WISBURG_ENABLED is
+    explicitly enabled.
+    """
+    p = platform_mod.load(platform="byteplus")
+    if args.incremental:
+        receipt = cloud_corpus.ingest_incremental(
+            p, as_of=_as_of(args), detail_limit=args.details)
+    else:
+        receipt = cloud_corpus.ingest_window(
+            p, _as_of(args), detail_limit=args.details)
+    shown = {
+        key: value for key, value in receipt.items()
+        if key != "artifact_uri"
+    } | {"artifact_archived": bool(receipt.get("artifact_uri"))}
+    print(json.dumps(shown, ensure_ascii=False, indent=2))
+    return 1 if receipt.get("errors") else 0
+
+
+def cmd_cloud_monitor(args) -> int:
+    receipt = cloud_paper.monitor(
+        platform_mod.load(platform="byteplus"), _as_of(args))
+    print(json.dumps(receipt, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_poc_weekly(as_of: date, p, *, verbose: bool = True,
+                    mode: str = "public-synthetic") -> dict:
+    """Run one live-model POC period, or reuse its completed RDS record."""
+    schema.migrate(p.state)
+    prepared = poc_workflow.weekly_kwargs(as_of, p=p, mode=mode)
+    classification = prepared["params"]["data_classification"]
+    done = p.state.q(
+        "SELECT run_id, as_of, calls, journal_uri FROM orch_runs "
+        "WHERE kind='weekly' AND ok=1 AND as_of=? "
+        "AND data_classification=? ORDER BY ended_at DESC LIMIT 1",
+        (as_of.isoformat(), classification),
+    )
+    if done:
+        return {
+            **dict(done[0]),
+            "ok": True,
+            "reused": True,
+            "data_classification": classification,
+            "mode": mode,
+        }
+
+    result = poc_workflow.run_weekly(
+        as_of, p=p, verbose=verbose, mode=mode, prepared=prepared)
+    return {
+        "run_id": result.run_id,
+        "as_of": result.as_of,
+        "ok": result.completed,
+        "reused": False,
+        "data_classification": classification,
+        "mode": mode,
+        "calls": result.calls,
+        "journal_uri": result.journal,
+        "topics": len(result.topics),
+        "candidates": result.n_candidates,
+        "generators": sorted(result.generators),
+        "selectors": sorted(result.selectors),
+        "error": result.error,
+        "skipped": result.skipped,
+    }
+
+
+def cmd_poc_run_weekly(args) -> int:
+    """Run Stage A/B/C with real ModelArk over one explicit input mode."""
+    p = platform_mod.load(platform="byteplus")
+    receipt = _run_poc_weekly(_as_of(args), p, mode=args.mode)
+    print(json.dumps(receipt, ensure_ascii=False, indent=2))
+    return 0 if receipt["ok"] else 1
+
+
+def cmd_poc_backtest(args) -> int:
+    """Run and persist the deterministic three-month POC replay."""
+    receipt = poc_workflow.run_backtest(
+        _as_of(args),
+        p=platform_mod.load(platform="byteplus"),
+        weeks=args.weeks,
+        horizon_days=args.horizon_days,
+    )
+    return 0 if receipt["model_calls"] == 0 else 1
+
+
+def cmd_poc_run_all(args) -> int:
+    """Run the live-model weekly first, then the zero-model replay."""
+    p = platform_mod.load(platform="byteplus")
+    weekly = _run_poc_weekly(_as_of(args), p, mode=args.mode)
+    print(json.dumps({"weekly": weekly}, ensure_ascii=False, indent=2))
+    if not weekly["ok"]:
+        return 1
+    backtest_receipt = poc_workflow.run_backtest(
+        _as_of(args),
+        p=p,
+        weeks=args.weeks,
+        horizon_days=args.horizon_days,
+        verbose=False,
+    )
+    print(json.dumps(
+        {"backtest": backtest_receipt}, ensure_ascii=False, indent=2))
+    return 0 if backtest_receipt["model_calls"] == 0 else 1
 
 
 def cmd_rebuild_batch(args) -> int:
@@ -591,7 +988,11 @@ def cmd_weekly(args) -> int:
     if args.trade and res.completed:
         from . import booking, platform as plat
         print("\n建仓：")
-        booking.book_run(_con(), plat.load(), res.run_id)
+        p = plat.load()
+        if getattr(p.state, "paramstyle", "qmark") == "qmark":
+            booking.book_run(_con(), p, res.run_id)
+        else:
+            cloud_paper.book_run(p, res.run_id)
     return 0
 
 
@@ -606,7 +1007,11 @@ def cmd_book(args) -> int:
         if not r:
             print("没有成功完成的周跑可以建仓"); return 1
         run_id = r[0]["run_id"]
-    booking.book_run(_con(), p, run_id)
+    if getattr(p.state, "paramstyle", "qmark") == "qmark":
+        booking.book_run(_con(), p, run_id)
+    else:
+        print(json.dumps(
+            cloud_paper.book_run(p, run_id), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -630,6 +1035,31 @@ def main(argv: list[str] | None = None) -> int:
 
     s = add("olive-ingest", cmd_olive_ingest, "ingest an Olive shelf snapshot")
     s.add_argument("file", help="JSON file, or - for stdin")
+
+    s = add("mcp-check", cmd_mcp_check,
+            "handshake with Wisburg/Olive MCP and list tools")
+    s.add_argument("--provider", choices=["all", "wisburg", "olive"],
+                   default="all")
+    s.add_argument("--json", action="store_true")
+
+    s = add("olive-pull", cmd_olive_pull,
+            "capture an authenticated Olive MCP shelf snapshot")
+    s.add_argument("--details", type=int, default=0,
+                   help="deep-fetch the first N products (4 calls each)")
+    s.add_argument("--only",
+                   help="comma-separated product codes to deep-fetch")
+    s.add_argument("--out", type=Path,
+                   help="snapshot path (default data/snapshots/olive_mcp_DATE.json)")
+    s.add_argument("--ingest", action="store_true",
+                   help="also persist to local SQLite or cloud RDS/TOS")
+
+    s = add("olive-auth", cmd_olive_auth,
+            "authorize Olive MCP through Noah SSO and PKCE")
+    s.add_argument("--env-file", type=Path, default=Path(".byteplus.env"))
+    s.add_argument("--timeout", type=int, default=600,
+                   help="seconds to wait for the localhost OAuth callback")
+    s.add_argument("--no-open", action="store_true",
+                   help="print the authorization URL without opening a browser")
 
     s = add("prices", cmd_prices, "sync Futu daily bars")
     s.add_argument("--days", type=int, default=400)
@@ -657,6 +1087,47 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--env", action="store_true", help="also list platform env vars")
     s.add_argument("--probe", action="store_true",
                    help="write and read back a real artifact")
+    s.add_argument("--state-probe", action="store_true",
+                   help="create POC tables, write one RDS probe row, and read it back")
+    s.add_argument("--inference-probe", action="store_true",
+                   help="make one minimal model call without printing its content")
+
+    s = add("poc-load-public-mock", cmd_poc_load_public_mock,
+            "archive the public synthetic POC fixture to TOS and load it into RDS")
+    s.add_argument("--fixture", type=Path, default=poc_fixture.DEFAULT_PATH,
+                   help="public synthetic fixture JSON")
+    s.add_argument("--verify-only", action="store_true",
+                   help="validate and hash the fixture without cloud writes")
+
+    add("poc-load-shelf-fixture", cmd_poc_load_shelf_fixture,
+        "persist a versioned public shelf fixture through RDS/TOS")
+
+    s = add("cloud-ingest", cmd_cloud_ingest,
+            "explicitly ingest Wisburg into portable RDS/TOS state")
+    s.add_argument("--incremental", action="store_true",
+                   help="first-page incremental pull instead of the full window")
+    s.add_argument("--details", type=int, default=3,
+                   help="maximum detail documents to archive")
+
+    add("cloud-monitor", cmd_cloud_monitor,
+        "mark portable RDS paper books from persisted NAVs")
+
+    s = add("poc-run-weekly", cmd_poc_run_weekly,
+            "run real ModelArk weekly over one explicit input mode")
+    s.add_argument("--mode", choices=poc_workflow.WEEKLY_MODES,
+                   default="public-synthetic")
+
+    s = add("poc-backtest", cmd_poc_backtest,
+            "run and persist the public synthetic three-month replay")
+    s.add_argument("--weeks", type=int, default=13)
+    s.add_argument("--horizon-days", type=int, default=30)
+
+    s = add("poc-run-all", cmd_poc_run_all,
+            "run the POC weekly first, then the deterministic replay")
+    s.add_argument("--mode", choices=poc_workflow.WEEKLY_MODES,
+                   default="public-synthetic")
+    s.add_argument("--weeks", type=int, default=13)
+    s.add_argument("--horizon-days", type=int, default=30)
 
     s = add("replay", cmd_replay,
             "rebuild scores/packs/batches/trades for a range, in as-of order")

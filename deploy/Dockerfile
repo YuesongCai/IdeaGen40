@@ -45,6 +45,7 @@ RUN pip install --no-cache-dir \
       "requests>=2.31" \
       "tos" \
       "psycopg[binary]" \
+      "PyMySQL[rsa]>=1.1" \
       "redis" \
       "kafka-python" \
       "openai" \
@@ -53,14 +54,15 @@ RUN pip install --no-cache-dir \
 COPY ideagen ./ideagen
 COPY prompts ./prompts
 COPY seed ./seed
+COPY web ./web
 COPY deploy/entrypoint.sh ./deploy/entrypoint.sh
 RUN chmod +x ./deploy/entrypoint.sh
 
 # State and artifacts belong in the platform ports, not on this filesystem: the
 # sandbox is discarded after the run. This directory exists only for the local
 # SQLite fallback during the first migration step, and losing it must never lose
-# anything that matters — which is exactly what `IDEAGEN_PG_DSN` and
-# `IDEAGEN_TOS_BUCKET` are for.
+# anything that matters — which is exactly what the configured RDS state port
+# and `IDEAGEN_TOS_BUCKET` are for.
 RUN mkdir -p /app/data && useradd -u 10001 -m ideagen && chown -R ideagen /app
 USER ideagen
 

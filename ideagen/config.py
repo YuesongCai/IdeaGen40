@@ -1,12 +1,12 @@
 """Global configuration for IdeaGen40.
 
-Everything that a daily unattended run depends on lives here. No secrets are
-hard-coded except the Wisburg token, which is read from the environment first
-and falls back to the value already provisioned on this machine.
+Credentials and third-party endpoints are supplied at runtime. The repository
+contains neither deployment-specific connection details nor credential values.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -77,11 +77,102 @@ def require(key: str, hint: str = "") -> str:
 
 
 # ---------------------------------------------------------------- wisburg
-WISBURG_URL = os.environ.get("WISBURG_MCP_URL", "https://mcp.wisburg.com/mcp")
+WISBURG_URL = os.environ.get("WISBURG_MCP_URL", "").strip()
+WISBURG_REFERER = os.environ.get("WISBURG_REFERER", "").strip()
 
 
 def wisburg_token() -> str:
-    return require("WISBURG_MCP_TOKEN", "Wisburg developer API key, sk-...")
+    token = (os.environ.get("WISBURG_MCP_TOKEN")
+             or os.environ.get("WISBURG_API_KEY"))
+    if not token:
+        raise RuntimeError(
+            f"missing credential WISBURG_MCP_TOKEN (or WISBURG_API_KEY). "
+            f"Put it in {ENV_FILE}"
+        )
+    return token
+
+
+def wisburg_configured() -> bool:
+    return bool(os.environ.get("WISBURG_MCP_TOKEN")
+                or os.environ.get("WISBURG_API_KEY"))
+
+
+# ---------------------------------------------------------------- olive MCP
+OLIVE_MCP_URL = os.environ.get("OLIVE_MCP_URL", "").strip()
+OLIVE_OAUTH_ISSUER = os.environ.get("OLIVE_OAUTH_ISSUER", "").strip()
+OLIVE_OAUTH_TOKEN_URL = os.environ.get(
+    "OLIVE_OAUTH_TOKEN_URL",
+    f"{OLIVE_OAUTH_ISSUER}/api/oauth/token" if OLIVE_OAUTH_ISSUER else "",
+).strip()
+
+
+def olive_token_file() -> Path | None:
+    raw = os.environ.get("IDEAGEN_OLIVE_TOKEN_FILE", "").strip()
+    return Path(raw) if raw else None
+
+
+def olive_credentials() -> dict[str, str]:
+    """Load OAuth credentials without exposing them through dashboard state."""
+    values: dict[str, str] = {}
+    env_map = {
+        "access_token": "OLIVE_OAUTH_ACCESS_TOKEN",
+        "refresh_token": "OLIVE_OAUTH_REFRESH_TOKEN",
+        "client_id": "OLIVE_OAUTH_CLIENT_ID",
+        "expires_at": "OLIVE_OAUTH_TOKEN_EXPIRES_AT",
+    }
+    for key, env_name in env_map.items():
+        if value := os.environ.get(env_name, "").strip():
+            values[key] = value
+    path = olive_token_file()
+    if path and path.is_file():
+        try:
+            stored = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            stored = {}
+        if isinstance(stored, dict):
+            values.update({
+                str(key): str(value)
+                for key, value in stored.items()
+                if value is not None
+            })
+    return values
+
+
+def store_olive_credentials(values: dict[str, object]) -> Path:
+    """Atomically persist the remote OAuth result to a chmod-600 file."""
+    path = olive_token_file()
+    if path is None:
+        raise RuntimeError("IDEAGEN_OLIVE_TOKEN_FILE is not configured")
+    allowed = {
+        "access_token", "refresh_token", "client_id", "expires_at",
+        "issuer", "resource", "redirect_uri", "updated_at",
+    }
+    payload = {
+        key: str(value) for key, value in values.items()
+        if key in allowed and value is not None
+    }
+    if not payload.get("access_token"):
+        raise ValueError("Olive OAuth result has no access token")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.chmod(temp, 0o600)
+    temp.replace(path)
+    return path
+
+
+def olive_access_token() -> str:
+    token = olive_credentials().get("access_token")
+    if not token:
+        raise RuntimeError(
+            "missing credential OLIVE_OAUTH_ACCESS_TOKEN "
+            "(complete Noah SSO OAuth authorization first)"
+        )
+    return token
 
 # Source lines and their tier. Tier drives which factor a document may feed.
 #   Tier 1  primary / first-hand    -> policy texts, earnings calls, company filings

@@ -2393,3 +2393,24 @@ class TestUpsertKeepIfBlank(unittest.TestCase):
         row = dict(con.execute("SELECT * FROM d").fetchone())
         self.assertEqual(row["body"], "新正文")
         self.assertEqual(row["summary"], "s2")
+
+
+class TestMysqlPasswordOnlyIsStagedNotBroken(unittest.TestCase):
+    """A parked IDEAGEN_MYSQL_PASSWORD must not select (and then fail) MySQL.
+
+    The migration flow stages the RDS password in the operator env before the
+    host/db/user exist anywhere but the ECS runtime.env; on 2026-09-03 that
+    single staged value made _mysql_options raise and took /api/state down.
+    """
+
+    def test_password_alone_returns_none(self):
+        from ideagen.platform import _mysql_options
+        vals = {"IDEAGEN_MYSQL_PASSWORD": "parked-secret"}
+        self.assertIsNone(_mysql_options(lambda k, d=None: vals.get(k, d)))
+
+    def test_partial_server_fields_still_fail_loudly(self):
+        from ideagen.platform import _mysql_options
+        from ideagen.platform.base import NotConfigured
+        vals = {"IDEAGEN_MYSQL_HOST": "h", "IDEAGEN_MYSQL_PASSWORD": "x"}
+        with self.assertRaises(NotConfigured):
+            _mysql_options(lambda k, d=None: vals.get(k, d))

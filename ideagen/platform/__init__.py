@@ -188,6 +188,15 @@ def _mysql_options(get: Callable[[str, str | None], str | None], *,
     values = {name: get(name, None) for name in names}
     if not any(values.values()) and not required:
         return None
+    # A password with no host/db/user is staged, not misconfigured: the
+    # migration flow parks IDEAGEN_MYSQL_PASSWORD in the operator env before
+    # the server-side fields exist anywhere but the ECS runtime.env. Selecting
+    # MySQL on the password alone took the local dashboard down; the strict
+    # all-or-nothing rule stays for host/db/user, where a partial set really
+    # does mean a typo.
+    if (not required and values["IDEAGEN_MYSQL_PASSWORD"]
+            and not any(values[n] for n in names[:3])):
+        return None
     missing = [name for name, value in values.items() if not value]
     if missing:
         raise NotConfigured(

@@ -1165,6 +1165,30 @@ body.drawer-lock{overflow:hidden}
 .peek-strip:hover{background:var(--color-surface-brand-muted)}
 .drawer .foc{box-shadow:0 0 0 2px var(--color-surface-brand-strong);border-radius:var(--radius-sm)}
 .drawer .dim{opacity:.4}
+/* ── 问当时的它（ask drawer） ── */
+.ask-scope{background:var(--color-surface-subtle);border:1px solid var(--color-border-default);border-radius:var(--radius-sm);padding:var(--space-3) var(--space-4);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
+.ask-scope b{color:var(--color-text-primary);font-weight:600}
+.ask-mats{margin-top:var(--space-2)}
+.ask-mats summary{cursor:pointer;font:500 12px/18px var(--font-sans);color:var(--color-text-brand)}
+.ask-mats .mrow{display:flex;gap:6px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--color-border-default);font:400 12px/17px var(--font-sans)}
+.ask-mats .mid{flex:none;font:500 11px/16px var(--font-mono,ui-monospace,monospace);color:var(--color-text-on-brand);background:var(--color-surface-brand);border-radius:var(--radius-xs);padding:0 4px}
+.ask-mats .msrc{color:var(--color-text-metadata);font-family:var(--font-mono,ui-monospace,monospace);font-size:11px;word-break:break-all}
+.ask-chat{margin-top:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.ask-q{align-self:flex-end;max-width:86%;background:var(--color-surface-brand);color:var(--color-text-on-brand);border-radius:var(--radius-md) var(--radius-md) var(--radius-xs) var(--radius-md);padding:var(--space-2) var(--space-3);font:400 13px/19px var(--font-sans);white-space:pre-wrap}
+.ask-a{align-self:flex-start;max-width:94%;background:var(--color-surface-default);border:1px solid var(--color-border-default);border-radius:var(--radius-md) var(--radius-md) var(--radius-md) var(--radius-xs);padding:var(--space-3) var(--space-4);font:400 13px/20px var(--font-sans);color:var(--color-text-primary);white-space:pre-wrap;word-break:break-word}
+.ask-a.err{border-color:var(--color-feedback-error-default);color:var(--color-feedback-error-text);white-space:normal}
+.ask-cites{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--color-border-default);display:flex;flex-wrap:wrap;gap:4px;white-space:normal}
+.ask-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:var(--space-3)}
+.ask-chip{border:1px solid var(--color-border-strong);background:var(--color-surface-default);border-radius:999px;padding:4px 10px;font:400 12px/17px var(--font-sans);color:var(--color-text-secondary);cursor:pointer}
+.ask-chip:hover{border-color:var(--color-surface-brand-strong);color:var(--color-text-brand);background:var(--color-surface-brand-muted)}
+.ask-inrow{display:flex;gap:var(--space-2);margin-top:var(--space-3)}
+.ask-input{flex:1;border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);padding:8px 10px;font:400 13px/19px var(--font-sans);color:var(--color-text-primary);background:var(--color-surface-default)}
+.ask-input:focus{outline:2px solid var(--color-surface-brand-strong);outline-offset:-1px}
+.ask-send{flex:none;border:none;border-radius:var(--radius-sm);background:var(--color-surface-brand);color:var(--color-text-on-brand);font:500 13px/19px var(--font-sans);padding:8px 14px;cursor:pointer}
+.ask-send:disabled{opacity:.5;cursor:default}
+.ask-busy{align-self:flex-start;font:400 12px/17px var(--font-sans);color:var(--color-text-tertiary)}
+.ask-busy .cur{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-surface-brand);animation:askPulse 1s infinite alternate;margin-right:6px}
+@keyframes askPulse{from{opacity:.3}to{opacity:1}}
 .focus-head{
   border:1px solid var(--color-border-brand-subtle);background:var(--color-surface-brand-subtle);
   border-radius:var(--radius-lg);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);
@@ -2328,6 +2352,7 @@ function drawerLabel(d){
     return base;
   }
   if(d.t==='topic')return d.p+' 证据';
+  if(d.t==='ask')return '问当时的它';
   if(d.t==='runlog')return '运行日志';
   if(d.t==='pos')return bareCode(d.p)+' 这一仓';
   if(d.t==='book')return selMetaOf(d.p)[1]+' 账本';
@@ -2339,6 +2364,7 @@ function drawerLabel(d){
 function drawerQ(d){
   if(d.t==='stage')return STAGES[d.p]?STAGES[d.p].q:'';
   if(d.t==='topic')return '这个主题的分怎么来的、证据是哪些研报、往下变成了什么';
+  if(d.t==='ask')return '回答只依据当时封存的材料——材料里没有的它会明说没有';
   if(d.t==='runlog')return '真实时钟 · 逐步耗时 · 逐件产物——它真的跑过的凭据';
   if(d.t==='pos')return '论点 → 主题 → 提出方式 → 赔率 → 风控，一条链看完';
   if(d.t==='book')return '这本账信什么、挑了什么、赚亏如何';
@@ -2365,6 +2391,7 @@ function setDrawerFocus(f){
   if(top){top.f=f;top.scrolled=false;renderDrawers()}
 }
 function openTopicDrawer(tid){pushDrawer({t:'topic',p:tid})}
+function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
 function openTopicEvidence(tid){openTopicDrawer(tid)}
 function openPosDrawer(code){pushDrawer({t:'pos',p:code})}
 function openBookDrawer(sel){pushDrawer({t:'book',p:sel})}
@@ -2374,7 +2401,7 @@ function openTrustDrawer(){pushDrawer({t:'trust',p:''})}
 function openRunLog(runId){drawerStack=[{t:'runlog',p:runId||((J&&J.run_id)||'')}];renderDrawers()}
 function openRunLogStacked(runId){pushDrawer({t:'runlog',p:runId||''})}
 
-var CRUMB_KIND={stage0:'语料',stage1:'筛选A',stage2:'筛选B',stage3:'候选池',stage4:'筛选C',stage5:'建仓',topic:'主题',runlog:'日志',pos:'持仓',book:'账本',status:'状态',cal:'周历',trust:'可信度'};
+var CRUMB_KIND={stage0:'语料',stage1:'筛选A',stage2:'筛选B',stage3:'候选池',stage4:'筛选C',stage5:'建仓',topic:'主题',runlog:'日志',pos:'持仓',book:'账本',status:'状态',cal:'周历',trust:'可信度',ask:'追问'};
 function crumbKind(d){return d.t==='stage'?(CRUMB_KIND['stage'+d.p]||'阶段'):(CRUMB_KIND[d.t]||'')}
 function crumbName(d){
   if(d.t==='stage'){
@@ -2387,6 +2414,7 @@ function crumbName(d){
     return (STAGES[d.p]||{}).t||'';
   }
   if(d.t==='topic')return String(d.p);
+  if(d.t==='ask')return askSubjName(String(d.p));
   if(d.t==='runlog')return String(d.p||'最近一次');
   if(d.t==='pos')return bareCode(d.p);
   if(d.t==='book')return selMetaOf(d.p)[1];
@@ -2455,6 +2483,7 @@ function drawerBodyHTML(d){
     switch(d.t){
       case 'stage':return [stageCorpusBody,stageTopicsBody,stageGeneratorsBody,stagePoolBody,stageSelectorsBody,stageBookingBody][d.p](d);
       case 'topic':return topicDrawerBody(d.p);
+      case 'ask':return askDrawerBody(d);
       case 'runlog':return runLogDrawerBody(d);
       case 'pos':return posDrawerBody(d.p);
       case 'book':return bookDrawerBody(d.p);
@@ -3226,6 +3255,7 @@ function topicDrawerBody(tid){
   }else{
     html+='<div class="empty-sm" style="margin-bottom:var(--space-4)">语义臂本期没有给 '+esc(tid)+' 打分的记录</div>';
   }
+  html+='<div style="margin:0 0 var(--space-4)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'topic\',\''+esc(tid)+'\')" title="只依据这次运行当时封存的材料作答——不是现在临时编的">问它当时怎么想 ›</button></div>';
   if(ev){
     var docs=ev.docs||[];
     html+='<div style="font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin-bottom:4px">词表命中研报 · '+fmtInt(ev.n)+' 条</div>'
@@ -3595,6 +3625,7 @@ function posDrawerBody(code){
       +'<span class="num">下行 '+fmtPct(cand.downside_pct)+'（P '+fmtProb(cand.p_down)+'）</span>'
       +'<span class="num">赚亏比 '+rrText(cand)+'</span>'
       +'<span><button type="button" class="exp-btn" onclick="filterPoolCode(\''+esc(bareCode(p.code))+'\')">在候选池里看这条 ›</button></span>'
+      +'<span><button type="button" class="exp-btn" onclick="openAskDrawer(\'idea\',\''+esc(cand.id||('pool:'+bareCode(p.code)))+'\')" title="只依据这次运行当时封存的材料作答——不是现在临时编的">问它当时怎么想 ›</button></span>'
       +'</div>';
   }else{
     html+='<div class="derive-kv"><span style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
@@ -3629,6 +3660,7 @@ function bookDrawerBody(sel){
     +'<span class="card-note mono">'+esc(b.book_id||'')+'</span>'
     +'</div>'
     +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>　'+esc(selPlain(b.selector))+'</div>'
+    +'<div style="margin:0 0 var(--space-3)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'selector\',\''+esc(b.selector||'')+'\')" title="只依据这次运行当时封存的材料作答——不是现在临时编的">问它当时怎么想 ›</button></div>'
     +'<div style="display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline;margin-bottom:var(--space-3)">'
     +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'+fmtPct(ret)+'</span>'
     +'<span class="card-note">本金 '+fmtMoney(b.capital)+' · '+fmtInt(pos.length)+' 仓在场 · 已平 '+fmtInt(b.closed_n||0)+' · 已实现 <span class="num '+pctCls(b.realized)+'">'+signedMoney(b.realized)+'</span></span>'
@@ -3687,6 +3719,139 @@ function statusDrawerBody(){
     +'<button type="button" class="qlink" onclick="openTrustDrawer()">能信多少？ →</button>'
     +(J&&J.run_id?'<button type="button" class="qlink" onclick="openRunLogStacked(\''+esc(J.run_id)+'\')">最近成功周跑的日志 →</button>':'')
     +'</div>';
+}
+
+/* ══════════ 问当时的它 — 只依据封存材料的追问抽屉 ══════════ */
+/* Jon 的核心要求：AI 必须按「当时」的想法回答，不能现在临时编一个。
+   实现是检索+严格接地：/api/ask/context 只取那次运行封存的材料，
+   /api/ask 的回答被限定在这些材料里，材料没有的它必须明说没有。 */
+var ASKCTX={},ASKLOAD={},ASKH={},ASKS={};
+function askSubjName(pstr){var i=pstr.indexOf(':');return i<0?pstr:pstr.slice(i+1)}
+function askSubjKind(pstr){var i=pstr.indexOf(':');return i<0?'':pstr.slice(0,i)}
+function askRunId(){return ((S||{}).weekly||{}).run_id||''}
+function askKey(pstr){return askRunId()+'|'+pstr}
+var ASK_KIND_ZH={topic:'主题',idea:'想法',selector:'账本挑法'};
+function ensureAskCtx(key,kind,id){
+  if(ASKCTX[key])return ASKCTX[key];
+  if(!ASKLOAD[key]){
+    ASKLOAD[key]=true;
+    fetch('/api/ask/context?run_id='+encodeURIComponent(askRunId())+'&kind='+encodeURIComponent(kind)+'&id='+encodeURIComponent(id),{cache:'no-store'})
+      .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
+      .then(function(res){
+        if(res.b&&!res.b.error)ASKCTX[key]={c:res.b};
+        else ASKCTX[key]={c:null,err:(res.b&&res.b.error)||('HTTP '+(res.ok?'格式不对':'错误'))};
+      })
+      .catch(function(e){ASKCTX[key]={c:null,err:e&&e.message?e.message:String(e)}})
+      .then(function(){ASKLOAD[key]=false;renderDrawers()});
+  }
+  return null;
+}
+function askScrollBottom(){
+  requestAnimationFrame(function(){
+    var el=document.querySelector('.drawer:not(.under) .drawer-body');
+    if(el)el.scrollTop=el.scrollHeight;
+  });
+}
+function askSend(pstr,q){
+  q=(q||'').trim();if(!q)return;
+  var key=askKey(pstr),st=ASKS[key]=ASKS[key]||{};
+  if(st.busy)return;
+  st.busy=true;st.pending=q;st.draft='';
+  renderDrawers();askScrollBottom();
+  var hist=(ASKH[key]||[]).filter(function(h){return h.a}).map(function(h){return {q:h.q,a:h.a}});
+  fetch('/api/ask',{method:'POST',cache:'no-store',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({run_id:askRunId(),kind:askSubjKind(pstr),id:askSubjName(pstr),question:q,history:hist})})
+    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
+    .then(function(res){
+      var h=ASKH[key]=ASKH[key]||[];
+      if(res.b&&res.b.answer)h.push({q:q,a:res.b.answer,cited:res.b.cited||[],model:res.b.model});
+      else h.push({q:q,err:(res.b&&res.b.error)||('HTTP 错误（'+(res.ok?'响应格式不对':'请求失败')+'）')});
+    })
+    .catch(function(e){(ASKH[key]=ASKH[key]||[]).push({q:q,err:e&&e.message?e.message:String(e)})})
+    .then(function(){st.busy=false;st.pending=null;renderDrawers();askScrollBottom()});
+}
+function askSendFromInput(pstr){
+  var el=$('askInput');if(!el)return;
+  askSend(pstr,el.value);
+}
+function askAnswerHTML(text){
+  /* 把 [M3] 这样的引用标成可 hover 的编号；其余按纯文本转义 */
+  return esc(text).replace(/\[(M\d+)\]/g,'<b style="color:var(--color-text-brand);font-weight:600">[$1]</b>');
+}
+function askChipsFor(kind,ctx){
+  var nDocs=(ctx&&ctx.corpus&&ctx.corpus.n_docs)||((ctx&&ctx.stats&&ctx.stats.n_docs)||null);
+  var nTxt=nDocs?String(nDocs):'N';
+  if(kind==='topic')return ['为什么读了 '+nTxt+' 篇报告选出了这个主题？','当时反对它的证据是什么？','如果重来，材料里有什么被低估了？'];
+  if(kind==='idea')return ['为什么当时提出并保留了这条想法？','当时反对它的证据是什么？','如果重来，材料里有什么被低估了？'];
+  return ['为什么挑了这几条、拒了其余的？','被拒的候选里当时最可惜的是哪条？','如果重来，材料里有什么被低估了？'];
+}
+function askDrawerBody(d){
+  var pstr=String(d.p),kind=askSubjKind(pstr),sid=askSubjName(pstr),key=askKey(pstr);
+  var cached=ensureAskCtx(key,kind,sid);
+  if(!cached)return '<div class="empty-sm">正在封存材料清单——只取那次运行当时存下的东西……</div>';
+  if(!cached.c){
+    return '<div class="ask-scope" style="border-color:var(--color-feedback-error-default)">'
+      +'<b>这个对象的当时材料没拿到。</b><br>API 说：'+esc(cached.err||'未知错误')
+      +'<br><span style="color:var(--color-text-tertiary)">没有封存材料就没法诚实作答——这里不会用现在的猜测顶替。</span></div>';
+  }
+  var ctx=cached.c,run=ctx.run||{},stats=ctx.stats||{},corpus=ctx.corpus||{},prov=ctx.provenance||[];
+  var inf=ctx.inference||{};
+  var subjLabel=(ctx.subject&&ctx.subject.label)||sid;
+  var parts=[];
+  if(corpus.n_docs)parts.push(fmtInt(corpus.n_docs)+' 篇研报');
+  if(prov.some(function(m){return m.kind==='verdict'||m.kind==='counting'||m.kind==='selector'}))parts.push('打分明细');
+  if(prov.some(function(m){return m.kind==='generator'||m.kind==='candidate'||m.kind==='pool'}))parts.push('生成记录');
+  if(!parts.length)parts.push(fmtInt(stats.n_materials||0)+' 件封存记录');
+  var shaLine='';
+  if(corpus.verified_sha===true)shaLine='研报清单已按运行封存的输入指纹（inputs_sha）逐一核对，与当时一致';
+  else if(corpus.verified_sha===false)shaLine='⚠ 研报清单按当时口径重建，但与封存的输入指纹没对上——语料库可能在运行后被修补过，回答会连这一点一起如实说';
+  var gloss='「只依据当时封存的材料」= 回答模型只能看到这次运行当时写下的运行日志、打分/生成/挑选产物，以及证据指向的研报原文行；材料没有的它必须回答「当时的记录里没有这一点」。'+(shaLine?'\n'+shaLine:'');
+  var html='<div class="ask-scope">你在追问：<b>'+esc(sid)+(subjLabel&&subjLabel!==sid?'（'+esc(subjLabel)+'）':'')+'</b>'
+    +' · '+esc(run.as_of||'—')+' 期'
+    +' · 回答只依据当时封存的材料（'+esc(parts.join(' · '))+'）'
+    +' <span class="gloss" title="'+esc(gloss)+'">ⓘ</span>'
+    +(shaLine?'<div style="margin-top:4px;color:var(--color-text-'+(corpus.verified_sha?'metadata':'tertiary')+')">'+esc(shaLine)+'</div>':'')
+    +((ctx.notes||[]).length?'<div style="margin-top:4px;color:var(--color-feedback-warning-text)">材料缺口：'+ctx.notes.map(esc).join('；')+'</div>':'')
+    +(ctx.empty?'<div style="margin-top:4px;color:var(--color-feedback-warning-text)">'+esc(ctx.empty)+'</div>':'')
+    +'<details class="ask-mats"><summary>材料清单 · '+fmtInt(stats.n_materials||prov.length)+' 件（'+fmtInt(stats.chars||0)+' 字）</summary>'
+    +prov.map(function(m){return '<div class="mrow"><span class="mid">'+esc(m.id)+'</span><span style="flex:1;min-width:0"><span style="color:var(--color-text-primary)">'+esc(m.title)+'</span><br><span class="msrc">'+esc(m.source)+'</span></span></div>'}).join('')
+    +'</details></div>';
+  if(inf.ok===false){
+    html+='<div class="ask-scope" style="margin-top:var(--space-2);border-color:var(--color-feedback-warning-default);color:var(--color-feedback-warning-text)">'+esc(inf.error||'推理端口不可用')+'</div>';
+  }
+  var hist=ASKH[key]||[],st=ASKS[key]||{};
+  html+='<div class="ask-chat" id="askChat">';
+  hist.forEach(function(h){
+    html+='<div class="ask-q">'+esc(h.q)+'</div>';
+    if(h.err){
+      html+='<div class="ask-a err">'+esc(h.err)+'</div>';
+    }else{
+      html+='<div class="ask-a">'+askAnswerHTML(h.a)
+        +((h.cited||[]).length?'<div class="ask-cites">引用材料：'+h.cited.map(function(c){return '<span class="tag mono" title="'+esc((c.title||'')+' — '+(c.source||''))+'">'+esc(c.id)+' '+esc(c.title||'')+'</span>'}).join('')+'</div>':'')
+        +(h.model?'<div style="margin-top:4px;font:400 11px/15px var(--font-sans);color:var(--color-text-metadata)">'+esc(h.model)+' · 仅依据上方材料作答</div>':'')
+        +'</div>';
+    }
+  });
+  if(st.busy){
+    html+='<div class="ask-q">'+esc(st.pending||'')+'</div>'
+      +'<div class="ask-busy"><span class="cur"></span>正在只根据当时材料作答……</div>';
+  }
+  html+='</div>';
+  if(!hist.length&&!st.busy){
+    html+='<div class="ask-chips">'+askChipsFor(kind,ctx).map(function(c){
+      return '<button type="button" class="ask-chip" onclick="askSend(\''+esc(pstr)+'\',this.textContent)">'+esc(c)+'</button>';
+    }).join('')+'</div>';
+  }
+  var disabled=(inf.ok===false||st.busy)?' disabled':'';
+  html+='<div class="ask-inrow">'
+    +'<input id="askInput" class="ask-input" type="text" maxlength="2000" placeholder="'+(inf.ok===false?'推理不可用——见上方说明':'问它当时怎么想……')+'" value="'+esc(st.draft||'')+'"'+disabled
+    +' oninput="(ASKS[askKey(\''+esc(pstr)+'\')]=ASKS[askKey(\''+esc(pstr)+'\')]||{}).draft=this.value"'
+    +' onkeydown="if(event.key===\'Enter\')askSendFromInput(\''+esc(pstr)+'\')">'
+    +'<button type="button" class="ask-send" onclick="askSendFromInput(\''+esc(pstr)+'\')"'+disabled+'>发送</button>'
+    +'</div>'
+    +epi('每一次追问和回答都会追加进本地审计日志（data/ask_log.jsonl）——追问本身也是底账的一部分');
+  return html;
 }
 
 /* Esc：先关抽屉，再关别的浮层 */

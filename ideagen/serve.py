@@ -169,6 +169,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return o
             return self._json({"run_id": r["run_id"], "as_of": r["as_of"],
                                "journal": _scrub(j)})
+        if path == "/api/ask/context":
+            # 「问当时的它」— the frozen material a decision saw, for display.
+            from urllib.parse import parse_qs, urlparse
+            from . import ask
+            q = parse_qs(urlparse(self.path).query)
+            obj, status = ask.handle_context(
+                {k: (q.get(k) or [None])[0] for k in ("run_id", "kind", "id")})
+            return self._json(obj, status=status)
         if path == "/api/state":
             from . import review
             return self._json(review.state(db.init()))
@@ -190,7 +198,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         request_origin = self._external_origin()
         if not self._same_origin(request_origin):
             return self._json({"error": "cross-origin request rejected"}, status=403)
-        length = min(int(self.headers.get("Content-Length") or 0), 4096)
+        length = int(self.headers.get("Content-Length") or 0)
+        if path == "/api/ask":
+            # 「问当时的它」— one grounded Q&A over a run's frozen material.
+            # The body carries the question plus in-drawer history, so it gets
+            # a larger (still bounded) read than the drain below.
+            from . import ask
+            try:
+                payload = json.loads(
+                    self.rfile.read(min(length, 131072)) or b"{}")
+                assert isinstance(payload, dict)
+            except Exception:  # noqa: BLE001
+                return self._json({"error": "请求体不是合法的 JSON 对象"},
+                                  status=400)
+            obj, status = ask.handle_ask(payload)
+            return self._json(obj, status=status)
+        length = min(length, 4096)
         if length:
             self.rfile.read(length)
         if path == "/api/olive/oauth/start":

@@ -17,6 +17,13 @@ PYBIN="${IDEAGEN_PYTHON:-/Library/Frameworks/Python.framework/Versions/3.12/bin/
 "$PYBIN" scripts/check_publish_safety.py web/_site/index.html   # gate: aborts on hit
 
 WT="$(mktemp -d)/ghp"
+# Self-heal: a previous run's temp worktree can survive as a stale registration
+# (the OS reaps /var/folders temp dirs without telling git), and git then
+# refuses to check gh-pages out anywhere else. Prune what's gone, evict what
+# still holds the branch — it was always a throwaway.
+git worktree prune
+OLD="$(git worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} /^branch refs\/heads\/gh-pages$/{print w}')"
+if [ -n "$OLD" ]; then git worktree remove --force "$OLD" || true; git worktree prune; fi
 git worktree add "$WT" gh-pages >/dev/null
 trap 'cd "$(dirname "$0")/.." 2>/dev/null; git worktree remove --force "$WT" >/dev/null 2>&1; git worktree prune' EXIT
 cp web/_site/index.html "$WT/"

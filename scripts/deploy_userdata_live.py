@@ -114,6 +114,27 @@ write_files:
       # 登不上的那台——同步有没有按时跑，必须在 GetConsoleOutput 里看得见。
       StandardOutput=journal+console
       StandardError=journal+console
+  - path: /etc/systemd/system/ideagen-code.service
+    content: |
+      [Unit]
+      Description=Track origin/main on the display node
+      After=docker.service
+      Requires=docker.service
+      [Service]
+      Type=oneshot
+      TimeoutStartSec=1800
+      ExecStart=/opt/ideagen/sync_code.sh
+      StandardOutput=journal+console
+      StandardError=journal+console
+  - path: /etc/systemd/system/ideagen-code.timer
+    content: |
+      [Unit]
+      Description=Track origin/main on the display node
+      [Timer]
+      OnBootSec=6min
+      OnUnitActiveSec=5min
+      [Install]
+      WantedBy=timers.target
   - path: /etc/systemd/system/ideagen-sync.timer
     content: |
       [Unit]
@@ -139,7 +160,7 @@ runcmd:
   - [ sh, -c, "docker rm -f ideagen-dash >/dev/null 2>&1; docker run -d --name ideagen-dash --restart always --env-file /opt/ideagen/config/runtime.env -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db -v /opt/ideagen/data:/data -p 80:8765 -p 443:8765 --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 && echo IG_RUN || echo IG_RUN_FAIL" ]
   # 数据同步：本机每天还在跑 daily，这台只是显示。没有这一步，页面会停在
   # 部署当晚的快照上，而且看起来完全正常——这是最难发现的那种错。
-  - [ sh, -c, "install -m 755 /opt/ideagen/app/deploy/sync_state.sh /opt/ideagen/sync_state.sh && systemctl daemon-reload && systemctl enable --now ideagen-sync.timer >/dev/null 2>&1 && echo IG_TIMER $(systemctl is-enabled ideagen-sync.timer) || echo IG_TIMER_FAIL" ]
+  - [ sh, -c, "install -m 755 /opt/ideagen/app/deploy/sync_state.sh /opt/ideagen/sync_state.sh && install -m 755 /opt/ideagen/app/deploy/sync_code.sh /opt/ideagen/sync_code.sh && systemctl daemon-reload && systemctl enable --now ideagen-sync.timer ideagen-code.timer >/dev/null 2>&1 && echo IG_TIMER $(systemctl is-enabled ideagen-sync.timer)/$(systemctl is-enabled ideagen-code.timer) || echo IG_TIMER_FAIL" ]
   # 立刻跑一次，别等 10 分钟后的第一次触发。同步链路要么在开机日志里被
   # 证明过，要么就是没被证明过。
   - [ sh, -c, "sleep 20; /opt/ideagen/sync_state.sh 2>&1 | sed 's/^/IG_SYNC /' || echo IG_SYNC_FAIL" ]

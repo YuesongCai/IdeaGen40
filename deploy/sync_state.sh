@@ -15,6 +15,7 @@ DATA=/opt/ideagen/data
 CONF=/opt/ideagen/config/runtime.env
 IMG=ideagen40:live
 NAME=ideagen-dash
+LOCK=/var/lock/ideagen-deploy.lock
 
 docker run --rm --env-file "$CONF" -v "$DATA":/data \
   --entrypoint python3 "$IMG" \
@@ -33,12 +34,17 @@ esac
 
 [ -s "$DATA/ideagen.db.new" ] || { echo "IG_SYNC_FAIL 空快照"; exit 1; }
 
-docker stop "$NAME" >/dev/null 2>&1
-mv -f "$DATA/ideagen.db.new" "$DATA/ideagen.db"
-mv -f "$DATA/ideagen.db.new.sha" "$DATA/.state-sha"
-rm -f "$DATA/ideagen.db-wal" "$DATA/ideagen.db-shm"
-chown 10001:10001 "$DATA/ideagen.db" "$DATA/.state-sha"
-chmod 664 "$DATA/ideagen.db"
-docker start "$NAME" >/dev/null 2>&1
-
-echo "IG_SYNC_OK $(cat "$DATA/.state-sha") $(date -u +%FT%TZ)"
+# sync_code.sh replaces this container when origin/main moves. If that lands
+# between the stop and the start below, it brings the old container back up
+# around a half-finished swap. Same lock, both scripts.
+(
+  flock -w 300 9 || { echo "IG_SYNC_LOCK_TIMEOUT"; exit 1; }
+  docker stop "$NAME" >/dev/null 2>&1
+  mv -f "$DATA/ideagen.db.new" "$DATA/ideagen.db"
+  mv -f "$DATA/ideagen.db.new.sha" "$DATA/.state-sha"
+  rm -f "$DATA/ideagen.db-wal" "$DATA/ideagen.db-shm"
+  chown 10001:10001 "$DATA/ideagen.db" "$DATA/.state-sha"
+  chmod 664 "$DATA/ideagen.db"
+  docker start "$NAME" >/dev/null 2>&1
+  echo "IG_SYNC_OK $(cat "$DATA/.state-sha") $(date -u +%FT%TZ)"
+) 9>"$LOCK"

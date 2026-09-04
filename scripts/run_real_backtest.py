@@ -365,7 +365,7 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
     }
 
 
-def _theme_attribution(con, positions: list[dict]) -> dict:
+def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
     """One layer of the attribution Jon asked for: theme versus instrument.
 
     Every macro theme carries a tradable indicator — POLICY-PATH is US.IEF,
@@ -472,10 +472,23 @@ def _theme_attribution(con, positions: list[dict]) -> dict:
             entry["edge_pct"] = round(edge, 2)
             if abs(entry["excess_over_control_pct"]) >= joint:
                 entry["verdict_over_control"] = "not_ruled_out"
-            elif len(own) >= need:
+            elif len(own) >= need and name in powered:
+                # `no_edge_detected` asserts that a real edge would have shown
+                # up, and this bound cannot support an assertion: it counts
+                # positions as independent when they share periods, holding
+                # windows and names, which is the reason it is documented as a
+                # lower bound on blindness. `backtest`'s paired test does the
+                # discount properly — six periods of 30-day holds spaced seven
+                # days apart come to n_eff≈1.4 — so the claim is only made where
+                # that test also calls the arm powered.
+                #
+                # It caught one: left_tail read `no_edge_detected` off 84
+                # positions while the paired test said it needed four effective
+                # periods and had 1.4.
                 entry["verdict_over_control"] = "no_edge_detected"
             else:
                 entry["verdict_over_control"] = "underpowered"
+            entry["paired_powered"] = name in powered
     return {
         "layer": "theme_indicator_vs_instrument",
         "control": CONTROL,
@@ -493,6 +506,9 @@ def _theme_attribution(con, positions: list[dict]) -> dict:
             "no_edge_detected（样本已够检出预注册的 2 个百分点优势，而它没有出现"
             "——这是「没看出优势」，不是「还看不出来」）、underpowered"
             "（样本还不够，n_needed_for_edge 给出需要多少笔）。"
+            "no_edge_detected 额外要求配对检验也判定该臂 powered："
+            "本层的下界把持仓当独立样本，而它们共享期次与持有窗口，"
+            "只能用来否定；肯定「本该看见」需要配对检验按 n_eff 折算后的判断。"
             "这是四层归因里的一层——市场 beta 层、以及区分风控与买入持有的那层，"
             "都还没有做。"),
     }
@@ -687,7 +703,9 @@ def main(argv: list[str]) -> int:
         str(n): _drop_top_instruments(positions, top_n=n) for n in (5, 10, 20)}
     robustness["verdict_stable_across_depths"] = _verdicts_agree(
         robustness["depths"])
-    attribution = _theme_attribution(con, positions)
+    powered_arms = {name for name, p in rep.paired.items()
+                    if getattr(p, "powered", False)}
+    attribution = _theme_attribution(con, positions, powered_arms)
     horizon = _horizon_completeness(positions, args.horizon_days)
     head_to_head = _generation_head_to_head(con, days, args.horizon_days)
     robustness["depth_note"] = (

@@ -46,6 +46,7 @@ PROD_BUCKET = "ideagen-prod-4b869b"
 PROD_ENDPOINT = "tos-ap-southeast-1.bytepluses.com"
 BOOTSTRAP = ROOT / "deploy" / "instance_bootstrap.sh"
 PLACEHOLDER = "__RUNTIME_ENV_URL__"
+REPO_URL = "https://github.com/YuesongCai/IdeaGen40.git"
 PRESIGN_S = 7200
 
 
@@ -109,21 +110,41 @@ def build_userdata(runtime_env_url: str | None) -> str:
     with size. The prose lives in the repo file, which the header names; what
     ships is the commands.
     """
-    script = BOOTSTRAP.read_text(encoding="utf-8")
-    if PLACEHOLDER not in script:
+    if PLACEHOLDER not in BOOTSTRAP.read_text(encoding="utf-8"):
         raise SystemExit(f"{BOOTSTRAP.name} 缺少 {PLACEHOLDER} 占位符")
-    if runtime_env_url:
-        script = script.replace(PLACEHOLDER, runtime_env_url)
-    kept = [ln for ln in script.splitlines()
-            if ln.strip() and not ln.lstrip().startswith("#")]
-    kept.insert(0, "#!/bin/bash")
-    script = "\n".join(kept) + "\n"
-    body = "\n".join(("    " + ln) if ln else "" for ln in script.splitlines())
+    url = runtime_env_url or ""
+    loader = f"""#!/bin/bash
+mkdir -p /opt/ideagen/config /opt/ideagen/app /opt/ideagen/health
+if [ -n '{url}' ]; then
+  umask 077; printf '%s' '{url}' > /opt/ideagen/config/.runtime_env_url
+fi
+for i in 1 2 3; do apt-get update -qq && break || sleep 10; done
+apt-get install -y -qq git ca-certificates curl || true
+if [ -d /opt/ideagen/app/.git ]; then
+  git -C /opt/ideagen/app fetch -q origin main \\
+    && git -C /opt/ideagen/app reset -q --hard origin/main
+else
+  git clone -q --depth 50 {REPO_URL} /opt/ideagen/app
+fi
+B=/opt/ideagen/app/deploy/instance_bootstrap.sh
+[ -s "$B" ] || B=/var/lib/ideagen-boot-last.sh
+[ -s "$B" ] || {{ echo "no bootstrap available" >/opt/ideagen/health/index.html; exit 1; }}
+cp "$B" /var/lib/ideagen-boot-last.sh
+exec bash "$B"
+"""
+    body = "\n".join(("    " + ln) if ln else "" for ln in loader.splitlines())
     return (
         "#cloud-config\n"
         "# IdeaGen40 production bootstrap — runs on EVERY boot (bootcmd), so a\n"
-        "# reboot is the deploy. Source of truth: deploy/instance_bootstrap.sh.\n"
-        "# Do not hand-edit here; edit that file and re-run deploy_userdata.py.\n"
+        "# reboot is the deploy. This is only a loader: it fetches the repo and\n"
+        "# execs deploy/instance_bootstrap.sh, which is the source of truth.\n"
+        "#\n"
+        "# The script used to be inlined here. UserData travels in a query\n"
+        "# string that the gateway rejects past ~8KB with an HTML error page,\n"
+        "# which surfaces as a JSON parse error naming no size at all — so the\n"
+        "# bootstrap silently acquired a length limit nobody could see, and\n"
+        "# adding a few lines to it broke deployment for everyone. A loader has\n"
+        "# no such ceiling, and stops UserData being a stale copy of the file.\n"
         "bootcmd:\n"
         "  - |\n"
         "    cat > /var/lib/ideagen-boot.sh <<'IDEAGEN_BOOT_EOF'\n"

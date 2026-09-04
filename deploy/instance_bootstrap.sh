@@ -67,6 +67,13 @@ if docker build -q -f deploy/Dockerfile -t "ideagen40:$SHA" . ; then say "image 
 # fails changes nothing at all, which is what the old skip was protecting.
 RUNTIME_ENV_URL='__RUNTIME_ENV_URL__'
 CONF=/opt/ideagen/config/runtime.env
+# The loader in UserData drops the presigned URL here instead of substituting
+# it into this file, because this file is no longer what UserData carries. The
+# inline placeholder still works, so a UserData built the old way still boots.
+URLF=/opt/ideagen/config/.runtime_env_url
+if [ "${RUNTIME_ENV_URL#__}" != "$RUNTIME_ENV_URL" ] && [ -s "$URLF" ]; then
+  RUNTIME_ENV_URL="$(cat "$URLF")"
+fi
 if [ "${RUNTIME_ENV_URL#__}" = "$RUNTIME_ENV_URL" ]; then
   if curl -fsS --max-time 60 "$RUNTIME_ENV_URL" -o "$CONF.new"; then
     if [ -s "$CONF" ]; then
@@ -108,8 +115,7 @@ say "runtime.env present ($(grep -c = /opt/ideagen/config/runtime.env) keys)"
 # state of this one directory readable from outside the instance, which is the
 # only view of it there is on an image with no shell.
 chown -R 10001:10001 /opt/ideagen/oauth 2>/dev/null || true
-say "oauth dir: $(stat -c '%U:%G %a' /opt/ideagen/oauth 2>/dev/null) contents=[$(ls -A /opt/ideagen/oauth 2>/dev/null | tr '\n' ' ')]"
-say "olive configured: $(grep -c '^OLIVE_' /opt/ideagen/config/runtime.env) keys"
+say "oauth $(stat -c '%u %a' /opt/ideagen/oauth) [$(ls -A /opt/ideagen/oauth|tr '\n' ' ')] olive=$(grep -c '^OLIVE_' "$CONF")"
 
 say "starting dashboard + proxy"
 pkill -f "http.server 80" >/dev/null 2>&1 || true

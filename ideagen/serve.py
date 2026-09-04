@@ -87,7 +87,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Move the key out of the URL into a cookie so links shared from the
             # browser afterwards don't carry it.
             cookie = f"dashkey={key}; Path=/; HttpOnly; SameSite=Strict"
-            if self.headers.get("X-Forwarded-Proto") == "https":
+            # Secure whenever the request reached us through a proxy, not only
+            # when the proxy volunteered X-Forwarded-Proto. Reaching this line
+            # already means the request was not local — locals return above
+            # without a cookie — so a forwarding header means a public
+            # deployment, and the terminating proxy is where TLS lives. Making
+            # the flag depend on the proxy remembering to announce its scheme
+            # put the key's confidentiality in someone else's config: no header,
+            # no Secure, and the browser then replays the key over any
+            # downgrade. A direct remote hit with no proxy headers is the LAN
+            # case, which has no TLS to require, so it is left alone rather than
+            # locked into a 401 loop.
+            if (self.headers.get("X-Forwarded-Proto") == "https"
+                    or self.headers.get("X-Forwarded-For")
+                    or self.headers.get("CF-Connecting-IP")):
                 cookie += "; Secure"
             self._set_cookie = cookie
             self._strip_auth_query = True

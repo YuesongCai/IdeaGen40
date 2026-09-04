@@ -60,3 +60,11 @@ fi
 if ! scripts/publish_snapshot.sh; then
   echo "WARN: gh-pages snapshot publish failed; local dashboard is still current"
 fi
+
+# Hand the cloud display node today's state. Without this it keeps serving
+# whatever was true when its instance was built, and looks entirely healthy
+# while doing it — the failure mode nobody catches by looking. Non-fatal for
+# the same reason as the publish above: the marks already landed.
+if ! "$PYBIN" scripts/push_state_to_cloud.py; then
+  echo "WARN: 状态快照未发布到对象存储；云端页面会停在上一份快照"
+fi

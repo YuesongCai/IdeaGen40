@@ -100,6 +100,25 @@ def upload_env() -> str:
 def user_data(env_url: str, db_url: str) -> str:
     return f"""#cloud-config
 output: {{all: '| tee -a /var/log/cloud-init-output.log'}}
+write_files:
+  - path: /etc/systemd/system/ideagen-sync.service
+    content: |
+      [Unit]
+      Description=Install the newest published IdeaGen state snapshot
+      After=docker.service
+      Requires=docker.service
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/ideagen/sync_state.sh
+  - path: /etc/systemd/system/ideagen-sync.timer
+    content: |
+      [Unit]
+      Description=Track the laptop's published state
+      [Timer]
+      OnBootSec=10min
+      OnUnitActiveSec=15min
+      [Install]
+      WantedBy=timers.target
 runcmd:
   - echo "IG_START $(date -u +%FT%TZ)"
   - [ sh, -c, "for i in 1 2 3; do apt-get update -qq && break || sleep 10; done; apt-get install -y -qq docker.io git curl >/dev/null 2>&1; systemctl enable --now docker >/dev/null 2>&1; echo IG_DOCKER $(docker --version 2>/dev/null | head -c 30)" ]
@@ -114,6 +133,12 @@ runcmd:
   - [ sh, -c, "chown -R 10001:10001 /opt/ideagen/data && chmod 664 /opt/ideagen/data/ideagen.db && echo IG_PERM $(stat -c'%U:%a' /opt/ideagen/data/ideagen.db)" ]
   - [ sh, -c, "cd /opt/ideagen/app && docker build -q -t ideagen40:live -f deploy/Dockerfile . >/dev/null 2>&1 && echo IG_BUILD || echo IG_BUILD_FAIL" ]
   - [ sh, -c, "docker rm -f ideagen-dash >/dev/null 2>&1; docker run -d --name ideagen-dash --restart always --env-file /opt/ideagen/config/runtime.env -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db -v /opt/ideagen/data:/data -p 80:8765 -p 443:8765 --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 && echo IG_RUN || echo IG_RUN_FAIL" ]
+  # 数据同步：本机每天还在跑 daily，这台只是显示。没有这一步，页面会停在
+  # 部署当晚的快照上，而且看起来完全正常——这是最难发现的那种错。
+  - [ sh, -c, "install -m 755 /opt/ideagen/app/deploy/sync_state.sh /opt/ideagen/sync_state.sh && systemctl daemon-reload && systemctl enable --now ideagen-sync.timer >/dev/null 2>&1 && echo IG_TIMER $(systemctl is-enabled ideagen-sync.timer) || echo IG_TIMER_FAIL" ]
+  # 立刻跑一次，别等 10 分钟后的第一次触发。同步链路要么在开机日志里被
+  # 证明过，要么就是没被证明过。
+  - [ sh, -c, "sleep 20; /opt/ideagen/sync_state.sh 2>&1 | sed 's/^/IG_SYNC /' || echo IG_SYNC_FAIL" ]
   - [ sh, -c, "sleep 25; docker ps -a --filter name=ideagen-dash --format 'IG_PS {{{{.Status}}}}'" ]
   - [ sh, -c, "docker logs --tail 25 ideagen-dash 2>&1 | sed 's/^/IG_LOG /'" ]
   - [ sh, -c, "curl -s -o /dev/null -w 'IG_HEALTHZ_%{{http_code}}\\n' --max-time 10 http://127.0.0.1/healthz || echo IG_HEALTHZ_FAIL" ]

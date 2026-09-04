@@ -165,3 +165,41 @@ ve ecs DescribeUserData     --InstanceId <id>   # 确认 UserData 写进去了
 **密钥怎么进去**:不写进 UserData(云 API 会存下来且可读)。要么等 Cloud
 Assistant 起来后用 RunCommand + TOS 预签名 URL,要么在 UserData 里放一个
 短期预签名 URL 让实例自己拉 —— 后者的 URL 本身是凭证,过期即失效,可接受。
+
+---
+
+## 数据怎么保持最新
+
+这台是**显示节点**,不跑周更;本机每天跑 daily,所以两边必然分叉。分叉的危险
+不在于数据旧,而在于**页面看起来完全正常**:它照样有净值、有持仓、有回测,只是
+停在部署那晚。没人会因为「看着不对」去查它。
+
+```
+本机 daily.sh
+  └─ push_state_to_cloud.py   → tos: deploy/state/<时间>-<sha12>.db
+                                        （每次新键,put 不可覆盖）
+实例 systemd timer (15 分钟)
+  └─ /opt/ideagen/sync_state.sh
+       └─ 容器内 pull_state.py  → 列出前缀取最新,比对 sha,写 /data/ideagen.db.new
+       └─ 停容器 → 换文件 → 删 -wal/-shm → chown 10001 → 起容器
+```
+
+几个不能省的地方:
+
+- **快照必须走 `sqlite3.backup()`,不能拷文件。** 本机常驻着 `com.ideagen40.serve`,
+  库是 WAL 模式,最近的写入还在 `ideagen.db-wal` 里。直接拷 `ideagen.db` 会得到
+  一个结构完好、但少了最新几次运行的库 —— 又是那种「看着正常」的错。
+- **换库前要停容器并删掉 `-wal`/`-shm`。** 新库配旧 WAL 读出来的东西两边都不是。
+- **哈希标记跟着数据一起搬,不能提前写。** 拉成功但搬运失败时,若标记已前移,
+  下次会认为「已是最新」而永远不再拉。所以 `pull_state.py` 把标记写在 dest 旁边,
+  由宿主机在库真正落位后一起 mv。
+- **拉取用实例自己的凭证,不用预签名 URL。** 预签名几小时就过期,同步链路会在
+  部署两小时后安静地死掉 —— 和没有同步是同一个结果,只是更晚更难发现。
+- **键名里带 sha。** 一次 list 同时给出顺序和内容身份,不需要额外的指针对象,
+  也就不存在指针和数据互相矛盾的状态。
+
+验证(部署时就跑一次,不等 15 分钟的第一次触发):开机日志里应有
+`IG_TIMER enabled` 和 `IG_SYNC PULL_OK` / `IG_SYNC_OK <sha>`。
+
+已知待办:`deploy/state/` 只增不删,每天约 48MB。`BlobStore` 故意没有 delete
+(见 base.py 的 immutability 注释),要清理得先决定是否给接口开这个口子。

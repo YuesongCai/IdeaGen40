@@ -179,6 +179,41 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class SelectionContextCase(_FrozenRun, unittest.TestCase):
+    """The whole selection step, not one topic at a time.
+
+    "You read hundreds of reports — why these five?" cannot be answered well
+    from a single topic's context: the model would have to infer the other
+    rows, which is how a reconstructed answer gets produced. The context for
+    this subject must therefore contain the full table and the control arm.
+    """
+
+    def test_context_carries_every_scored_topic_and_the_control_arm(self):
+        ctx = self._ctx("selection", "topics")
+        self.assertNotIn("error", ctx)
+        kinds = {m["kind"] for m in ctx["materials"]}
+        self.assertIn("verdict", kinds)
+        verdict = next(m for m in ctx["materials"] if m["kind"] == "verdict")
+        self.assertIn("T-TEST", verdict["text"])
+        self.assertIn("入选", verdict["text"])
+        # Every material still names where it came from.
+        for m in ctx["materials"]:
+            self.assertTrue(m["source"], m)
+
+    def test_the_step_context_does_not_smuggle_in_report_bodies(self):
+        """The step's decision was made on the table; adding bodies invites
+        the model to answer from the reports instead of from the decision."""
+        ctx = self._ctx("selection", "topics")
+        self.assertEqual(0, sum(1 for m in ctx["materials"]
+                                if m["kind"] == "doc"))
+        self.assertTrue(ctx["notes"])
+
+    def test_selection_is_an_accepted_subject_kind(self):
+        self.assertIn("selection", ask.SUBJECT_KINDS)
+        bad = self._ctx("nonsense", "topics")
+        self.assertIn("error", bad)
+
+
 class AuditBundleCase(_FrozenRun, unittest.TestCase):
     """The downloadable audit bundle carries the run, not the machine.
 

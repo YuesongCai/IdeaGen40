@@ -45,7 +45,7 @@ CONTEXT_CHAR_BUDGET = 30_000
 #: operator needed to ask is a gap the artifacts did not answer on their own.
 ASK_LOG = config.DATA / "ask_log.jsonl"
 
-SUBJECT_KINDS = ("topic", "idea", "selector")
+SUBJECT_KINDS = ("topic", "idea", "selector", "selection")
 
 SYSTEM_PROMPT = """你是 IdeaGen 投研系统在某一次已封存的运行里的「当时的自己」。
 用户会追问那次运行为什么做出某个决定。规则，逐条服从：
@@ -379,6 +379,84 @@ def _topic_context(materials, provenance_notes, con, p, run, topic_id):
     return label, corpus_note
 
 
+def _selection_context(materials, provenance_notes, con, p, run, _sid):
+    """Why these five and not the other thirteen — the whole step, not one topic.
+
+    Jon's question is not about any single topic: it is "you read hundreds of
+    reports, why did these five come out". Answering it from a per-topic
+    context makes the model reason about one row at a time and infer the rest,
+    which is exactly how a plausible-sounding but reconstructed answer gets
+    produced. So this hands over the entire scoring table at once — every
+    topic's four factors, the cut line, and the counting arm's ranking beside
+    it — and nothing else. The comparison the run actually made is the
+    comparison the answer has to work from.
+    """
+    art = _artifact(p, run, "A_topics.json")
+    counting = _artifact(p, run, "A_topics_counting.json")
+    label = "本期选题（筛选A）"
+    if not isinstance(art, dict):
+        provenance_notes.append("A_topics.json 产物读不到——整步打分表缺失")
+        return label, {}
+    scores = art.get("scores") or {}
+    chosen = art.get("chosen") or []
+    rejected = art.get("rejected") or {}
+    meta = art.get("meta") or {}
+    ranked = sorted(scores.items(), key=lambda kv: -(kv[1].get("score") or 0))
+    cut = min((scores[t].get("score") for t in chosen
+               if t in scores and scores[t].get("score") is not None),
+              default=None)
+    weights = meta.get("weights") or {}
+    lines = [
+        f"筛选A 用 {art.get('strategy')} v{art.get('version')} 给本期"
+        f"{len(scores)} 个注册主题打分，取前 {meta.get('top_n')} 名。"
+        f"权重 H {weights.get('H')} / G {weights.get('G')} / "
+        f"E {weights.get('E')} / P {weights.get('P')}（P 反向计分，用 100−P）。",
+        f"入选 {len(chosen)} 个：{'、'.join(chosen)}；落选 {len(rejected)} 个。"
+        + (f"入选线（第 {len(chosen)} 名的综合分）= {cut}。" if cut is not None else ""),
+        "全部主题按综合分排序，逐项列出四个因子——这是当时做出取舍的全部依据：",
+    ]
+    for i, (tid, sc) in enumerate(ranked, 1):
+        mark = "入选" if tid in chosen else "落选"
+        gap = ("" if cut is None or sc.get("score") is None or tid in chosen
+               else f"，距入选线 {cut - sc['score']:.1f} 分")
+        lines.append(
+            f"  {i}. {tid}（{sc.get('label')}）综合 {sc.get('score')} = "
+            f"H {sc.get('H')} / G {sc.get('G')} / E {sc.get('E')} / "
+            f"P {sc.get('P')}；证据 {sc.get('n_evidence')} 条、"
+            f"{sc.get('n_institutions')} 家机构；{mark}{gap}。")
+    _mk(materials, "verdict", "筛选A 全表 · 本期所有主题的打分与取舍",
+        f"blob runs/{run['as_of']}/{run['run_id']}/A_topics.json",
+        "\n".join(lines))
+
+    if isinstance(counting, dict):
+        cscores = counting.get("scores") or {}
+        cchosen = counting.get("chosen") or []
+        cranked = sorted(cscores.items(),
+                         key=lambda kv: -(kv[1].get("mentions") or 0))
+        only_semantic = [t for t in chosen if t not in cchosen]
+        only_counting = [t for t in cchosen if t not in chosen]
+        _mk(materials, "counting", "纯数数对照臂 · 同一批主题的另一种排法",
+            f"blob runs/{run['as_of']}/{run['run_id']}/A_topics_counting.json",
+            "对照臂不做任何语义判断，只数每个主题被多少篇研报提到：\n"
+            + "; ".join(f"{i}. {tid} {sc.get('mentions')} 篇"
+                        for i, (tid, sc) in enumerate(cranked, 1))
+            + f"\n对照臂取前 {len(cchosen)}：{'、'.join(cchosen)}。"
+            + f"\n两臂重合 {len([t for t in chosen if t in cchosen])} 个；"
+            + f"仅语义臂选中：{'、'.join(only_semantic) or '无'}；"
+            + f"仅数数臂选中：{'、'.join(only_counting) or '无'}。")
+
+    docs, corpus_note = _run_corpus(con, p, run)
+    corpus_note["n_docs_read"] = len(docs)
+    # The UI prints these notes under a 「材料缺口」 heading, so the sentence
+    # has to state what is absent first and the reason second — otherwise a
+    # deliberate scope decision reads as something that went missing.
+    provenance_notes.append(
+        "本步不附研报正文，只给出打分表与计数对照臂。这一步的取舍就是在这张"
+        "表上做的；附上正文会让回答绕开当时真正用到的依据。逐篇正文可在"
+        "单个主题的追问里查阅。")
+    return label, corpus_note
+
+
 def _theme(run, topic_id):
     try:
         from . import lexicon
@@ -538,7 +616,8 @@ def assemble_context(p, con, run_id: str | None,
                      subject: dict[str, Any]) -> dict[str, Any]:
     """Everything the answering model may see, with provenance per piece.
 
-    `subject` is {"kind": "topic"|"idea"|"selector", "id": ...}. Pulls ONLY
+    `subject` is {"kind": "topic"|"idea"|"selector"|"selection", "id": ...}.
+    Pulls ONLY
     from the immutable stores: the run journal, the run's artifacts, the
     verdict/candidate rows, and the corpus rows those point to.
     """
@@ -562,6 +641,9 @@ def assemble_context(p, con, run_id: str | None,
             materials, provenance_notes, con, p, run, sid)
     elif kind == "idea":
         label, corpus_note = _idea_context(
+            materials, provenance_notes, con, p, run, sid)
+    elif kind == "selection":
+        label, corpus_note = _selection_context(
             materials, provenance_notes, con, p, run, sid)
     else:
         label, corpus_note = _selector_context(

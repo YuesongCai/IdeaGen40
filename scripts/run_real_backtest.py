@@ -146,6 +146,96 @@ def _mde_pct(rets: list[float]) -> float | None:
     return (_crit(n - 1) + backtest.Z_POWER) * sd / (n ** 0.5)
 
 
+def _theme_attribution(con, positions: list[dict]) -> dict:
+    """One layer of the attribution Jon asked for: theme versus instrument.
+
+    Every macro theme carries a tradable indicator — POLICY-PATH is US.IEF,
+    INFLATION is US.TIP. So there is a counterfactual worth pricing: hold the
+    theme's own ETF over exactly the window the position was held, and ask what
+    picking a specific instrument bought on top of identifying the theme.
+
+    The control does the real work here. `buy_all` takes every candidate without
+    choosing, so its excess over the indicators is what the *pool* adds; an arm's
+    excess over the indicators includes that same amount. Selection can only be
+    credited with the difference between the two, which is why both are reported
+    and why neither is reported alone.
+
+    This is one layer, not the four. The market-beta layer and the layer
+    separating risk controls from buy-and-hold are still missing, and calling
+    this "attribution done" would be the overclaim the item was raised about.
+    """
+    from ideagen import lexicon
+
+    indicator = {t.id: t.price_indicator for t in lexicon.THEMES}
+    topic_of = {
+        (str(r["as_of"])[:10], str(r["instrument_id"])): r["topic_id"]
+        for r in db.q(con, "SELECT as_of, instrument_id, topic_id FROM candidates")}
+
+    closes: dict[str, dict[str, float]] = {}
+    for r in db.q(con, "SELECT code, d, close FROM prices"):
+        closes.setdefault(str(r["code"]), {})[str(r["d"])] = float(r["close"])
+
+    def window_return(code: str, start: str, end: str) -> float | None:
+        series = closes.get(code) or {}
+        opens = [d for d in series if d >= start]
+        shuts = [d for d in series if d <= end]
+        if not opens or not shuts:
+            return None
+        first, last = series[min(opens)], series[max(shuts)]
+        return None if not first else (last / first - 1.0) * 100.0
+
+    per_arm: dict[str, list[tuple[float, float]]] = {}
+    unmatched = 0
+    for row in positions:
+        if row.get("return_pct") is None or not row.get("entry_d") or not row.get("exit_d"):
+            continue
+        topic = topic_of.get(
+            (str(row["period"])[:10], str(row["instrument_id"])))
+        code = indicator.get(topic)
+        bench = (window_return(code, str(row["entry_d"])[:10],
+                               str(row["exit_d"])[:10]) if code else None)
+        if bench is None:
+            unmatched += 1
+            continue
+        per_arm.setdefault(str(row["arm"]), []).append(
+            (float(row["return_pct"]), bench))
+
+    arms: dict[str, Any] = {}
+    for name, pairs in per_arm.items():
+        excess = [held - bench for held, bench in pairs]
+        mde = _mde_pct(excess)
+        mean = sum(excess) / len(excess)
+        arms[name] = {
+            "n": len(pairs),
+            "mean_held_pct": round(sum(h for h, _ in pairs) / len(pairs), 4),
+            "mean_indicator_pct": round(sum(b for _, b in pairs) / len(pairs), 4),
+            "mean_excess_pct": round(mean, 4),
+            "mde_pct": None if mde is None else round(mde, 3),
+            "verdict": ("underpowered" if mde is None or abs(mean) < mde
+                        else "not_ruled_out"),
+        }
+
+    control = arms.get(CONTROL)
+    for name, entry in arms.items():
+        if control and name != CONTROL:
+            entry["excess_over_control_pct"] = round(
+                entry["mean_excess_pct"] - control["mean_excess_pct"], 4)
+    return {
+        "layer": "theme_indicator_vs_instrument",
+        "control": CONTROL,
+        "n_positions": sum(a["n"] for a in arms.values()),
+        "unmatched_positions": unmatched,
+        "arms": arms,
+        "note": (
+            "把每笔持仓与其主题的指示 ETF 在同一持有窗口内比较。"
+            f"对照臂 {CONTROL} 不做任何挑选，所以它相对指示标的的超额是"
+            "「候选池」带来的；各臂的超额都含有这一部分，挑选本身只能记在"
+            "excess_over_control_pct 上。同样只用可检出下界否定，不用它确认。"
+            "这是四层归因里的一层——市场 beta 层、以及区分风控与买入持有的那层，"
+            "都还没有做。"),
+    }
+
+
 def _verdicts_agree(depths: dict[str, dict]) -> dict[str, bool]:
     """Whether each arm's verdict survives the choice of exclusion depth.
 
@@ -312,6 +402,7 @@ def main(argv: list[str]) -> int:
         str(n): _drop_top_instruments(positions, top_n=n) for n in (5, 10, 20)}
     robustness["verdict_stable_across_depths"] = _verdicts_agree(
         robustness["depths"])
+    attribution = _theme_attribution(con, positions)
     robustness["depth_note"] = (
         "顶层字段即 depths['10']，保留是为了不改已有消费方的形状。"
         "verdict_stable_across_depths 为 false 的臂，其结论取决于剪切多少个"
@@ -355,6 +446,7 @@ def main(argv: list[str]) -> int:
         "undated_shelf_instruments": dating["shelf_undated"],
         "shelf_dating": dating,
         "robustness_drop_top": robustness,
+        "attribution_theme_layer": attribution,
         # The sweep ran with strict=True, so every period's context passed the
         # as-of audit before any arm scored it — a context carrying a document,
         # a close or a candidate dated after the replayed day raises AsOfLeak

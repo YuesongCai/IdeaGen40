@@ -327,9 +327,18 @@ def open_batch(con, batch_id: str, book_id: str, verbose: bool = True,
             ttl_sessions = sessions_between(
                 con, fillable,
                 (date.fromisoformat(fillable) + timedelta(days=25)).isoformat(), market)
-            if ttl_sessions:
-                expire = ttl_sessions[min(config.ORDER_TTL_SESSIONS,
-                                          len(ttl_sessions)) - 1]
+            if len(ttl_sessions) >= config.ORDER_TTL_SESSIONS:
+                expire = ttl_sessions[config.ORDER_TTL_SESSIONS - 1]
+            elif ttl_sessions:
+                # Fewer known sessions than the TTL asks for: the remaining
+                # ones have not printed yet. Taking the last known bar gives
+                # the order a life measured in bars that already exist, which
+                # for an order placed before today's close is one day — the
+                # same collapse as the empty case, just harder to see. Extend
+                # past the known bars by the shortfall, in calendar days.
+                missing = config.ORDER_TTL_SESSIONS - len(ttl_sessions)
+                expire = (date.fromisoformat(ttl_sessions[-1])
+                          + timedelta(days=missing + 2)).isoformat()
             else:
                 # The sessions that would carry this order have not printed yet
                 # — normal for an order placed before today's close, and the

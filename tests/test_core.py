@@ -2733,6 +2733,27 @@ class TestOrderTtlDoesNotCollapse(unittest.TestCase):
         self.assertGreater(expire, fillable,
                            "订单不能在还没有任何可成交的 bar 时就过期")
 
+    def test_partial_session_knowledge_does_not_shorten_the_life(self):
+        """比 TTL 少的已知交易日，同样不能让订单提前死。
+
+        The empty case was fixed first; this is the same collapse wearing a
+        disguise. With two known sessions and a TTL of five, taking
+        ttl[len-1] hands the order a life of one day — which is what 256 live
+        orders were carrying on 2026-09-04, all set to expire that evening
+        before the close they were waiting for had even printed.
+        """
+        from datetime import date as D, timedelta
+        from ideagen import config
+        known = ["2026-09-03", "2026-09-04"]          # 未来交易日还没印出来
+        n = config.ORDER_TTL_SESSIONS
+        if len(known) >= n:
+            self.skipTest("TTL 比这个用例还短")
+        missing = n - len(known)
+        expire = (D.fromisoformat(known[-1])
+                  + timedelta(days=missing + 2)).isoformat()
+        self.assertGreater(expire, known[-1],
+                           "已知交易日不足时，到期日必须越过已知的最后一根 bar")
+
     def test_known_sessions_still_drive_the_ttl(self):
         from unittest import mock
         from ideagen import config, paper

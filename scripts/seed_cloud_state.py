@@ -23,6 +23,7 @@ is safe to run on every boot, which is what the dashboard's entrypoint does.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 import tempfile
@@ -118,23 +119,47 @@ def cmd_import(args) -> int:
         getattr(p.state, "dialect", ""), "INSERT OR IGNORE INTO")
     suffix = " ON CONFLICT DO NOTHING" if getattr(
         p.state, "dialect", "") == "postgres" else ""
-    moved = 0
+    # Per table, not one transaction. The first version let a failure on one
+    # table abort the whole run, and because the caller only logs to a container
+    # nobody can read, the visible result was "the first tables arrived and
+    # the later ones silently did not" — which looks like a schema mismatch and is
+    # not. Each table now reports its own outcome.
+    moved, report = 0, {}
     for t in TABLES:
         if t not in have:
+            report[t] = "not in seed"
             continue
-        before = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
-        cols = _cols(src, t)
-        rows = src.execute(f"SELECT {','.join(cols)} FROM {t}").fetchall()
-        if not rows:
-            continue
-        ph = ",".join("?" * len(cols))
-        p.state.executemany(
-            f"{ignore} {t} ({','.join(cols)}) VALUES ({ph}){suffix}",
-            [tuple(r) for r in rows])
-        after = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
-        moved += after - before
-        print(f"  {t}: 种子 {len(rows)} 行，新增 {after - before}（原有 {before}）")
+        try:
+            before = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
+            cols = _cols(src, t)
+            rows = src.execute(f"SELECT {','.join(cols)} FROM {t}").fetchall()
+            if not rows:
+                report[t] = "seed empty"
+                continue
+            ph = ",".join("?" * len(cols))
+            p.state.executemany(
+                f"{ignore} {t} ({','.join(cols)}) VALUES ({ph}){suffix}",
+                [tuple(r) for r in rows])
+            after = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
+            moved += after - before
+            report[t] = f"seed {len(rows)}, added {after - before}, had {before}"
+        except Exception as e:  # noqa: BLE001 — one bad table must not stop the rest
+            report[t] = f"FAILED {type(e).__name__}: {e}"[:300]
+        print(f"  {t}: {report[t]}")
     print(f"导入完成，新增 {moved} 行")
+
+    # The instance has no shell and its container logs are unreadable from
+    # outside, so the run leaves its own report where the operator can read it:
+    # the bucket they already have credentials for.
+    try:
+        import datetime as _dt
+        blob = json.dumps({"at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                           "added": moved, "tables": report},
+                          ensure_ascii=False, indent=1).encode()
+        p.blobs._c().put_object(p.blobs.bucket, p.blobs._k("seed/last_import.json"),
+                                content=blob)
+    except Exception as e:  # noqa: BLE001 — reporting must never fail the import
+        print(f"  （导入报告写入失败，不影响导入本身: {type(e).__name__}）")
     return 0
 
 

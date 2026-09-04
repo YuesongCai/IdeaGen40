@@ -98,6 +98,19 @@ class TosBlobStore(BlobStore):
         self.prefix = prefix.strip("/")
         self._client = None
 
+    # No lock here, and that is deliberate — the SQL stores need one and this
+    # does not. MySQL's client protocol is a strict request/response sequence
+    # numbered on a single socket, so two threads sharing one connection
+    # desynchronise it. TOS is HTTP: `tos.TosClientV2` sits on a connection pool
+    # and every thread gets its own request/response pair, with nothing shared
+    # to interleave. Copying the SQL fix here would serialise audit-bundle
+    # packing and snapshot export — both of which fetch many blobs in a row —
+    # for no defect. Redis is the same story: its client is pool-backed and
+    # thread-safe by design.
+    #
+    # What remains is check-then-create on `self._client`: two threads can each
+    # build a client and one gets discarded. Benign, and noted so the next
+    # reader does not mistake it for the bug above.
     def _c(self):
         if self._client is None:
             try:

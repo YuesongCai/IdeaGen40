@@ -2565,3 +2565,25 @@ class TestGenerationMethodBooksUseProvenance(unittest.TestCase):
         from ideagen.strategies.select_generation_method import _pick
         v = _pick(self._ctx(), "gap", "generated_gap")
         self.assertEqual(v.chosen, ["pool:C"])
+
+
+class TestBacktestKeepsGenerationProvenance(unittest.TestCase):
+    """Replayed candidates must carry which generators argued for them.
+
+    Booking stores them under sources[].methods. Without reading that back,
+    the two generation-method arms see only the batch's generator label, match
+    nothing, and report "chose 0 ideas" — on the real 2026-08-19 pool that hid
+    238 selections for ai_native behind an empty row.
+    """
+
+    def test_methods_are_read_back_from_sources(self):
+        from ideagen.backtest import _methods_of
+        raw = {"sources": [{"provenance": "weekly-run",
+                            "methods": ["ai_native", "chain"]}]}
+        self.assertEqual(_methods_of(raw), ["ai_native", "chain"])
+
+    def test_missing_or_empty_provenance_is_empty_not_an_error(self):
+        from ideagen.backtest import _methods_of
+        self.assertEqual(_methods_of({}), [])
+        self.assertEqual(_methods_of({"sources": [{"methods": []}]}), [])
+        self.assertEqual(_methods_of({"sources": ["not-a-dict"]}), [])

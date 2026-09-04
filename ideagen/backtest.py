@@ -192,6 +192,19 @@ def _topics(con, as_of: date, top_n: int) -> tuple[list[dict[str, Any]], list[st
     return topics[:top_n], dropped
 
 
+def _methods_of(raw: dict[str, Any]) -> list[str]:
+    """The generators recorded against a booked idea, if any.
+
+    `payload_from_candidates` writes them into sources[0].methods; a pool
+    candidate reached by two generators keeps method="merged" and lives on in
+    that list alone.
+    """
+    for src in (raw.get("sources") or []):
+        if isinstance(src, dict) and src.get("methods"):
+            return [str(m) for m in src["methods"] if m]
+    return []
+
+
 def _candidates(con, as_of: date) -> list[dict[str, Any]]:
     """Stage-B output for the period, in the shape stage C reads.
 
@@ -230,6 +243,12 @@ def _candidates(con, as_of: date) -> list[dict[str, Any]]:
             "exposure": u.get("exposure"), "vehicle": u.get("vehicle") or r["vehicle"],
             "topic_id": r["theme_id"], "topic_label": r["theme"],
             "method": gen.get(r["batch_id"]) or "unknown",
+            # Which generators argued for this instrument. Booking preserves it
+            # under sources[].methods; without it the two generation-method
+            # arms see only the batch's generator label and select nothing at
+            # all, so a whole arm reads as "chose zero ideas" when it in fact
+            # argued for most of the pool.
+            "proposed_by": _methods_of(raw) or [gen.get(r["batch_id"])],
             "horizon_days": 30 * int(r["horizon_months"] or 1),
             "thesis": r["thesis"] or r["view"] or "",
             "upside_pct": float(ret[0]), "downside_pct": float(ret[2]),

@@ -2889,7 +2889,7 @@ function holdListTable(ag,mp){
       +'</tr>';
   }).join('');
   return '<div class="table-wrap scroll-y scroll-thin hold-wrap"><table>'
-    +'<thead><tr><th>标的</th><th>论点</th><th class="r" title="同时持有该标的的账本数">账本数</th><th class="r">涨跌</th><th class="r">合计盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th><th></th></tr></thead>'
+    +'<thead><tr><th>标的</th><th>论点</th><th class="r" title="同时持有该标的的账本数">账本数</th><th class="r">涨跌</th><th class="r">合计盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th><th class="r">当时的理由</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
     +'';
 }
@@ -3563,11 +3563,17 @@ function backtestCard(){
       '<div class="table-wrap"><table>'
         +'<thead><tr><th>选取策略</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
         +'<tbody>'+rows+'</tbody></table></div>'
-      +'<div class="card-note" style="margin-top:var(--space-3)">'
-        +'<b>本表与策略对比图口径不同。</b>'
-        +'本表以单条想法为单位：候选池内每条想法按当时收盘价买入、'
-        +fmtInt(sum.horizon_days)+' 天后卖出的损益。策略对比图以账本为单位，受选取条数、仓位、止损与现金约束，两者结论可以不一致。<br>'
-        +esc(humanizeKeys(sum.disclaimer||''))+'</div>'
+      +(function(){
+        /* 口径差异与前视风险原本整段 300+ 字铺在表下，读者未读先跳过。
+           外面只留结论，展开细节归 ⓘ——与本面板别处一致。 */
+        var cap='本表以单条想法为单位：候选池内每条想法按当时收盘价买入、'
+          +fmtInt(sum.horizon_days)+' 天后卖出的损益。策略对比图以账本为单位，'
+          +'受选取条数、仓位、止损与现金约束，两者结论可以不一致。';
+        var dis=humanizeKeys(sum.disclaimer||'');
+        return '<div class="card-note" style="margin-top:var(--space-3)">'
+          +'<b>本表与策略对比图口径不同</b>'
+          +'<span class="gloss" title="'+esc(cap+(dis?' '+dis:''))+'">ⓘ</span></div>';
+      })()
       +'<div style="margin-top:var(--space-5);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle)">'
       +backtestSection()+'</div>')
     +'</div>';
@@ -5446,6 +5452,11 @@ function posDrawerBody(code){
         +'</span>';
     })()
     +'</div>';
+  /* 打开一仓，第一句想问的就是「为什么是它」。入口紧跟着盈亏数字，
+     而且无条件给：候选池里找不到这条（更早批次建的仓）时最该能问，
+     偏偏原来那种情况下按钮整个消失。 */
+  html+='<div style="margin:0 0 var(--space-4)">'
+    +askBtn('idea',(cand&&cand.id)||('pool:'+bareCode(p.code)))+'</div>';
   html+='<div style="margin-bottom:var(--space-3);color:var(--color-text-secondary)"><b style="font-weight:600;color:var(--color-text-primary)">论点</b>　'+esc(p.thesis||'（这仓没有存论点）')+'</div>';
   if(cand){
     html+='<div class="derive-kv" style="margin-top:0">'
@@ -5457,7 +5468,6 @@ function posDrawerBody(code){
       +'<span class="num">下行 '+fmtPct(cand.downside_pct)+'（P '+fmtProb(cand.p_down)+'）</span>'
       +'<span class="num">赚亏比 '+rrText(cand)+'</span>'
       +'<span><button type="button" class="exp-btn" onclick="filterPoolCode(\''+jss(bareCode(p.code))+'\')">在候选池里看这条 ›</button></span>'
-      +'<span>'+askBtn('idea',cand.id||('pool:'+bareCode(p.code)))+'</span>'
       +'</div>';
   }else{
     html+='<div class="derive-kv"><span style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
@@ -6407,7 +6417,7 @@ function limitsCard(){
   var doneN=fixes.filter(function(f){return (f.state||'').indexOf('✅')>=0}).length;
   return '<div class="card section">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">已知局限</h2>'
-    +'<span class="card-note">这套方法目前哪些前提还没被验证，以及已经发现并修掉的缺陷</span></div>'
+    +'<span class="card-note gloss" title="这套方法目前哪些前提还没被验证，以及已经发现并修掉的缺陷">ⓘ</span></div>'
     +'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)">'
       +assum.length+' 条前提尚未验证；'+fixes.length+' 个已发现的缺陷里修好了 '+doneN+' 个。</div>'
     +foldBlock('evidence.limits.detail','逐条明细','未验证假设 · 已修复缺陷',trustBody())
@@ -6866,8 +6876,8 @@ function phTeachCard(){
   }
   h+='<textarea class="ph-say" id="phSay" data-el="rules.say" oninput="PH.say=this.value"'
    +' placeholder="'+esc('比如：'+PH_EG[0])+'">'+esc(PH.say)+'</textarea>'
-   +'<div class="card-note" style="margin-top:8px">越具体越有效。「要谨慎一点」无法执行；'
-   +'「必须指名一个被期限逼着动手的主体」可以。</div>'
+   +'<div class="card-note" style="margin-top:8px">越具体越有效'
+   +'<span class="gloss" title="「要谨慎一点」无法执行；「必须指名一个被期限逼着动手的主体」可以。">ⓘ</span></div>'
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
           +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';

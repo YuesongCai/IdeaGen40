@@ -349,6 +349,109 @@ class DerivedArmRegisters(unittest.TestCase):
         self.assertIn("后见之明", str(e.exception))
 
 
+class ActivationReachesTheWeeklyRun(unittest.TestCase):
+    """一条准则激活之后，周跑到底会不会真的多跑一条臂。
+
+    Asked by a reviewer on 2026-09-05 who read the code and could not tell:
+    both ends were visible — the generators take a `card`, the ledger accepts
+    one — but nothing in `orchestrator.py` mentions `philosophy`, and a live
+    `strategy.available('idea_generator')` returned the same four arms as
+    always. The four were all there was because the ledger was empty; the
+    registration is real. But a reader could not establish that, and the panel
+    tells the PM 「每条准则派生一条对照臂」 in the present tense.
+
+    So this pins the join, using the exact expression the weekly run selects
+    with (`orchestrator.py`: `[r["name"] for r in strat.available(...)]`).
+    If that line ever becomes a hand-kept list of the four founding arms, an
+    activated card would silently stop running and this goes red.
+    """
+
+    def setUp(self):
+        from ideagen import strategy as strat
+        self.tmp = tempfile.TemporaryDirectory()
+        self._real = philosophy.LEDGER
+        philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+        # The registry fills lazily on first `available()`. Snapshotting before
+        # that returns an empty set, and then tearDown deletes every arm in the
+        # process rather than the one this test added — which is how the first
+        # version of this class made the three tests after it fail.
+        strat.available("idea_generator")
+        self._before = set(strat._REGISTRY)
+
+    def tearDown(self):
+        from ideagen import strategy as strat
+        philosophy.LEDGER = self._real
+        # A derived arm registered by this test must not leak into the global
+        # registry other tests read.
+        for key in set(strat._REGISTRY) - self._before:
+            del strat._REGISTRY[key]
+        self.tmp.cleanup()
+
+    def _weekly_would_run(self):
+        """`orchestrator.weekly` picks generators with exactly this."""
+        from ideagen import strategy as strat
+        return [r["name"] for r in strat.available("idea_generator")]
+
+    def test_an_activated_card_appears_where_the_weekly_run_looks(self):
+        from ideagen.strategies import gen_pm
+        card = a_card(scope={"stage": "idea_generator", "arm": "chain"})
+        self.assertNotIn(philosophy.arm_name(card), self._weekly_would_run())
+        philosophy.activate(card, known_arms=set(self._weekly_would_run()))
+        gen_pm._install()
+        self.assertIn(philosophy.arm_name(card), self._weekly_would_run())
+
+    def test_the_four_controls_are_still_there_beside_it(self):
+        """The derived arm is an addition. A card that replaced its base would
+        end the comparison it exists to be measured by."""
+        from ideagen.strategies import gen_pm
+        card = a_card(scope={"stage": "idea_generator", "arm": "chain"})
+        philosophy.activate(card, known_arms=set(self._weekly_would_run()))
+        gen_pm._install()
+        names = self._weekly_would_run()
+        for base in ("ai_native", "carl_constraint", "chain", "gap"):
+            self.assertIn(base, names)
+
+    def test_the_arm_carries_the_card_in_its_version(self):
+        """`Verdict` is stamped from the registry, so a book filled by this arm
+        can be traced to the exact sentence that produced it."""
+        from ideagen import strategy as strat
+        from ideagen.strategies import gen_pm
+        card = a_card(scope={"stage": "idea_generator", "arm": "chain"})
+        philosophy.activate(card, known_arms=set(self._weekly_would_run()))
+        gen_pm._install()
+        spec = strat.spec("idea_generator", philosophy.arm_name(card))
+        self.assertEqual(spec["version"], f"1.0+{card['card_id']}")
+        self.assertEqual(spec["role"], "exploratory")
+
+    def test_the_weekly_run_really_asks_the_registry(self):
+        """The tests above replicate the orchestrator's selection expression,
+        which means they would all stay green if that line became a hand-kept
+        list of the four founding arms — the exact regression a reviewer
+        suspected on 2026-09-05. So read the real source and require that the
+        default still comes from the registry.
+
+        Brittle on purpose: this is a one-line invariant that cannot be
+        observed any other way without running a full weekly, and its failure
+        message says what to do rather than just what changed.
+        """
+        import inspect
+        from ideagen import orchestrator
+        src = inspect.getsource(orchestrator.weekly)
+        self.assertIn('strat.available("idea_generator")', src,
+                      "周跑不再从注册表取生成臂了。一旦改成写死的名单，"
+                      "PM 激活的准则就不会有臂在跑，而界面仍然说它在跑。"
+                      "要么把这一行改回注册表，要么把面板上「每条准则派生一条"
+                      "对照臂」那句话一起改掉。")
+
+    def test_an_empty_ledger_registers_nothing(self):
+        """The reviewer's actual observation, stated as the expected result:
+        four arms and no more is what an empty ledger should look like."""
+        from ideagen.strategies import gen_pm
+        gen_pm._install()
+        self.assertEqual(sorted(self._weekly_would_run()),
+                         ["ai_native", "carl_constraint", "chain", "gap"])
+
+
 class RewritesMustBeSeenByTheirAuthor(unittest.TestCase):
     """The hole this found: the distiller reports boundary contact as prose
     (`"direction: 他要做空，改为……"`), and the original exact-key check passed

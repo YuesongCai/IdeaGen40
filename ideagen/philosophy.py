@@ -175,11 +175,6 @@ def cards(as_of: date | None = None, *, include_retired: bool = False
     return out
 
 
-def for_arm(arm: str, as_of: date | None = None) -> list[dict[str, Any]]:
-    return [c for c in cards(as_of)
-            if str((c.get("scope") or {}).get("arm")) == arm]
-
-
 # ---------------------------------------------------------------------------
 # validation
 def _fingerprint(text: str) -> str:

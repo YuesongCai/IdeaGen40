@@ -2532,13 +2532,16 @@ function mainLine(ag){
       +'<span class="gloss gm" title="逐段展开可回溯依据与语料来源。">ⓘ</span></span></div>'
     +rows
     /* 「方法」这一页读者最想问的就是「凭什么这么选」。入口不能只在展开某一段
-       之后才出现——那等于要求他先猜对该展开哪一段。 */
-    +'<div style="margin-top:var(--space-4);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle);'
-      +'display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">'
-      +askBtn('selection','topics')
-      +'<span style="font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)">'
-        +'问它当时凭什么从 '+fmtInt(nTopicsAll)+' 个候选里选出这几个主题</span>'
-    +'</div>'
+       之后才出现——那等于要求他先猜对该展开哪一段。所以 02 折着的时候，
+       这里补一个。但 02 一展开，它自己顶上就有同一个按钮——那时候这里再放
+       一个，就是同一个动作在一屏之内出现两次。展开了就把位置让出去。 */
+    +(mlOpen[1]?''
+      :'<div style="margin-top:var(--space-4);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle);'
+        +'display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">'
+        +askBtn('selection','topics')
+        +'<span style="font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)">'
+          +'问它当时凭什么从 '+fmtInt(nTopicsAll)+' 个候选里选出这几个主题</span>'
+      +'</div>')
   +'</div>';
 }
 function mlStageBody(i){
@@ -6960,13 +6963,21 @@ function attributionCard(){
   var names=Object.keys(arms);
   /* 判定必须取「相对对照」那一列自己的，不能借用顶层 verdict——顶层说的是
      「相对指示标的」，把它挂在另一列旁边就是把一个判定放在它并不适用的
-     数字上。我先前正是这么写的，于是界面上出现过一句「目前只有 X、Y 为正」，
-     而那两个臂在这一列上都没越过自己的下界。 */
-  var beat=names.filter(function(k){
-    return k!==ctl && arms[k].excess_over_control_pct>0
-        && arms[k].verdict_over_control==='not_ruled_out';
+     数字上。我先前正是这么写的，界面上出现过一句「目前只有 X、Y 为正」。
+
+     而且这一列是三态，不是两态：样本够看见预注册的优势、优势却没出现
+     （no_edge_detected），和样本还不够（underpowered），是两个相反的结论。
+     把前者说成「数据还不够」，是往人们希望的方向说假话。 */
+  var byCol=function(v){return names.filter(function(k){
+    return k!==ctl && arms[k].verdict_over_control===v; })};
+  var noEdge=byCol('no_edge_detected'), under=byCol('underpowered');
+  var beat=byCol('not_ruled_out').filter(function(k){
+    return arms[k].excess_over_control_pct>0;
   }).sort(function(x,y){return arms[y].excess_over_control_pct-arms[x].excess_over_control_pct});
-  var under=names.filter(function(k){return arms[k].verdict==='underpowered'}).length;
+  var needs=under.map(function(k){return arms[k].n_needed_for_edge}).filter(function(x){return x});
+  var haves=under.map(function(k){return arms[k].n}).filter(function(x){return x});
+  var rng=function(a){return a.length?(Math.min.apply(null,a)===Math.max.apply(null,a)
+      ? fmtInt(a[0]) : fmtInt(Math.min.apply(null,a))+'–'+fmtInt(Math.max.apply(null,a))):''};
   var lead='';
   if(c){
     lead='<b>'+esc(selMetaOf(ctl)[1]||ctl)+'</b>（把候选池里每一条都买下、不做任何挑选）'
@@ -6974,9 +6985,14 @@ function attributionCard(){
       +fmtGapPp(c.mean_excess_pct,{signed:true})+'</span>。'
       +'各选取策略的超额都含着这一份，所以「挑选」本身只能看它相对这个对照还多出多少。'
       +(beat.length
-         ? '目前只有 <b>'+beat.map(function(k){return esc(selMetaOf(k)[1]||k)}).join('、')
-           +'</b> 越过了自己的可检出下界。'
-         : '<b>目前没有任何一个策略越过自己的可检出下界——挑选本身的贡献，这一层还答不了。</b>');
+         ? '目前 <b>'+beat.map(function(k){return esc(selMetaOf(k)[1]||k)}).join('、')
+           +'</b> 的优势尚未被排除。' : '')
+      +(noEdge.length
+         ? '其中 <b>'+noEdge.length+'</b> 个臂的样本已足以检出预注册的优势，'
+           +'<b>而优势没有出现</b>——这是「没看出优势」，不是「还看不出来」。' : '')
+      +(under.length
+         ? '其余 '+under.length+' 个样本仍不足，还需 '+rng(needs)+' 笔已计价持仓'
+           +(haves.length?'（现有 '+rng(haves)+' 笔）':'')+'。' : '');
   }
   var rows=names.sort(function(x,y){
       var ax=arms[x].excess_over_control_pct,ay=arms[y].excess_over_control_pct;
@@ -6995,8 +7011,13 @@ function attributionCard(){
         +'<td class="r num">'+fmtInt(v.n)+'</td>'
         +'<td title="这一列的判定针对「相对对照」，也就是挑选本身的贡献">'
           +(isCtl?''
-            :(v.verdict_over_control==='underpowered'?badge('neutral','样本不足')
-              :(v.verdict_over_control?badge('warning','未被排除'):'')))+'</td>'
+            :(v.verdict_over_control==='underpowered'
+                ?'<span title="'+esc('还需约 '+fmtInt(v.n_needed_for_edge||0)+' 笔已计价持仓才够判断，现有 '+fmtInt(v.n||0)+' 笔')+'">'
+                  +badge('neutral','样本不足 · 还需 '+fmtInt(v.n_needed_for_edge||0)+' 笔')+'</span>'
+              :(v.verdict_over_control==='no_edge_detected'
+                ?'<span title="'+esc('样本已足以检出预注册的优势（需约 '+fmtInt(v.n_needed_for_edge||0)+' 笔，现有 '+fmtInt(v.n||0)+' 笔），而优势没有出现。这是一个结论，不是数据缺口。')+'">'
+                  +badge('neutral','没看出优势')+'</span>'
+                :(v.verdict_over_control?badge('warning','未被排除'):''))))+'</td>'
       +'</tr>';
     }).join('');
   return '<div class="card section">'
@@ -7006,7 +7027,7 @@ function attributionCard(){
     /* 这一句不折叠：它是这张卡最容易被误读的地方。 */
     +'<div class="card-note" style="color:var(--color-feedback-warning-text)">'
       +'这是四层归因里的<b>一层</b>——市场 beta 层、以及区分风控与买入持有的那层都还没有做，'
-      +'不能据此说归因已经完成。'+(under?'另有 '+under+' 个臂样本不足以判断。':'')
+      +'不能据此说归因已经完成。'+(under.length?'另有 '+under.length+' 个臂在这一层上样本不足。':'')
       +'<span class="gloss gm" title="'+esc(a.note||'')+'">ⓘ</span></div>'
     +foldBlock('evidence.attribution.detail','逐臂明细','持有 · 主题指示 · 超额 · 相对对照',
       '<div class="table-wrap"><table><thead><tr>'

@@ -20,6 +20,12 @@
 # Coordination: sync_state.sh stops the container to swap the database, and
 # this script replaces the container. Interleaved, one can start the old
 # container back up around a half-finished swap. Both take the same lock.
+#
+# Cost: this node is one vCPU, so a build plus the full suite takes minutes and
+# the served page is sluggish while it runs. That only happens when origin/main
+# actually moves — an idle poll is one `git fetch` — but it is worth knowing
+# before someone pushes during a demo. The test run is niced so the server
+# keeps priority.
 set -u
 
 APP=/opt/ideagen/app
@@ -51,7 +57,7 @@ if ! docker build -q -t "ideagen40:cand-$want" -f "$APP/deploy/Dockerfile" "$APP
 fi
 
 if [ "$REQUIRE_TESTS" = "1" ]; then
-  if docker run --rm --entrypoint python3 "ideagen40:cand-$want" \
+  if nice -n 15 docker run --rm --cpus 0.6 --entrypoint python3 "ideagen40:cand-$want" \
        -m pytest -q -x >/tmp/sync_code_tests.log 2>&1; then
     echo "IG_CODE_TESTS_OK $want"
   else

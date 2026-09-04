@@ -15,7 +15,7 @@ from ..strategy import RunContext, Verdict, register
 MAX_N = 14
 
 
-@register("idea_selector", "buy_all", "1.0", label="9. 不筛全买（量尺）",
+@register("idea_selector", "buy_all", "1.0", label="全量基准",
           role="control")
 def buy_all(ctx: RunContext) -> Verdict:
     """Take every candidate. Answers whether selecting adds anything at all."""
@@ -25,7 +25,7 @@ def buy_all(ctx: RunContext) -> Verdict:
                          "n": len(ids)})
 
 
-@register("idea_selector", "random_pick", "1.0", label="10. 随机抽（量尺）",
+@register("idea_selector", "random_pick", "1.0", label="随机基准",
           role="control", params={"n": 10, "seed": 20260817})
 def random_pick(ctx: RunContext) -> Verdict:
     """Draw n at random from a fixed seed. Answers whether *ranking* carries

@@ -95,7 +95,7 @@ def _rank(ctx: RunContext) -> tuple[list[tuple[str, float]], dict, dict[str, str
                     "inf_count": sum(1 for v in scores.values() if v == float("inf"))}, bad
 
 
-@register("idea_selector", "omega_loose", "1.0", label="6. 按赚亏比排",
+@register("idea_selector", "omega_loose", "1.0", label="赔率排序 · 宽松",
           role="primary", params={"n_min": 6, "n_max": 14, "floor": 1.5})
 def omega_loose(ctx: RunContext) -> Verdict:
     """Rank by gain-over-loss versus cash; admit everything above the batch median.
@@ -116,7 +116,7 @@ def omega_loose(ctx: RunContext) -> Verdict:
                          "n": len(chosen), "admission": "loose"})
 
 
-@register("idea_selector", "omega_strict", "1.0", label="赚亏比 · 严门槛（常驻探索）",
+@register("idea_selector", "omega_strict", "1.0", label="赔率排序 · 严格",
           role="exploratory", params={"n_min": 6, "n_max": 8, "floor": 1.5})
 def omega_strict(ctx: RunContext) -> Verdict:
     """Same ranking, top 40% only, floor enforced, remainder held in cash.

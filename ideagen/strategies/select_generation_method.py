@@ -55,7 +55,7 @@ def _pick(ctx: RunContext, method: str, name: str) -> Verdict:
     "idea_selector",
     "generated_ai_native",
     "1.0",
-    label="Pure AI native 生成臂",
+    label="来源限定 · AI 端到端",
     role="control",
     params={},
 )
@@ -67,7 +67,7 @@ def generated_ai_native(ctx: RunContext) -> Verdict:
     "idea_selector",
     "generated_carl_constraint",
     "1.0",
-    label="Carl constraint 生成臂",
+    label="来源限定 · 约束边界",
     role="primary",
     params={},
 )

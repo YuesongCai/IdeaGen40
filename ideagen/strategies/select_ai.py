@@ -56,7 +56,7 @@ def _rows(ctx: RunContext, thesis_chars: int) -> str:
     return "\n".join(out)
 
 
-@register("idea_selector", "ai_native", "1.0", label="5. AI 端到端挑",
+@register("idea_selector", "ai_native", "1.0", label="AI 端到端选取",
           needs_model=True,
           role="primary", params={"n": 10, "thesis_chars": 220,
                                   "temperature": 0.2})

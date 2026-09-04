@@ -59,7 +59,7 @@ _DIMS = (("topic_id", "max_per_topic", 3, "主题"),
          ("method", "max_per_method", 4, "生成方法"))
 
 
-@register("idea_selector", "spread", "1.0", label="7. 组合去集中", role="primary",
+@register("idea_selector", "spread", "1.0", label="分散度约束", role="primary",
           params={"n": 10, "max_per_topic": 3, "max_per_exposure": 3,
                   "max_per_method": 4})
 def spread(ctx: RunContext) -> Verdict:

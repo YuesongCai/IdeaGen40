@@ -3044,16 +3044,36 @@ function universeCard(){
         +'<td class="r num">'+fmtMoney(x.latest_nav)+'</td>'
         +'<td class="num">'+esc(x.nav_d||'—')+'</td></tr>';
     }).join('');
-    navTable='<div class="card-title-row" style="margin-top:var(--space-4)">'
+    var headline='<div class="card-title-row" style="margin-top:var(--space-4)">'
       +badge(licensed?'success':'neutral',licensed?'已授权货架':'当前货架')
-      +'<span class="card-note">'+esc(shelf.as_of||'')+' · '+fmtInt(shelf.items)+' 个产品 · '+fmtInt(shelf.navs)+' 个 NAV</span></div>'
-      +'<div class="table-wrap"><table><thead><tr>'
-      +'<th>内部标识</th><th>产品</th><th>分组</th><th>币种</th><th>风险</th>'
-      +'<th class="r">最新 NAV</th><th>NAV 日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      +'<span class="card-note">'+esc(shelf.as_of||'')+' · '+fmtInt(shelf.items)+' 个产品 · '+fmtInt(shelf.navs)+' 个 NAV</span></div>';
+    /* 脱敏状态下「内部标识」和「产品」是同一个串、分组恒定、风险与 NAV 全空，
+       这张表每一列都不携带信息。零信息的表比没有表更糟——它让人以为自己
+       漏看了什么。等 NAV 接进来再渲染。 */
+    navTable=(shelf.identifiers_redacted&&!shelf.navs)
+      ? headline+'<div class="empty-sm">该货架的产品标识已脱敏且尚无 NAV，逐条列出不携带信息，暂不展开。</div>'
+      : headline+'<div class="table-wrap"><table><thead><tr>'
+        +'<th>内部标识</th><th>产品</th><th>分组</th><th>币种</th><th>风险</th>'
+        +'<th class="r">最新 NAV</th><th>NAV 日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   var caveats=[];
-  if(undated)caveats.push(fmtInt(undated)+' 个标的无上架日期，按当期资格过滤时一律放行；补跑期的可选范围可能含当时尚未上架的产品');
+  /* 上架日期这条不能由前端自己从「有多少个未定日期」推断风险——服务端已经
+     用实际持有的标的算过这件事，结论在 backtest.summary.shelf_dating 里。
+     前端另起一句「可能含当时尚未上架的产品」，会和同一页回测卡的披露直接
+     打架，而且在数据已经证伪之后仍然固化成一句过期断言。 */
+  var sd=(((S||{}).backtest||{}).summary||{}).shelf_dating;
+  if(sd&&sd.held_total){
+    caveats.push(sd.held_after_window_start>0
+      ? '回放实际持有的 '+fmtInt(sd.held_total)+' 个标的中，有 '+fmtInt(sd.held_after_window_start)
+        +' 个的上架日期晚于窗口起点——补跑期可能选入当时尚未上架的产品，该项前视风险成立'
+      : '回放实际持有的 '+fmtInt(sd.held_total)+' 个标的中 '+fmtInt(sd.held_dated)+' 个已定上架日期（最新 '
+        +esc(sd.held_latest_first_seen||'—')+'，早于窗口起点），该项前视风险不成立；'
+        +'其余 '+fmtInt(sd.held_total-sd.held_dated)+' 个为无行情代码的基金 / 结构化产品，仍未定日期');
+  }else if(undated){
+    caveats.push(fmtInt(undated)+' 个标的无上架日期，按当期资格过滤时一律放行；服务端尚未给出持有标的的上架日期核对结果');
+  }
+  if(shelf.navs===0)caveats.push('已授权货架的 '+fmtInt(shelf.items||0)+' 个产品目前一个 NAV 都没有，这批标的暂时无法计价');
   if(!shelf.snapshot_id)caveats.push('尚无已持久化的 NAV 快照，货架为静态清单，NAV 未接入');
   if(shelf.identifiers_redacted)caveats.push('产品标识与名称默认脱敏，完整快照仅存于受控 RDS/TOS');
 

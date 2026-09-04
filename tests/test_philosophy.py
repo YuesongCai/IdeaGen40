@@ -30,7 +30,7 @@ from ideagen.strategy import RunContext                     # noqa: E402
 
 def a_card(**kw):
     card = {
-        "card_id": "pm-2026-09-04-forced-seller",
+        "card_id": "pm-2026-09-04-a1b2c3",
         "as_of": "2026-09-04",
         "source_utterance": "我不买已经被讲烂的东西，我要的是被迫的卖家",
         "scope": {"stage": "idea_generator", "arm": "carl_constraint"},
@@ -169,7 +169,7 @@ class LedgerIsAppendOnlyAndAsOf(unittest.TestCase):
     def test_activate_then_retire_leaves_both_events(self):
         philosophy.activate(a_card(), known_arms={"carl_constraint"})
         self.assertEqual(len(philosophy.cards()), 1)
-        philosophy.retire("pm-2026-09-04-forced-seller", date(2026, 10, 1), "试完了")
+        philosophy.retire("pm-2026-09-04-a1b2c3", date(2026, 10, 1), "试完了")
         self.assertEqual(philosophy.cards(), [])
         self.assertEqual(len(philosophy.cards(include_retired=True)), 1)
         # Two events on file, neither overwritten.
@@ -183,16 +183,53 @@ class LedgerIsAppendOnlyAndAsOf(unittest.TestCase):
     def test_same_sentence_cannot_be_registered_twice(self):
         philosophy.activate(a_card(), known_arms={"carl_constraint"})
         with self.assertRaises(ValueError):
-            philosophy.activate(a_card(card_id="pm-2026-09-11-forced-seller",
+            philosophy.activate(a_card(card_id="pm-2026-09-11-a1b2c3",
                                        as_of="2026-09-11"),
                                 known_arms={"carl_constraint"})
+
+
+class TheSentenceStaysPrivate(unittest.TestCase):
+    """`review.state` copies a generator verdict's whole `meta` into the panel
+    payload, and that payload is exported to the public GitHub Pages snapshot.
+    Anything a derived arm puts in `meta` is therefore published, so the PM's
+    own words must not be in there — and the card id that IS published must not
+    paraphrase them either."""
+
+    def test_verdict_meta_never_carries_the_utterance(self):
+        from ideagen.strategies import gen_pm
+        card = a_card()
+        keys = tuple(gen_pm.BASES["carl_constraint"]["keys"]) \
+            + philosophy.require_keys(card)
+        meta = {}
+        # The shape gen_pm.run writes, without needing a model call.
+        meta.update({"philosophy_card": card["card_id"],
+                     "philosophy_base_arm": "carl_constraint",
+                     "philosophy_since": card["as_of"],
+                     "philosophy_require": list(philosophy.require_keys(card))})
+        blob = repr(meta)
+        self.assertNotIn(card["source_utterance"], blob)
+        for word in ("被迫", "讲烂"):
+            self.assertNotIn(word, blob)
+        self.assertEqual(len(keys), 5)
+
+    def test_card_id_does_not_paraphrase_the_utterance(self):
+        cid = philosophy._fingerprint("我不买已经被讲烂的东西，我要的是被迫的卖家")
+        self.assertRegex(cid, r"^[0-9a-f]{6}$")
+
+    def test_two_sentences_the_same_day_get_different_ids(self):
+        """A slug built from Chinese normalised to nothing, so every card
+        written in one day collapsed onto the same id and the second one failed
+        activation with a duplicate-id error that explained none of this."""
+        a = philosophy._fingerprint("我要的是被迫的卖家")
+        b = philosophy._fingerprint("政策我只信已经拨了钱的")
+        self.assertNotEqual(a, b)
 
 
 class DerivedArmRegisters(unittest.TestCase):
     def test_arm_name_and_version_carry_the_card(self):
         card = a_card()
         self.assertEqual(philosophy.arm_name(card),
-                         "carl_constraint@pm-2026-09-04-forced-seller")
+                         "carl_constraint@pm-2026-09-04-a1b2c3")
 
     def test_derived_arm_refuses_a_run_it_predates(self):
         from ideagen.strategies import gen_pm

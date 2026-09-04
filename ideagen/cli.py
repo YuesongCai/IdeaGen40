@@ -1065,8 +1065,7 @@ def cmd_philosophy(args) -> int:
             return 2
         plat = platform_mod.load()
         card, bad = philosophy.distill(args.say, plat.inference, arm=args.arm,
-                                       as_of=as_of, slug=args.slug,
-                                       known_arms=arms)
+                                       as_of=as_of, known_arms=arms)
         print(json.dumps(card, ensure_ascii=False, indent=2))
         print("\n—— 体检 ——")
         if bad:
@@ -1179,7 +1178,6 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--say", help="PM 的原话，一句就够")
     s.add_argument("--arm", default="carl_constraint",
                    help="注入哪条生成臂（默认 carl_constraint）")
-    s.add_argument("--slug", help="卡号后缀，默认从原话生成")
     s.add_argument("--reason", help="retire 的原因")
     s.add_argument("--accept-translation", action="store_true",
                    help="确认蒸馏对硬边界处的改写就是你的意思")

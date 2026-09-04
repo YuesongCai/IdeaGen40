@@ -66,9 +66,9 @@ manufacture a track record out of hindsight, which is the same cheat
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -114,7 +114,7 @@ RESERVED_FIELDS = {
     "upside_pct", "downside_pct", "p_up", "p_base", "p_down", "p_sum_raw",
 }
 
-CARD_ID_RE = re.compile(r"^pm-\d{4}-\d{2}-\d{2}-[a-z0-9-]{2,40}$")
+CARD_ID_RE = re.compile(r"^pm-\d{4}-\d{2}-\d{2}-[0-9a-f]{6}$")
 
 
 # ---------------------------------------------------------------------------
@@ -182,10 +182,22 @@ def for_arm(arm: str, as_of: date | None = None) -> list[dict[str, Any]]:
 
 # ---------------------------------------------------------------------------
 # validation
-def _slug(text: str) -> str:
-    t = unicodedata.normalize("NFKD", text.lower())
-    t = re.sub(r"[^a-z0-9]+", "-", t).strip("-")
-    return t[:40] or "card"
+def _fingerprint(text: str) -> str:
+    """Six hex of the utterance, as the card's id suffix.
+
+    Not a readable slug, for two reasons found the same evening. The arm name
+    carries this id (`carl_constraint@pm-2026-09-05-a3f1c2`) and arm names
+    reach the public snapshot through `review.state`; a readable suffix would
+    publish a paraphrase of a sentence the PM said in private. And a slug built
+    from Chinese text normalises to nothing — every card written in one day
+    collapsed to the same `pm-<date>-card`, so the second one that day failed
+    activation with a duplicate-id error that explained none of this.
+
+    Readability is not lost where it matters: the panel and the audit bundle
+    show the sentence itself, both behind the same gate as the licensed
+    research bodies.
+    """
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:6]
 
 
 #: Textual backstop for the frozen list. The model is told the boundary in the
@@ -353,7 +365,7 @@ DISTILL_SYSTEM = """你是 IdeaGen 的准则蒸馏器。基金经理会给你一
 
 
 def distill(utterance: str, infer: Any, *, arm: str, as_of: date,
-            slug: str | None = None, known_arms: set[str] | None = None
+            known_arms: set[str] | None = None
             ) -> tuple[dict[str, Any], list[str]]:
     """One sentence in, one card plus its health report out.
 
@@ -376,7 +388,7 @@ def distill(utterance: str, infer: Any, *, arm: str, as_of: date,
         raise ValueError(f"蒸馏返回的不是对象：{str(raw)[:200]}")
 
     card = {
-        "card_id": f"pm-{as_of.isoformat()}-{_slug(slug or utterance)}",
+        "card_id": f"pm-{as_of.isoformat()}-{_fingerprint(utterance)}",
         "as_of": as_of.isoformat(),
         "source_utterance": utterance.strip(),
         "scope": {"stage": "idea_generator", "arm": arm},

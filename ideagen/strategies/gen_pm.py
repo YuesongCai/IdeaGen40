@@ -68,11 +68,16 @@ def _make(card: dict[str, Any]):
                 f"不能用于 {ctx.as_of.isoformat()} 的运行——"
                 "让今天的哲学去跑它没见过的那几周，等于用后见之明造业绩")
         v = _run_base(ctx, card, base, keys)
+        # The utterance itself is deliberately absent. `review.state` copies a
+        # generator verdict's whole `meta` into the panel payload, and that
+        # payload is what gets exported to the public GitHub Pages snapshot —
+        # so anything put here is published. The card id is enough to attribute
+        # an arm; the sentence behind it lives in the ledger and the audit
+        # bundle, both behind the same gate as the licensed research bodies.
         v.meta.update({
             "philosophy_card": card["card_id"],
             "philosophy_base_arm": base_name,
             "philosophy_since": born,
-            "philosophy_utterance": card["source_utterance"],
             "philosophy_require": list(extra),
         })
         return v

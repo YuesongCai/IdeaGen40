@@ -301,8 +301,14 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
         seen.add(f)
         if not str((r or {}).get("desc") or "").strip():
             bad.append(f"require 字段 {f!r} 没有说明要写什么")
-    if len(req) > 3:
-        bad.append(f"必答字段 {len(req)} 个太多；每多一个，想法被丢弃的概率就高一截，最多 3 个")
+    if len(req) > 2:
+        # Each field now costs two: itself and its `<field>_doc`, both mandatory
+        # and the second one refusable. Three semantic fields would put six
+        # extra requirements on every idea, and the drop rate would stop being
+        # a reading of 「这批语料撑不撑得起这条准则」 and start being a reading
+        # of how many hoops the card set up.
+        bad.append(f"必答字段 {len(req)} 个太多；每个字段还要带一个出处字段，"
+                   "实际是两倍的必填项，想法被丢弃的概率会高一截，最多 2 个")
 
     blob = " ".join(directives + [str((r or {}).get("desc") or "") for r in req])
     for pat, why in _PROSE_BACKSTOP:
@@ -340,6 +346,7 @@ DISTILL_SYSTEM = """你是 IdeaGen 的准则蒸馏器。基金经理会给你一
 
 3. **最关键**：怎么让每一条想法自己证明它遵守了这条准则？
    给 1-2 个想法必须填的新字段（require），字段名小写下划线，desc 写清要填什么。
+   最多 2 个：每个字段还会自动配一个出处字段，实际是两倍的必填项。
    没有这一步，这条准则一个月后无法被检验，等于没注入。
    desc 里要明确要求「写清这条信息出自哪一篇材料」——必填字段不会让模型在找不到
    时省略，只会让它编一个像样的出来，所以字段本身必须要求可追溯到具体文献。

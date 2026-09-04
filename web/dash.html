@@ -3417,10 +3417,27 @@ function backtestSection(){
       +'<td class="r num">'+(a.hit_rate==null?'—':fmtRate(a.hit_rate*100))+'</td>'
       +'<td class="r num">'+(a.window_complete_frac==null?'—':fmtRate(a.window_complete_frac*100))+'</td></tr>';
   }).join('');
+  /* 「UNKNOWN 不按 0% 填充」是给工程师看的写法：一句英文常量夹在中文界面里，
+   * 读者第一反应是没处理干净的占位符，而它其实说的是一件重要的事——取不到
+   * 价格的标的不当成 0% 收益混进平均值。列名同理，逐个挂上口径。 */
+  var HDR=[
+    ['生成方法','',''],
+    ['入选','r','这条臂在所选窗口内一共选中了多少条候选（按条计，不去重标的）。'],
+    ['可计价','r','其中能取到进出场价格、可以算出收益的条数。取不到价格的不计入下面的收益统计，也不按 0% 填充。'],
+    ['覆盖率','r','可计价 ÷ 入选。低于 100% 说明有标的当期取不到行情——常见于基金与结构化产品。'],
+    ['平均收益','r','可计价那部分的算术平均收益。少数极端值会明显拉动它，所以旁边同时给出中位数。'],
+    ['中位收益','r','可计价那部分的中位收益。与平均值差距大，说明收益集中在少数标的上。'],
+    ['正收益率','r','可计价的条目里收益为正的比例。它衡量「多久对一次」，与「对的时候赚多少」是两件事。'],
+    ['完整窗口','r','这些持仓里，已经跑满目标持有期的比例。比例低说明本表大部分是中途读数而非已完成的交易。']
+  ];
   var metrics='<div class="card section"><div class="card-title-row"><h2 class="card-title">方法指标</h2>'
-    +'<span class="card-note">UNKNOWN 不按 0% 填充</span></div>'
-    +'<div class="table-wrap"><table><thead><tr><th>生成方法</th><th class="r">入选</th><th class="r">可计价</th>'
-    +'<th class="r">覆盖率</th><th class="r">平均收益</th><th class="r">中位收益</th><th class="r">正收益率</th><th class="r">完整窗口</th>'
+    +'<span class="card-note">取不到价格的标的不按 0% 计入'
+    +'<span class="gloss" title="把取不到行情的标的当成 0% 收益，会把平均值往中间拉，让方法看起来比实际稳定。这里的做法是把它们排除在收益统计之外，并在「覆盖率」里如实报出占比。">ⓘ</span></span></div>'
+    +'<div class="table-wrap"><table><thead><tr>'
+    +HDR.map(function(h){
+      return '<th'+(h[1]?' class="'+h[1]+'"':'')+'>'+esc(h[0])
+        +(h[2]?'<span class="gloss" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>';
+    }).join('')
     +'</tr></thead><tbody>'+armRows+'</tbody></table></div>'+pairedSummary(filteredPaired)+'</div>';
 
   var latestPos=filteredPositions.filter(function(p){return p.period===latest});

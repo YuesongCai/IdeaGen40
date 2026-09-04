@@ -337,6 +337,8 @@ DISTILL_SYSTEM = """你是 IdeaGen 的准则蒸馏器。基金经理会给你一
 3. **最关键**：怎么让每一条想法自己证明它遵守了这条准则？
    给 1-2 个想法必须填的新字段（require），字段名小写下划线，desc 写清要填什么。
    没有这一步，这条准则一个月后无法被检验，等于没注入。
+   desc 里要明确要求「写清这条信息出自哪一篇材料」——必填字段不会让模型在找不到
+   时省略，只会让它编一个像样的出来，所以字段本身必须要求可追溯到具体文献。
 
 4. 每条 directive 只能要求模型用它当场拿得到的东西去做：那一批研报原文、
    已排定的日程与当前水平、可买清单。凡是要它去查手上没有的东西——
@@ -453,8 +455,20 @@ def render(card: dict[str, Any]) -> str:
         out.append("不接受的写法：" + "；".join(card["forbids"]))
     req = card.get("require") or []
     if req:
-        out.append("每条想法必须额外写出下面的字段，写不出就不要凑这一条："
+        out.append("每条想法必须额外写出下面的字段："
                    + "；".join(f"{r['field']}——{r['desc']}" for r in req))
+        # Observed on the first live run of a derived arm: asked for a mandatory
+        # `forced_seller`, the model answered 「CalPERS，条款：集中度超 35% 时强制
+        # 转向等权指数」 for an institution it had read nothing about. A required
+        # field does not make a model omit what it cannot find; it makes the
+        # model produce something. So the instruction has to name that specific
+        # move and price it, rather than say 「写不出就不要凑」 and assume the
+        # model reads that as covering an invention it finds plausible.
+        out.append("这几个字段的内容必须站在上面给你的材料上——你能在哪一篇里读到它，"
+                   "就在字段里带上那篇的 doc_id。材料里读不到的，这一条整条不要写，"
+                   "少给几条是允许的。**点名一个你并没有在材料里读到的机构、条款或日期，"
+                   "比不给这一条严重得多**：它看起来可以核对，实际核对不了，"
+                   "一个月后没人分得清是判断错了还是当初就没有这回事。")
     return "\n".join(out)
 
 

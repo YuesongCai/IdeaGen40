@@ -161,6 +161,14 @@ def parse_json(text: str) -> Any:
     a topic the model found nothing in.
     """
     t = (text or "").strip()
+    # Reasoning models emit their scratchpad before the answer. Observed from
+    # deepseek-v4-pro on 2026-09-05: `[]</think>[]` — a stray closing tag with
+    # the real answer on both sides of it. Left in, `rfind("]")` spans the tag
+    # and the parse fails, which records「模型诚实地说这个主题没有可写的」as
+    # 「这个主题跑挂了」. Those are opposite findings: one says the corpus does
+    # not support the idea, the other says the run is broken.
+    t = re.sub(r"(?s)<think>.*?</think>", "", t)
+    t = re.sub(r"(?s)^.*?</think>", "", t).strip() if "</think>" in t else t
     if t.startswith("```"):
         t = re.sub(r"^```[a-zA-Z]*\s*", "", t)
         t = re.sub(r"\s*```$", "", t)

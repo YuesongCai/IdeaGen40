@@ -494,6 +494,36 @@ tr.expandable{cursor:pointer}
   transition-property:background-color,color;
 }
 .exp-btn:hover{background:var(--color-surface-brand-muted);color:var(--color-text-brand-hover)}
+
+/* ── 追问按钮：全站唯一长相，实心主行动色 ──────────────────────
+ * 这个功能是整套系统里最值得用的一块，文字链读起来像脚注，没人会点。
+ * 做成一眼就是按钮的样子，并且在任何位置都长得一模一样——读者认的是这个
+ * 形状，不是文案。凡是后端认的四类对象（主题 / 想法 / 选取策略 / 选主题
+ * 这一步）在页面上出现的地方，旁边就是这一个按钮。 */
+.ask-btn,.ask-top{
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;
+  border:none;border-radius:var(--radius-pill);padding:6px 14px;
+  background:var(--color-action-primary-default);color:var(--color-text-on-brand);
+  font:500 12px/16px var(--font-sans);box-shadow:0 1px 2px rgb(32 71 50 / 18%);
+  transition:background-color var(--duration-fast) var(--ease-standard),
+             transform var(--duration-fast) var(--ease-standard);
+}
+.ask-btn:hover,.ask-top:hover{background:var(--color-action-primary-hover);color:var(--color-text-on-brand)}
+.ask-btn:active,.ask-top:active{background:var(--color-action-primary-pressed);transform:translateY(1px)}
+.ask-btn:focus-visible,.ask-top:focus-visible{outline:2px solid var(--color-focus-ring);outline-offset:2px}
+.ask-btn svg,.ask-top svg{flex:none;opacity:.9}
+/* 小一号：放进密集列表行时用。只缩尺寸，形状、配色、图标、文案都不变——
+   一行里认出来的东西，换个位置还得是同一个东西。 */
+.ask-btn.sm{padding:4px 10px;font-size:11px}
+.ask-btn.sm svg{width:11px;height:11px}
+/* 静态快照没有后端，追问答不了：它要现场取当期封存的研报原文与打分记录。
+   按钮仍然在——它是「去哪儿才能问」的指路牌——但不穿这身「点我」的绿，
+   免得读者点开只收到一句「不支持」。 */
+.ask-btn.off,.ask-top.off{
+  background:var(--color-surface-muted);color:var(--color-text-tertiary);
+  box-shadow:none;border:1px solid var(--color-border-default);
+}
+.ask-btn.off:hover,.ask-top.off:hover{background:var(--color-surface-sunken);color:var(--color-text-secondary)}
 .clamp1{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
@@ -1438,7 +1468,7 @@ body.drawer-lock{overflow:hidden}
         <h1 class="page-title" id="pageTitle">组合</h1>
         <div class="topbar-actions">
           <div class="refresh-stamp" id="stamp"><span class="rs-dot"></span><span id="stampText">刷新于 --:--:-- · 每 60 秒自动</span></div>
-          <button type="button" class="ask-top" id="askTop" data-el="ask.global" onclick="openAskPicker()" title="问这次运行当时怎么想——只依据当时封存的材料作答">问它当时怎么想</button>
+          <button type="button" class="ask-top" id="askTop" data-el="ask.global" onclick="openAskPicker()" title="本期任何一个宏观主题、标的、选取策略，都能问它当时为什么这么定——只依据那次运行封存的材料作答，不使用事后信息"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.6 2.2h8.8v5.6H5.2L2.8 9.9V7.8H1.6z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.7 4.1a1.3 1.3 0 0 1 2.4.6c0 .9-1.2.9-1.2 1.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><circle cx="5.9" cy="7" r=".5" fill="currentColor"/></svg><span>问它为什么选它</span></button>
           <a class="source-link" href="/olive">数据源</a>
           <button type="button" class="help-btn" onclick="toggleHelp()" aria-label="运维手册与名词表">?</button>
         </div>
@@ -1764,20 +1794,9 @@ function injectBootStyle(){
     +'.nav-sec .nav-dot{width:5px;height:5px;border-radius:999px;flex:none;background:var(--color-border-strong)}'
     +'.nav-sec.on .nav-dot{background:var(--color-fill-brand)}'
     +'.nav-sec .nav-sec-n{margin-left:auto;font:400 11px/16px var(--font-mono);color:var(--color-text-disabled)}'
-    /* 追问按钮：全站唯一长相，实心主行动色。这个功能是整套系统里最值得用的
-       一块，文字链读起来像脚注，没人会点。做成一眼就是按钮的样子，并且
-       在任何位置都长得一模一样——读者认的是这个形状，不是文案。 */
-    +'.ask-btn,.ask-top{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;'
-    +'border:none;border-radius:var(--radius-pill);padding:6px 14px;'
-    +'background:var(--color-action-primary-default);color:var(--color-text-on-brand);'
-    +'font:500 12px/16px var(--font-sans);box-shadow:0 1px 2px rgb(32 71 50 / 18%);'
-    +'transition:background-color var(--duration-fast) var(--ease-standard),transform var(--duration-fast) var(--ease-standard)}'
-    +'.ask-btn:hover,.ask-top:hover{background:var(--color-action-primary-hover);color:var(--color-text-on-brand)}'
-    +'.ask-btn:active,.ask-top:active{background:var(--color-action-primary-pressed);transform:translateY(1px)}'
-    +'.ask-btn:focus-visible,.ask-top:focus-visible{outline:2px solid var(--color-focus-ring);outline-offset:2px}'
-    +'.ask-btn svg,.ask-top svg{opacity:.9}'
-    /* 小一号：放在密集列表行里时用，形状与配色不变 */
-    +'.ask-btn.sm{padding:4px 10px;font-size:11px}'
+    /* 追问按钮（.ask-btn/.ask-top）已移入主样式表：顶栏那一个是常驻元件，
+       样式不能只在首帧空态时注入——有快照数据时 renderBootState 直接返回，
+       它就会退化成一个裸 <button>。 */
     +'.askpick-g{font:500 11px/16px var(--font-mono);letter-spacing:.06em;color:var(--color-text-tertiary);'
     +'margin:var(--space-4) 0 var(--space-2)}'
     +'.askpick-i{display:flex;align-items:baseline;gap:var(--space-3);width:100%;text-align:left;cursor:pointer;'
@@ -1916,7 +1935,8 @@ var VIEWS=[
   {id:'overview',label:'概览',sub:'它管用吗',
    icon:'<path d="M2 12.5 6 7l3 3 5-6.5"/><path d="M2 14h12"/>',
    secs:[{s:'verdict',label:'结论'},
-         {s:'status',label:'运行状态'}]},
+         {s:'status',label:'运行状态'},
+         {s:'runs',label:'运行记录'}]},
   {id:'holdings',label:'持仓',sub:'现在拿着什么',
    icon:'<path d="M2.5 5.5h11v8h-11z"/><path d="M5.5 5.5V3.5h5v2"/>',
    secs:[{s:'exposure',label:'主题敞口'}]},
@@ -2137,6 +2157,32 @@ function toggleStage(i){mlOpen[i]=!mlOpen[i];renderMethod()}
 
 /* 概览：一个零背景的人在这一屏里要拿到三件事 ——
    这是什么、它管用吗、还在不在跑。别的都不属于这里。 */
+/* ── 「原来可以问它」：只讲一次的上手引导 ─────────────────────
+ * 追问是这个面板最不像别的看板的地方，也最容易被整页略过：按钮再显眼也
+ * 答不了「点了会发生什么」。第一次来的人给一句话——问的是什么、答案从
+ * 哪来——之后就靠形状认它。关掉一次，永不再来。
+ * localStorage 读写都包在 try 里：隐私模式下会抛，不能因为这个把首屏搞挂。 */
+var ASK_HINT_KEY='ideagen.askHint.v1';
+function askHintOff(){
+  try{return localStorage.getItem(ASK_HINT_KEY)==='1'}catch(e){return true}
+}
+function dismissAskHint(){
+  try{localStorage.setItem(ASK_HINT_KEY,'1')}catch(e){}
+  renderAll();
+}
+function askHintHTML(){
+  if(askHintOff())return '';
+  return '<div class="orient" role="note">'
+    +'<div class="o-body">'
+      +'<p>页面上凡是带 <span class="ask-btn sm" style="pointer-events:none;vertical-align:middle">'
+        +ASK_ICON+'<span>问它为什么选它</span></span> 的地方，都能就地问一句。</p>'
+      +'<p>宏观主题、标的、选取策略、以及「选主题」这一步，各自都能问；'
+      +'<b>答案只依据那次运行当时封存下来的研报与打分记录</b>——'
+      +'材料里没有的它会直说没有，不补全，也不拿事后发生的事情圆场。</p>'
+    +'</div>'
+    +'<button type="button" class="orient-x" data-el="ask.hint.dismiss" onclick="dismissAskHint()">知道了</button>'
+  +'</div>';
+}
 function renderOverview(){
   var root=$('view-overview');
   if(!S){root.innerHTML='';return}
@@ -2146,10 +2192,37 @@ function renderOverview(){
   root.innerHTML=
      '<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期'+periodBadge()+'</div>'
     +'<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
-      +'每周三自动读研报、选宏观主题、写出想法并建仓；'+currentBooks().length
-      +' 个选取策略各记一本账，比较哪种选得更好。</div>'
+      /* 建仓前账本数是 0，直接印出来就成了「0 个选取策略各记一本账」。
+       * 已经跑完的选取策略数（筛选C）才是这句话要说的东西；两者都没有时
+       * 就不带数字，而不是报一个 0。 */
+      +(function(){
+        var nb=currentBooks().length;
+        var ns=((S.weekly||{}).selectors||[]).length;
+        var n=nb||ns;
+        return '每周三自动读研报、选宏观主题、写出想法并建仓；'
+          +(n?(n+' 个选取策略各记一本账，比较哪种选得更好。')
+             :'多个选取策略各记一本账，比较哪种选得更好。')
+          +(!nb&&ns?'（本期策略已跑完，账本在建仓后出现）':'');
+      })()
+      +'</div>'
+    +askHintHTML()
     +secWrap('overview','verdict',portfolioHeadline(ag))
-    +secWrap('overview','status',statusStrip());
+    /* 「系统状态」和「周历」原本各是一个抽屉，可它们讲的是同一件事——这台
+       机器在不在跑、每一期跑成了没有。类别不该住在抽屉里，抽屉留给某一个
+       具体对象。搬进概览并默认折叠，概览就不会因此变长。 */
+    +secWrap('overview','status',
+       statusStrip()
+       +'<div class="card section">'
+         +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">系统自检</h2>'
+         +'<span class="card-note">心跳 · 平台端口 · 数据源</span></div>'
+         +foldBlock('overview.status.detail','自检明细','心跳时刻 · 端口 · 数据源健康',statusDrawerBody())
+       +'</div>')
+    +secWrap('overview','runs',
+       '<div class="card section">'
+         +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">运行记录</h2>'
+         +'<span class="card-note">按期查看，含失败与永久缺失的期次</span></div>'
+         +foldBlock('overview.runs.detail','按期记录','每一期跑成了没有 · 失败原因 · 逐步日志',calDrawerBody())
+       +'</div>');
 }
 /* 持仓：PM 的职业本能 —— 现在拿着什么、压在哪几个宏观判断上。 */
 function renderHoldings(){
@@ -2549,7 +2622,10 @@ function singleCurveSVG(lb){
 function setHoldView(v){holdView=v;renderHoldings()}
 function holdMapCard(ag){
   var w=S.weekly||{};
-  var head='<div class="qhead"><h2 class="qtitle">主题敞口分布<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+((ag&&ag.books)?ag.books.length:8)+' 个账本合计</span></h2>'
+  /* 没有账本时这里曾固定写「8 个账本合计」——一个凭空出现的数字，
+   * 而且和页面别处的 0 互相矛盾。没有就不写。 */
+  var nbk=(ag&&ag.books)?ag.books.length:0;
+  var head='<div class="qhead"><h2 class="qtitle">主题敞口分布<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+(nbk?(nbk+' 个账本合计'):'尚无账本')+'</span></h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(5,'建仓 · 持仓束')
     +'<span role="group" aria-label="视图切换">'
       +'<button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')" title="按宏观主题分组的持仓分布">地图</button>'
@@ -3335,7 +3411,7 @@ function universeCard(){
        这张表每一列都不携带信息。零信息的表比没有表更糟——它让人以为自己
        漏看了什么。等 NAV 接进来再渲染。 */
     navTable=(shelf.identifiers_redacted&&!shelf.navs)
-      ? headline+'<div class="empty-sm">该货架的产品标识已脱敏且尚无 NAV，逐条列出不携带信息，暂不展开。</div>'
+      ? headline+'<div class="empty-sm">已脱敏且尚无 NAV，暂不展开 '+glossMark('脱敏状态下内部标识与产品名是同一个串、分组恒定、风险与 NAV 全空，逐条列出的表每一列都不携带信息。等 NAV 接进来再渲染。')+'</div>'
       : headline+'<div class="table-wrap"><table><thead><tr>'
         +'<th>内部标识</th><th>产品</th><th>分组</th><th>币种</th><th>风险</th>'
         +'<th class="r">最新 NAV</th><th>NAV 日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -3739,8 +3815,8 @@ function drawerLabel(d){
     return base;
   }
   if(d.t==='topic')return d.p+' 证据';
-  if(d.t==='ask')return '问它当时怎么想';
-  if(d.t==='askpick')return '问它当时怎么想';
+  if(d.t==='ask')return '问它为什么选它';
+  if(d.t==='askpick')return '能问它什么';
   if(d.t==='runlog')return '运行日志';
   if(d.t==='pos')return bareCode(d.p)+' 这一仓';
   if(d.t==='book')return selMetaOf(d.p)[1]+' 账本';
@@ -3801,8 +3877,9 @@ function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
 function openTopicEvidence(tid){openTopicDrawer(tid)}
 function openPosDrawer(code){pushDrawer({t:'pos',p:code})}
 function openBookDrawer(sel){pushDrawer({t:'book',p:sel})}
-function openStatusDrawer(){pushDrawer({t:'status',p:''})}
-function openCalDrawer(){pushDrawer({t:'cal',p:''})}
+/* 保留调用点，落到概览的运行状态段——可寻址、可分享，不再是抽屉。 */
+function openStatusDrawer(){gotoSection('overview','status')}
+function openCalDrawer(){gotoSection('overview','runs')}
 /* 8 个调用点全部保留，但不再打开抽屉——统一落到「证据」页的对应位置，
    于是它们变成可寻址、可分享、可后退的，而且再也不会有四个名字指向同一处。 */
 function openTrustDrawer(){gotoSection('evidence','limits')}
@@ -3812,7 +3889,7 @@ function openRunLogStacked(runId){pushDrawer({t:'runlog',p:runId||''})}
  * 那样面包屑就断了，读者点进候选池后回不到刚才那条追问。 */
 function openStageStacked(i,f){pushDrawer({t:'stage',p:i,f:(f===undefined?null:f)})}
 
-var CRUMB_KIND={stage0:'语料',stage1:'筛选A',stage2:'筛选B',stage3:'候选池',stage4:'筛选C',stage5:'建仓',topic:'主题',runlog:'日志',pos:'持仓',book:'账本',status:'状态',cal:'周历',trust:'可信度',ask:'追问',selection:'选题',asklog:'追问记录',askpick:'追问',props:'原始提案'};
+var CRUMB_KIND={stage0:'语料',stage1:'筛选A',stage2:'筛选B',stage3:'候选池',stage4:'筛选C',stage5:'建仓',topic:'主题',runlog:'日志',pos:'持仓',book:'账本',status:'状态',cal:'周历',trust:'可信度',ask:'问它',selection:'选题',asklog:'追问记录',askpick:'问它',props:'原始提案'};
 function crumbKind(d){return d.t==='stage'?(CRUMB_KIND['stage'+d.p]||'阶段'):(CRUMB_KIND[d.t]||'')}
 function crumbName(d){
   if(d.t==='stage'){
@@ -5125,7 +5202,7 @@ function stagePoolBody(d){
       +'<thead><tr>'+candTh('instrument_id','标的')+candTh('instrument_name','名称')+candTh('topic_id','主题')
       +candTh('upside_pct','上行','r')+candTh('downside_pct','下行','r')
       +candTh('p_up','P↑','r')+candTh('p_base','P基','r')+candTh('p_down','P↓','r')
-      +candTh('n_proposals','提出','r')+'<th>生成方法</th></tr></thead>'
+      +candTh('n_proposals','提出','r')+'<th>生成方法</th><th class="r">当时的理由</th></tr></thead>'
       +'<tbody id="candBody"></tbody></table></div>'
       +epi('赔率低于 1.5 的想法不进入候选池')
       +'</div>';
@@ -5183,6 +5260,7 @@ function stageSelectorsBody(d){
         +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b> <span class="gloss" title="'+esc(selPlain(s.name))+'">ⓘ</span>　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
         +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+jss(s.name)+'\',\'策略 '+esc(m[1])+'\')">回候选池 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
         +(hasBook?'　<button type="button" class="exp-btn" onclick="openBookDrawer(\''+jss(s.name)+'\')">该账本 ›</button>':'')
+        +'　'+askBtn('selector',s.name,{cls:'sm'})
         +'</span>'
         /* 主题敞口的紧凑条：同一颜色在所有策略里是同一个主题，所以这一列
          * 竖着扫下来，就是「不同策略把钱压在了不同判断上」的直接对照。 */
@@ -5287,6 +5365,7 @@ function stageBookingBody(){
         +pos.map(function(p){
           return '<div class="pos-line">'
             +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\')">'+esc(bareCode(p.code))+'</button></span>'
+            +'<span>'+askBtn('idea','pool:'+bareCode(p.code),{stop:true,cls:'sm'})+'</span>'
             +'<span class="pos-nm" title="'+esc(p.thesis||'')+'">'+esc(p.instrument_name||'')+(p.theme_id?' · '+esc(p.theme_id):'')+'</span>'
             +rngBarHTML(p)
             +'<span class="pos-pnl '+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'</span>'
@@ -5532,6 +5611,8 @@ function askPickerBody(){
   var first=PREFER[current];
   if(first&&groups[first])order=[first].concat(order.filter(function(g){return g!==first}));
   return '<div class="quiet" style="margin-bottom:var(--space-2)">'
+      +'下面每一条都能问。页面里那个绿色的「问它为什么选它」按钮问的是同一件事，'
+      +'只是替你把对象填好了。<br>'
       +'答案只从这次运行当时封存的材料里来：运行日志、当期研报正文、评分与判定记录。'
       +'材料里没有的，它会直说没有，不会补全，也不会用之后发生的事情回答。</div>'
     +order.map(function(g){
@@ -5708,7 +5789,8 @@ function proposalsDrawerBody(d){
     +'<b class="num">'+ps.length+'</b> 条原始提案来自 <b class="num">'+order.length+'</b> 种生成方法，'
     +'合并成候选池里 '+esc(code)+' 的那一行（赔率取中位数）。'
     +'<span class="gloss" title="合并只对赔率取中位数、把提出方法记下来；论点没有被重写，下面每一条都是当时写下的原文。">ⓘ</span>'
-    +'　四种方法互不通气，所以它们给出的理由不一样才是常态——一致的地方才值得注意。</div>';
+    +'　四种方法互不通气，所以它们给出的理由不一样才是常态——一致的地方才值得注意。</div>'
+    +'<div style="margin:0 0 var(--space-3)">'+askBtn('idea','pool:'+code)+'</div>';
   var body=order.map(function(m){
     var arr=byM[m];
     return '<div class="pr-grp">'
@@ -5854,14 +5936,28 @@ var ASK_ICON='<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-h
   +'<path d="M1.6 2.2h8.8v5.6H5.2L2.8 9.9V7.8H1.6z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>'
   +'<path d="M4.7 4.1a1.3 1.3 0 0 1 2.4.6c0 .9-1.2.9-1.2 1.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>'
   +'<circle cx="5.9" cy="7" r=".5" fill="currentColor"/></svg>';
+/* 默认文案随对象类型走，但一律以「问它为什么」开头：形状与图标全站统一，
+   话术贴着读者此刻正看着的那个东西说，不让他自己去翻译「它」是谁。 */
+var ASK_LABEL={
+  topic:'问它为什么选它',
+  idea:'问它为什么选它',
+  selector:'问它为什么这么选',
+  selection:'问它为什么选这几个主题'
+};
 function askBtn(kind,id,opts){
   opts=opts||{};
   if(!id)return '';
-  return '<button type="button" class="exp-btn ask-btn'+(opts.cls?' '+opts.cls:'')+'"'
+  var label=opts.label||ASK_LABEL[kind]||'问它为什么选它';
+  /* 快照页没有后端，追问答不了。仍然渲染，但降一档配色 + 说清为什么。 */
+  var snap=(typeof isSnapshot==='function')&&isSnapshot();
+  return '<button type="button" class="ask-btn'+(opts.cls?' '+opts.cls:'')+(snap?' off':'')+'"'
     +' data-el="ask.'+esc(kind)+'"'
-    +' title="只依据本次运行封存的材料作答，不使用事后信息"'
+    +' aria-label="'+esc(label+'：'+String(id))+'"'
+    +' title="'+esc(snap
+        ? '静态快照答不了追问——它要现场取那次运行封存的研报原文与打分记录。点开看在哪能问。'
+        : label+'——只依据本次运行当时封存的材料作答，不使用事后信息')+'"'
     +' onclick="'+(opts.stop?'event.stopPropagation();':'')+'openAskDrawer(\''+jss(kind)+'\',\''+jss(String(id))+'\')">'
-    +ASK_ICON+'<span>'+esc(opts.label||'问它当时怎么想')+'</span></button>';
+    +ASK_ICON+'<span>'+esc(label)+'</span></button>';
 }
 /* 可追问对象清单：全局入口据此列出「能问什么」。四类都来自后端
    SUBJECT_KINDS，前端不自造类型。 */
@@ -6061,7 +6157,7 @@ function renderCandBody(){
     return (x-y)*dir;
   });
   if(!arr.length){
-    $('candBody').innerHTML='<tr><td colspan="10"><div class="empty-sm" style="border:none">没有匹配的条目——试试清除筛选</div></td></tr>';
+    $('candBody').innerHTML='<tr><td colspan="11"><div class="empty-sm" style="border:none">没有匹配的条目——试试清除筛选</div></td></tr>';
     return;
   }
   $('candBody').innerHTML=arr.map(function(c,i){
@@ -6081,8 +6177,11 @@ function renderCandBody(){
       +'<td class="r num">'+fmtInt(c.n_proposals)+'</td>'
       +'<td style="max-width:220px">'+pb
       +' <button type="button" class="exp-btn" onclick="toggleThesis(this,'+i+')" aria-label="展开论点与去向">详情 ›</button>'
-      +'</td></tr>'
-      +'<tr class="thesis-row" style="display:none" data-th="'+i+'"><td colspan="10">'
+      +'</td>'
+      /* 候选池是「它写了什么」的全表，逐行都会冒出「这条凭什么在这」。
+         入口逐行给，读者不必先记住代码再去别处找一个能问的地方。 */
+      +'<td class="r">'+askBtn('idea','pool:'+bareCode(c.instrument_id),{cls:'sm'})+'</td></tr>'
+      +'<tr class="thesis-row" style="display:none" data-th="'+i+'"><td colspan="11">'
       +(c.thesis?'<div style="margin-bottom:6px;color:var(--color-text-secondary)">'+esc(c.thesis)+'</div>':'')
       +'<div class="derive-kv" style="margin-top:0">'
       +'<span class="num">赚亏比 '+rrText(c)+'</span>'
@@ -6756,8 +6855,7 @@ function phTeachCard(){
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
    +'<h2 class="card-title">用一句话写下你判断一笔交易的准则</h2>'
-   +'<div class="ph-hero">写下一句话，系统把它蒸馏成可执行的要求，'
-   +'并派生一条臂来执行。</div>';
+   +'<div class="ph-hero">系统会把它蒸馏成可执行的要求，并派生一条臂来执行。</div>';
   if(blocked){
     h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
     return h;
@@ -6931,8 +7029,8 @@ function renderRules(){
      还不够」糊成一句。但两个陌生词交替出现而从不说关系，更糟。所以这里定义一次，
      常驻在两种状态之上，之后各用各的。 */
   var html='<div class="ph-def">系统现在有四种固定的生成方式。'
-    +'<b>每条准则派生一条对照臂</b>：与原臂同批、同料、同规则并跑，'
-    +'<b>原臂冻结不动</b>，两条臂的净值之差即这条准则的净效应。</div>';
+    +'<b>每条准则派生一条对照臂</b>，<b>原臂冻结不动</b> '
+    +glossMark('两条臂与原臂同批、同料、同规则并跑，唯一差异是这条准则；两条臂的净值之差即这条准则的净效应。')+'</div>';
   html+=secWrap('rules','teach',phTeachCard());
   html+=secWrap('rules','running',phRunningCard());
   el.innerHTML=html;

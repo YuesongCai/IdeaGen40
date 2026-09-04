@@ -203,7 +203,8 @@ def _first(r: dict[str, Any], *keys: str) -> Any:
 
 def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
          method: str, *, extra_keys: tuple[str, ...] = (),
-         require_keys: tuple[str, ...] = ()) -> tuple[list[dict], dict[str, str]]:
+         require_keys: tuple[str, ...] = (),
+         doc_keys: tuple[str, ...] = ()) -> tuple[list[dict], dict[str, str]]:
     """Turn raw model output into ideas that satisfy the stage-B contract.
 
     Returns (ideas, {label: reason dropped}). Dropping with a reason rather than
@@ -223,6 +224,9 @@ def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
     for whether a generator understands the shelf.
     """
     buyable = {str(u.get("instrument_id")): u for u in ctx.universe}
+    # Hoisted: the same closed set the citation contract checks against, and the
+    # set `doc_keys` are checked against. Loop-invariant either way.
+    known_docs = {str(d.get("doc_id")) for d in ctx.corpus}
     ideas: list[dict[str, Any]] = []
     dropped: dict[str, str] = {}
     seen: set[str] = set()
@@ -244,6 +248,19 @@ def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
         lacking = [k for k in require_keys if not str(r.get(k) or "").strip()]
         if lacking:
             dropped[tag] = f"缺少本方法必需的推理字段：{'、'.join(lacking)}"
+            continue
+
+        # The refusal that makes a card's fields more than a request. Being
+        # mandatory only guarantees the model wrote something; requiring an
+        # identifier out of the corpus it was just shown is what a fabricated
+        # answer cannot satisfy. Dropped rather than repaired, and counted:
+        # a card whose fields the corpus cannot support should read as a drop
+        # rate, which is the honest answer to 「这条准则在这批材料上成立吗」.
+        unbacked = [k for k in doc_keys
+                    if str(r.get(k) or "").strip() not in known_docs]
+        if unbacked:
+            dropped[tag] = ("出处对不上语料（编造或写错的 doc_id）："
+                            + "、".join(unbacked))
             continue
 
         up = _num(_first(r, "upside_pct", "upside"))
@@ -279,7 +296,6 @@ def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
         # generator that habitually cites documents it was never given is
         # telling us something about its reading, and that signal would vanish
         # under silent repair.
-        known_docs = {str(d.get("doc_id")) for d in ctx.corpus}
         cits = [str(x) for x in (r.get("citations") or [])
                 if str(x) in known_docs][:3]
         bad_cits = len([x for x in (r.get("citations") or [])
@@ -321,7 +337,8 @@ def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
 
 def generate_per_topic(ctx: RunContext, method: str, build_prompt,
                        *, extra_keys: tuple[str, ...] = (),
-                       require_keys: tuple[str, ...] = ()) -> Verdict:
+                       require_keys: tuple[str, ...] = (),
+                       doc_keys: tuple[str, ...] = ()) -> Verdict:
     """Run one generator across every selected topic.
 
     Per-topic rather than one call for all five: a single call has to divide a
@@ -365,7 +382,7 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
         if isinstance(raw, dict):
             raw = raw.get("ideas") or raw.get("data") or []
         got, out["bad"] = mint(raw, ctx, t, method, extra_keys=extra_keys,
-                               require_keys=require_keys)
+                               require_keys=require_keys, doc_keys=doc_keys)
         # Over-production is recorded, not just truncated. Twenty kept out of
         # thirty-five offered is a different behaviour from twenty out of
         # twenty, and the truncation is ours — so the arm should not be
@@ -392,7 +409,8 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
                     raw2 = raw2.get("ideas") or raw2.get("data") or []
                 got2, out["bad2"] = mint(raw2, ctx, t, method,
                                          extra_keys=extra_keys,
-                                         require_keys=require_keys)
+                                         require_keys=require_keys,
+                                         doc_keys=doc_keys)
                 have = {i["instrument_id"] for i in got}
                 fresh = [i for i in got2
                          if i["instrument_id"] not in have][:PER_TOPIC - len(got)]

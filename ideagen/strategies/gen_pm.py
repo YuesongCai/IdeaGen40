@@ -87,12 +87,14 @@ def _make(card: dict[str, Any]):
     base_name = card["scope"]["arm"]
     base = BASES[base_name]
     extra = philosophy.require_keys(card)
-    # The card's fields are *required*, not merely requested. A directive the
-    # model can skip without consequence is a directive whose effect cannot be
-    # read off the output a month later; enforcing it through the same
-    # `mint` path as every other arm means a philosophy the corpus cannot
+    docs = philosophy.doc_keys(card)
+    # Required *and* refusable. Mandatory alone only guarantees the model wrote
+    # something — measured on 2026-09-05, it wrote a covenant for an institution
+    # it had read nothing about. The companion `<field>_doc` has to resolve
+    # against the corpus the model was just shown, which is the same closed set
+    # that has kept 764 citations honest, so a philosophy the corpus cannot
     # support shows up as a drop count instead of as quiet compliance.
-    keys = tuple(base["keys"]) + extra
+    keys = tuple(base["keys"]) + extra + docs
 
     def run(ctx: RunContext) -> Verdict:
         born = card["as_of"]
@@ -101,7 +103,7 @@ def _make(card: dict[str, Any]):
                 f"准则卡 {card['card_id']} 自 {born} 起生效，"
                 f"不能用于 {ctx.as_of.isoformat()} 的运行——"
                 "让今天的哲学去跑它没见过的那几周，等于用后见之明造业绩")
-        v = _run_base(ctx, card, base, keys)
+        v = _run_base(ctx, card, base, keys, docs)
         # The utterance itself is deliberately absent. `review.state` copies a
         # generator verdict's whole `meta` into the panel payload, and that
         # payload is what gets exported to the public GitHub Pages snapshot —
@@ -113,6 +115,7 @@ def _make(card: dict[str, Any]):
             "philosophy_base_arm": base_name,
             "philosophy_since": born,
             "philosophy_require": list(extra),
+            "philosophy_evidence_required": list(docs),
         })
         return v
 
@@ -122,12 +125,12 @@ def _make(card: dict[str, Any]):
 
 
 def _run_base(ctx: RunContext, card: dict[str, Any], base: dict[str, Any],
-              keys: tuple[str, ...]) -> Verdict:
+              keys: tuple[str, ...], docs: tuple[str, ...]) -> Verdict:
     from . import _gen
     return _gen.generate_per_topic(
         ctx, philosophy.arm_name(card),
         partial(base["build_prompt"], card=card),
-        require_keys=keys, extra_keys=keys)
+        require_keys=keys, extra_keys=keys, doc_keys=docs)
 
 
 def _install() -> None:

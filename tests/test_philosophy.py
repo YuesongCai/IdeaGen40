@@ -182,6 +182,79 @@ class PhilosophyMustBeCheckable(unittest.TestCase):
         self.assertEqual(kept[0]["forced_seller"], "某养老金 11/30 到期")
 
 
+class RequiredIsNotTheSameAsRefusable(unittest.TestCase):
+    """Measured on 2026-09-05: asked for a mandatory `forced_seller`, the model
+    answered 「CalPERS，条款：集中度超 35% 时强制转向等权指数」 about an
+    institution it had read nothing about — with 「写不出就不要凑这一条」 in the
+    same prompt. Being mandatory only guarantees it wrote something.
+
+    The citation contract does hold, and not because it is mandatory: across 416
+    candidates and 764 citations every doc_id resolved and none post-dated its
+    run, because a fabricated id fails to resolve and the idea is dropped. So a
+    card's fields get the same closed set."""
+
+    def setUp(self):
+        self.card = a_card()
+        self.keys = (("anomaly", "motive", "constraint", "trigger")
+                     + philosophy.require_keys(self.card)
+                     + philosophy.doc_keys(self.card))
+        self.docs = philosophy.doc_keys(self.card)
+        self.ctx = a_ctx()
+        self.row = {
+            "instrument_id": "IEUR", "anomaly": "a", "motive": "m",
+            "constraint": "c", "trigger": "t", "thesis": "th",
+            "upside_pct": 8, "downside_pct": -5,
+            "p_up": .4, "p_base": .4, "p_down": .2, "citations": ["feed:1"],
+            "forced_seller": "CalPERS，集中度超 35% 时强制转向等权指数"}
+
+    def _mint(self, row):
+        return _gen.mint([row], self.ctx, self.ctx.topics[0], "x",
+                         require_keys=self.keys, extra_keys=self.keys,
+                         doc_keys=self.docs)
+
+    def test_every_field_gets_an_evidence_companion(self):
+        self.assertEqual(philosophy.doc_keys(self.card), ("forced_seller_doc",))
+
+    def test_a_fabricated_doc_id_is_refused(self):
+        kept, dropped = self._mint({**self.row, "forced_seller_doc": "feed:99999"})
+        self.assertEqual(kept, [])
+        self.assertTrue(any("出处对不上语料" in v for v in dropped.values()),
+                        dropped)
+
+    def test_a_missing_evidence_field_is_refused(self):
+        kept, dropped = self._mint(self.row)
+        self.assertEqual(kept, [])
+        self.assertTrue(any("forced_seller_doc" in v for v in dropped.values()),
+                        dropped)
+
+    def test_a_real_doc_id_passes_and_is_kept_on_the_idea(self):
+        kept, _ = self._mint({**self.row, "forced_seller_doc": "feed:1"})
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["forced_seller_doc"], "feed:1")
+
+    def test_the_base_arms_are_untouched_by_the_new_parameter(self):
+        """`doc_keys` defaults to empty, so the four controls mint exactly as
+        before — the comparison does not move because a derived arm gained a
+        check."""
+        row = {k: v for k, v in self.row.items() if k != "forced_seller"}
+        kept, dropped = _gen.mint([row], self.ctx, self.ctx.topics[0], "x",
+                                  require_keys=("anomaly", "motive",
+                                                "constraint", "trigger"),
+                                  extra_keys=("anomaly",))
+        self.assertEqual(len(kept), 1, dropped)
+
+    def test_a_field_named_doc_is_rejected_at_the_card(self):
+        bad = philosophy.problems(
+            a_card(require=[{"field": "seller_doc", "desc": "x"}]),
+            known_arms={"carl_constraint"})
+        self.assertTrue(any("_doc" in b for b in bad), bad)
+
+    def test_render_names_the_evidence_fields_and_says_they_are_checked(self):
+        text = philosophy.render(self.card)
+        self.assertIn("forced_seller_doc", text)
+        self.assertIn("逐个核对", text)
+
+
 class LedgerIsAppendOnlyAndAsOf(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -292,6 +292,10 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
             bad.append(f"require 字段名不合规（小写下划线）：{f!r}")
         if f in RESERVED_FIELDS:
             bad.append(f"require 字段 {f!r} 与系统字段冲突")
+        if f.endswith("_doc"):
+            # Each field gets a generated `<field>_doc` companion; a field that
+            # already ended in `_doc` would collide with its own evidence key.
+            bad.append(f"require 字段名不能以 _doc 结尾（那是留给出处的）：{f!r}")
         if f in seen:
             bad.append(f"require 字段重复：{f!r}")
         seen.add(f)
@@ -464,18 +468,46 @@ def render(card: dict[str, Any]) -> str:
         # model produce something. So the instruction has to name that specific
         # move and price it, rather than say 「写不出就不要凑」 and assume the
         # model reads that as covering an invention it finds plausible.
-        out.append("这几个字段的内容必须站在上面给你的材料上——你能在哪一篇里读到它，"
-                   "就在字段里带上那篇的 doc_id。材料里读不到的，这一条整条不要写，"
-                   "少给几条是允许的。**点名一个你并没有在材料里读到的机构、条款或日期，"
-                   "比不给这一条严重得多**：它看起来可以核对，实际核对不了，"
-                   "一个月后没人分得清是判断错了还是当初就没有这回事。")
+        out.append(
+            "每一个上面的字段，都要再给一个同名加 _doc 的字段，填你在哪一篇材料里"
+            "读到它——" + "、".join(f"{r['field']}_doc" for r in req) + "，"
+            "原样填上面材料清单里的 doc_id（形如 feed:100994）。"
+            "**这些 doc_id 会被逐个核对**：不在上面清单里的，整条想法直接丢弃。\n"
+            "所以材料里读不到的，这一条就不要写，少给几条是允许的。"
+            "点名一个你并没有在材料里读到的机构、条款或日期，比不给这一条严重得多——"
+            "它看起来可以核对，实际核对不了，一个月后没人分得清是判断错了"
+            "还是当初就没有这回事。")
     return "\n".join(out)
 
 
 def require_keys(card: dict[str, Any]) -> tuple[str, ...]:
-    """The fields `_gen.mint` will enforce for this card. This is the teeth."""
+    """The fields a card adds to every idea."""
     return tuple(str(r["field"]) for r in (card.get("require") or [])
                  if r.get("field"))
+
+
+def doc_keys(card: dict[str, Any]) -> tuple[str, ...]:
+    """One companion `<field>_doc` per required field. This is the teeth.
+
+    Being mandatory is not what makes a field honest. Measured on 2026-09-05:
+    asked for a mandatory `forced_seller`, the model answered 「CalPERS，条款：
+    集中度超 35% 时强制转向等权指数」 about an institution it had read nothing
+    about, with 「写不出就不要凑这一条」 sitting in the same prompt. It did not
+    think it was padding; it had found an answer that sounded entirely reasonable.
+
+    Compare the citation contract, which holds: across 416 candidates and 764
+    citations, every doc_id resolved to a real document and none post-dated its
+    own run. That is not because citations are required — it is because a
+    fabricated doc_id fails to resolve and the idea is dropped. There is a
+    mechanism that *refuses*.
+
+    So a card's fields get the same closed set. 「谁被迫」 is free text and
+    nothing can refuse it; 「读到这件事的那篇研报」 is an identifier from the
+    corpus the model was just shown, and an invented one is caught here. The
+    claim can still be wrong — a real document need not support the sentence
+    attached to it — but it can no longer be about nothing.
+    """
+    return tuple(f"{f}_doc" for f in require_keys(card))
 
 
 def arm_name(card: dict[str, Any]) -> str:

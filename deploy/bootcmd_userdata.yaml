@@ -1,0 +1,39 @@
+#cloud-config
+# Executed on EVERY boot (bootcmd, not runcmd), so it can be updated with
+# ModifyInstanceAttribute + RebootInstance — no stop, no SSH, no console.
+#
+# Why this exists: outbound TCP 22 is filtered on the operator's network for
+# every destination (github.com:22 fails identically to this instance, while
+# :443 completes a handshake), and ECS Cloud Assistant would not install on
+# this image. That left no command channel at all. cloud-init is the one
+# execution path the platform still offers without stopping the instance.
+#
+# No secrets here: this text is stored by the cloud API and readable from the
+# console. It installs public software, clones public code, and re-attempts the
+# Cloud Assistant install so RunCommand becomes available for the parts that do
+# need credentials. Those arrive afterwards through a short-lived presigned URL.
+bootcmd:
+  - [ cloud-init-per, always, ideagen-bootstrap, /bin/bash, -c,
+      "set -x; exec >>/var/log/ideagen-bootstrap.log 2>&1;
+       echo \"=== boot $(date -u +%FT%TZ) ===\";
+       export DEBIAN_FRONTEND=noninteractive;
+       for i in 1 2 3; do apt-get update -qq && break || sleep 10; done;
+       apt-get install -y -qq docker.io docker-compose-v2 git curl ca-certificates || true;
+       systemctl enable --now docker || true;
+       mkdir -p /opt/ideagen/app /opt/ideagen/config /opt/ideagen/oauth /opt/ideagen/health;
+       chmod 700 /opt/ideagen/config /opt/ideagen/oauth;
+       if [ -d /opt/ideagen/app/.git ]; then
+         git -C /opt/ideagen/app fetch --quiet origin main &&
+         git -C /opt/ideagen/app reset --hard --quiet origin/main;
+       else
+         git clone --quiet --depth 50 https://github.com/YuesongCai/IdeaGen40.git /opt/ideagen/app;
+       fi;
+       { echo 'ideagen instance up'; date -u +%FT%TZ;
+         git -C /opt/ideagen/app rev-parse --short HEAD 2>/dev/null || echo no-clone;
+         echo 'docker:'; docker --version 2>/dev/null || echo none; } > /opt/ideagen/health/index.html;
+       docker rm -f ideagen-health >/dev/null 2>&1 || true;
+       docker run -d --name ideagen-health --restart always -p 80:80
+         -v /opt/ideagen/health:/usr/share/nginx/html:ro nginx:alpine || true;
+       curl -fsSL https://iam-cloud-assistant-ap-southeast-1.tos-ap-southeast-1.bytepluses.com/linux/install.sh -o /tmp/ca.sh 2>/dev/null &&
+         bash /tmp/ca.sh >/dev/null 2>&1 || true;
+       echo \"=== done $(date -u +%FT%TZ) ===\"" ]

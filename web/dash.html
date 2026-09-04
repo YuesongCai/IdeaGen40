@@ -464,6 +464,11 @@ tr.expandable{cursor:pointer}
 
 /* glossary term */
 .gloss{border-bottom:1px dotted var(--color-border-strong);cursor:help}
+/* 点线下划线的含义是「这个词有释义」。ⓘ 不是词，是「这里有一条注」的记号，
+ * 给它画下划线只会让它和前一个字连成一片——全站有十七处这样贴着的 ⓘ。
+ * 记号不带下划线，间距统一交给 margin，不再靠各处手写空格。 */
+.gloss.gm{border-bottom:none;margin-left:3px;color:var(--color-text-tertiary)}
+.gloss.gm:hover{color:var(--color-text-brand)}
 @media(hover:none){.gloss{cursor:pointer}}
 .gloss-row{display:flex;gap:var(--space-3);padding:8px 0;align-items:baseline}
 .gloss-row+.gloss-row{border-top:1px solid var(--color-border-subtle)}
@@ -1643,7 +1648,7 @@ function epi(text){
     +'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5" stroke="var(--color-fill-tertiary)" stroke-width="1"/><path d="M6 5.2v3" stroke="var(--color-fill-tertiary)" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="3.4" r=".7" fill="var(--color-fill-tertiary)"/></svg>'
     +'<span>'+text+'</span></div>';
 }
-function glossMark(def){return '<span class="gloss" title="'+esc(def)+'">ⓘ</span>'}
+function glossMark(def){return '<span class="gloss gm" title="'+esc(def)+'">ⓘ</span>'}
 /* HGEP 四因子拆解——画出来代替写公式。上方赛道条给的是「谁高谁低」，
  * 这里给的是赛道条给不了的：每个因子的原始分、权重、以及它贡献了多少分。 */
 function hgepBreakdown(r){
@@ -1746,7 +1751,7 @@ function robustNote(){
     +under+' 个样本不足以检验'
     +(unstable?'、'+unstable+' 个的判定随剔除个数变化（剔 5 / 10 / 20 结论不一致，不构成结论）':'')
     /* r.note 说的就是这句话的前半段，两句并排等于说了两遍。 */
-    +(dropped?'<span class="gloss" title="被删掉的标的：'+esc(dropped)+'">ⓘ</span>':'')
+    +(dropped?'<span class="gloss gm" title="被删掉的标的：'+esc(dropped)+'">ⓘ</span>':'')
     +'</div>';
 }
 function backtestArmName(name){
@@ -2492,7 +2497,7 @@ function mainLine(ag){
   return '<div class="card mainline section" aria-label="主链路">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">主链路</h2>'
     +'<span class="card-note">'+esc(w.as_of||'')+' 期'
-      +'<span class="gloss" title="逐段展开可回溯依据与语料来源。">ⓘ</span></span></div>'
+      +'<span class="gloss gm" title="逐段展开可回溯依据与语料来源。">ⓘ</span></span></div>'
     +rows
     /* 「方法」这一页读者最想问的就是「凭什么这么选」。入口不能只在展开某一段
        之后才出现——那等于要求他先猜对该展开哪一段。 */
@@ -2695,7 +2700,7 @@ function noiseBandHTML(books,weekN){
   var headline=noiseHeadline(books,weekN);
   var html='<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin-bottom:var(--space-3)">'+headline+'</div>';
   /* 轴头 + 刻度（与每行的轨道列同几何） */
-  html+='<div class="nb-axis">横轴：与全量基准的差距（百分点）<span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>'
+  html+='<div class="nb-axis">横轴：与全量基准的差距（百分点）<span class="gloss gm" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>'
     +'<div class="nb-head"><i style="left:'+X(-2).toFixed(1)+'%">−2</i><i style="left:'+X(0).toFixed(1)+'%">0</i><i style="left:'+X(2).toFixed(1)+'%">+2</i></div>';
   html+='<div class="nb-plot">'
     +'<div class="nb-ov">'
@@ -2719,12 +2724,12 @@ function noiseBandHTML(books,weekN){
         +'</button>';
     }).join('')
     +'</div>'
-    +'<div class="nb-cap">灰带 = ±2 个百分点 <span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>';
+    +'<div class="nb-cap">灰带 = ±2 个百分点<span class="gloss gm" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>';
   /* 判定所需样本量进度 */
   var tgt=targetWeeks(),spread=targetWeeksSpread();
   var pct=Math.min(100,weekN/tgt*100);
   html+='<div class="nb-prog"><span>判定所需样本量：第 '+weekN+' 期 / 约 '+tgt+' 期 '
-    +'<span class="gloss" title="'+esc(VERDICT_GLOSS+(spread?'　'+spread+'。':''))+'">ⓘ</span></span>'
+    +'<span class="gloss gm" title="'+esc(VERDICT_GLOSS+(spread?'　'+spread+'。':''))+'">ⓘ</span></span>'
     +'<span class="nb-pbar"><span style="width:'+pct.toFixed(0)+'%"></span></span></div>';
   return html;
 }
@@ -2761,7 +2766,7 @@ function raceHero(ag){
         +'<b>'+(r.diff===null?'—':(r.isRef?'基准':(r.diff>0?'+':'')+r.diff.toFixed(2)+'pp'))+'</b></button>';
     }).join('')
     +'</div>'
-    +'<div class="card-note" style="margin-bottom:var(--space-3)">数值 = 与全量基准的差距（百分点） · 绿底 = 主策略（正式比较臂 <span class="gloss" title="'+esc(ARM_GLOSS)+'">ⓘ</span>）· 灰底 = 对照（基准 <span class="gloss" title="'+esc(RULER_GLOSS)+'">ⓘ</span>）· 白底 = 常驻探索</div>'
+    +'<div class="card-note" style="margin-bottom:var(--space-3)">数值 = 与全量基准的差距（百分点） · 绿底 = 主策略（正式比较臂<span class="gloss gm" title="'+esc(ARM_GLOSS)+'">ⓘ</span>）· 灰底 = 对照（基准<span class="gloss gm" title="'+esc(RULER_GLOSS)+'">ⓘ</span>）· 白底 = 常驻探索</div>'
     +pathLegend(SEL_PATH,books.map(function(b){return b.selector}));
   var table='<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
     +'<thead><tr><th>选取策略</th><th class="r">持仓数</th><th class="r">收益</th><th class="r" title="相对全量基准账本的差值">vs 全量基准</th></tr></thead><tbody>'
@@ -2978,7 +2983,7 @@ function holdMapCard(ag){
       if(unfilled.length)msg+='本期新选出的 <b>'+unfilled.map(esc).join('、')+'</b> 还没有仓位'
         +(pend?'——'+fmtInt(pend)+' 笔挂单待成交':'')+'。';
       return '<div class="hm-note">'+msg
-        +'<span class="gloss" title="组合按 4 周滚动建仓，每周只换掉其中一批；已建的仓按原风控持有到期或触发止损止盈，不会因为主题这一期没入选就被强制平掉。所以「本期选了哪些主题」和「现在持有哪些主题」本来就不该完全一致——两处都对。">ⓘ</span>'
+        +'<span class="gloss gm" title="组合按 4 周滚动建仓，每周只换掉其中一批；已建的仓按原风控持有到期或触发止损止盈，不会因为主题这一期没入选就被强制平掉。所以「本期选了哪些主题」和「现在持有哪些主题」本来就不该完全一致——两处都对。">ⓘ</span>'
         +'</div>';
     })()
     +body
@@ -3229,7 +3234,7 @@ function pairedEquitySVG(books){
     +'</svg>';
   return '<div class="funnel-wrap">'+svg+'</div>'
     +'<div class="card-note" style="margin-top:2px">净值指数'
-      +'<span class="gloss" title="期初 = 100，同轴可比；虚线为盈亏平衡线。">ⓘ</span></div>';
+      +'<span class="gloss gm" title="期初 = 100，同轴可比；虚线为盈亏平衡线。">ⓘ</span></div>';
 }
 function holdingsMatrix(books){
   var held={};
@@ -3348,7 +3353,7 @@ function themeMixCard(books){
 
   return '<div class="tmx">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0;font-size:15px">各策略的主题分布</h2>'
-    +'<span class="card-note gloss" title="按持仓市值占比。同一候选池下的分布差异即策略间差异。">ⓘ</span></div>'
+    +'<span class="card-note gloss gm" title="按持仓市值占比。同一候选池下的分布差异即策略间差异。">ⓘ</span></div>'
     +legend+rows
   +'</div>';
 }
@@ -3614,14 +3619,14 @@ function portfolioHeadline(ag){
           +(function(){
             var d=(ag.capital&&ag.deployed!==undefined)?(ag.deployed/ag.capital*100):null;
             return d===null?'':'<span style="color:var(--color-feedback-warning-text)"> · 已投出 '+d.toFixed(0)+'%</span>'
-              +'<span class="gloss" title="按设计每周只投出四分之一本金（四周梯队），未投出的部分放在货币基金里。现在是第 '+wk+' 周，所以这一栏是一个部分建仓的组合，而右边的基准是满仓——两个数的分母不同，差距里有一部分来自仓位节奏而非选股。">ⓘ</span>';
+              +'<span class="gloss gm" title="按设计每周只投出四分之一本金（四周梯队），未投出的部分放在货币基金里。现在是第 '+wk+' 周，所以这一栏是一个部分建仓的组合，而右边的基准是满仓——两个数的分母不同，差距里有一部分来自仓位节奏而非选股。">ⓘ</span>';
           })()
         +'</div>'
         +'<div class="num '+pctCls(ret)+'" style="font:600 34px/40px var(--font-sans)">'+(ret===null?'—':fmtPct(ret))+'</div>'
       +'</div>'
       +'<div>'
         +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">同期 '+esc(benchName())+' · 基准<span style="color:var(--color-text-tertiary)"> · 满仓</span>'
-          +(function(){var n=benchWindowNote();return n?'<span class="gloss" title="'+esc(n)+'">ⓘ</span>':''})()
+          +(function(){var n=benchWindowNote();return n?'<span class="gloss gm" title="'+esc(n)+'">ⓘ</span>':''})()
         +'</div>'
         +'<div class="num" style="font:600 34px/40px var(--font-sans);color:var(--color-text-secondary)">'+(spy===null?'—':fmtPct(spy))+'</div>'
       +'</div>'
@@ -3632,7 +3637,7 @@ function portfolioHeadline(ag){
         +'<div style="font:400 12px/17px var(--font-sans);color:var(--color-text-tertiary);margin-top:2px">'
           +(function(){var w=heroWindowNote(currentBooks());return w?esc(w)+' · ':''})()
           +'建仓后第 '+wk+' 周 · 样本尚不足以判定优劣'
-          +'<span class="gloss" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，主策略里最慢的一条约需 '+targetWeeks()+' 期样本；在那之前的排名不构成结论。">ⓘ</span>'
+          +'<span class="gloss gm" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，主策略里最慢的一条约需 '+targetWeeks()+' 期样本；在那之前的排名不构成结论。">ⓘ</span>'
         +'</div>'
       +'</div>'
     +'</div>'
@@ -3656,7 +3661,7 @@ function portfolioHeadline(ag){
         +'<span class="hs-h">这 '+fmtPct(pp(gain))+' 从哪来</span>'
         +'<span class="hs-i"><b class="num '+pctCls(pos)+'">'+(pp(pos)>=0?'+':'')+pp(pos).toFixed(2)+' pp</b> 选出来的持仓</span>'
         +'<span class="hs-i"><b class="num">'+(pp(cash)>=0?'+':'')+pp(cash).toFixed(2)+' pp</b> 未投出资金的货币市场利息'
-        +'<span class="gloss" title="'+esc(cashRateNote())+'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。'
+        +'<span class="gloss gm" title="'+esc(cashRateNote())+'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。'
           +'当前实际投出 '+depPct.toFixed(0)+'%'
           +(ag.pending?'，低于每周约四分之一的设计值，因为还有 '+fmtInt(ag.pending)+' 笔挂单没有成交':'')
           +'。">ⓘ</span></span>'
@@ -3898,7 +3903,7 @@ function backtestCard(){
       return '<div class="meta-kv"><div class="k">持有期</div><div class="v num">目标 '+m.target+' 天'
         +'<span style="font-family:var(--font-sans);font-weight:400;color:var(--color-text-tertiary)"> · 实际已过 '+m.min+'~'+m.max+' 天'
         +(partial?'（'+partial+'/'+m.n+' 期未满）':'')+'</span>'
-        +'<span class="gloss" title="'+esc(tip)+'">ⓘ</span></div></div>';
+        +'<span class="gloss gm" title="'+esc(tip)+'">ⓘ</span></div></div>';
     })()
       +(sum.asof_audit
         ?'<div class="meta-kv"><div class="k">时间钳制</div><div class="v" '
@@ -3925,7 +3930,7 @@ function backtestCard(){
         var dis=humanizeKeys(sum.disclaimer||'');
         return '<div class="card-note" style="margin-top:var(--space-3)">'
           +'<b>本表与策略对比图口径不同</b>'
-          +'<span class="gloss" title="'+esc(cap+(dis?' '+dis:''))+'">ⓘ</span></div>';
+          +'<span class="gloss gm" title="'+esc(cap+(dis?' '+dis:''))+'">ⓘ</span></div>';
       })()
       +'<div style="margin-top:var(--space-5);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle)">'
       +backtestSection()+'</div>')
@@ -3965,7 +3970,7 @@ function backtestSection(){
       return '<div class="meta-kv"><div class="k">持有期</div><div class="v num">目标 '+m.target+' 天'
         +'<span style="font-family:var(--font-sans);font-weight:400;color:var(--color-text-tertiary)"> · 实际已过 '+m.min+'~'+m.max+' 天'
         +(partial?'（'+partial+'/'+m.n+' 期未满）':'')+'</span>'
-        +'<span class="gloss" title="'+esc(tip)+'">ⓘ</span></div></div>';
+        +'<span class="gloss gm" title="'+esc(tip)+'">ⓘ</span></div></div>';
     })()
     +'<div class="meta-kv"><div class="k">模型调用</div><div class="v num">'+fmtInt(sum.model_calls)+' 次</div></div>'
     +'<div class="meta-kv"><div class="k">持久化</div><div class="v">RDS 明细 · '+(b.artifact_archived?'TOS 不可变归档':'未归档')+'</div></div>'
@@ -4004,11 +4009,11 @@ function backtestSection(){
   ];
   var metrics='<div class="card section"><div class="card-title-row"><h2 class="card-title">方法指标</h2>'
     +'<span class="card-note">取不到价格的标的不按 0% 计入'
-    +'<span class="gloss" title="把取不到行情的标的当成 0% 收益，会把平均值往中间拉，让方法看起来比实际稳定。这里的做法是把它们排除在收益统计之外，并在「覆盖率」里如实报出占比。">ⓘ</span></span></div>'
+    +'<span class="gloss gm" title="把取不到行情的标的当成 0% 收益，会把平均值往中间拉，让方法看起来比实际稳定。这里的做法是把它们排除在收益统计之外，并在「覆盖率」里如实报出占比。">ⓘ</span></span></div>'
     +'<div class="table-wrap"><table><thead><tr>'
     +HDR.map(function(h){
       return '<th'+(h[1]?' class="'+h[1]+'"':'')+'>'+esc(h[0])
-        +(h[2]?'<span class="gloss" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>';
+        +(h[2]?'<span class="gloss gm" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>';
     }).join('')
     +'</tr></thead><tbody>'+armRows+'</tbody></table></div>'+pairedSummary(filteredPaired)+'</div>';
 
@@ -5217,7 +5222,7 @@ function stageCorpusBody(){
       /* 这里的「命中」只按标题算，主题发现那一步按全文算，两个数差很远。
        * 不写清楚，读者会以为 858 篇里只有两百多篇被用上，其余白读了。 */
       +'<div class="card-note" style="margin-bottom:6px">词表命中主题的研报（去重后 '+fmtInt(docs.length)+' 篇）按来源分'
-      +'<span class="gloss" title="这一栏按标题关键词计数，用于给每个主题挂出可点开的证据清单，口径与主题打分一致。主题发现那一步另按全文（标题＋摘要＋正文前 3000 字）统计覆盖率，同一期通常在八成以上——两个数不一样是因为口径不同，不是说其余研报没被读到：它们进了同一份封存材料，写想法时四种方法都能用。">ⓘ</span>：</div>'
+      +'<span class="gloss gm" title="这一栏按标题关键词计数，用于给每个主题挂出可点开的证据清单，口径与主题打分一致。主题发现那一步另按全文（标题＋摘要＋正文前 3000 字）统计覆盖率，同一期通常在八成以上——两个数不一样是因为口径不同，不是说其余研报没被读到：它们进了同一份封存材料，写想法时四种方法都能用。">ⓘ</span>：</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
       +[1,2,3].filter(function(t){return tiers[t]}).map(function(t){return tierTag(t).replace('</span>',' · '+fmtInt(tiers[t])+' 篇</span>')}).join('')
       +'</div>'
@@ -5384,13 +5389,13 @@ function stageTopicsBody(d){
    * 完整打分表 + 计数对照臂，不附研报正文——这一步的取舍就是在表上做的。 */
   var askStep='<div style="margin:0 0 var(--space-3)">'+askBtn('selection','topics')+'</div>';
   var legend='<div class="race-legend">'
-    +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度 <span class="gloss" title="'+esc(HGEP_GLOSS.H)+'">ⓘ</span></span>'
-    +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 分歧 <span class="gloss" title="'+esc(HGEP_GLOSS.G)+'">ⓘ</span></span>'
-    +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 实据 <span class="gloss" title="'+esc(HGEP_GLOSS.E)+'">ⓘ</span></span>'
-    +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 已定价 <span class="gloss" title="'+esc(HGEP_GLOSS.P)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度<span class="gloss gm" title="'+esc(HGEP_GLOSS.H)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 分歧<span class="gloss gm" title="'+esc(HGEP_GLOSS.G)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 实据<span class="gloss gm" title="'+esc(HGEP_GLOSS.E)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 已定价<span class="gloss gm" title="'+esc(HGEP_GLOSS.P)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-1);opacity:.34"></span>落选</span>'
     +'<span><span class="race-cnt pick" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>计数臂亦选入</span>'
-    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">7</span>计数臂未选入 <span class="gloss" title="'+esc('圈内数字 = 计数对照臂对同一主题的排名。'+COUNT_GLOSS)+'">ⓘ</span></span>'
+    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">7</span>计数臂未选入<span class="gloss gm" title="'+esc('圈内数字 = 计数对照臂对同一主题的排名。'+COUNT_GLOSS)+'">ⓘ</span></span>'
     +'</div>';
   var html=tabs+askStep+legend+disLine
     +'<div class="race-sec"><div class="race-sec-h"><span class="t">入选 · '+nIn+'</span><span class="s">进入筛选B，各生成方法据此写想法</span></div>'
@@ -5494,7 +5499,7 @@ function stageGeneratorsBody(d){
       +'<span style="margin-left:6px">'+pathTag(GEN_PATH[focKey])+'</span>'
       /* 说明与例子在方法卡片里已经是 genGlossTitle 的 ⓘ；这里曾把同一份内容
          铺成两行正文，同一个东西两种读法。统一收进 ⓘ。 */
-      +'<span class="gloss" style="margin-left:6px" title="'+esc(genGlossTitle(fo2))+'">ⓘ</span>'
+      +'<span class="gloss gm" style="margin-left:6px" title="'+esc(genGlossTitle(fo2))+'">ⓘ</span>'
       +'<div style="margin-top:6px">'
       +(fg?'本期产出 <b class="num">'+fmtInt(fg.n)+'</b> 条 · 被拒 <b class="num">'+fmtInt(fg.rejected||0)+'</b> 条 · 合并后在池 <b class="num">'+fmtInt(mine.length)+'</b> 条。':'本期没有它的产出记录。')
       +'</div>'
@@ -5513,7 +5518,9 @@ function stageGeneratorsBody(d){
     chosen.forEach(function(t){perMax=Math.max(perMax,per[t]||0)});
     if((g.meta||{}).target_per_topic)target=g.meta.target_per_topic;
   });
-  var cols='150px '+chosen.map(function(){return 'minmax(56px,1fr)'}).join(' ')+' 130px';
+  /* 两侧固定列在抽屉里会把网格顶出 34px，最右的「合计」被裁掉。
+   * 给它们一个可压缩的下限：宽处照旧，窄处先让固定列让步，而不是让内容出界。 */
+  var cols='minmax(112px,150px) '+chosen.map(function(){return 'minmax(56px,1fr)'}).join(' ')+' minmax(104px,130px)';
   var html='<div class="pgrid-wrap scroll-thin"><div class="pgrid" style="grid-template-columns:'+cols+'">';
   html+='<div class="pg-h" style="justify-content:flex-start;align-items:flex-end;text-align:left">方法 ＼ 主题</div>';
   chosen.forEach(function(t){html+='<div class="pg-h" title="'+esc(topicLabel(t))+'">'+esc(t)+'</div>'});
@@ -5525,7 +5532,7 @@ function stageGeneratorsBody(d){
     html+='<button type="button" class="pg-m'+(isFoc?' foc':'')+'" style="padding:2px 6px'+dimS+'"'
       +' onclick="setDrawerFocus('+(isFoc?'null':'\''+o[0]+'\'')+')"'
       +' title="'+(isFoc?'回到全景':'只看这一种方法：其余压暗，并展开它的独有标的与重合率')+'">'
-      +'<span class="t">'+esc(o[1])+' <span class="gloss" title="'+esc(genGlossTitle(o))+'">ⓘ</span></span>'
+      +'<span class="t">'+esc(o[1])+'<span class="gloss gm" title="'+esc(genGlossTitle(o))+'">ⓘ</span></span>'
       +'<span class="s">'+esc(o[2])+'</span></button>';
     if(g){
       var per=(g.meta||{}).per_topic||{};
@@ -5589,7 +5596,7 @@ function stagePoolBody(d){
       var d=34+(Number(k)-1)*10;
       var gFoc=focTier?(k===focTier?' foc':' dim'):'';
       merge+='<div class="bub-group'+gFoc+'" style="padding-left:6px;padding-right:6px">'
-        +'<div class="bub-k"><div class="t">'+convLabel(k)+' <span class="gloss" title="'+esc(CONV_GLOSS)+'">ⓘ</span></div><div class="s">'+fmtInt(conv[k]!==undefined?conv[k]:arr.length)+' 条'+(k==='4'?' · 最高共识':'')+'</div></div>'
+        +'<div class="bub-k"><div class="t">'+convLabel(k)+'<span class="gloss gm" title="'+esc(CONV_GLOSS)+'">ⓘ</span></div><div class="s">'+fmtInt(conv[k]!==undefined?conv[k]:arr.length)+' 条'+(k==='4'?' · 最高共识':'')+'</div></div>'
         +'<div class="bub-cloud">'
         +arr.map(function(c){
           return '<button type="button" class="bub" style="width:'+d+'px;height:'+d+'px;background:'+BUBBG[k]+';box-shadow:inset 0 0 0 1px var(--color-border-brand-subtle)" '
@@ -5652,7 +5659,7 @@ function stageSelectorsBody(d){
       focusHead='<div class="focus-head">'
         +'<b>'+esc(fm[1])+'</b><span class="tag tag-brand" style="margin-left:6px">'+esc(fm[3])+'</span><span class="tag" style="margin-left:4px">'+esc(fm[2])+'</span>'
         +'<span style="margin-left:6px">'+pathTag(SEL_PATH[foc])+'</span>'
-        +'<span class="gloss" style="margin-left:6px" title="'+esc(selPlain(foc))+'">ⓘ</span>'
+        +'<span class="gloss gm" style="margin-left:6px" title="'+esc(selPlain(foc))+'">ⓘ</span>'
         +'<div style="margin-top:6px"><b>它放行的 '+fmtInt(ids.length)+' / '+fmtInt(cands.length)+' 条</b>：'
         +(ids.length?'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle;margin-left:4px">'
           +ids.map(function(id){return '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="在候选池里看这条" onclick="filterPoolCode(\''+jss(id)+'\')">'+esc(id)+' ›</button>'}).join('')
@@ -5672,7 +5679,7 @@ function stageSelectorsBody(d){
         +'<button type="button" class="nm nm-btn" onclick="setDrawerFocus('+(foc===s.name?'null':'\''+jss(s.name)+'\'')+')"'
           +' title="'+(foc===s.name?'回到全景':'只看这一个策略：其余压暗，并展开它放行的标的')+'">'+esc(m[1])+'</button>'
         +'<span class="tag" style="flex:none">'+esc(m[2])+'</span>'
-        +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b> <span class="gloss" title="'+esc(selPlain(s.name))+'">ⓘ</span>　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
+        +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b><span class="gloss gm" title="'+esc(selPlain(s.name))+'">ⓘ</span>　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
         +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+jss(s.name)+'\',\'策略 '+esc(m[1])+'\')">回候选池 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
         +(hasBook?'　<button type="button" class="exp-btn" onclick="openBookDrawer(\''+jss(s.name)+'\')">该账本 ›</button>':'')
         +'　'+askBtn('selector',s.name,{cls:'sm'})
@@ -5730,7 +5737,7 @@ function stageSelectorsBody(d){
       +'</tbody></table></div>'
       /* 与「灰带」那处同型：图例只留「灰点 = 什么」，怎么读收进 ⓘ。 */
       +'<div class="card-note" style="margin-top:var(--space-2)">灰点 = 对照臂'
-        +'<span class="gloss" title="全量基准按设计整列放行。同一行亮点越多 = 越多策略独立选中。">ⓘ</span></div>';
+        +'<span class="gloss gm" title="全量基准按设计整列放行。同一行亮点越多 = 越多策略独立选中。">ⓘ</span></div>';
   }else{
     matrix='<div class="empty-sm" style="margin-top:var(--space-3)">候选池为空——闸门矩阵无从谈起</div>';
   }
@@ -5778,7 +5785,7 @@ function stageBookingBody(){
     var pos=b.open_positions||[];
     var posHtml;
     if(pos.length){
-      posHtml='<div class="pos-headr"><span>标的</span><span></span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS+'读法：左端止损、右端止盈，竖线是进场价，圆点是现价。')+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
+      posHtml='<div class="pos-headr"><span>标的</span><span></span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈<span class="gloss gm" title="'+esc(SIGMA_GLOSS+'读法：左端止损、右端止盈，竖线是进场价，圆点是现价。')+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
         +pos.map(function(p){
           return '<div class="pos-line">'
             +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\')">'+esc(bareCode(p.code))+'</button></span>'
@@ -5852,10 +5859,10 @@ function posDrawerBody(code){
       var pxTip='价格 = 现价相对进场价的涨跌，只反映标的本身走势，不扣成本。'
         +'它比「对成本」高出的那一点，就是买入时计入的佣金与滑点。'
         +(nPx>1?'本仓还有 '+nPx+' 个不同的进场价'+(nDay>1?'（分 '+nDay+' 天建仓）':'')+'，这里显示的是其中一个。':'');
-      return '<span class="num '+pctCls(pnlPct)+'">'+(pnlPct===null?'':fmtPct(pnlPct)+'（对成本）<span class="gloss" title="'+esc(costTip)+'">ⓘ</span>')+'</span>'
-        +'<span class="num '+pctCls(chgPct)+'">'+(chgPct===null?'':'价格 '+fmtPct(chgPct)+'<span class="gloss" title="'+esc(pxTip)+'">ⓘ</span>')+'</span>'
+      return '<span class="num '+pctCls(pnlPct)+'">'+(pnlPct===null?'':fmtPct(pnlPct)+'（对成本）<span class="gloss gm" title="'+esc(costTip)+'">ⓘ</span>')+'</span>'
+        +'<span class="num '+pctCls(chgPct)+'">'+(chgPct===null?'':'价格 '+fmtPct(chgPct)+'<span class="gloss gm" title="'+esc(pxTip)+'">ⓘ</span>')+'</span>'
         +'<span class="card-note">'+fmtInt(p.books.length)+' 个账本合计 · 开仓 '+esc(p.opened_d||'—')
-        +(nDay>1?'<span class="gloss" title="各账本建仓日期不完全相同（共 '+nDay+' 个日期），这里显示的是其中一个。逐个账本的持有量见下方表格。">ⓘ</span>':'')
+        +(nDay>1?'<span class="gloss gm" title="各账本建仓日期不完全相同（共 '+nDay+' 个日期），这里显示的是其中一个。逐个账本的持有量见下方表格。">ⓘ</span>':'')
         +'</span>';
     })()
     +'</div>';
@@ -5879,7 +5886,7 @@ function posDrawerBody(code){
   }else{
     html+='<div class="derive-kv"><span class="kv-t" style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
   }
-  html+='<div style="margin:var(--space-4) 0"><div class="pos-headr" style="grid-template-columns:minmax(0,1fr)"><span>σ×2 止损 ─ 进场（竖线）─ 现价（圆点）─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS)+'">ⓘ</span></span></div>'
+  html+='<div style="margin:var(--space-4) 0"><div class="pos-headr" style="grid-template-columns:minmax(0,1fr)"><span>σ×2 止损 ─ 进场（竖线）─ 现价（圆点）─ σ×3 止盈<span class="gloss gm" title="'+esc(SIGMA_GLOSS)+'">ⓘ</span></span></div>'
     +'<div style="max-width:420px">'+rngBarHTML(p)+'</div></div>';
   html+='<div style="font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin-bottom:4px">哪些账本在持有</div>'
     +'<div class="table-wrap"><table><thead><tr><th>账本（选取策略）</th><th class="r">数量</th><th class="r">浮动盈亏</th></tr></thead><tbody>'
@@ -5962,7 +5969,7 @@ function themeBarHTML(b,compact){
   }).join('');
   return '<div class="tx-wrap">'
     +'<div class="tx-h">主题敞口 · 这个策略把仓位压在哪几个宏观判断上'
-    +' <span class="gloss" title="按各仓位当前市值占该账本在场市值的比例计算；主题取自标的所属主题。同色即同一主题，可跨策略横向比较。">ⓘ</span></div>'
+    +'<span class="gloss gm" title="按各仓位当前市值占该账本在场市值的比例计算；主题取自标的所属主题。同色即同一主题，可跨策略横向比较。">ⓘ</span></div>'
     +'<span class="tx-bar">'+segs+'</span>'
     +'<div class="tx-keys">'+legend+'</div>'
     +(nStale?'<div class="card-note" style="margin-top:6px">「旧期」= 本期未入选的主题，仓位来自更早的期 '+glossMark('按原风控继续持有到期或触发止损止盈——组合不会因为主题落选就被强制平掉。')+'</div>':'')
@@ -5988,7 +5995,7 @@ function bookDrawerBody(sel){
     /* 同一对「短标签 + 完整说明」在策略卡片里是 <b>标签</b> ⓘ，这里却把说明
        整句铺出来。口径统一到 ⓘ：标签在外，说明在内。 */
     +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>'
-      +'<span class="gloss" title="'+esc(selPlain(b.selector))+'">ⓘ</span></div>'
+      +'<span class="gloss gm" title="'+esc(selPlain(b.selector))+'">ⓘ</span></div>'
     +'<div style="margin:0 0 var(--space-3)">'+askBtn('selector',b.selector)+'</div>'
     +'<div style="display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline;margin-bottom:var(--space-3)">'
     +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'+fmtPct(ret)+'</span>'
@@ -6105,7 +6112,7 @@ function askLogDrawerBody(d){
   }
   var head='<div class="quiet" style="margin-bottom:var(--space-3)">'
     +'共 <b class="num">'+fmtInt(rows.length)+'</b> 次追问 · 最近的在最上面 '
-    +'<span class="gloss" title="每一条都记下了：问了什么、系统把哪些材料交给了模型、模型引用了其中哪几件、答的是什么。把「交给了什么」和「引用了什么」分开记，是为了让「答得对不对」和「有没有依据」可以分开检验——引用 2 件和只有 2 件可引用，是两回事。">ⓘ</span></div>';
+    +'<span class="gloss gm" title="每一条都记下了：问了什么、系统把哪些材料交给了模型、模型引用了其中哪几件、答的是什么。把「交给了什么」和「引用了什么」分开记，是为了让「答得对不对」和「有没有依据」可以分开检验——引用 2 件和只有 2 件可引用，是两回事。">ⓘ</span></div>';
   var list=rows.map(function(a,i){
     var open=!!askLogOpen[i];
     var prov=a.provenance||[];
@@ -6126,7 +6133,7 @@ function askLogDrawerBody(d){
         +'<div class="al-sec">答</div><div class="al-a">'+askAnswerHTML(a.answer||'',a.provenance||[])+'</div>';
       if(prov.length){
         body+='<div class="al-sec">它当时拿到的材料 · '+prov.length+' 件'
-          +'<span class="gloss" title="这是问答发生时系统实际交给模型的全部材料。带「引用」的是模型在答案里指名用到的；其余是它可以看、但没有用上的。">ⓘ</span></div>'
+          +'<span class="gloss gm" title="这是问答发生时系统实际交给模型的全部材料。带「引用」的是模型在答案里指名用到的；其余是它可以看、但没有用上的。">ⓘ</span></div>'
           +'<div class="al-mats">'+prov.map(function(m){
             var go=askMatOpen(m);
             var isC=!!cited[m.id];
@@ -6188,7 +6195,7 @@ function propOdds(x){
     +'<span>上行 <b class="num up">'+fmtPct(up)+'</b></span>'
     +'<span>下行 <b class="num down">'+fmtPct(dn)+'</b></span>'
     +'<span>概率 <b class="num">'+fmtProb(x.p_up)+' / '+fmtProb(x.p_base)+' / '+fmtProb(x.p_down)+'</b>'
-    +'<span class="gloss" title="上行 / 持平 / 下行三种情景的概率，由生成方法当时给出">ⓘ</span></span>'
+    +'<span class="gloss gm" title="上行 / 持平 / 下行三种情景的概率，由生成方法当时给出">ⓘ</span></span>'
     +(rr!==null?'<span>赚亏比 <b class="num">'+rr.toFixed(2)+'</b></span>':'')
     +(x.horizon_days?'<span>期限 '+fmtInt(x.horizon_days)+' 天</span>':'')
     +'</div>';
@@ -6210,7 +6217,7 @@ function proposalsDrawerBody(d){
   var head='<div class="quiet" style="margin-bottom:var(--space-3)">'
     +'<b class="num">'+ps.length+'</b> 条原始提案来自 <b class="num">'+order.length+'</b> 种生成方法，'
     +'合并成候选池里 '+esc(code)+' 的那一行（赔率取中位数）。'
-    +'<span class="gloss" title="合并只对赔率取中位数、把提出方法记下来；论点没有被重写，下面每一条都是当时写下的原文。">ⓘ</span>'
+    +'<span class="gloss gm" title="合并只对赔率取中位数、把提出方法记下来；论点没有被重写，下面每一条都是当时写下的原文。">ⓘ</span>'
     +'　四种方法互不通气，所以它们给出的理由不一样才是常态——一致的地方才值得注意。</div>'
     +'<div style="margin:0 0 var(--space-3)">'+askBtn('idea','pool:'+code)+'</div>';
   var body=order.map(function(m){
@@ -6230,7 +6237,7 @@ function proposalsDrawerBody(d){
           +propOdds(x)
           +(cites.length
             ?'<div class="pr-cites"><div class="pr-cites-h">它当时引用的研报 · '+cites.length+' 篇'
-              +'<span class="gloss" title="生成时模型标注的出处。展开可查看该研报的摘要、检索凭据与全文长度——想法与其依据之间没有断点。">ⓘ</span></div>'
+              +'<span class="gloss gm" title="生成时模型标注的出处。展开可查看该研报的摘要、检索凭据与全文长度——想法与其依据之间没有断点。">ⓘ</span></div>'
               +cites.map(function(cid,ci){
                 var dd=docs[cid];
                 if(dd)return docRowHTML(dd,'pr-'+esc(code)+'-'+esc(m)+'-'+i+'-'+ci);
@@ -6527,7 +6534,7 @@ function askDrawerBody(d){
   var html='<div class="ask-scope">追问对象：<b>'+esc(sid)+(subjLabel&&subjLabel!==sid?'（'+esc(subjLabel)+'）':'')+'</b>'
     +' · '+esc(run.as_of||'—')+' 期'
     +' · 仅依据当期封存材料（'+esc(parts.join(' · '))+'）'
-    +' <span class="gloss" title="'+esc(gloss)+'">ⓘ</span>'
+    +'<span class="gloss gm" title="'+esc(gloss)+'">ⓘ</span>'
     +(shaLine?'<div style="margin-top:4px;color:var(--color-text-'+(corpus.verified_sha?'metadata':'tertiary')+')">'+esc(shaLine)+'</div>':'')
     +((ctx.notes||[]).length?'<div style="margin-top:4px;color:var(--color-feedback-warning-text)">材料缺口：'+ctx.notes.map(esc).join('；')+'</div>':'')
     +(ctx.empty?'<div style="margin-top:4px;color:var(--color-feedback-warning-text)">'+esc(ctx.empty)+'</div>':'')
@@ -6858,7 +6865,7 @@ function calDrawerBody(){
   /* ⓘ 必须挂在一个锚点上：孤零零一个图标浮在区块开头，读者不知道它在解释什么。
      标签留在外面，说明全部收进 ⓘ。 */
   return '<div class="card-note" style="margin-bottom:var(--space-3)">按期记录'
-    +'<span class="gloss" title="每期一行，展开可见该期运行、数据与错误。时间为 HKT。">ⓘ</span></div>'
+    +'<span class="gloss gm" title="每期一行，展开可见该期运行、数据与错误。时间为 HKT。">ⓘ</span></div>'
     +monLine
     +(calRows||'<div class="empty-sm">暂无周跑记录</div>');
 }
@@ -6874,7 +6881,7 @@ function limitsCard(){
   var doneN=fixes.filter(function(f){return (f.state||'').indexOf('✅')>=0}).length;
   return '<div class="card section">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">已知局限</h2>'
-    +'<span class="card-note gloss" title="这套方法目前哪些前提还没被验证，以及已经发现并修掉的缺陷">ⓘ</span></div>'
+    +'<span class="card-note gloss gm" title="这套方法目前哪些前提还没被验证，以及已经发现并修掉的缺陷">ⓘ</span></div>'
     +'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)">'
       +assum.length+' 条前提尚未验证；'+fixes.length+' 个已发现的缺陷里修好了 '+doneN+' 个。</div>'
     +foldBlock('evidence.limits.detail','逐条明细','未验证假设 · 已修复缺陷',trustBody())
@@ -7329,7 +7336,7 @@ function phTeachCard(){
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
    +'<h2 class="card-title">用一句话写下你判断一笔交易的准则 '
-     +'<span class="gloss" style="font-size:14px;vertical-align:middle" '
+     +'<span class="gloss gm" style="font-size:14px;vertical-align:middle" '
      +'title="系统会把它蒸馏成可执行的要求，并派生一条臂来执行。">ⓘ</span></h2>';
   if(blocked){
     h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
@@ -7338,7 +7345,7 @@ function phTeachCard(){
   h+='<textarea class="ph-say" id="phSay" data-el="rules.say" oninput="PH.say=this.value"'
    +' placeholder="'+esc('比如：'+PH_EG[0])+'">'+esc(PH.say)+'</textarea>'
    +'<div class="card-note" style="margin-top:8px">越具体越有效 '
-   +'<span class="gloss" title="「要谨慎一点」无法执行；「必须指名一个被期限逼着动手的主体」可以。">ⓘ</span></div>'
+   +'<span class="gloss gm" title="「要谨慎一点」无法执行；「必须指名一个被期限逼着动手的主体」可以。">ⓘ</span></div>'
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
           +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';
@@ -7349,7 +7356,7 @@ function phTeachCard(){
   if(arms.length>1){
     var picked0=arms.filter(function(a){return a.arm===PH.arm})[0];
     h+='<div class="ph-pick"><span class="card-note">加到哪种生成方式上'
-     +(picked0&&picked0.note?' <span class="gloss" title="'+esc(picked0.note)+'">ⓘ</span>':'')+'</span>'
+     +(picked0&&picked0.note?'<span class="gloss gm" title="'+esc(picked0.note)+'">ⓘ</span>':'')+'</span>'
      +'<span class="ph-seg">'+arms.map(function(a){
         return '<button type="button" class="seg-btn'+(a.arm===PH.arm?' on':'')+'"'
           +' data-ph-arm="'+esc(a.arm)+'" data-el="rules.arm.'+esc(a.arm)+'"'

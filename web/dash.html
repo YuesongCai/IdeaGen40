@@ -3434,7 +3434,20 @@ function benchName(){
    同源（aggReturnPct / benchReturnPct），不新增一套数字。 */
 /* 已跑到第几周。首屏结论和策略对比卡必须引用同一个周数，各算各的会说出
    两个不同的「第 N 周」。 */
+/* 「什么时候开始持有」= 最早一笔实际建仓日，不是 booked_as_of。
+ * booked_as_of 是账本最新一批想法的期次标签；当前每本账都写着 2026-09-02，
+ * 而 114 笔持仓（111 在场 + 3 已平）全部建于 2026-08-26。用批次标签当建仓日，
+ * 首屏就会说「09-02 才建仓、此前是现金」——差了整整一周，而且「建仓后第 N 周」
+ * 也跟着少算一周，直接影响「还要多久才够判定」那句话。
+ * 落回 booked_as_of 只发生在一笔持仓都没有的时候（那时它确实是最好的近似）。 */
 function firstBookedDate(books){
+  var minOpened=null;
+  (books||[]).forEach(function(b){
+    (b.open_positions||[]).forEach(function(p){
+      if(p.opened_d&&(minOpened===null||p.opened_d<minOpened))minOpened=p.opened_d;
+    });
+  });
+  if(minOpened)return minOpened;
   var minBooked=null;
   (books||[]).forEach(function(b){
     if(b.booked_as_of&&(minBooked===null||b.booked_as_of<minBooked))minBooked=b.booked_as_of;

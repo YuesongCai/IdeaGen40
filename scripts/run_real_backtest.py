@@ -146,6 +146,96 @@ def _mde_pct(rets: list[float]) -> float | None:
     return (_crit(n - 1) + backtest.Z_POWER) * sd / (n ** 0.5)
 
 
+def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
+    """How much of a table labelled "30 天" actually ran 30 days.
+
+    The sweep is called with `require_full_horizon=False`, and `backtest.py`
+    says exactly what that costs: "a 9-session return reported as a one-month
+    return is a different statistic wearing the same name… legitimate for a
+    paired comparison, where both arms are truncated identically and the
+    truncation cancels — but the label then has to say so".
+
+    The label did not say so. Worse, the arms are *not* truncated identically:
+    completeness runs from 17% to 24% between them, so the condition the setting
+    relies on does not hold here. Both means are therefore reported — the whole
+    sample, and the subset that reached the horizon — rather than one number
+    under a heading it only partly earns.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    def reached(row: dict) -> bool | None:
+        try:
+            period = _date.fromisoformat(str(row["period"])[:10])
+            exit_d = _date.fromisoformat(str(row["exit_d"])[:10])
+        except (TypeError, ValueError):
+            return None
+        return exit_d >= period + _td(days=horizon_days)
+
+    arms: dict[str, Any] = {}
+    for row in positions:
+        if row.get("return_pct") is None:
+            continue
+        done = reached(row)
+        if done is None:
+            continue
+        entry = arms.setdefault(str(row["arm"]),
+                                {"n": 0, "n_full": 0, "all": [], "full": []})
+        entry["n"] += 1
+        entry["all"].append(float(row["return_pct"]))
+        if done:
+            entry["n_full"] += 1
+            entry["full"].append(float(row["return_pct"]))
+
+    out: dict[str, Any] = {}
+    for name, e in arms.items():
+        mean_all = sum(e["all"]) / len(e["all"]) if e["all"] else None
+        mean_full = sum(e["full"]) / len(e["full"]) if e["full"] else None
+        mde_full = _mde_pct(e["full"])
+        # The restatement disagrees with the headline sharply — omega_strict
+        # goes from +1.85% to -3.33%, random_pick from +0.53% to +4.12%, nearly
+        # inverting the order. It would be easy and wrong to present that as the
+        # real ranking: the full-horizon subset is 17% of a sample that was
+        # already small, eight positions for some arms. So each restatement
+        # carries the bound its own sample supports, and the disagreement is
+        # reported as the table being unable to adjudicate rather than as a
+        # second answer.
+        out[name] = {
+            "n": e["n"], "n_full_horizon": e["n_full"],
+            "complete_frac": round(e["n_full"] / e["n"], 3) if e["n"] else None,
+            "mean_return_pct": None if mean_all is None else round(mean_all, 4),
+            "mean_return_full_horizon_pct": (
+                None if mean_full is None else round(mean_full, 4)),
+            "mde_full_horizon_pct": (
+                None if mde_full is None else round(mde_full, 3)),
+            "full_horizon_verdict": (
+                "underpowered" if mde_full is None or mean_full is None
+                or abs(mean_full) < mde_full else "not_ruled_out"),
+        }
+    fracs = [v["complete_frac"] for v in out.values()
+             if v["complete_frac"] is not None]
+    total = sum(v["n"] for v in out.values())
+    total_full = sum(v["n_full_horizon"] for v in out.values())
+    return {
+        "horizon_days": horizon_days,
+        "n_positions": total,
+        "n_full_horizon": total_full,
+        "complete_frac": round(total_full / total, 3) if total else None,
+        "complete_frac_spread": (
+            round(max(fracs) - min(fracs), 3) if fracs else None),
+        "arms": out,
+        "note": (
+            f"表头写的是 {horizon_days} 天持有期，但只有 "
+            f"{(total_full / total * 100) if total else 0:.0f}% 的持仓真的跑满了"
+            "——近几期还没有那么长的后续行情。未满窗口的收益被算进同一列，"
+            "所以那一列不是一个 30 天收益。各臂的满窗口占比还不相同，"
+            "因此「两臂被同样截断、截断会抵消」这个前提在本次并不成立。"
+            "mean_return_full_horizon_pct 是只用跑满的那部分重算的结果——"
+            "它与表中那一列分歧很大（有的臂从正翻到负、名次几乎倒转），"
+            "但它的样本是原本就不大的样本的两成，所以这不是「真正的排名」，"
+            "是这张表按当前样本无法定夺。两个数都给，判定各自带自己的下界。"),
+    }
+
+
 def _theme_attribution(con, positions: list[dict]) -> dict:
     """One layer of the attribution Jon asked for: theme versus instrument.
 
@@ -216,10 +306,31 @@ def _theme_attribution(con, positions: list[dict]) -> dict:
         }
 
     control = arms.get(CONTROL)
+    control_excess = per_arm.get(CONTROL) or []
+    control_vals = [held - bench for held, bench in control_excess]
     for name, entry in arms.items():
+        entry["verdict_applies_to"] = "mean_excess_pct"
         if control and name != CONTROL:
             entry["excess_over_control_pct"] = round(
                 entry["mean_excess_pct"] - control["mean_excess_pct"], 4)
+            # `verdict` above is about the excess over the *indicator*, and a
+            # reader ranking arms will use the control-relative number instead —
+            # the one that isolates selection. Shipping that number beside a
+            # verdict computed for a different quantity invites reading the
+            # verdict as if it covered it. It gets its own bound: the two
+            # samples are independent groups, so the difference carries both.
+            own = [held - bench for held, bench in per_arm[name]]
+            mde_a, mde_c = _mde_pct(own), _mde_pct(control_vals)
+            if mde_a is None or mde_c is None:
+                entry["mde_over_control_pct"] = None
+                entry["verdict_over_control"] = "underpowered"
+            else:
+                joint = (mde_a ** 2 + mde_c ** 2) ** 0.5
+                entry["mde_over_control_pct"] = round(joint, 3)
+                entry["verdict_over_control"] = (
+                    "not_ruled_out"
+                    if abs(entry["excess_over_control_pct"]) >= joint
+                    else "underpowered")
     return {
         "layer": "theme_indicator_vs_instrument",
         "control": CONTROL,
@@ -230,7 +341,10 @@ def _theme_attribution(con, positions: list[dict]) -> dict:
             "把每笔持仓与其主题的指示 ETF 在同一持有窗口内比较。"
             f"对照臂 {CONTROL} 不做任何挑选，所以它相对指示标的的超额是"
             "「候选池」带来的；各臂的超额都含有这一部分，挑选本身只能记在"
-            "excess_over_control_pct 上。同样只用可检出下界否定，不用它确认。"
+            "excess_over_control_pct 上——那一列有它自己的下界与判定"
+            "（mde_over_control_pct / verdict_over_control），顶层 verdict "
+            "说的是相对指示标的那一列，两者不可混用。"
+            "同样只用可检出下界否定，不用它确认。"
             "这是四层归因里的一层——市场 beta 层、以及区分风控与买入持有的那层，"
             "都还没有做。"),
     }
@@ -403,6 +517,7 @@ def main(argv: list[str]) -> int:
     robustness["verdict_stable_across_depths"] = _verdicts_agree(
         robustness["depths"])
     attribution = _theme_attribution(con, positions)
+    horizon = _horizon_completeness(positions, args.horizon_days)
     robustness["depth_note"] = (
         "顶层字段即 depths['10']，保留是为了不改已有消费方的形状。"
         "verdict_stable_across_depths 为 false 的臂，其结论取决于剪切多少个"
@@ -439,6 +554,12 @@ def main(argv: list[str]) -> int:
             + (f"其中 {n_backfill} 期是事后补跑（backfill），前视风险两项："
                "①模型权重已见过该日期之后的信息，无法用代码消除；"
                + asof_note
+               + (f"③持有期：表中标注 {args.horizon_days} 天，但只有 "
+                  f"{(horizon['complete_frac'] or 0) * 100:.0f}% 的持仓跑满该窗口"
+                  f"（各臂 {min((v['complete_frac'] or 0) for v in horizon['arms'].values()) * 100:.0f}"
+                  f"–{max((v['complete_frac'] or 0) for v in horizon['arms'].values()) * 100:.0f}%"
+                  "，并不一致），未满窗口的收益与满窗口的混在同一列。"
+                  "只用跑满部分重算的结果见 horizon_completeness。")
                + "结论性判断以 live 期为准。"
                if n_backfill else "")
             + f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。"
@@ -447,6 +568,7 @@ def main(argv: list[str]) -> int:
         "shelf_dating": dating,
         "robustness_drop_top": robustness,
         "attribution_theme_layer": attribution,
+        "horizon_completeness": horizon,
         # The sweep ran with strict=True, so every period's context passed the
         # as-of audit before any arm scored it — a context carrying a document,
         # a close or a candidate dated after the replayed day raises AsOfLeak

@@ -1470,7 +1470,7 @@ body.drawer-lock{overflow:hidden}
           <div class="refresh-stamp" id="stamp"><span class="rs-dot"></span><span id="stampText">刷新于 --:--:-- · 每 60 秒自动</span></div>
           <button type="button" class="ask-top" id="askTop" data-el="ask.global" onclick="openAskPicker()" title="本期任何一个宏观主题、标的、选取策略，都能问它当时为什么这么定——只依据那次运行封存的材料作答，不使用事后信息"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.6 2.2h8.8v5.6H5.2L2.8 9.9V7.8H1.6z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.7 4.1a1.3 1.3 0 0 1 2.4.6c0 .9-1.2.9-1.2 1.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><circle cx="5.9" cy="7" r=".5" fill="currentColor"/></svg><span>问它为什么选它</span></button>
           <a class="source-link" href="/olive">数据源</a>
-          <button type="button" class="help-btn" onclick="toggleHelp()" aria-label="运维手册与名词表">?</button>
+          <button type="button" class="help-btn" onclick="toggleHelp()" aria-label="运维手册与名词表" title="运维手册与名词表：这套方法怎么跑、每个术语指什么。点开为常驻面板。">?</button>
         </div>
       </div>
       <div id="deadBanner"></div>
@@ -2509,7 +2509,7 @@ function noiseBandHTML(books,weekN){
         +'</button>';
     }).join('')
     +'</div>'
-    +'<div class="nb-cap">灰带 = ±2 个百分点，预注册的可检出差距 <span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span>；带内排名不构成结论</div>';
+    +'<div class="nb-cap">灰带 = ±2 个百分点 <span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>';
   /* 判定所需样本量进度 */
   var pct=Math.min(100,weekN/TARGET_WEEKS*100);
   html+='<div class="nb-prog"><span>判定所需样本量：第 '+weekN+' 周 / 约 '+TARGET_WEEKS+' 周 <span class="gloss" title="'+esc(VERDICT_GLOSS)+'">ⓘ</span></span>'
@@ -2579,7 +2579,7 @@ function raceHero(ag){
     +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
       +noiseHeadline(books,weekN)+'</div>'
     +'<div class="quiet">第 '+weekN+' 周 · 大约要到第 '+TARGET_WEEKS+' 周才够判定'
-      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="gotoSection(\'evidence\',\'strategies\')">尚不排名的依据 ⓘ</button></div>'
+      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="gotoSection(\'evidence\',\'strategies\')" title="未验证假设 · 已修复缺陷 · 历史回测">尚不排名的依据 ⓘ</button></div>'
     +agg
     +foldBlock('week.books.compare','对比图与 '+books.length+' 个账本明细','相对基准差距 · 净值曲线 · 持仓 · 主题分布',
         sentence
@@ -3856,10 +3856,13 @@ function goStage(i){openStageDrawer(i)}
 /* 聚焦状态条：一句回执 + 一个退出，不是第二份清单。
  * 判断标准很简单——它不该让读者再做一次「选哪个」的决定，
  * 那个决定已经在下面的表上做过了。 */
-function focusBar(label,hint){
+function focusBar(label,noun){
+  /* 抽屉标题已经写着「筛选B › AI 端到端」，这里再念一遍名字就是同一个词
+   * 两行之内说三次。所以谁在上面报过名，谁就把名字让出去，只报状态。 */
   return '<div class="focus-bar">'
-    +'<span class="fb-k">只看</span><b class="fb-v">'+esc(label)+'</b>'
-    +(hint?'<span class="fb-s">'+esc(hint)+'</span>':'')
+    +(label
+      ?'<span class="fb-k">只看</span><b class="fb-v">'+esc(label)+'</b><span class="fb-s">其余'+esc(noun)+'已压暗</span>'
+      :'<span class="fb-k">只看当前这一个'+esc(noun)+'</span><span class="fb-s">其余已压暗</span>')
     +'<button type="button" class="fb-x" onclick="setDrawerFocus(null)">回到全景</button>'
     +'</div>';
 }
@@ -4903,7 +4906,8 @@ function stageTopicsBody(d){
   /* 这排药丸只列入选的 5 个，下面的表却有全部主题（含落选）——两边不是同一份
    * 清单，却长得像同一个筛选器；聚焦在落选主题上时药丸还一个都不亮。
    * 表本身就是清单，点行即可，这里只留状态。 */
-  var tabs=foc?focusBar(foc+(topicLabel(foc)?'　'+topicLabel(foc):''),'其余主题已压暗'):'';
+  var inDrawer=!!(d&&d.p!==undefined);
+  var tabs=foc?focusBar(inDrawer?'':foc+(topicLabel(foc)?'　'+topicLabel(foc):''),'主题'):'';
   var agree0=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
   var hOnly0=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
   var cOnly0=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
@@ -5062,7 +5066,7 @@ function stageGeneratorsBody(d){
    * 读者在网格里点方法名没反应，只好回到上面再点一次。现在反过来：
    * 网格里的方法名就是入口，这里只留状态。 */
   var focRow=focKey?GEN_ORDER.find(function(o){return o[0]===focKey}):null;
-  var tabs=focRow?focusBar(focRow[1],'其余方法已压暗'):'';
+  var tabs=focRow?focusBar((d&&d.p!==undefined)?'':focRow[1],'方法'):'';
   /* 焦点头：它是谁 · 产出 · 独有标的（方法间最真实的 diff）· 重合率 */
   var focusHead='';
   if(focKey){
@@ -5224,7 +5228,7 @@ function stageSelectorsBody(d){
     return '<div class="empty-sm">本期选取策略尚未执行'+(w.in_flight?'，候选池合并后开始':'')+'</div>';
   }
   /* 同上：药丸和下面的策略卡片列的是同一批策略。入口收敛到卡片本身。 */
-  var tabs=(foc?focusBar(selMetaOf(foc)[1],'其余策略已压暗'):'')
+  var tabs=(foc?focusBar((d&&d.p!==undefined)?'':selMetaOf(foc)[1],'策略'):'')
     +pathLegend(SEL_PATH,sels.map(function(sl){return sl.name}))
     +(foc?'':'<div class="card-note" style="margin-bottom:var(--space-2)">点策略名只看它：其余压暗，并展开它放行的标的</div>');
   var focusHead='';

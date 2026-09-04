@@ -1757,9 +1757,19 @@ function robustBadge(name){
            +(r.depth_note?'　'+r.depth_note:''))+'">'
       +badge('neutral','判定随口径变化')+'</span>';
   }
+  /* 文案必须描述判定实际覆盖的那个量。判定现在挂在 kept_vs_dropped_pct
+     （其余标的 vs 被剔除的高频标的，两个不相交的组）上，而不是
+     delta_mean_pct（剔除后相对全样本的变动，那是子集比超集，差值完全由
+     被剔掉的部分产生）。写「剔除后变动」就是又一次把判定挂到它不覆盖的
+     数字旁边——这个错我今晚已经犯过两次了。 */
   var kind=v.verdict==='not_ruled_out'?'warning':'neutral';
-  var word=v.verdict==='not_ruled_out'?'剔除后变动'
-          :(v.verdict==='underpowered'?'样本不足以检验':v.verdict);
+  /* 方向跟着数走，不写死。本期九个臂的差值恰好全为负（高频组更好），
+     照着现状写一句固定文案，等哪天转正就会说反。 */
+  var d=v.kept_vs_dropped_pct;
+  var word=v.verdict==='not_ruled_out'
+      ? (d===null||d===undefined?'两组有差距'
+         :(d<0?'高频标的表现更好':'其余标的表现更好'))
+      : (v.verdict==='underpowered'?'样本不足以检验':v.verdict);
   /* why 里已经带了保留笔数，不再追加一遍。 */
   return '<span style="margin-left:6px;white-space:nowrap" title="'+esc(v.why||'')+'">'
     +badge(kind,word)+'</span>';
@@ -1776,8 +1786,9 @@ function robustNote(){
   });
   var dropped=(r.dropped_instruments||[]).join('、');
   return '<div class="card-note" style="margin-top:var(--space-3)">'
-    +'<b>剔除高频标的复测</b>：删掉本期最常被持有的 '+fmtInt(r.top_n||0)+' 个标的重算，'
-    +fmtInt(r.n_arms||0)+' 个臂里 <b>'+shifted+'</b> 个的变动未被排除、'
+    +'<b>高频标的检验</b>：把本期最常被持有的 '+fmtInt(r.top_n||0)+' 个标的单独拿出来，'
+    +'和其余标的比表现——'
+    +fmtInt(r.n_arms||0)+' 个臂里 <b>'+shifted+'</b> 个的差距未被排除、'
     +under+' 个样本不足以检验'
     +(unstable?'、'+unstable+' 个的判定随剔除个数变化（剔 5 / 10 / 20 结论不一致，不构成结论）':'')
     /* r.note 说的就是这句话的前半段，两句并排等于说了两遍。 */
@@ -4654,7 +4665,8 @@ function corpusSourceCard(){
     +'<span class="card-note">本期读入 '+fmtInt(n)+' 条 · 各环节的唯一输入</span></div>'
     +tbl
     +'<div style="margin-top:var(--space-3)">'
-    +'<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of||'')+'\')">逐篇研报清单 ›</button>'
+    /* 这里曾再放一个「逐篇研报清单 ›」，而它上面那张表的每一行行末就写着
+     * 「研报清单 ›」、整行可点，去的是同一个地方。 */
     +'<button type="button" class="exp-btn" style="margin-left:8px" onclick="openStageDrawer(0)">来源分布与主题归属 ›</button>'
     +'</div></div>';
 }
@@ -4753,7 +4765,10 @@ function pipeCanvasSVG(){
             [888,'筛选C · 选取策略',4,'行末 = 该策略选中条数'],
             [1058,'建仓',5,'块内 = 当前在持仓位数']];
   cols.forEach(function(c){
-    s+='<g class="pc-click" onclick="openStageDrawer('+c[2]+')"'+popRef(stagePop[c[2]])+'>'
+    /* 列头曾经也是 pc-click，和它正下方的节点点下去一模一样——一张图里
+     * 同一个环节两个点击区。列头是这一列叫什么，不是控件；节点才是。
+     * 速览浮层留着，鼠标停上去仍然解释这一列是什么。 */
+    s+='<g'+popRef(stagePop[c[2]])+'>'
       +txt(c[0],14,c[1],11,'var(--color-text-metadata)','middle',600)
       +txt(c[0],28,c[3],9,'var(--color-text-tertiary)','middle',400)
       +'</g>';
@@ -5238,7 +5253,7 @@ function stageCorpusBody(){
   var body;
   if(n){
     body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期（'+esc(w.as_of||'')+'）一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n)+'</b> 篇研报'
-      +'　<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of||'')+'\')">逐篇浏览这一期语料 ›</button></div>';
+      +'</div>';
   }else{
     body='<div class="empty-sm">本期研报尚未读入'+(w.in_flight?'，收集中':'')+'</div>';
   }

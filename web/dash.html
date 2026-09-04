@@ -452,6 +452,7 @@ tr.expandable{cursor:pointer}
 
 /* glossary term */
 .gloss{border-bottom:1px dotted var(--color-border-strong);cursor:help}
+@media(hover:none){.gloss{cursor:pointer}}
 .gloss-row{display:flex;gap:var(--space-3);padding:8px 0;align-items:baseline}
 .gloss-row+.gloss-row{border-top:1px solid var(--color-border-subtle)}
 .gloss-term{font:500 14px/20px var(--font-sans);color:var(--color-text-primary);width:160px;flex:none}
@@ -1629,19 +1630,27 @@ function hgepBreakdown(r){
   var G=[HGEP_GLOSS.H,HGEP_GLOSS.G,HGEP_GLOSS.E,HGEP_GLOSS.P];
   var W=[0.30,0.25,0.25,0.20];
   var raw=[r.H,r.G,r.E,r.P];
-  var eff=[r.H||0,r.G||0,r.E||0,100-(r.P||0)];
-  var comps=eff.map(function(v,i){return W[i]*v});
-  var mx=Math.max.apply(null,comps.concat([1]));
+  /* 缺失 ≠ 0。P 是反向计分的，(100 − (P||0)) 会把「没有读数」算成 100，
+   * 于是缺失的因子拿到最大贡献、还画成一根实心条——这个面板存在的理由
+   * 就是不让这种事发生。缺失就画不出来，也不参与配色和条长。 */
+  var has=raw.map(function(v){return v!==null&&v!==undefined&&v!==''&&isFinite(Number(v))});
+  var eff=[Number(r.H),Number(r.G),Number(r.E),100-Number(r.P)];
+  var comps=eff.map(function(v,i){return has[i]?W[i]*v:null});
+  var mx=Math.max.apply(null,comps.filter(function(c){return c!==null}).concat([1]));
   var rows=comps.map(function(c,i){
     return '<span class="fk" title="'+esc(G[i])+'">'+L[i]+'</span>'
-      +'<span class="fv">'+numOr(raw[i])+((i===3&&Math.abs(eff[i]-(raw[i]||0))>0.05)?'<span style="color:var(--color-text-tertiary)" title="反向计分：参与加权的是 100−P"> → '+eff[i].toFixed(1)+'</span>':'')+'</span>'
+      +'<span class="fv">'+numOr(raw[i])+((has[i]&&i===3&&Math.abs(eff[i]-Number(raw[i]))>0.05)?'<span style="color:var(--color-text-tertiary)" title="反向计分：参与加权的是 100−P"> → '+eff[i].toFixed(1)+'</span>':'')+'</span>'
       +'<span class="fw">×'+W[i].toFixed(2)+'</span>'
-      +'<span class="fbar"><i style="width:'+(c/mx*100).toFixed(1)+'%;background:'+C[i]+'"></i></span>'
-      +'<span class="fc">'+c.toFixed(1)+'</span>';
+      +(c===null
+        ? '<span class="fbar" title="该因子本期没有读数，不计入拆解"></span><span class="fc" style="color:var(--color-text-tertiary)">—</span>'
+        : '<span class="fbar"><i style="width:'+(c/mx*100).toFixed(1)+'%;background:'+C[i]+'"></i></span><span class="fc">'+c.toFixed(1)+'</span>');
   }).join('');
+  var nMiss=has.filter(function(v){return !v}).length;
   return '<div class="fbd" title="原始分 × 权重 = 贡献分；P 已定价反向计分，实际参与加权的是 100−P">'+rows+'</div>'
     +'<div class="fbd-sum"><span class="k">综合分</span><span class="v">'+numOr(r.score)+'</span>'
-    +glossMark('四项权重 0.30/0.25/0.25/0.20 取自先验，尚未逐因子归因；详见「尚不排名的依据」。')+'</div>';
+    +glossMark('四项权重 0.30/0.25/0.25/0.20 取自先验，尚未逐因子归因；详见「尚不排名的依据」。')
+    +(nMiss?'<span class="card-note" style="color:var(--color-feedback-warning-text)">'+nMiss+' 项无读数，拆解不完整</span>':'')
+    +'</div>';
 }
 function gloss(term,def){return '<span class="gloss" title="'+esc(def)+'">'+esc(term)+'</span>'}
 function methodName(m){
@@ -1665,6 +1674,42 @@ function periodBadge(){
 }
 function isSynthetic(){
   return String(((S||{}).weekly||{}).data_classification||'').indexOf('public-synthetic')===0;
+}
+/* 剔除高频标的复测（Jon 的要求之一）：把本期最常被持有的标的删掉重算。
+   这张表第一名的名次如果剔掉十个标的就翻负，那它是关于那十个标的的，
+   不是关于策略的——只看这张表的人会带走一个不存在的结论。
+   角标挂在行上而不是另开一张表：另开一张最容易被略过。
+   verdict 与 why 都由服务端给出，前端不自造判断也不自造措辞。 */
+function robustArm(name){
+  var r=(((S||{}).backtest||{}).summary||{}).robustness_drop_top;
+  return (r&&r.arms&&r.arms[name])||null;
+}
+function robustBadge(name){
+  var v=robustArm(name);
+  if(!v||!v.verdict)return '';
+  var kind=v.verdict==='not_ruled_out'?'warning':'neutral';
+  var word=v.verdict==='not_ruled_out'?'剔除后变动'
+          :(v.verdict==='underpowered'?'样本不足以检验':v.verdict);
+  /* why 里已经带了保留笔数，不再追加一遍。 */
+  return '<span style="margin-left:6px;white-space:nowrap" title="'+esc(v.why||'')+'">'
+    +badge(kind,word)+'</span>';
+}
+function robustNote(){
+  var r=(((S||{}).backtest||{}).summary||{}).robustness_drop_top;
+  if(!r||!r.arms)return '';
+  var shifted=0,under=0;
+  Object.keys(r.arms).forEach(function(k){
+    var v=r.arms[k].verdict;
+    if(v==='not_ruled_out')shifted++;else if(v==='underpowered')under++;
+  });
+  var dropped=(r.dropped_instruments||[]).join('、');
+  return '<div class="card-note" style="margin-top:var(--space-3)">'
+    +'<b>剔除高频标的复测</b>：删掉本期最常被持有的 '+fmtInt(r.top_n||0)+' 个标的重算，'
+    +fmtInt(r.n_arms||0)+' 个臂里 <b>'+shifted+'</b> 个的变动未被排除、'
+    +under+' 个样本不足以检验'
+    /* r.note 说的就是这句话的前半段，两句并排等于说了两遍。 */
+    +(dropped?'<span class="gloss" title="被删掉的标的：'+esc(dropped)+'">ⓘ</span>':'')
+    +'</div>';
 }
 function backtestArmName(name){
   /* 回测表的策略名须与面板别处一致：同一账本在两处两个名字，
@@ -1905,7 +1950,10 @@ function refresh(){
     if(!r.ok)throw new Error('HTTP '+r.status);
     return r.json();
   }).then(function(j){J=j;JErr=null}).catch(function(e){J=null;JErr=e&&e.message?e.message:String(e)})
-  .then(function(){if(S){renderMethod();renderDrawers()}});
+  /* 运行回执用的是 J，而它在导航重构后搬到了「证据」页——回调只重渲染
+     「方法」页的话，日志晚到或从失败中恢复时，回执那条会一直停在
+     「运行日志不可读」，而 JErr 早就清空了。失败态必须能自愈。 */
+  .then(function(){if(S){renderMethod();renderEvidence();renderDrawers()}});
   /* 重试与 60 秒轮询共用这条路径：在途时不再发第二次，
      避免连点重试或慢响应时请求堆叠。 */
   if(fetchInFlight)return;
@@ -2387,7 +2435,10 @@ function mainLine(ag){
       body='<div class="ml-body">'
         +'<div class="ml-body-head">'+miniChain(o.i,STAGES[o.i]?STAGES[o.i].t:o.name)
         +'<button type="button" class="exp-btn" onclick="event.stopPropagation();openStageDrawer('+o.i+')">在右侧面板打开 ›</button>'
-        +(o.i===1?askBtn('selection','topics',{stop:true}):'')+'</div>'
+        /* 这里曾经再挂一个「问它为什么选这几个主题」。stageTopicsBody 自己
+         * 顶上就有同一个按钮，于是两个一模一样的深绿按钮上下挨着，
+         * 点哪个都一样。留正文里那个——抽屉里也是它。 */
+        +'</div>'
         +mlStageBody(o.i)
       +'</div>';
     }
@@ -2513,7 +2564,33 @@ function miniChain(stage,label){
   return '<span class="mini-chain" title="'+esc(label||'')+'——它在链路上的位置">'+svg+'</span>';
 }
 /* ── Hero = 噪音带：第 2 周「还分不出高下」本身就是画面 ── */
-var TARGET_WEEKS=17;
+/* 判定所需样本量以前写死 17 周，而后端按各臂实测标准差算出的 required_pairs
+ * 是 1-60 期，主策略里最大 34——写死的那个数不是任何一条臂的真实要求，
+ * 却还在驱动一根进度条，把编出来的完成度画成实验进度。
+ * 改成取主策略里最大的那个要求；取不到才回落到旧常量。
+ * 这个要求本身是下限（sd 由重叠窗口估出，会被低估），VERDICT_GLOSS 已说明。 */
+var TARGET_WEEKS_FALLBACK=17;
+function targetWeeks(){
+  var pr=((((S||{}).backtest||{}).summary||{}).paired)||{};
+  var main={};
+  (typeof SEL_META!=='undefined'?SEL_META:[]).forEach(function(m){if(m[2]==='主策略')main[m[0]]=1});
+  var need=[];
+  Object.keys(pr).forEach(function(k){
+    var v=pr[k]||{};
+    if(main[k]&&typeof v.required_pairs==='number')need.push(v.required_pairs);
+  });
+  if(!need.length)return TARGET_WEEKS_FALLBACK;
+  return Math.max.apply(null,need);
+}
+/* 单一目标数会盖掉一件事：有的臂已经够了，有的还差得远。 */
+function targetWeeksSpread(){
+  var pr=((((S||{}).backtest||{}).summary||{}).paired)||{};
+  var ns=Object.keys(pr).map(function(k){return (pr[k]||{}).required_pairs})
+    .filter(function(v){return typeof v==='number'});
+  if(ns.length<2)return '';
+  ns.sort(function(a,b){return a-b});
+  return '各臂所需 '+ns[0]+'-'+ns[ns.length-1]+' 期，随实测标准差变化';
+}
 /* 回测表把 1 天和 30 天的持仓放在一起算胜率，页面却平铺写着「持有期 30 天」。
  * 目标期限确实是 30 天，但最近几期还没跑完——它们的收益是中途读数，
  * 不是完成的交易。把「目标」和「实际已过」分开写，胜率才不会被读成
@@ -2597,8 +2674,10 @@ function noiseBandHTML(books,weekN){
     +'</div>'
     +'<div class="nb-cap">灰带 = ±2 个百分点 <span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>';
   /* 判定所需样本量进度 */
-  var pct=Math.min(100,weekN/TARGET_WEEKS*100);
-  html+='<div class="nb-prog"><span>判定所需样本量：第 '+weekN+' 周 / 约 '+TARGET_WEEKS+' 周 <span class="gloss" title="'+esc(VERDICT_GLOSS)+'">ⓘ</span></span>'
+  var tgt=targetWeeks(),spread=targetWeeksSpread();
+  var pct=Math.min(100,weekN/tgt*100);
+  html+='<div class="nb-prog"><span>判定所需样本量：第 '+weekN+' 期 / 约 '+tgt+' 期 '
+    +'<span class="gloss" title="'+esc(VERDICT_GLOSS+(spread?'　'+spread+'。':''))+'">ⓘ</span></span>'
     +'<span class="nb-pbar"><span style="width:'+pct.toFixed(0)+'%"></span></span></div>';
   return html;
 }
@@ -2666,7 +2745,7 @@ function raceHero(ag){
   return '<div class="card section" id="whoWins">'+head
     +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
       +noiseHeadline(books,weekN)+'</div>'
-    +'<div class="quiet">第 '+weekN+' 周 · 大约要到第 '+TARGET_WEEKS+' 周才够判定'
+    +'<div class="quiet">第 '+weekN+' 周 · 主策略里最慢的一条约需 '+targetWeeks()+' 期才够判定'
       +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="gotoSection(\'evidence\',\'strategies\')" title="未验证假设 · 已修复缺陷 · 历史回测">尚不排名的依据 ⓘ</button></div>'
     +agg
     +foldBlock('week.books.compare','对比图与 '+books.length+' 个账本明细','相对基准差距 · 净值曲线 · 持仓 · 主题分布',
@@ -3372,7 +3451,12 @@ function overviewCurveSVG(){
   if(eq.length<2)return '';
   var base=sa.capital||eq[0].equity;
   var mine=eq.map(function(x){return {d:x.d,v:x.equity/base*100}});
-  var bBase=bs.length?bs[0].close:null;
+  /* 归一必须用与组合同一天的收盘，不是整条基准序列的第一天。
+   * 基准行情比账本净值早起几个交易日，用 bs[0] 归一会让基准线从 98.72 出发
+   * 而不是 100——图上说「期初都归 100」，画出来却不是；而且末值 104.63 和
+   * 首屏那个已经对齐过的 +5.99% 对不上，同一屏里两个数互相打架。 */
+  var bIdx=(function(){var b=(typeof benchBase==='function')?benchBase():null;return (b&&bs[b.i])?b.i:0})();
+  var bBase=bs.length?bs[bIdx].close:null;
   var bmap={};bs.forEach(function(x){bmap[x.d]=x.close});
   var carry=null;
   var bench=bBase?mine.map(function(m){
@@ -3447,7 +3531,7 @@ function portfolioHeadline(ag){
         +'<div style="font:400 12px/17px var(--font-sans);color:var(--color-text-tertiary);margin-top:2px">'
           +(function(){var w=heroWindowNote(currentBooks());return w?esc(w)+' · ':''})()
           +'建仓后第 '+wk+' 周 · 样本尚不足以判定优劣'
-          +'<span class="gloss" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，约需 '+TARGET_WEEKS+' 周样本；在那之前的排名不构成结论。">ⓘ</span>'
+          +'<span class="gloss" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，主策略里最慢的一条约需 '+targetWeeks()+' 期样本；在那之前的排名不构成结论。">ⓘ</span>'
         +'</div>'
       +'</div>'
     +'</div>'
@@ -3672,7 +3756,7 @@ function backtestCard(){
       return (ay==null?-1:ay)-(ax==null?-1:ax);
     }).slice(0,4).map(function(n){
       var a=arms[n];
-      return '<tr><td class="primary">'+esc(backtestArmName(n))+'</td>'
+      return '<tr><td class="primary">'+esc(backtestArmName(n))+robustBadge(n)+'</td>'
         +'<td class="r">'+fmtWinRate(
             a.hit_rate==null?0:Math.round(a.hit_rate*(a.n_scored||0)),
             a.n_scored||0)+'</td>'
@@ -3713,6 +3797,7 @@ function backtestCard(){
       '<div class="table-wrap"><table>'
         +'<thead><tr><th>选取策略</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
         +'<tbody>'+rows+'</tbody></table></div>'
+      +robustNote()
       +(function(){
         /* 口径差异与前视风险原本整段 300+ 字铺在表下，读者未读先跳过。
            外面只留结论，展开细节归 ⓘ——与本面板别处一致。 */
@@ -4172,6 +4257,25 @@ document.addEventListener('mouseover',function(e){
 document.addEventListener('mousemove',function(e){popX=e.clientX;popY=e.clientY});
 document.addEventListener('scroll',function(){hidePop()},true);
 
+/* 触屏没有 hover，而 ⓘ 用的是原生 title——页面把大量口径、免责和推导都收在
+ * 那里面，手机上等于全部读不到。这里让带 title 的 .gloss / ⓘ 也能点开，
+ * 复用同一个气泡，不新增一套 UI。桌面维持 hover 原生 tooltip 不变。 */
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var g=(t&&t.closest)?t.closest('.gloss[title],[data-tip]'):null;
+  if(!g){if(popCur==='tip')hidePop();return}
+  e.preventDefault();e.stopPropagation();
+  var txt=g.getAttribute('title')||g.getAttribute('data-tip')||'';
+  if(!txt)return;
+  /* title 留在 DOM 上会让桌面同时弹出原生 tooltip 和气泡，挪到 data-tip */
+  if(g.hasAttribute('title')){g.setAttribute('data-tip',txt);g.removeAttribute('title')}
+  if(popCur==='tip'){hidePop();return}
+  hidePop();popCur='tip';
+  var r=g.getBoundingClientRect();
+  showPop('<div style="max-width:280px;white-space:normal">'+esc(txt)+'</div>',
+          r.left,r.bottom-8);
+},true);
+
 /* ══════════ 候选池筛选（勾稽枢纽——现在通向候选池抽屉） ══════════ */
 function selChosenId(ch){
   var id=typeof ch==='string'?ch:((ch&&ch.instrument_id)||'');
@@ -4355,6 +4459,10 @@ function renderMethod(){
     +secWrap('method','canvas',pipeCanvasCard())
     +secWrap('method','corpus',corpusSourceCard())
     +secWrap('method','universe',universeCard());
+  /* 主线第 03 段内嵌了候选池全表，它的行是 JS 填的。renderEvidence 里有同一句，
+   * 但 toggleStage 只重跑 renderMethod —— 于是展开这一段之后，表头写着
+   * 「73 条 · 列头排序」，底下一行都没有。谁生成这张表，谁负责把它填上。 */
+  if($('candTable')){bindCandSort();renderCandBody()}
 }
 
 /* 语料来源：本期各来源的期次与条数，直达逐篇研报清单 */
@@ -4406,16 +4514,31 @@ function procFailBanner(){
 function pipeCanvasCard(){
   var w=S.weekly||{};
   var svg=pipeCanvasSVG();
+  /* 这张图先甩四十个数字和四行图例，却不说它证明了什么。读者要自己
+     从「858 / 67 / 28 / 5 / 113 / 100 条·拒 3 …」里归纳出一句结论。
+     先把结论写出来，图例收进 ⓘ——和本面板别处一致。 */
+  var nDocs=w.corpus_total||0;
+  var nTopics=topicChosen('hgep').length;
+  var nGen=(w.generators||[]).reduce(function(a,g){return a+(g.n||0)},0);
+  var nPool=(w.pool||{}).n||0;
+  var ag=aggBooks();
+  var lead=(nDocs&&nPool)
+    ? '本期读入 <b>'+fmtInt(nDocs)+'</b> 篇研报，收敛出 <b>'+fmtInt(nTopics)+'</b> 个宏观主题，'
+      +'4 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
+      +(ag&&ag.openN?('，10 个账本各自从中选出持仓，合计在持 <b>'+fmtInt(ag.openN)+'</b> 仓。'):'。')
+    : '';
+  var legend='筛选A：语义打分选出主题，灰色分流为落选。'
+    +'筛选B：4 种方法并行生成想法，线宽对应条数。'
+    +'合并：一个标的一条，同心环表示有几种方法同时提到它。'
+    +'筛选C：各选取策略在同一候选池上并行，灰色为对照臂。'
+    +'节点大小与连线宽度对应实际数量。';
   return '<div class="card" id="pipeCard">'
     +'<div class="card-title-row"><h2 class="card-title">本期流水线'+(w.as_of?' · <span class="num" style="font:600 15px/26px var(--font-mono)">'+esc(w.as_of)+'</span>':'')+'</h2>'
-    +'<span class="card-note">节点大小与连线宽度对应实际数量</span></div>'
+    +'<span class="card-note">每一段的收敛倍数就是这一段淘汰掉了多少'
+      +'<span class="gloss" title="'+esc(legend)+'">ⓘ 怎么看</span></span></div>'
+    +(lead?'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)">'+lead+'</div>':'')
     +'<div class="pipe-wrap scroll-thin">'+svg+'</div>'
-    +'<div class="pipe-legend">'
-    +'<span><b>筛选A</b> 语义打分选出 5 个主题（灰色分流 = 落选）</span>'
-    +'<span><b>筛选B</b> 4 种方法并行生成想法（线宽 = 条数）</span>'
-    +'<span><b>合并</b> 一标的一条，同心环 = 共识度</span>'
-    +'<span><b>筛选C</b> 各策略同池并行（灰 = 对照臂）</span>'
-    +'</div></div>';
+  +'</div>';
 }
 function pipeCanvasSVG(){
   var w=S.weekly||{};
@@ -4452,7 +4575,7 @@ function pipeCanvasSVG(){
   var conv=pool.convergence||{};
   var openTotal=0;books.forEach(function(b){openTotal+=(b.open_positions||[]).length});
   var stagePop=[
-    pop('语料'+(corpusN?' · '+fmtInt(corpusN)+' 条研报':''),null,'本期全部判断的输入；4 种生成方法共用同一份语料'),
+    pop('语料'+(corpusN?' · '+fmtInt(corpusN)+' 篇研报':''),null,'本期全部判断的输入；4 种生成方法共用同一份语料'),
     pop('筛选A · 选主题',totalScored?fmtInt(totalScored)+' 个主题已评分 · 前 '+chosen.length+' 入选':'尚未评分',ctrl?'与计数对照臂重合 '+overlapN+'/'+chosen.length:''),
     pop('筛选B · 写想法',gens.length?'4 种方法合计 '+fmtInt(rawIdeas)+' 条':'尚无产出','彼此独立，输入为同一批 '+chosen.length+' 个主题'),
     pop('合并 · 候选池',pool.n?fmtInt(rawIdeas)+' → '+fmtInt(pool.n)+' 条（一标的一条）':'候选池为空','同标的合并，赔率取中位数；共识度仅作记录，不参与打分'),
@@ -4483,7 +4606,7 @@ function pipeCanvasSVG(){
     s+='<g class="pc-click" onclick="openStageDrawer(0)"'+popRef(stagePop[0])+'>'
       +'<rect x="14" y="152" width="96" height="96" rx="14" fill="var(--color-surface-brand)"/>'
       +txt(62,196,fmtInt(corpusN),20,'var(--color-text-on-brand)','middle',600,true)
-      +txt(62,216,'条研报',11,'var(--color-surface-brand-sunken)','middle')
+      +txt(62,216,'篇研报',11,'var(--color-surface-brand-sunken)','middle')
       +'</g>';
   }else{
     s+='<g class="pc-click" onclick="openStageDrawer(0)"'+popRef(stagePop[0])+'><rect x="14" y="152" width="96" height="96" rx="14" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
@@ -4738,6 +4861,9 @@ function rlKvHTML(st){
  * 摘要视图仅措辞不同，与工程视图同源。 */
 function rlPlainStep(st,idx){
   var step=st.step||'';
+  /* T.t / T.d 渲染时会 esc()，T.w 不会——它要内嵌 glossMark 产出的 HTML。
+   * 所以 T.w 只能赋硬编码字面量或 glossMark(字面量)；往里塞 journal 字段、
+   * 服务端返回或任何用户可控的值之前，先自己 esc()。T.chips 的 k/v 会被 esc。 */
   var T={};
   if(step==='universe'){
     T.t='可交易货架：本期可买入标的范围';
@@ -4950,7 +5076,7 @@ function stageCorpusBody(){
   var evAll=(w.evidence)||{};
   var body;
   if(n){
-    body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期（'+esc(w.as_of||'')+'）一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n)+'</b> 条研报'
+    body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期（'+esc(w.as_of||'')+'）一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n)+'</b> 篇研报'
       +'　<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of||'')+'\')">逐篇浏览这一期语料 ›</button></div>';
   }else{
     body='<div class="empty-sm">本期研报尚未读入'+(w.in_flight?'，收集中':'')+'</div>';
@@ -5029,7 +5155,8 @@ function topicLossReason(r,avgComps,cutScore){
   }else{
     txt='四项因子均无明显缺口，综合分低于入选名额内主题';
   }
-  if(gap!==null&&gap<=1.0)txt+=' · 距入选线 '+gap.toFixed(1)+' 分';
+  /* 分差在行末已经印过一次（「差 0.1 分」）。这里再写「距入选线 0.1 分」，
+   * 是同一个数换个说法说第二遍，读者会以为是两个不同的量。 */
   return txt;
 }
 
@@ -5244,8 +5371,9 @@ function stageGeneratorsBody(d){
     focusHead='<div class="focus-head">'
       +'<b>'+esc(fo2[1])+'</b><span class="tag tag-brand" style="margin-left:6px">'+esc(fo2[2])+'</span>'
       +'<span style="margin-left:6px">'+pathTag(GEN_PATH[focKey])+'</span>'
-      +'<div style="margin-top:4px">'+esc(fo2[3])+'</div>'
-      +'<div style="margin-top:4px;color:var(--color-text-metadata)">例：'+esc(fo2[4])+'</div>'
+      /* 说明与例子在方法卡片里已经是 genGlossTitle 的 ⓘ；这里曾把同一份内容
+         铺成两行正文，同一个东西两种读法。统一收进 ⓘ。 */
+      +'<span class="gloss" style="margin-left:6px" title="'+esc(genGlossTitle(fo2))+'">ⓘ</span>'
       +'<div style="margin-top:6px">'
       +(fg?'本期产出 <b class="num">'+fmtInt(fg.n)+'</b> 条 · 被拒 <b class="num">'+fmtInt(fg.rejected||0)+'</b> 条 · 合并后在池 <b class="num">'+fmtInt(mine.length)+'</b> 条。':'本期没有它的产出记录。')
       +'</div>'
@@ -5479,7 +5607,9 @@ function stageSelectorsBody(d){
           +'<td class="r num">'+r.pass+'/'+sels.length+'</td></tr>';
       }).join('')
       +'</tbody></table></div>'
-      +'<div class="card-note" style="margin-top:var(--space-2)">灰点 = 对照臂（全量基准按设计整列放行）；同一行亮点越多 = 越多策略独立选中</div>';
+      /* 与「灰带」那处同型：图例只留「灰点 = 什么」，怎么读收进 ⓘ。 */
+      +'<div class="card-note" style="margin-top:var(--space-2)">灰点 = 对照臂'
+        +'<span class="gloss" title="全量基准按设计整列放行。同一行亮点越多 = 越多策略独立选中。">ⓘ</span></div>';
   }else{
     matrix='<div class="empty-sm" style="margin-top:var(--space-3)">候选池为空——闸门矩阵无从谈起</div>';
   }
@@ -6699,7 +6829,7 @@ function whatIsThisHTML(){
     +'<h3 style="font:600 16px/24px var(--font-sans);color:var(--color-text-primary);margin:0 0 var(--space-2)">先知道这三件事</h3>'
     +line('钱是纸面的','1 亿本金、纸面成交（已计佣金与滑点），不是实盘。数字可以当参考，不能当账单。')
     +line('这是一个对照实验','10 个账本吃<b>同一份候选池</b>，唯一的差别是选取策略。净值之差即策略之差——这也是为什么会有「全量基准」「随机基准」这种明显不聪明的账本：它们是对照组。')
-    +line('现在还不能下结论','第 '+weekIndex(currentBooks())+' 周，约需 '+TARGET_WEEKS+' 周样本才够判定。此前的排名都在噪声里。')
+    +line('现在还不能下结论','第 '+weekIndex(currentBooks())+' 周，主策略里最慢的一条约需 '+targetWeeks()+' 期才够判定。此前的排名都在噪声里。')
     +'<h3 style="font:600 16px/24px var(--font-sans);color:var(--color-text-primary);margin:var(--space-5) 0 var(--space-2)">左边五格各回答一问</h3>'
     +VIEWS.map(function(v){
       return line(v.label,esc(v.sub));

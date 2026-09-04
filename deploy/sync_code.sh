@@ -70,6 +70,12 @@ fi
 
 (
   flock -w 300 9 || { echo "IG_CODE_LOCK_TIMEOUT"; exit 1; }
+  # 连同这两个脚本一起更新。装在 /opt/ideagen 的是开机那一版，代码腿
+  # 只动 /opt/ideagen/app —— 不重装的话，同步脚本自己的修复永远到不了
+  # 这台机器，而它恰恰是没人能登上去改的那台。放在测试通过之后：
+  # 之前重装等于先跑一段没人担保过的代码。
+  install -m 755 "$APP/deploy/sync_state.sh" /opt/ideagen/sync_state.sh
+  install -m 755 "$APP/deploy/sync_code.sh"  /opt/ideagen/sync_code.sh
   docker tag "ideagen40:cand-$want" ideagen40:live
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --restart always \

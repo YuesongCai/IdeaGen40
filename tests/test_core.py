@@ -550,6 +550,25 @@ class TestOliveMCP(unittest.TestCase):
         self.assertEqual(loose["result"], {"ok": 2})
         self.assertEqual(_parse_sse('{"plain":true}'), {"plain": True})
 
+    def test_a_return_is_never_mistaken_for_a_listing_date(self):
+        """`since` is a since-inception RETURN that reads like a date field.
+
+        Writing it into first_seen_d would not raise: the eligibility gate
+        compares dates as strings, and "0.4466" sorts below every real date, so
+        every affected instrument is waved through while the dated-coverage
+        count goes UP. Both guards must fail closed.
+        """
+        from ideagen import shelf_store
+        for bad in ("0.4466", "96.0045", 1.6349, "1970-01-01", "", None,
+                    "20240425", "2024-13-01"):
+            self.assertIsNone(olive._iso_date(bad), f"olive accepted {bad!r}")
+            self.assertIsNone(shelf_store._shelf_date(bad),
+                              f"shelf accepted {bad!r}")
+        self.assertEqual(olive._iso_date("2024-04-25"), "2024-04-25")
+        self.assertEqual(shelf_store._shelf_date("2024-04-25"), "2024-04-25")
+        # the string compare that makes a bad value silent, spelled out
+        self.assertFalse("0.4466" > "2026-07-29")
+
     def test_issuer_is_discovered_from_the_endpoint_alone(self):
         """The operator should only have to know the MCP URL (RFC 9728)."""
         seen = []

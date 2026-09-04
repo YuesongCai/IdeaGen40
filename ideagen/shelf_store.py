@@ -36,6 +36,26 @@ def _canonical(value: Any) -> bytes:
     ).encode()
 
 
+def _shelf_date(value: object) -> str | None:
+    """A plain YYYY-MM-DD, or nothing.
+
+    Guards the same trap _iso_date guards in the Olive source: several shelf
+    fields are named like dates and hold something else entirely (`since` is a
+    since-inception RETURN, "0.4466"). A non-date written here would not raise
+    -- the eligibility comparison is a string compare, and "0.4466" sorts below
+    every real date, so every affected instrument would be waved through while
+    the dated-coverage count improved. Failing closed to None is the point.
+    """
+    text = str(value or "").strip()[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None
+    try:                      # shape is not enough: "2024-13-01" matches it
+        date.fromisoformat(text)
+    except ValueError:
+        return None
+    return None if text == "1970-01-01" else text
+
+
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9._-]+", "-", value.lower()).strip("-") or "shelf"
 
@@ -88,10 +108,20 @@ def _records(payload: dict | list, as_of: date) -> list[dict[str, Any]]:
                                  "structured": "结构化产品",
                                  "private": "私募策略",
                              }.get(group, "公募基金")),
-                "first_seen_d": str(
-                    item.get("firstSeenDate")
-                    or item.get("subscriptionStart")
-                    or as_of.isoformat())[:10],
+                # No fallback to today. The shelf rarely carries either of
+                # these, and defaulting to as_of records "the first day we
+                # looked" as if it were a fact about the product -- a date that
+                # is wrong, permanent (the min() below only ever lowers it),
+                # and indistinguishable from a real one. NULL is the honest
+                # answer and shows up in the coverage count instead.
+                #
+                # NOTE this column does not mean what instruments.first_seen_d
+                # means. Here it is when WE first saw the product; there it is
+                # when the product began to exist. Do not backfill one from the
+                # other -- the values are both valid dates, so nothing would
+                # catch it.
+                "first_seen_d": _shelf_date(item.get("firstSeenDate")
+                                            or item.get("subscriptionStart")),
                 "nav_d": str(nav_d)[:10],
             })
     rows.sort(key=lambda row: row["key"])
@@ -186,9 +216,12 @@ def persist(platform: Any, payload: dict | list, *, as_of: date,
                 (instrument_id,),
             )
             prior = (existing[0].get("first_seen_d") if existing else None)
-            first_seen = min(
-                value for value in (prior, record.get("first_seen_d"),
-                                    as_of.isoformat()) if value)
+            # as_of is deliberately not a candidate: including it meant every
+            # product acquired today's date the first time it was seen, so the
+            # column could never be empty and the gap could never be reported.
+            candidates = [value for value in (prior, record.get("first_seen_d"))
+                          if value]
+            first_seen = min(candidates) if candidates else None
             metadata = {
                 key: value for key, value in record.items()
                 if key not in {

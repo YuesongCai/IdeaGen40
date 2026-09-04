@@ -11,6 +11,14 @@
 # endpoint and a shared secret to protect it. Polling git costs one request a
 # couple of minutes and needs nothing opened.
 #
+# It does NOT restart the proxy, and that is a scar rather than an oversight.
+# Restarting it to pick up a changed Caddyfile left port 80 unbound for a
+# moment, and the boot script's status probe — which fires on a false alarm
+# every boot — took the port in exactly that window. The proxy could then never
+# bind it again, and the site stayed down until the next reboot. A config change
+# that waits for a reboot is a small cost; a deploy step that can take the site
+# off the air is not.
+#
 # THE TESTS ARE THE POINT. Several agents push to main, so "whoever can push can
 # change production" with no human in between. Running the suite against the
 # newly built image before switching to it is what keeps that from meaning
@@ -92,13 +100,7 @@ while :; do
           IDEAGEN_PUBLIC_SITE="${IDEAGEN_PUBLIC_SITE:-}" \
           IDEAGEN_DEFAULT_SNI="${IDEAGEN_DEFAULT_SNI:-}" \
             docker compose -f "$APP/deploy/compose.yaml" up -d >/tmp/updater-up.log 2>&1 \
-            && { say "deployed $want"; DEPLOYED="$want"
-                 # The proxy's config is a bind-mounted file, so `up -d` leaves
-                 # it running with the config it started with — a Caddyfile
-                 # change would sit on disk, deployed and inert. Restarting it
-                 # costs a second and is the only way the new config takes.
-                 docker compose -f "$APP/deploy/compose.yaml" restart proxy >/dev/null 2>&1
-                 report deployed "$want" "up"; } \
+            && { say "deployed $want"; DEPLOYED="$want"; report deployed "$want" "up"; } \
             || { say "compose up failed"; report failed "$want" "$(tail -2 /tmp/updater-up.log | tr -d '"' | cut -c1-200)"; }
         fi
       else

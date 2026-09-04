@@ -806,8 +806,12 @@ def _code_version() -> dict[str, object]:
                 if "__pycache__" in f.parts:
                     continue
                 st = f.stat()
+                # Content, not name and size: two builds can differ by a
+                # single character and a fingerprint that misses it is worse
+                # than none, because it would report "unchanged" about a
+                # change. Read once, at the first health check.
                 h.update(f.name.encode())
-                h.update(str(st.st_size).encode())
+                h.update(f.read_bytes())
                 newest = max(newest, st.st_mtime)
                 n += 1
     except Exception:  # noqa: BLE001 — health must answer even if this cannot

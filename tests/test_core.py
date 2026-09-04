@@ -2526,3 +2526,42 @@ class TestLatestWeeklyIsNewestPeriod(unittest.TestCase):
             "SELECT run_id FROM orch_runs WHERE kind='weekly' "
             "ORDER BY as_of DESC, started_at DESC LIMIT 1").fetchone())
         self.assertEqual(row["run_id"], "retry")
+
+
+class TestGenerationMethodBooksUseProvenance(unittest.TestCase):
+    """「按生成方式」的账本要认 proposed_by，不能只认 method。
+
+    The pool keeps one candidate per instrument; anything two methods reached
+    carries method="merged" with the contributors in proposed_by. Matching on
+    method alone asks "which instruments did ONLY this method reach" — on the
+    real 2026-08-19 pool that is 3 instruments for ai_native, while it actually
+    argued for 63. These books exist to answer "what if we believed one
+    generator", and an idea is no less that generator's for being agreed with.
+    """
+
+    def _ctx(self):
+        import datetime as dtm
+        from ideagen import strategy as strat
+        return strat.RunContext(
+            as_of=dtm.date(2026, 8, 19), inputs_sha="x",
+            candidates=[
+                {"id": "pool:A", "instrument_id": "A", "method": "merged",
+                 "proposed_by": ["ai_native", "chain"]},
+                {"id": "pool:B", "instrument_id": "B", "method": "ai_native",
+                 "proposed_by": ["ai_native"]},
+                {"id": "pool:C", "instrument_id": "C", "method": "merged",
+                 "proposed_by": ["gap", "chain"]},
+                # pre-provenance row: only `method` exists
+                {"id": "pool:D", "instrument_id": "D", "method": "ai_native"},
+            ])
+
+    def test_merged_candidate_counts_for_every_contributor(self):
+        from ideagen.strategies.select_generation_method import _pick
+        v = _pick(self._ctx(), "ai_native", "generated_ai_native")
+        self.assertEqual(sorted(v.chosen), ["pool:A", "pool:B", "pool:D"])
+        self.assertIn("pool:C", v.rejected)
+
+    def test_a_method_that_did_not_propose_it_does_not_get_it(self):
+        from ideagen.strategies.select_generation_method import _pick
+        v = _pick(self._ctx(), "gap", "generated_gap")
+        self.assertEqual(v.chosen, ["pool:C"])

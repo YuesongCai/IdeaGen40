@@ -2134,6 +2134,16 @@ function goto(view,anchor){
 /* ── render all ──────────────────────────────────────────────── */
 function renderAll(){
   $('deadBanner').innerHTML='';
+  /* 顶栏那个是写死在 HTML 里的，不经过 askBtn()，所以快照降级要在这里补上：
+     快照页没有后端，追问答不了，按钮就不该还穿着「点我」的绿。 */
+  (function(){
+    var t=$('askTop');if(!t)return;
+    var snap=(typeof isSnapshot==='function')&&isSnapshot();
+    t.className='ask-top'+(snap?' off':'');
+    t.title=snap
+      ? '静态快照答不了追问——它要现场取那次运行封存的研报原文与打分记录。点开看在哪能问。'
+      : '本期任何一个宏观主题、标的、选取策略，都能问它当时为什么这么定——只依据那次运行封存的材料作答，不使用事后信息';
+  })();
   POPS={};popSeq=0; /* 速览注册表随全量重渲染重建 */
   renderStamp();
   renderOverview();
@@ -2178,9 +2188,8 @@ function askHintHTML(){
     +'<div class="o-body">'
       +'<p>页面上凡是带 <span class="ask-btn sm" style="pointer-events:none;vertical-align:middle">'
         +ASK_ICON+'<span>问它为什么选它</span></span> 的地方，都能就地问一句。</p>'
-      +'<p>宏观主题、标的、选取策略、以及「选主题」这一步，各自都能问；'
-      +'<b>答案只依据那次运行当时封存下来的研报与打分记录</b>——'
-      +'材料里没有的它会直说没有，不补全，也不拿事后发生的事情圆场。</p>'
+      +'<p><b>答案只依据那次运行当时封存下来的研报与打分记录</b> '
+      +glossMark('材料里没有的，它会直说记录中不存在——不补全，也不拿事后发生的事情圆场。')+'</p>'
     +'</div>'
     +'<button type="button" class="orient-x" data-el="ask.hint.dismiss" onclick="dismissAskHint()">知道了</button>'
   +'</div>';
@@ -2313,7 +2322,8 @@ function mainLine(ag){
 
   return '<div class="card mainline section" aria-label="主链路">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">主链路</h2>'
-    +'<span class="card-note">'+esc(w.as_of||'')+' 期 · 逐段展开可回溯依据与语料来源</span></div>'
+    +'<span class="card-note">'+esc(w.as_of||'')+' 期'
+      +'<span class="gloss" title="逐段展开可回溯依据与语料来源。">ⓘ</span></span></div>'
     +rows
     /* 「方法」这一页读者最想问的就是「凭什么这么选」。入口不能只在展开某一段
        之后才出现——那等于要求他先猜对该展开哪一段。 */
@@ -2631,13 +2641,13 @@ function holdMapCard(ag){
   var nbk=(ag&&ag.books)?ag.books.length:0;
   var head='<div class="qhead"><h2 class="qtitle">主题敞口分布<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+(nbk?(nbk+' 个账本合计'):'尚无账本')+'</span></h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(5,'建仓 · 持仓束')
-    +'<button type="button" class="qlink" onclick="openStageDrawer(5)">建仓详情 →</button>'
     +'<span role="group" aria-label="视图切换">'
       +'<button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')" title="按宏观主题分组的持仓分布">地图</button>'
       +'<button type="button" class="seg-btn'+(holdView==='axis'?' on':'')+'" onclick="setHoldView(\'axis\')" title="横轴为跨策略共识度，纵轴为当前浮动盈亏">Y 轴</button>'
       +'<button type="button" class="seg-btn'+(holdView==='list'?' on':'')+'" onclick="setHoldView(\'list\')" title="逐仓明细表，可排序">列表</button>'
       +'</span>'
-    +'<button type="button" class="qlink" onclick="goto(\'process\')">生成链路 →</button></span></div>';
+    +'<button type="button" class="qlink" onclick="openStageDrawer(5)">建仓详情 →</button>'
+    +'</span></div>';
   if(!ag||!ag.openN){
     var nr=nextRunInfo();
     var line=w.in_flight
@@ -2995,7 +3005,8 @@ function pairedEquitySVG(books){
     +'<text x="'+(W-pr)+'" y="'+(H-6)+'" text-anchor="end" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+esc(ds[ds.length-1])+'</text>'
     +'</svg>';
   return '<div class="funnel-wrap">'+svg+'</div>'
-    +'<div class="card-note" style="margin-top:2px">净值指数：期初 = 100，同轴可比；虚线为盈亏平衡线</div>';
+    +'<div class="card-note" style="margin-top:2px">净值指数'
+      +'<span class="gloss" title="期初 = 100，同轴可比；虚线为盈亏平衡线。">ⓘ</span></div>';
 }
 function holdingsMatrix(books){
   var held={};
@@ -3114,7 +3125,7 @@ function themeMixCard(books){
 
   return '<div class="tmx">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0;font-size:15px">各策略的主题分布</h2>'
-    +'<span class="card-note">按持仓市值占比 · 同一候选池下的分布差异即策略间差异</span></div>'
+    +'<span class="card-note gloss" title="按持仓市值占比。同一候选池下的分布差异即策略间差异。">ⓘ</span></div>'
     +legend+rows
   +'</div>';
 }
@@ -6406,7 +6417,8 @@ function calDrawerBody(){
     +'</div>';
   }).join('');
 
-  return '<div class="card-note" style="margin-bottom:var(--space-3)">每期一行，展开可见该期运行、数据与错误 · 时间为 HKT</div>'
+  return '<div class="card-note" style="margin-bottom:var(--space-3)">'
+    +'<span class="gloss" title="每期一行，展开可见该期运行、数据与错误。时间为 HKT。">ⓘ</span></div>'
     +monLine
     +(calRows||'<div class="empty-sm">暂无周跑记录</div>');
 }

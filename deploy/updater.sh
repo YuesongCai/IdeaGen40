@@ -92,7 +92,13 @@ while :; do
           IDEAGEN_PUBLIC_SITE="${IDEAGEN_PUBLIC_SITE:-}" \
           IDEAGEN_DEFAULT_SNI="${IDEAGEN_DEFAULT_SNI:-}" \
             docker compose -f "$APP/deploy/compose.yaml" up -d >/tmp/updater-up.log 2>&1 \
-            && { say "deployed $want"; DEPLOYED="$want"; report deployed "$want" "up"; } \
+            && { say "deployed $want"; DEPLOYED="$want"
+                 # The proxy's config is a bind-mounted file, so `up -d` leaves
+                 # it running with the config it started with — a Caddyfile
+                 # change would sit on disk, deployed and inert. Restarting it
+                 # costs a second and is the only way the new config takes.
+                 docker compose -f "$APP/deploy/compose.yaml" restart proxy >/dev/null 2>&1
+                 report deployed "$want" "up"; } \
             || { say "compose up failed"; report failed "$want" "$(tail -2 /tmp/updater-up.log | tr -d '"' | cut -c1-200)"; }
         fi
       else

@@ -14,9 +14,17 @@
 	# 域名客户端会发送自己的 SNI，不受此默认值影响。
 	default_sni {$IDEAGEN_DEFAULT_SNI:localhost}
 
+	# 两个签发者，按顺序尝试。Let's Encrypt 给裸 IP 签的是短期证书，额度很紧，
+	# 而这台机器今晚重装/重启了近十次——额度一旦用完，Caddy 就拿不到证书，
+	# TLS 握手直接失败，站点从「有个证书警告」退化成「连不上」。
+	#
+	# 第二个 internal 是自签兜底：浏览器会警告，但页面还在，而且额度恢复后
+	# Caddy 会自己换回真证书。一个偶尔需要点「继续访问」的站点，好过一个
+	# 因为证书额度而整体消失的站点——尤其是它同时也是查「为什么没了」的地方。
 	cert_issuer acme https://acme-v02.api.letsencrypt.org/directory {
 		profile shortlived
 	}
+	cert_issuer internal
 
 	log default {
 		format filter {

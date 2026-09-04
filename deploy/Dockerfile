@@ -52,6 +52,10 @@ RUN pip install --no-cache-dir \
       "volcengine"
 
 COPY ideagen ./ideagen
+# The instance has no shell, so anything an operator would have run by hand has
+# to be inside the image for the entrypoints to call — seeding the database from
+# the laptop's history is the current one.
+COPY scripts ./scripts
 COPY prompts ./prompts
 COPY seed ./seed
 COPY web ./web

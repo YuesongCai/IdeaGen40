@@ -18,6 +18,12 @@ services:
     # 云端这条路上没有别的东西会建这些表：scheduler 要到第一次周跑才建，
     # 而新实例上那可能是一周以后。
     entrypoint: ["/app/deploy/dashboard_entrypoint.sh"]
+    # 页面的存活面板报的就是 scheduler 的心跳。只起网页不起 scheduler，
+    # 得到的是一个"一切正常地告诉你系统已经死了"的运行台——两者一起起。
+    # 实例上那份开机脚本烙死在系统盘里、只写了 `up -d dashboard proxy`，
+    # 改不动；依赖关系写在这里，compose 会把 scheduler 一并拉起来。
+    depends_on:
+      - scheduler
     env_file:
       - /opt/ideagen/config/runtime.env
     environment:

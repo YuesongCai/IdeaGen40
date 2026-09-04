@@ -26,6 +26,7 @@ import json
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -101,6 +102,81 @@ def _shelf_dating(con, held: set[str], window_start: str) -> dict:
     return out
 
 
+#: How many priced positions an arm must keep after the exclusion before its
+#: recomputed numbers are worth reading. Below this the swing is sampling noise
+#: with a percent sign on it, and printing it invites exactly the reading the
+#: whole panel refuses to make elsewhere.
+ROBUSTNESS_MIN_N = 20
+
+
+def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
+    """Recompute each arm with the most-held instruments removed.
+
+    The question is Jon's: is a result carried by a handful of names everything
+    happened to hold? It is asked by deleting those names and looking again.
+
+    The answer for most arms here is that the question cannot be asked yet, and
+    saying so is the finding. A selective arm places ten or twenty positions
+    across the whole window, so removing ten instruments removes most of its
+    sample — `omega_strict` drops from 11 priced positions to 4 — and a mean
+    computed on four is not evidence about the strategy, it is evidence about
+    four trades. Those arms are reported as underpowered rather than given a
+    number that reads like a result. The broad arms have the sample to answer:
+    they lose roughly a third of a point and hold their order, which is what
+    "not carried by a few names" looks like.
+    """
+    freq: dict[str, int] = {}
+    for row in positions:
+        if row.get("return_pct") is None:
+            continue
+        key = str(row.get("instrument_id"))
+        freq[key] = freq.get(key, 0) + 1
+    dropped = sorted(sorted(freq, key=lambda k: (-freq[k], k))[:top_n])
+
+    def stats(rows: list[dict]) -> dict | None:
+        rets = [float(r["return_pct"]) for r in rows
+                if r.get("return_pct") is not None]
+        if not rets:
+            return None
+        return {"n": len(rets),
+                "hit_rate": round(sum(1 for x in rets if x > 0) / len(rets), 3),
+                "mean_return_pct": round(sum(rets) / len(rets), 4)}
+
+    arms: dict[str, Any] = {}
+    for arm in sorted({str(r["arm"]) for r in positions}):
+        mine = [r for r in positions if r["arm"] == arm]
+        full = stats(mine)
+        kept = stats([r for r in mine
+                      if str(r.get("instrument_id")) not in set(dropped)])
+        if not full:
+            continue
+        entry: dict[str, Any] = {"full": full, "excluded": kept,
+                                 "kept_share": (round(kept["n"] / full["n"], 3)
+                                                if kept else 0.0)}
+        if not kept or kept["n"] < ROBUSTNESS_MIN_N:
+            entry["verdict"] = "underpowered"
+            entry["why"] = (
+                f"剔除后仅剩 {kept['n'] if kept else 0} 笔已计价持仓"
+                f"（< {ROBUSTNESS_MIN_N}），不足以判断结果是否依赖高频标的")
+        else:
+            delta = kept["mean_return_pct"] - full["mean_return_pct"]
+            entry["delta_mean_pct"] = round(delta, 4)
+            entry["verdict"] = "stable" if abs(delta) < 0.5 else "shifted"
+            entry["why"] = (
+                f"剔除后平均收益变动 {delta:+.2f} 个百分点"
+                f"（{kept['n']} / {full['n']} 笔持仓保留）")
+        arms[arm] = entry
+
+    answerable = [a for a, e in arms.items() if e["verdict"] != "underpowered"]
+    return {"top_n": top_n, "dropped_instruments": dropped,
+            "min_n": ROBUSTNESS_MIN_N, "arms": arms,
+            "n_answerable": len(answerable), "n_arms": len(arms),
+            "note": (
+                "剔除本期最常被持有的标的后重算。样本不足的臂标为 underpowered "
+                "而不给数值：选择性强的臂整个窗口只有十几笔持仓，剔除十个标的会"
+                "拿走其中大半，剩下几笔算出的均值是关于那几笔的证据，不是关于策略的。")}
+
+
 def _arms() -> list[str]:
     return sorted(s["name"] for s in strat.available("idea_selector")
                   if not s.get("needs_model"))
@@ -142,6 +218,7 @@ def main(argv: list[str]) -> int:
                  for row in _arm_positions(con, days, arm, args.horizon_days)]
 
     n_backfill = sum(1 for c in classes.values() if c != "live")
+    robustness = _drop_top_instruments(positions, top_n=10)
     dating = _shelf_dating(
         con, {str(r.get("instrument_id")) for r in positions if r.get("instrument_id")},
         days[0].isoformat())
@@ -180,6 +257,7 @@ def main(argv: list[str]) -> int:
         ),
         "undated_shelf_instruments": dating["shelf_undated"],
         "shelf_dating": dating,
+        "robustness_drop_top": robustness,
         # The sweep ran with strict=True, so every period's context passed the
         # as-of audit before any arm scored it — a context carrying a document,
         # a close or a candidate dated after the replayed day raises AsOfLeak

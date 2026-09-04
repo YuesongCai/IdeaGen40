@@ -39,6 +39,13 @@ def _ark_key() -> str:
     return m.group(1) if m else ""
 
 
+def _inference_host(env: dict) -> str:
+    """The single hostname inference talks to, for a surgical proxy bypass."""
+    from urllib.parse import urlparse
+    base = env.get("IDEAGEN_INFERENCE_BASE_URL", "")
+    return urlparse(base).hostname or "ark.ap-southeast.bytepluses.com"
+
+
 def main() -> int:
     env = dict(os.environ)
     key = _ark_key()
@@ -57,9 +64,11 @@ def main() -> int:
         # default follows the system settings and IDEAGEN_INFERENCE_DIRECT=1
         # switches to direct when the proxy is the broken side.
         if env.get("IDEAGEN_INFERENCE_DIRECT") == "1":
+            # The inference host only: NO_PROXY matches by domain suffix, and
+            # the whole domain would drag TOS storage onto the direct path too.
             for var in ("NO_PROXY", "no_proxy"):
                 env[var] = ",".join(filter(None, [
-                    env.get(var, ""), "bytepluses.com"]))
+                    env.get(var, ""), _inference_host(env)]))
     else:
         env["IDEAGEN_INFERENCE_MODE"] = "claude"
         env["IDEAGEN_WEEKLY_ROLE"] = "observer"

@@ -32,8 +32,13 @@ RUN_ID = "20260825T000000Z-testtest"
 AS_OF = "2026-08-26"
 
 
-class AskContextCase(unittest.TestCase):
-    """A miniature platform with one frozen run, built entirely in tmpdirs."""
+class _FrozenRun:
+    """A miniature platform with one frozen run, built entirely in tmpdirs.
+
+    Shared by the ask tests and the audit-bundle tests rather than inherited
+    between them: subclassing one test case from the other would re-run its
+    assertions under a second name and report every failure twice.
+    """
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -66,6 +71,14 @@ class AskContextCase(unittest.TestCase):
                 {"n": 2, "step": "topics", "at": "2026-08-25T00:00:02+00:00",
                  "chosen": ["T-TEST"],
                  "uri": "tos://ideagen-1234567890/runs/x"},
+            ],
+            # The structure that actually leaked once: display needs
+            # name/ok/detail, and `meta` carries the bucket name with the
+            # cloud account id inside it.
+            "port_health": [
+                {"name": "blobs", "ok": True, "detail": "object store ok",
+                 "meta": {"bucket": "ideagen-1234567890",
+                          "root": "/Users/operator/blobs"}},
             ],
             "artifacts": []}).encode())
         self.p.blobs.put(f"{pre}/A_topics.json", json.dumps({
@@ -110,6 +123,10 @@ class AskContextCase(unittest.TestCase):
     def _ctx(self, kind, sid):
         return ask.assemble_context(self.p, self.con, RUN_ID,
                                     {"kind": kind, "id": sid})
+
+
+class AskContextCase(_FrozenRun, unittest.TestCase):
+    """Provenance and scrubbing on the 「问当时的它」 context path."""
 
     def test_every_material_carries_provenance(self):
         ctx = self._ctx("topic", "T-TEST")
@@ -160,3 +177,67 @@ class AskContextCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuditBundleCase(_FrozenRun, unittest.TestCase):
+    """The downloadable audit bundle carries the run, not the machine.
+
+    The bundle was born after /api/journal, and it was born leaking: the
+    journal handler stripped `port_health[].meta` inline, so the second
+    endpoint to serve a journal did not. The scrubbing now lives in
+    `ask.scrub_journal`, and these tests are what keep the next outbound path
+    from repeating it.
+    """
+
+    def _bundle(self):
+        import io
+        import zipfile
+
+        from ideagen import audit
+        blob, name = audit.build(self.p, RUN_ID)
+        self.assertIsNotNone(blob, name)
+        return zipfile.ZipFile(io.BytesIO(blob)), name
+
+    def test_bundle_holds_the_whole_run(self):
+        z, name = self._bundle()
+        names = z.namelist()
+        self.assertIn("README.md", names)
+        self.assertIn("manifest.json", names)
+        self.assertTrue(any(n.startswith("01_") for n in names), names)
+        self.assertTrue(any(n.startswith("02_") for n in names), names)
+        self.assertTrue(any(n.startswith("04_") for n in names), names)
+        self.assertTrue(any(n.startswith("05_") for n in names), names)
+        self.assertIn(AS_OF, name)
+
+    def test_manifest_checksums_match_the_files(self):
+        import hashlib
+        import json as _json
+        z, _ = self._bundle()
+        manifest = _json.loads(z.read("manifest.json"))
+        self.assertTrue(manifest["exported_files"])
+        for entry in manifest["exported_files"]:
+            body = z.read(entry["name"])
+            self.assertEqual(len(body), entry["bytes"], entry["name"])
+            self.assertEqual(hashlib.sha256(body).hexdigest(),
+                             entry["sha256"], entry["name"])
+
+    def test_nothing_in_the_bundle_names_the_machine(self):
+        z, _ = self._bundle()
+        for member in z.namelist():
+            text = z.read(member).decode("utf-8", "replace")
+            for secret in ("ideagen-1234567890", "/Users/operator",
+                           "operator-macbook.local"):
+                self.assertNotIn(secret, text, f"{secret} leaked in {member}")
+
+    def test_port_health_survives_without_its_meta(self):
+        """Stripping identity must not cost the reader the health readout."""
+        import json as _json
+        z, _ = self._bundle()
+        journal = _json.loads(
+            z.read(next(n for n in z.namelist() if n.startswith("01_"))))
+        health = journal["port_health"]
+        self.assertEqual(len(health), 1)
+        self.assertEqual(health[0]["name"], "blobs")
+        self.assertTrue(health[0]["ok"])
+        self.assertIn("detail", health[0])
+        self.assertNotIn("meta", health[0])

@@ -42,6 +42,13 @@ def _ark_key() -> str:
     raise SystemExit("~/.ideagen.env 里找不到 ARK_API_KEY")
 
 
+def _ark_host(env: dict) -> str:
+    """The single hostname inference talks to, for a surgical proxy bypass."""
+    from urllib.parse import urlparse
+    base = env.get("IDEAGEN_INFERENCE_BASE_URL", "")
+    return urlparse(base).hostname or "ark.ap-southeast.bytepluses.com"
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         raise SystemExit("用法: backfill_weeks.py YYYY-MM-DD [YYYY-MM-DD ...]")
@@ -64,10 +71,12 @@ def main(argv: list[str]) -> int:
         # See scripts/tick.py: which side of the proxy works flips, so it is
         # a switch rather than a constant. IDEAGEN_INFERENCE_DIRECT=1 forces
         # direct; the default follows the system proxy settings.
+        # The bypass names the inference host, not its domain: NO_PROXY
+        # matches by suffix, so the domain would also strand TOS storage.
         **({"NO_PROXY": ",".join(filter(None, [env.get("NO_PROXY", ""),
-                                               "bytepluses.com"])),
+                                               _ark_host(env)])),
             "no_proxy": ",".join(filter(None, [env.get("no_proxy", ""),
-                                               "bytepluses.com"]))}
+                                               _ark_host(env)]))}
            if env.get("IDEAGEN_INFERENCE_DIRECT") == "1" else {}),
         "IDEAGEN_INFERENCE_TIMEOUT_SECONDS": env.get(
             "IDEAGEN_INFERENCE_TIMEOUT_SECONDS", "420"),

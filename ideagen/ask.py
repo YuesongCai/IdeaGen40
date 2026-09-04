@@ -81,6 +81,26 @@ def scrub(obj: Any) -> Any:
     return obj
 
 
+def scrub_journal(j: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Scrub a run journal for anything leaving the server.
+
+    Beyond the text-level scrubbing, the journal carries one structure that
+    holds raw machine facts: `port_health[].meta`, whose bucket name embeds the
+    cloud account id. Stripping it lived inline in the /api/journal handler,
+    which meant the next endpoint to serve a journal — the audit bundle — was
+    born leaking it. It belongs here, where every outbound path goes through it.
+    """
+    if not isinstance(j, dict):
+        return j
+    j = dict(j)
+    j.pop("host", None)
+    j["port_health"] = [
+        {k: v for k, v in h.items() if k != "meta"} if isinstance(h, dict) else h
+        for h in (j.get("port_health") or [])
+    ]
+    return scrub(j)
+
+
 # ---------------------------------------------------------------------------
 def _run_row(p, run_id: str | None) -> dict[str, Any] | None:
     if run_id:
@@ -106,7 +126,7 @@ def _artifact(p, run: dict[str, Any], name: str) -> dict | list | None:
 
 def _journal(p, run: dict[str, Any]) -> dict[str, Any] | None:
     j = _artifact(p, run, "journal.json")
-    return j if isinstance(j, dict) else None
+    return scrub_journal(j) if isinstance(j, dict) else None
 
 
 # ---------------------------------------------------------------------------

@@ -131,8 +131,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # fetches with row counts. Served for the dashboard's run-log view.
             # Host and storage URIs are scrubbed — provenance is the timestamps
             # and step structure, not the machine identity behind them.
-            from . import review as _rv
-            import json as _j, re as _re
+            from . import ask as _rv_ask
+            import json as _j
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
             from . import platform as _plat_mod
@@ -151,24 +151,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     f"runs/{r['as_of']}/{r['run_id']}/journal.json"))
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": f"journal 读取失败: {type(e).__name__}"})
-            j.pop("host", None)
-            # Port-health meta carries raw machine facts (bucket names with the
-            # account id embedded). Display needs name/ok/detail only; the meta
-            # never leaves the server.
-            for h in (j.get("port_health") or []):
-                if isinstance(h, dict):
-                    h.pop("meta", None)
-            def _scrub(o):
-                if isinstance(o, str):
-                    o = _re.sub(r"tos://[\w.-]+", "tos://<bucket>", o)
-                    return _re.sub(r"/Users/[\w.-]+", "~", o)
-                if isinstance(o, dict):
-                    return {k: _scrub(v) for k, v in o.items()}
-                if isinstance(o, list):
-                    return [_scrub(v) for v in o]
-                return o
+            # Host, bucket names and home paths are stripped by the one shared
+            # scrubber every journal-serving path goes through.
             return self._json({"run_id": r["run_id"], "as_of": r["as_of"],
-                               "journal": _scrub(j)})
+                               "journal": _rv_ask.scrub_journal(j)})
+        if path == "/api/audit":
+            # The audit bundle: the whole run in the reader's own hands, in an
+            # order that reads without this UI. Same exposure class as
+            # /api/journal — artifacts and asks, never the report bodies.
+            from urllib.parse import parse_qs, urlparse
+            from . import audit
+            from . import platform as _plat_mod
+            q = parse_qs(urlparse(self.path).query)
+            blob, name = audit.build(_plat_mod.load(),
+                                     (q.get("run_id") or [None])[0])
+            if blob is None:
+                return self._json({"error": name}, status=404)
+            self._set_download = name
+            return self._raw(blob, "application/zip")
         if path == "/api/ask/context":
             # 「问当时的它」— the frozen material a decision saw, for display.
             from urllib.parse import parse_qs, urlparse
@@ -386,6 +386,15 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if getattr(self, "_set_download", None):
+            # RFC 5987: the filename is Chinese, so only the encoded form is
+            # sent — a raw non-ASCII header value is what makes browsers fall
+            # back to naming the file after the endpoint.
+            from urllib.parse import quote
+            self.send_header(
+                "Content-Disposition",
+                "attachment; filename*=UTF-8''" + quote(self._set_download))
+            self._set_download = None
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)

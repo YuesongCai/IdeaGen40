@@ -36,6 +36,13 @@ def _ark_key() -> str:
     return m.group(1) if m else ""
 
 
+def _inference_host(env: dict) -> str:
+    """The single hostname inference talks to, for a surgical proxy bypass."""
+    from urllib.parse import urlparse
+    base = env.get("IDEAGEN_INFERENCE_BASE_URL", "")
+    return urlparse(base).hostname or "ark.ap-southeast.bytepluses.com"
+
+
 def main(argv: list[str]) -> int:
     env = dict(os.environ)
     key = _ark_key()
@@ -53,9 +60,14 @@ def main(argv: list[str]) -> int:
         # default follows the system settings and IDEAGEN_INFERENCE_DIRECT=1
         # switches to direct when the proxy is the broken side.
         if env.get("IDEAGEN_INFERENCE_DIRECT") == "1":
+            # Only the inference host. NO_PROXY entries match by domain
+            # suffix, so "bytepluses.com" would also strand TOS storage
+            # (`<bucket>.tos-…​.bytepluses.com`) on the direct path — which is
+            # exactly how the dashboard lost its run log: the journal lives in
+            # TOS, and the blob read died of SSL EOF while inference was fine.
             for var in ("NO_PROXY", "no_proxy"):
                 env[var] = ",".join(filter(None, [
-                    env.get(var, ""), "bytepluses.com"]))
+                    env.get(var, ""), _inference_host(env)]))
     return subprocess.run(
         [PYBIN, "-m", "ideagen.cli", "serve", *argv],
         cwd=ROOT, env=env).returncode

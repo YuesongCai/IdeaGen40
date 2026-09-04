@@ -962,7 +962,7 @@ button.rr-dl{font:500 12px/16px var(--font-sans);cursor:pointer}
   font:500 11px/16px var(--font-sans);white-space:nowrap}
 .ptag::before{content:'';width:5px;height:5px;border-radius:9999px;background:currentColor}
 .ptag-ai{background:var(--color-surface-brand-muted);color:var(--color-text-brand)}
-.ptag-frame{background:var(--color-surface-info-subtle,var(--color-surface-muted));color:var(--color-text-secondary)}
+.ptag-frame{background:var(--color-feedback-info-subtle);color:var(--color-text-secondary)}
 .ptag-code{background:var(--color-surface-sunken);color:var(--color-text-tertiary)}
 .ptag-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:var(--space-3)}
 /* 策略 × 主题分布矩阵 */
@@ -1495,7 +1495,7 @@ function isBackfill(){
 function periodBadge(){
   if(!isBackfill())return '';
   return '<span class="gloss" style="margin-left:8px;font:600 11px/16px var(--font-sans);'
-    +'padding:2px 7px;border-radius:10px;background:var(--color-bg-warn,#f6e7c8);'
+    +'padding:2px 7px;border-radius:10px;background:var(--color-feedback-warning-subtle);'
     +'color:var(--color-text-primary);vertical-align:middle" '
     +'title="这一期是事后补跑的：喂给模型的研报卡在当期日期，但模型权重见过之后的世界，'
     +'货架上还有没有上架日期的标的无法按当期过滤。它可以用来看流程和扩样本，不能当作当周的实盘记录。">'
@@ -1658,7 +1658,7 @@ function refresh(){
       : '静态快照 · 截至 '+when+'（非实时）';
     if(st){
       st.textContent=txt;
-      if(stale)st.style.color='var(--color-text-warn,#8a5a00)';
+      if(stale)st.style.color='var(--color-feedback-warning-text)';
     }
     if(fs)fs.textContent=stale?('⚠ 快照已过期 '+ageD+' 天 · 截至 '+when)
                               :('静态快照 · 截至 '+when);
@@ -2068,13 +2068,18 @@ function raceHero(ag){
     +spyLine(ret)
     +'（全账本合计口径，非实盘组合）'
     +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">可信度与局限 ›</button></div>':'';
+  /* 首屏只留结论：噪音带图已经自带结论句、坐标、逐行下钻和样本量进度。
+     芯片带（medals）呈现的是同一批账本、同一个 pp 数值、同一个 openBookDrawer
+     目标，主题分布条同样是这批账本的下一层细节——三者并列展示不增加信息，
+     只增加首屏噪音，因此一并降级到明细区，由读者主动展开。 */
   return '<div class="card section" id="whoWins">'+head+sentence
     +noiseBandHTML(books,weekN)
-    +medals
-    +themeMixCard(books)
     +agg
-    +'<div style="margin-top:var(--space-4)"><button type="button" class="copy-btn" onclick="toggleCompare()">'+(cmpOpen?'收起对比详情':'展开对比详情')+'</button></div>'
+    +'<div style="margin-top:var(--space-4)"><button type="button" class="copy-btn" data-el="week.books.detail.toggle" aria-expanded="'+(cmpOpen?'true':'false')+'" aria-controls="cmpDetail" onclick="toggleCompare()">'
+      +(cmpOpen?'收起账本明细':'展开 '+books.length+' 个账本的明细　净值曲线 · 持仓 · 主题分布')+'</button></div>'
     +'<div id="cmpDetail" style="'+(cmpOpen?'':'display:none')+';margin-top:var(--space-5)">'
+      +medals
+      +themeMixCard(books)
       +pairedEquitySVG(books)
       +table
       +holdingsMatrix(books)
@@ -3889,7 +3894,10 @@ function stageCorpusBody(){
     var insts={};docs.forEach(function(d){if(d.institution)insts[d.institution]=(insts[d.institution]||0)+1});
     var instTop=Object.keys(insts).sort(function(a,b){return insts[b]-insts[a]}).slice(0,8);
     breakdown='<div style="margin-top:var(--space-2)">'
-      +'<div class="card-note" style="margin-bottom:6px">词表命中主题的研报（去重后 '+fmtInt(docs.length)+' 篇）按来源分：</div>'
+      /* 这里的「命中」只按标题算，主题发现那一步按全文算，两个数差很远。
+       * 不写清楚，读者会以为 858 篇里只有两百多篇被用上，其余白读了。 */
+      +'<div class="card-note" style="margin-bottom:6px">词表命中主题的研报（去重后 '+fmtInt(docs.length)+' 篇）按来源分'
+      +'<span class="gloss" title="这一栏按标题关键词计数，用于给每个主题挂出可点开的证据清单，口径与主题打分一致。主题发现那一步另按全文（标题＋摘要＋正文前 3000 字）统计覆盖率，同一期通常在八成以上——两个数不一样是因为口径不同，不是说其余研报没被读到：它们进了同一份封存材料，写想法时四种方法都能用。">ⓘ</span>：</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
       +[1,2,3].filter(function(t){return tiers[t]}).map(function(t){return tierTag(t).replace('</span>',' · '+fmtInt(tiers[t])+' 篇</span>')}).join('')
       +'</div>'

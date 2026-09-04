@@ -207,5 +207,14 @@ Assistant 起来后用 RunCommand + TOS 预签名 URL,要么在 UserData 里放�
 验证(部署时就跑一次,不等 15 分钟的第一次触发):开机日志里应有
 `IG_TIMER enabled` 和 `IG_SYNC PULL_OK` / `IG_SYNC_OK <sha>`。
 
-已知待办:`deploy/state/` 只增不删,每天约 48MB。`BlobStore` 故意没有 delete
-(见 base.py 的 immutability 注释),要清理得先决定是否给接口开这个口子。
+已知待办,两条:
+
+1. **页面不会说自己的数据旧了。** dash.html 里那条「⚠ 该快照已 N 天未更新」只在
+   静态模式(`window.__STATIC__`,GitHub Pages)下生效;云端跑的是活服务模式,
+   `generated_at` 是**请求时**算的,所以同步哪怕断掉一周,页面照样显示当下时间。
+   真正的数据新鲜度只能从 `weekly.as_of` 间接看出来。要修得让服务端把快照装载
+   时间(`/data/.state-sha` 的 mtime,或快照键名里的时间戳)放进 `/api/state`,
+   再让页面显示 —— 涉及 `ideagen/serve.py` 和 `web/dash.html`。
+   在此之前,同步是否还活着只能看 `GetConsoleOutput` 里的 `IG_SYNC_*`。
+2. `deploy/state/` 只增不删,每天约 48MB。`BlobStore` 故意没有 delete
+   (见 base.py 的 immutability 注释),要清理得先决定是否给接口开这个口子。

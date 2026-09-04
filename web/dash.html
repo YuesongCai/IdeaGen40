@@ -1115,7 +1115,7 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 /* 筛选B 生产网格 */
 .pgrid{display:grid;gap:6px;align-items:stretch}
 .pg-h{font:500 11px/14px var(--font-mono);color:var(--color-text-metadata);display:flex;align-items:flex-end;justify-content:center;text-align:center;padding-bottom:2px}
-.pg-m{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.pg-m{display:flex;flex-direction:column;justify-content:center;min-width:0;border:none;background:none;text-align:left;font:inherit;cursor:pointer;border-radius:var(--radius-sm)}
 .pg-m .t{font:500 13px/18px var(--font-sans);color:var(--color-text-primary);white-space:nowrap}
 .pg-m .s{font:400 11px/14px var(--font-sans);color:var(--color-text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pg-cell{border:none;border-radius:var(--radius-md);height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font:600 15px/20px var(--font-mono);color:var(--color-text-primary);transition:box-shadow var(--duration-fast) var(--ease-standard)}
@@ -1380,12 +1380,32 @@ body.drawer-lock{overflow:hidden}
   font:400 13px/19px var(--font-sans);color:var(--color-text-secondary);
 }
 .focus-head b{color:var(--color-text-primary)}
-.ftabs{display:flex;gap:6px;margin-bottom:var(--space-3);flex-wrap:wrap}
-.ftab{
-  border:1px solid var(--color-border-default);border-radius:var(--radius-pill);
-  padding:3px 12px;font:500 12px/16px var(--font-sans);color:var(--color-text-metadata);background:var(--color-surface-white);
+/* 聚焦状态条。这里原本是一排药丸（全景 / 各主题 / 各方法），列的是和它
+ * 下面那张表一模一样的东西，点下去也是一模一样的结果——同一个动作两个入口，
+ * 其中一个还借用了筛选器的长相（药丸 = 筛过一遍），于是读者以为要选两次。
+ * 现在入口只剩内容本身，这一条只负责说「你正处在什么状态、怎么退出」。 */
+.focus-bar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:var(--space-3);
+  padding:5px 12px;border-radius:var(--radius-pill);
+  background:var(--color-surface-brand-subtle);border:1px solid var(--color-border-brand-subtle);
+  font:400 12px/18px var(--font-sans);color:var(--color-text-secondary);
 }
-.ftab.on{background:var(--color-surface-brand);color:var(--color-text-on-brand);border-color:var(--color-surface-brand)}
+.focus-bar .fb-k{color:var(--color-text-metadata)}
+.focus-bar .fb-v{color:var(--color-text-brand);font-weight:600}
+.focus-bar .fb-s{color:var(--color-text-tertiary)}
+.focus-bar .fb-x{
+  margin-left:auto;border:none;background:none;padding:0 2px;cursor:pointer;
+  font:500 12px/18px var(--font-sans);color:var(--color-text-brand);text-decoration:underline;
+}
+/* 内容即控件：方法名、策略名原本只是标签，聚焦得回到上面那排药丸去点。
+ * 药丸拆掉之后它们自己就是入口，所以必须看得出可点。 */
+.pg-m:hover{background:var(--color-surface-subtle)}
+.pg-m:hover .t{color:var(--color-text-brand)}
+.sel-leg .nm-btn{
+  border:none;background:none;padding:0;cursor:pointer;
+  font:500 13px/18px var(--font-sans);color:var(--color-text-primary);white-space:nowrap;
+}
+.sel-leg .nm-btn:hover{color:var(--color-text-brand);text-decoration:underline}
 .gate-table th.cf .r-in{color:var(--color-text-brand);font-weight:600}
 .gate-table td.cf,.gate-table th.cf{background:var(--color-surface-brand-subtle)}
 </style>
@@ -1910,6 +1930,7 @@ var VIEWS=[
    icon:'<path d="M8 2 2.8 4.1v4c0 3 2.1 4.8 5.2 5.4 3.1-.6 5.2-2.4 5.2-5.4v-4L8 2Z"/>',
    secs:[{s:'strategies',label:'选取策略对比'},
          {s:'backtest',label:'历史回测'},
+         {s:'limits',label:'已知局限'},
          {s:'receipt',label:'运行回执'}]}
 ];
 function viewOf(id){return VIEWS.find(function(v){return v.id===id})||VIEWS[0]}
@@ -2144,6 +2165,7 @@ function renderEvidence(){
   root.innerHTML=
      secWrap('evidence','strategies',raceHero(aggBooks()))
     +secWrap('evidence','backtest',backtestCard())
+    +secWrap('evidence','limits',limitsCard())
     +secWrap('evidence','receipt',runReceiptStrip());
   if($('candTable')){bindCandSort();renderCandBody()}
 }
@@ -2484,7 +2506,7 @@ function raceHero(ag){
     +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
       +noiseHeadline(books,weekN)+'</div>'
     +'<div class="quiet">第 '+weekN+' 周 · 大约要到第 '+TARGET_WEEKS+' 周才够判定'
-      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="openTrustDrawer()">尚不排名的依据 ⓘ</button></div>'
+      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="gotoSection(\'evidence\',\'strategies\')">尚不排名的依据 ⓘ</button></div>'
     +agg
     +foldBlock('week.books.compare','对比图与 '+books.length+' 个账本明细','相对基准差距 · 净值曲线 · 持仓 · 主题分布',
         sentence
@@ -3470,7 +3492,8 @@ function backtestCard(){
         +'本表以单条想法为单位：候选池内每条想法按当时收盘价买入、'
         +fmtInt(sum.horizon_days)+' 天后卖出的损益。策略对比图以账本为单位，受选取条数、仓位、止损与现金约束，两者结论可以不一致。<br>'
         +esc(humanizeKeys(sum.disclaimer||''))+'</div>'
-      +'<button type="button" class="exp-btn" data-el="week.backtest.full" onclick="openTrustDrawer()">完整回测 ›</button>')
+      +'<div style="margin-top:var(--space-5);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle)">'
+      +backtestSection()+'</div>')
     +'</div>';
 }
 
@@ -3585,12 +3608,14 @@ function setBacktestStart(value){
   var b=(S&&S.backtest)||{};
   if(!value)return;
   backtestStart=value<b.window_start?b.window_start:(value>b.window_end?b.window_end:value);
-  renderDrawers();
-  requestAnimationFrame(function(){
+  /* 完整回测已经从抽屉搬进「证据」页，重渲染的是那一页；抽屉里可能还开着
+     别的东西，也一并刷新。用 setTimeout 而不是 rAF，理由同别处。 */
+  renderEvidence();renderDrawers();
+  setTimeout(function(){
     var body=document.querySelector('.drawer:last-of-type .drawer-body');
     var el=body?body.querySelector('#sec-backtest'):$('sec-backtest');
-    if(el)el.scrollIntoView({block:'start'});
-  });
+    if(el&&body)el.scrollIntoView({block:'start'});else scrollToEl($('sec-backtest'));
+  },0);
 }
 function median(values){
   if(!values.length)return null;
@@ -3752,6 +3777,16 @@ function closeDrawers(){drawerStack=[];renderDrawers()}
 function gotoView(v,anchor){closeDrawers();goto(v,anchor)}
 function openStageDrawer(i,f){drawerStack=[{t:'stage',p:i,f:(f===undefined?null:f)}];renderDrawers()}
 function goStage(i){openStageDrawer(i)}
+/* 聚焦状态条：一句回执 + 一个退出，不是第二份清单。
+ * 判断标准很简单——它不该让读者再做一次「选哪个」的决定，
+ * 那个决定已经在下面的表上做过了。 */
+function focusBar(label,hint){
+  return '<div class="focus-bar">'
+    +'<span class="fb-k">只看</span><b class="fb-v">'+esc(label)+'</b>'
+    +(hint?'<span class="fb-s">'+esc(hint)+'</span>':'')
+    +'<button type="button" class="fb-x" onclick="setDrawerFocus(null)">回到全景</button>'
+    +'</div>';
+}
 function setDrawerFocus(f){
   var top=drawerStack[drawerStack.length-1];
   if(top){top.f=f;top.scrolled=false;renderDrawers();return}
@@ -3768,7 +3803,9 @@ function openPosDrawer(code){pushDrawer({t:'pos',p:code})}
 function openBookDrawer(sel){pushDrawer({t:'book',p:sel})}
 function openStatusDrawer(){pushDrawer({t:'status',p:''})}
 function openCalDrawer(){pushDrawer({t:'cal',p:''})}
-function openTrustDrawer(){pushDrawer({t:'trust',p:''})}
+/* 8 个调用点全部保留，但不再打开抽屉——统一落到「证据」页的对应位置，
+   于是它们变成可寻址、可分享、可后退的，而且再也不会有四个名字指向同一处。 */
+function openTrustDrawer(){gotoSection('evidence','limits')}
 function openRunLog(runId){drawerStack=[{t:'runlog',p:runId||((J&&J.run_id)||'')}];renderDrawers()}
 function openRunLogStacked(runId){pushDrawer({t:'runlog',p:runId||''})}
 /* 从追问记录往下钻要「叠」而不是「跳」：openStageDrawer 会清空抽屉栈，
@@ -4671,7 +4708,7 @@ function stageCorpusBody(){
   var evAll=(w.evidence)||{};
   var body;
   if(n){
-    body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期（'+esc(w.as_of||'')+'）一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n)+'</b> 条研报。这是后面所有判断的原材料。'
+    body='<div class="quiet" style="margin-bottom:var(--space-4)">这一期（'+esc(w.as_of||'')+'）一共读入 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(n)+'</b> 条研报'
       +'　<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of||'')+'\')">逐篇浏览这一期语料 ›</button></div>';
   }else{
     body='<div class="empty-sm">本期研报尚未读入'+(w.in_flight?'，收集中':'')+'</div>';
@@ -4786,13 +4823,10 @@ function stageTopicsBody(d){
   var SEGL=['H 热度','G 分歧','E 实据','P 已定价'];
   var SEGW=[0.30,0.25,0.25,0.20];
   var SEGG=[HGEP_GLOSS.H,HGEP_GLOSS.G,HGEP_GLOSS.E,HGEP_GLOSS.P];
-  var tabs='';
-  if(foc){
-    tabs='<div class="ftabs"><button type="button" class="ftab" onclick="setDrawerFocus(null)">全景</button>'
-      +topicChosen('hgep').map(function(t){
-        return '<button type="button" class="ftab'+(t===foc?' on':'')+'" onclick="setDrawerFocus(\''+jss(t)+'\')">'+esc(t)+'</button>';
-      }).join('')+'</div>';
-  }
+  /* 这排药丸只列入选的 5 个，下面的表却有全部主题（含落选）——两边不是同一份
+   * 清单，却长得像同一个筛选器；聚焦在落选主题上时药丸还一个都不亮。
+   * 表本身就是清单，点行即可，这里只留状态。 */
+  var tabs=foc?focusBar(foc+(topicLabel(foc)?'　'+topicLabel(foc):''),'其余主题已压暗'):'';
   var agree0=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
   var hOnly0=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
   var cOnly0=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
@@ -4840,7 +4874,7 @@ function stageTopicsBody(d){
       var gap=(cutScore!==null&&r.score!==undefined)?(cutScore-(r.score||0)):null;
       side='<span class="sc num">'+numOr(r.score)+'</span><span class="d">'+(gap!==null?'差 '+gap.toFixed(1)+' 分':'落选')+(ctrlChosen[r._id]?' · <span style="color:var(--color-text-brand)">仅计数臂</span>':'')+'</span>';
     }
-    rowHTML+='<button type="button" class="race-row'+(isIn?'':' lost')+focCls+'" id="topicrow-'+esc(r._id)+'" onclick="'+(foc===r._id?'setDrawerFocus(null)':'setDrawerFocus(\''+jss(r._id)+'\')')+'" title="'+(foc===r._id?'取消聚焦':'聚焦该主题并展开证据')+'">'
+    rowHTML+='<button type="button" class="race-row'+(isIn?'':' lost')+focCls+'" id="topicrow-'+esc(r._id)+'" onclick="'+(foc===r._id?'setDrawerFocus(null)':'setDrawerFocus(\''+jss(r._id)+'\')')+'" title="'+(foc===r._id?'回到全景':'只看这一个主题：其余压暗，并就地展开它的研报证据')+'">'
       +'<span class="race-name"><span class="id">'+esc(r._id)+'</span><span class="lbl">'+esc(r.label||'')+'</span></span>'
       +'<span class="race-track"><span class="race-bar" style="width:'+barPct.toFixed(1)+'%">'+segs+'</span>'+cnt+'</span>'
       +'<span class="race-side">'+side+'</span>'
@@ -4947,10 +4981,11 @@ function stageGeneratorsBody(d){
     var fo=GEN_ORDER.find(function(o){return o[0]===d.f||methodName(o[0])===methodName(d.f)});
     if(fo)focKey=fo[0];
   }
-  var tabs='<div class="ftabs"><button type="button" class="ftab'+(!focKey?' on':'')+'" onclick="setDrawerFocus(null)">全景</button>'
-    +GEN_ORDER.map(function(o){
-      return '<button type="button" class="ftab'+(focKey===o[0]?' on':'')+'" onclick="setDrawerFocus(\''+o[0]+'\')">'+esc(o[1])+'</button>';
-    }).join('')+'</div>';
+  /* 药丸列 4 种方法，下面网格的第一列也列同样 4 种方法，只有药丸能点——
+   * 读者在网格里点方法名没反应，只好回到上面再点一次。现在反过来：
+   * 网格里的方法名就是入口，这里只留状态。 */
+  var focRow=focKey?GEN_ORDER.find(function(o){return o[0]===focKey}):null;
+  var tabs=focRow?focusBar(focRow[1],'其余方法已压暗'):'';
   /* 焦点头：它是谁 · 产出 · 独有标的（方法间最真实的 diff）· 重合率 */
   var focusHead='';
   if(focKey){
@@ -4995,7 +5030,11 @@ function stageGeneratorsBody(d){
     var g=genByKey(o[0]);
     var isFoc=focKey===o[0];
     var dimS=(focKey&&!isFoc)?';opacity:.35':'';
-    html+='<div class="pg-m'+(isFoc?' foc':'')+'" style="padding:2px 6px'+dimS+'"><span class="t">'+esc(o[1])+' <span class="gloss" title="'+esc(genGlossTitle(o))+'">ⓘ</span></span><span class="s" title="'+esc(genGlossTitle(o))+'">'+esc(o[2])+'</span></div>';
+    html+='<button type="button" class="pg-m'+(isFoc?' foc':'')+'" style="padding:2px 6px'+dimS+'"'
+      +' onclick="setDrawerFocus('+(isFoc?'null':'\''+o[0]+'\'')+')"'
+      +' title="'+(isFoc?'回到全景':'只看这一种方法：其余压暗，并展开它的独有标的与重合率')+'">'
+      +'<span class="t">'+esc(o[1])+' <span class="gloss" title="'+esc(genGlossTitle(o))+'">ⓘ</span></span>'
+      +'<span class="s">'+esc(o[2])+'</span></button>';
     if(g){
       var per=(g.meta||{}).per_topic||{};
       chosen.forEach(function(t){
@@ -5023,7 +5062,8 @@ function stageGeneratorsBody(d){
   var total=gens.reduce(function(a,g){return a+(g.n||0)},0);
   return tabs+focusHead
     +pathLegend(GEN_PATH,GEN_ORDER.map(function(o){return o[0]}))
-    +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法 × '+chosen.length+' 个主题并行生成，彼此独立 '+glossMark('每条想法是 1 个月期限的结构化输出，含概率、上下行情景与论点。四种方法互不可见。')+' · 本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条 · 色深 = 产量</div>'
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法 × '+chosen.length+' 个主题并行生成，彼此独立 '+glossMark('每条想法是 1 个月期限的结构化输出，含概率、上下行情景与论点。四种方法互不可见。')+' · 本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条 · 色深 = 产量'
+    +(focKey?'':' · 点方法名只看一种，点格子去候选池看那批想法')+'</div>'
     +html
     +epi('目标为每方法每主题 '+(target||20)+' 条；未写满不补足，缺口本身为观测量');
 }
@@ -5106,11 +5146,10 @@ function stageSelectorsBody(d){
   if(!sels.length){
     return '<div class="empty-sm">本期选取策略尚未执行'+(w.in_flight?'，候选池合并后开始':'')+'</div>';
   }
-  var tabs='<div class="ftabs"><button type="button" class="ftab'+(!foc?' on':'')+'" onclick="setDrawerFocus(null)">全景</button>'
-    +sels.map(function(sl){
-      return '<button type="button" class="ftab'+(foc===sl.name?' on':'')+'" onclick="setDrawerFocus(\''+jss(sl.name)+'\')">'+esc(selMetaOf(sl.name)[1])+'</button>';
-    }).join('')+'</div>'
-    +pathLegend(SEL_PATH,sels.map(function(sl){return sl.name}));
+  /* 同上：药丸和下面的策略卡片列的是同一批策略。入口收敛到卡片本身。 */
+  var tabs=(foc?focusBar(selMetaOf(foc)[1],'其余策略已压暗'):'')
+    +pathLegend(SEL_PATH,sels.map(function(sl){return sl.name}))
+    +(foc?'':'<div class="card-note" style="margin-bottom:var(--space-2)">点策略名只看它：其余压暗，并展开它放行的标的</div>');
   var focusHead='';
   if(foc){
     var fs=sels.find(function(x){return x.name===foc});
@@ -5138,7 +5177,8 @@ function stageSelectorsBody(d){
       var hasBook=books.some(function(b){return b.selector===s.name});
       var fCls=foc?(s.name===foc?' foc':' dim'):'';
       return '<div class="sel-leg'+fCls+'" id="selleg-'+i+'" style="background:'+(isCtl?'var(--color-feedback-neutral-subtle)':'var(--color-surface-brand-subtle)')+'">'
-        +'<span class="nm">'+esc(m[1])+'</span>'
+        +'<button type="button" class="nm nm-btn" onclick="setDrawerFocus('+(foc===s.name?'null':'\''+jss(s.name)+'\'')+')"'
+          +' title="'+(foc===s.name?'回到全景':'只看这一个策略：其余压暗，并展开它放行的标的')+'">'+esc(m[1])+'</button>'
         +'<span class="tag" style="flex:none">'+esc(m[2])+'</span>'
         +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b> <span class="gloss" title="'+esc(selPlain(s.name))+'">ⓘ</span>　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
         +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+jss(s.name)+'\',\'策略 '+esc(m[1])+'\')">回候选池 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
@@ -5155,11 +5195,11 @@ function stageSelectorsBody(d){
           if(!bar){
             var pend=Number(bk.pending_orders)||0,exp=Number(bk.expired_orders)||0;
             if(!pend&&!exp)return '<span class="sel-tx"><span class="sel-tx-note">当前无在场持仓，无主题敞口</span></span>';
-            return '<span class="sel-tx"><span class="sel-tx-note">尚无在场持仓：'
-              +(pend?fmtInt(pend)+' 笔挂单等待成交':'')
-              +(pend&&exp?'，':'')
-              +(exp?fmtInt(exp)+' 笔已过期未成交':'')
-              +' —— 未成交前不产生主题敞口</span></span>';
+            return '<span class="sel-tx" title="未成交前不产生主题敞口，所以这里没有敞口条"><span class="sel-tx-note">'
+              +(pend?fmtInt(pend)+' 笔挂单待成交':'')
+              +(pend&&exp?' · ':'')
+              +(exp?fmtInt(exp)+' 笔已过期':'')
+              +'</span></span>';
           }
           return '<span class="sel-tx" title="主题敞口：'+esc(bookThemeMix(bk).mix.map(function(m){
             return m.theme+' '+m.share.toFixed(0)+'%'}).join('　'))+'">'+bar+'</span>';
@@ -6254,6 +6294,22 @@ function calDrawerBody(){
 }
 
 /* ── 可信度与局限抽屉：未验证假设 + 已修复缺陷 + 历史回测 ── */
+/* 「已知局限」原本是一个叫「可信度与局限」的抽屉，挂着 8 个入口、4 种文案
+   （可信度与局限 › / 可信度与局限 → / 尚不排名的依据 ⓘ / 完整回测 ›），
+   读者会以为点进去是四个不同的地方。它讲的是「凭什么信」，本来就属于证据
+   这一页，不该是抽屉——抽屉留给某一个具体对象的详情。 */
+function limitsCard(){
+  var assum=S.assumptions||[],fixes=S.fixes||[];
+  if(!assum.length&&!fixes.length)return '';
+  var doneN=fixes.filter(function(f){return (f.state||'').indexOf('✅')>=0}).length;
+  return '<div class="card section">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">已知局限</h2>'
+    +'<span class="card-note">这套方法目前哪些前提还没被验证，以及已经发现并修掉的缺陷</span></div>'
+    +'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)">'
+      +assum.length+' 条前提尚未验证；'+fixes.length+' 个已发现的缺陷里修好了 '+doneN+' 个。</div>'
+    +foldBlock('evidence.limits.detail','逐条明细','未验证假设 · 已修复缺陷',trustBody())
+  +'</div>';
+}
 function trustDrawerBody(){
   var assum=S.assumptions||[],fixes=S.fixes||[];
   var aRows=assum.map(function(a,ai){
@@ -6294,9 +6350,10 @@ function trustDrawerBody(){
     +'<div class="trust-grid">'
       +'<div><h3 class="trust-h">未验证假设 · '+assum.length+'</h3>'+(aRows||'<div class="empty-sm">暂无</div>')+'</div>'
       +'<div><h3 class="trust-h">已修复缺陷 · '+doneN+' / '+fixes.length+'</h3>'+(fRows||'<div class="empty-sm">暂无</div>')+'</div>'
-    +'</div>'
-    +'<div style="margin-top:var(--space-6)">'+backtestSection()+'</div>';
+    +'</div>';
 }
+/* 抽屉与页内段共用同一份正文，两处不会各自演化。 */
+function trustBody(){return trustDrawerBody()}
 function hktDateOf(iso){
   var d=new Date(iso);if(isNaN(d))return '';
   return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Hong_Kong',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
@@ -6769,8 +6826,10 @@ function phReviewCard(){
       return '<div class="ph-field"><code>'+esc(f.field)+'</code><span>'+esc(f.desc)+'</span></div>'
     }).join('')
    +'</div><div class="card-note" style="margin-top:8px">'
-   +'答不上这些字段的想法会被丢弃，不会凑数。这是准则有没有被执行的凭据：'
-   +'一个月后可逐条核对，丢弃率本身也说明语料撑不撑得起这条准则。</div></div>';
+   +'这些字段是给你<b>核对</b>用的，不是可以直接相信的。必填字段不会让模型在'
+   +'材料里找不到时省略，只会让它写点什么出来——首次实测它就点名了一家材料里'
+   +'根本没提的机构。系统能保证的是：它必须写、必须带出处、写不出的整条丢弃，'
+   +'而丢弃率本身说明语料撑不撑得起这条准则。写得实不实，要你点开看。</div></div>';
 
   if(rw.length){
     h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">3</span>'

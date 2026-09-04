@@ -2816,3 +2816,41 @@ class TestEmptyCandidatePoolIsAFailure(unittest.TestCase):
         self.assertLess(code.index("not res.n_candidates"),
                         code.index("res.ok = True"),
                         "空池检查必须在标记成功之前")
+
+
+class TestAsOfAuditRefusesFutureData(unittest.TestCase):
+    """回放上下文带了未来的东西，必须中止而不是给个数字。
+
+    Jon's second requirement is that a backtest be strictly time-clamped. The
+    audit is the mechanism; this pins that it actually refuses, because an
+    audit that only warns gets ignored — the warning scrolls past and the
+    number looks fine.
+    """
+
+    def _audit(self, **kw):
+        from ideagen.backtest import Audit
+        base = dict(as_of="2026-08-19", inputs_sha="x",
+                    clamp={"US": "2026-08-19"})
+        base.update(kw)
+        return Audit(**base)
+
+    def test_a_document_published_after_the_replayed_day_is_a_leak(self):
+        a = self._audit(corpus_max_published_d="2026-08-20")
+        self.assertTrue(a.check())
+        self.assertIn("语料", a.check()[0])
+
+    def test_a_close_after_the_clamp_is_a_leak(self):
+        a = self._audit(price_max_d="2026-08-20")
+        self.assertTrue(a.check())
+        self.assertIn("行情", a.check()[0])
+
+    def test_a_candidate_from_a_later_period_is_a_leak(self):
+        a = self._audit(candidates_max_as_of="2026-08-26")
+        self.assertTrue(a.check())
+        self.assertIn("候选", a.check()[0])
+
+    def test_a_clean_context_reports_no_leak(self):
+        a = self._audit(corpus_max_published_d="2026-08-18",
+                        price_max_d="2026-08-19",
+                        candidates_max_as_of="2026-08-19")
+        self.assertEqual(a.check(), [])

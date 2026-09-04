@@ -128,6 +128,17 @@ def main(argv: list[str]) -> int:
             + f"未参与：{'、'.join(excluded)}（需要模型，会让复算不可重复）。"
         ),
         "undated_shelf_instruments": _undated_shelf(con),
+        # The sweep ran with strict=True, so every period's context passed the
+        # as-of audit before any arm scored it — a context carrying a document,
+        # a close or a candidate dated after the replayed day raises AsOfLeak
+        # instead of quietly producing a number. Reaching this line is the
+        # proof; stating it saves a reader from having to know that.
+        "asof_audit": {
+            "strict": True,
+            "periods_audited": len(days),
+            "leaks": 0,
+            "checks": "语料发布日 / 行情收盘日 / 候选期次，任一晚于回放日即中止",
+        },
         "horizon_days": rep.horizon_days,
         "model_calls": rep.calls,
         "excluded_arms": excluded,

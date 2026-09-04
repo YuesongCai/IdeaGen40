@@ -107,6 +107,11 @@ runcmd:
   - [ sh, -c, "git clone --quiet --depth 50 {REPO} /opt/ideagen/app && echo IG_CLONE $(git -C /opt/ideagen/app rev-parse --short HEAD) || echo IG_CLONE_FAIL" ]
   - [ sh, -c, "umask 077; curl -fsS '{env_url}' -o /opt/ideagen/config/runtime.env && chmod 600 /opt/ideagen/config/runtime.env && echo IG_ENV $(grep -c = /opt/ideagen/config/runtime.env) || echo IG_ENV_FAIL" ]
   - [ sh, -c, "curl -fsS '{db_url}' -o /opt/ideagen/data/ideagen.db && echo IG_DB $(stat -c%s /opt/ideagen/data/ideagen.db) || echo IG_DB_FAIL" ]
+  # 镜像里跑的是 USER ideagen (uid 10001)，而下载下来的库归 root、0600。
+  # SQLite 连只读查询也要写(WAL/临时页)，所以不 chown 的话每个 API 都会
+  # 返回 "attempt to write a readonly database" —— 服务、数据、网络全对，
+  # 只差这一步，而且症状看起来像数据没到。
+  - [ sh, -c, "chown -R 10001:10001 /opt/ideagen/data && chmod 664 /opt/ideagen/data/ideagen.db && echo IG_PERM $(stat -c'%U:%a' /opt/ideagen/data/ideagen.db)" ]
   - [ sh, -c, "cd /opt/ideagen/app && docker build -q -t ideagen40:live -f deploy/Dockerfile . >/dev/null 2>&1 && echo IG_BUILD || echo IG_BUILD_FAIL" ]
   - [ sh, -c, "docker rm -f ideagen-dash >/dev/null 2>&1; docker run -d --name ideagen-dash --restart always --env-file /opt/ideagen/config/runtime.env -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db -v /opt/ideagen/data:/data -p 80:8765 -p 443:8765 --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 && echo IG_RUN || echo IG_RUN_FAIL" ]
   - [ sh, -c, "sleep 25; docker ps -a --filter name=ideagen-dash --format 'IG_PS {{{{.Status}}}}'" ]

@@ -101,6 +101,16 @@ say "runtime.env present ($(grep -c = /opt/ideagen/config/runtime.env) keys)"
 
 # Hand :80 to Caddy. If the stack fails to come up the probe comes back carrying
 # the tail of this log, so a failure stays visible from outside.
+# The oauth mount is chowned again here, after runtime.env is in place and
+# `say` exists, because the early chown at the top runs before there is any way
+# to report it -- and a token directory the app cannot read is invisible until
+# something needs a token. Printing the resulting mode and contents makes the
+# state of this one directory readable from outside the instance, which is the
+# only view of it there is on an image with no shell.
+chown -R 10001:10001 /opt/ideagen/oauth 2>/dev/null || true
+say "oauth dir: $(stat -c '%U:%G %a' /opt/ideagen/oauth 2>/dev/null) contents=[$(ls -A /opt/ideagen/oauth 2>/dev/null | tr '\n' ' ')]"
+say "olive configured: $(grep -c '^OLIVE_' /opt/ideagen/config/runtime.env) keys"
+
 say "starting dashboard + proxy"
 pkill -f "http.server 80" >/dev/null 2>&1 || true
 sleep 1

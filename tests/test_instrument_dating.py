@@ -18,8 +18,9 @@ So these tests hold three things still:
   documented asymmetry and the reason undated rows are counted rather than
   quietly decided;
 * whatever writers put in the column parses as a calendar date;
-* the guard that drops the vendor's epoch sentinel stays, since a 1970 date is
-  indistinguishable from a real one to the gate and passes every period.
+* the guard that drops the vendor's epoch sentinel stays — the guard itself,
+  reached through `vendor_listing_date`, not the constant it compares against;
+  asserting the constant while describing the guard left the guard unheld.
 """
 
 from __future__ import annotations
@@ -151,16 +152,43 @@ class ColumnHoldsDates(unittest.TestCase):
 
 
 class VendorSentinel(unittest.TestCase):
-    def test_the_epoch_sentinel_is_not_treated_as_a_listing_date(self):
+    """The guard, not the constant.
+
+    This class asserted `_EPOCH_SENTINEL == "1970-01-01"` and said in its
+    docstring that it held the guard. Deleting the guard from `listing_dates`
+    and leaving the constant untouched kept all twelve tests green — the
+    sentinel would have been written into `first_seen_d` and passed every
+    as-of gate, with nothing red. The filter now lives in a function a test can
+    call, which is the only reason these assertions mean anything.
+    """
+
+    def test_the_sentinel_is_refused_by_the_filter_itself(self):
         # OpenD returns 1970-01-01 for every US ETF it has no listing date for.
-        # Stored, it asserts SPY listed in 1970 and passes every period, so the
-        # source module drops it. Guarding the constant keeps the meaning.
         from ideagen.sources import futu_px
-        self.assertEqual(futu_px._EPOCH_SENTINEL, "1970-01-01")
+        self.assertIsNone(futu_px.vendor_listing_date("1970-01-01"))
+        self.assertIsNone(futu_px.vendor_listing_date("1970-01-01 00:00:00"))
+
+    def test_a_real_vendor_date_survives_the_filter(self):
+        # Without this the filter could refuse everything and still pass above.
+        from ideagen.sources import futu_px
+        self.assertEqual(futu_px.vendor_listing_date("2020-12-02"), "2020-12-02")
+        self.assertEqual(
+            futu_px.vendor_listing_date("2019-05-08 09:30:00"), "2019-05-08")
+
+    def test_empty_and_junk_are_no_answer_rather_than_a_guess(self):
+        from ideagen.sources import futu_px
+        for raw in (None, "", "N/A", "--", 0):
+            with self.subTest(raw=raw):
+                self.assertIsNone(futu_px.vendor_listing_date(raw))
+
+    def test_why_it_must_never_reach_the_column(self):
+        # Stated as the consequence: a 1970 date is indistinguishable from a
+        # real one to the gate, so it is admitted on every period.
+        from ideagen.sources import futu_px
         ok, _ = universe.eligible(
             [_etf("SENTINEL", futu_px._EPOCH_SENTINEL)], as_of=date(2026, 7, 29))
-        self.assertEqual(len(ok), 1, "a 1970 date would pass any gate — "
-                                     "which is why it must never be stored")
+        self.assertEqual(len(ok), 1, "a 1970 date passes any gate — which is "
+                                     "why the filter above must refuse it")
 
 
 if __name__ == "__main__":

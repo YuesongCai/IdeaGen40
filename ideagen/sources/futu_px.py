@@ -367,6 +367,22 @@ def move_z(con, code: str, d: str, lookback: int = 60) -> float | None:
 _EPOCH_SENTINEL = "1970-01-01"
 
 
+def vendor_listing_date(raw: object) -> str | None:
+    """One vendor `listing_date` cell, or None when it is not a usable date.
+
+    Split out of `listing_dates` so it can be called without an OpenD
+    connection. It was inline first, and the test that claimed to hold "the
+    guard that drops the epoch sentinel stays" asserted the value of
+    `_EPOCH_SENTINEL` instead — deleting the guard and leaving the constant
+    kept every test green. A constant is not a behaviour; asserting one and
+    describing the other is how a check ends up guarding nothing.
+    """
+    d = str(raw or "")[:10]
+    if not d or d == _EPOCH_SENTINEL or not d[:4].isdigit():
+        return None
+    return d
+
+
 def listing_dates(codes: Sequence[str]) -> tuple[dict[str, str], dict[str, str]]:
     """Vendor listing dates, with the epoch sentinel dropped rather than stored.
 
@@ -397,8 +413,8 @@ def listing_dates(codes: Sequence[str]) -> tuple[dict[str, str], dict[str, str]]
                     if ret != RET_OK:
                         continue
                     for _, r in data.iterrows():
-                        d = str(r.get("listing_date") or "")[:10]
-                        if d and d != _EPOCH_SENTINEL and d[:4].isdigit():
+                        d = vendor_listing_date(r.get("listing_date"))
+                        if d:
                             out.setdefault(str(r["code"]), d)
                     time.sleep(0.35)
     return out, fail

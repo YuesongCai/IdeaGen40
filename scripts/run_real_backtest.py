@@ -118,14 +118,14 @@ def main(argv: list[str]) -> int:
         "n_live_periods": len(days) - n_backfill,
         "n_backfill_periods": n_backfill,
         "disclaimer": (
-            "候选池与价格都是真实的，as-of 在文档层面严格钳制。"
+            "候选池与价格均为真实数据，as-of 在文档层面严格钳制。"
             + (f"其中 {n_backfill} 期是事后补跑（backfill），有两处无法用代码消除的"
-               "前视风险：①模型权重见过该日期之后的世界；②货架上有 "
-               f"{_undated_shelf(con)} 个标的没有上架日期，按当期资格过滤时只能放行，"
-               "所以补跑期的可选标的可能包含当时尚未上架的产品。"
+               "前视风险：①模型权重已见过该日期之后的信息；②货架上有 "
+               f"{_undated_shelf(con)} 个标的缺少上架日期，按当期资格过滤时一律放行，"
+               "补跑期的可选标的可能包含当时尚未上架的产品。"
                "结论性判断以 live 期为准。"
                if n_backfill else "")
-            + f"未参与：{'、'.join(excluded)}（需要模型，会让复算不可重复）。"
+            + f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。"
         ),
         "undated_shelf_instruments": _undated_shelf(con),
         # The sweep ran with strict=True, so every period's context passed the

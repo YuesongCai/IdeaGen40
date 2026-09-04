@@ -169,6 +169,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json({"error": name}, status=404)
             self._set_download = name
             return self._raw(blob, "application/zip")
+        if path == "/api/asks":
+            # The session record: every question put to a past run, newest
+            # first. Read-only view of the same log the audit bundle ships.
+            from urllib.parse import parse_qs, urlparse
+            from . import ask as _ask_mod
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                lim = int((q.get("limit") or ["50"])[0])
+            except ValueError:
+                lim = 50
+            return self._json({"asks": _ask_mod.recent_asks(
+                lim, (q.get("run_id") or [None])[0])})
         if path == "/api/ask/context":
             # 「问当时的它」— the frozen material a decision saw, for display.
             from urllib.parse import parse_qs, urlparse
@@ -347,15 +359,20 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
                     f"border-radius:4px'>{tb}</pre></body>")
             self._raw(page.encode(), "text/html; charset=utf-8", status=500)
 
+    #: No indent: the state document is read by the dashboard, not by eye, and
+    #: pretty-printing it cost 154 KB of the 806 KB it used to weigh. `/api/doc`
+    #: and friends are small enough that one rule for all of them is simpler
+    #: than a per-route exception.
     def _json(self, obj, status: int = 200) -> None:
-        self._raw(json.dumps(obj, ensure_ascii=False, indent=1, default=str).encode(),
+        self._raw(json.dumps(obj, ensure_ascii=False, separators=(",", ":"),
+                             default=str).encode(),
                   "application/json; charset=utf-8", status=status)
 
     def _redirect(self, location: str) -> None:
         self.send_response(303)
         self.send_header("Location", location)
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self._security_headers()
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -372,20 +389,72 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
         self.send_header("Location", location)
         self.send_header("Set-Cookie", self._set_cookie)
         self.send_header("Cache-Control", "no-store")
+        self._security_headers()
         self.send_header("Content-Length", "0")
         self.end_headers()
         self._set_cookie = None
         self._strip_auth_query = False
 
+    #: The dashboard is one self-contained file: inline <style>, inline
+    #: <script> and inline event handlers, and it fetches only same-origin
+    #: JSON. 'unsafe-inline' is therefore unavoidable for script/style, but
+    #: everything a page has no business doing here is closed off: no external
+    #: origins, no framing, no plugin content, no form posts, no <base>
+    #: rewriting. Those are the directives that still buy something once
+    #: inline code is allowed.
+    CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+
+    def _security_headers(self) -> None:
+        self.send_header("Content-Security-Policy", self.CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header(
+            "Permissions-Policy",
+            "geolocation=(), microphone=(), camera=(), payment=(), usb=()")
+
+    #: Text bodies above this compress well enough to be worth the CPU; below
+    #: it the header overhead eats the win.
+    GZIP_MIN = 1400
+
     def _raw(self, body: bytes, ctype: str, status: int = 200) -> None:
+        # The state document is ~650 KB of JSON and is refetched every 60
+        # seconds. Over the tunnel that was the slowest part of a refresh;
+        # gzip takes it to ~95 KB. Downloads are left alone: they are already
+        # compressed archives, and re-encoding them buys nothing.
+        encoding = None
+        if (len(body) >= self.GZIP_MIN
+                and not getattr(self, "_set_download", None)
+                and ctype.split("/")[0] in ("text", "application")
+                and "gzip" in self.headers.get("Accept-Encoding", "")):
+            import gzip
+            packed = gzip.compress(body, 6)
+            if len(packed) < len(body):
+                body, encoding = packed, "gzip"
         self.send_response(status)
         if getattr(self, "_set_cookie", None):
             self.send_header("Set-Cookie", self._set_cookie)
             self._set_cookie = None
         self.send_header("Content-Type", ctype)
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self._security_headers()
         if getattr(self, "_set_download", None):
             # RFC 5987: the filename is Chinese, so only the encoded form is
             # sent — a raw non-ASCII header value is what makes browsers fall
@@ -395,7 +464,6 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
                 "Content-Disposition",
                 "attachment; filename*=UTF-8''" + quote(self._set_download))
             self._set_download = None
-        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
 
@@ -431,6 +499,20 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
         import webbrowser
 
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+
+    # Take the first port-health verdict before anyone asks for it. The probe
+    # is cached and refreshed off the request path, but the very first caller
+    # would otherwise be told the verdict is `pending` — honest, yet a worse
+    # first paint than simply having the answer ready.
+    def _warm() -> None:
+        try:
+            from . import platform as plat_mod, review as review_mod
+            review_mod._probe_ports(plat_mod.load())
+        except Exception:  # noqa: BLE001 — warm-up never blocks the server
+            pass
+
+    threading.Thread(target=_warm, name="port-health-warmup",
+                     daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

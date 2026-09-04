@@ -3939,9 +3939,21 @@ function askDrawerBody(d){
   if(prov.some(function(m){return m.kind==='verdict'||m.kind==='counting'||m.kind==='selector'}))parts.push('打分明细');
   if(prov.some(function(m){return m.kind==='generator'||m.kind==='candidate'||m.kind==='pool'}))parts.push('生成记录');
   if(!parts.length)parts.push(fmtInt(stats.n_materials||0)+' 件封存记录');
+  /* 可核对到什么程度，分三层说清楚，不把「查不了」说成「查过了」，
+     也不把「查不了」说成「对不上」——后者是指控，前者只是没有证据。 */
   var shaLine='';
-  if(corpus.verified_sha===true)shaLine='研报清单已按运行封存的输入指纹（inputs_sha）逐一核对，与当时一致';
-  else if(corpus.verified_sha===false)shaLine='⚠ 研报清单按当时口径重建，但与封存的输入指纹没对上——语料库可能在运行后被修补过，回答会连这一点一起如实说';
+  if(corpus.docs_match_journal===true&&corpus.verified_sha===true)
+    shaLine='研报清单与运行当时冻结的清单逐条一致，输入指纹（inputs_sha）也对得上——'
+      +'这一期读了哪些报告可以逐篇复核';
+  else if(corpus.verified_sha===true)
+    shaLine='研报清单已按运行封存的输入指纹（inputs_sha）逐一核对，与当时一致';
+  else if(corpus.docs_match_receipt===true)
+    shaLine='重建出的 '+fmtInt(corpus.n_docs||0)+' 篇与该次运行的语料回执数量一致；'
+      +'完整输入指纹含当时的日历，无法从现在的日历表复算（不代表语料有问题）';
+  else if(corpus.verified_sha===false)
+    shaLine='⚠ 研报清单按当时口径重建，但与封存的输入指纹没对上——语料库可能在运行后被修补过，回答会连这一点一起如实说';
+  else
+    shaLine='这一期早于「冻结输入清单」的改动，只能按当时口径重建，无法逐条核对';
   var gloss='「只依据当时封存的材料」= 回答模型只能看到这次运行当时写下的运行日志、打分/生成/挑选产物，以及证据指向的研报原文行；材料没有的它必须回答「当时的记录里没有这一点」。'+(shaLine?'\n'+shaLine:'');
   var html='<div class="ask-scope">你在追问：<b>'+esc(sid)+(subjLabel&&subjLabel!==sid?'（'+esc(subjLabel)+'）':'')+'</b>'
     +' · '+esc(run.as_of||'—')+' 期'

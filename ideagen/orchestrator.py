@@ -439,6 +439,18 @@ def weekly(
                     res.artifacts.append(j.artifact(
                         "B_pool.json", _blob(candidates)))
 
+            # A period that produced no candidate is a failed period, whatever
+            # happened along the way. Every generator failing on a connection
+            # error still walked the happy path to here, so the run was stored
+            # ok=1 with an empty pool — and the dashboard then counted it as a
+            # completed week, filling a gap that is still a gap (seen on the
+            # 2026-09-02 retry). Stage B is allowed to be empty only when the
+            # caller asked for no generators at all.
+            if not dry_run and generators is not False and not res.n_candidates:
+                raise RuntimeError(
+                    "筛选B 一条想法都没有产出（生成器全部失败或全被丢弃）——"
+                    "这一期没有可挑的候选，不能记为成功")
+
             res.ok = True
             res.journal = j.close(ok=True) if not dry_run else None
             if not dry_run:

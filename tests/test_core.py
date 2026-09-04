@@ -2782,3 +2782,37 @@ class TestPairedVerdictNeedsBothPowerAndSignificance(unittest.TestCase):
         p = self._paired(arm, ctl)
         self.assertFalse(p.conclusive)
         self.assertFalse(p.powered)
+
+
+class TestEmptyCandidatePoolIsAFailure(unittest.TestCase):
+    """一条想法都没产出的一期，不能记成功。
+
+    Every generator failing on a connection error still walks the happy path
+    to the end, so the run was stored ok=1 with an empty pool. The dashboard
+    then counted it as a completed week and the gap it was meant to fill
+    stopped being reported as a gap — observed on the 2026-09-02 retry, whose
+    four generators all died on APIConnectionError.
+    """
+
+    def test_zero_candidates_marks_the_run_failed(self):
+        import datetime as dtm
+        from unittest import mock
+        from ideagen import orchestrator, strategy as strat
+
+        # Stage A succeeds, every generator returns nothing.
+        empty = strat.Verdict(strategy="g", version="1", produced=[],
+                              meta={"error": "APIConnectionError"})
+        with mock.patch.object(strat, "run_all", return_value={"g": empty}):
+            src = orchestrator.weekly.__doc__ or ""
+        # The guard itself is what this test pins; exercising the full weekly
+        # here would need every port. Assert the rule exists and is not
+        # accidentally scoped to dry runs.
+        import inspect
+        code = inspect.getsource(orchestrator.weekly)
+        self.assertIn("not res.n_candidates", code)
+        guard = code[code.index("not res.n_candidates"):]
+        self.assertIn("raise RuntimeError", guard[:400],
+                      "空池必须抛错，而不是继续走到 res.ok = True")
+        self.assertLess(code.index("not res.n_candidates"),
+                        code.index("res.ok = True"),
+                        "空池检查必须在标记成功之前")

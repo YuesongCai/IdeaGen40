@@ -333,9 +333,15 @@ def state(con=None, p=None) -> dict[str, Any]:
         "SELECT as_of FROM orch_runs WHERE run_id LIKE 'gap-%' ORDER BY as_of")]
 
     # -- latest weekly, all three stages ---------------------------------
+    # Newest *period*, not newest execution. Ordering by started_at alone was
+    # fine while runs only ever happened in period order; the moment a missing
+    # historical week is filled in, the front page silently reverts to July
+    # while the books show today. as_of decides which week this is; started_at
+    # only breaks ties between attempts at the same week.
     wk = p.state.q("SELECT run_id, as_of, ok, ended_at, calls, "
                    "data_classification FROM orch_runs "
-                   "WHERE kind='weekly' ORDER BY started_at DESC LIMIT 1")
+                   "WHERE kind='weekly' ORDER BY as_of DESC, started_at DESC "
+                   "LIMIT 1")
     weekly: dict[str, Any] = {}
     if wk:
         r = wk[0]

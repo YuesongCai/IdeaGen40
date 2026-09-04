@@ -2481,3 +2481,48 @@ class TestGeneratorTopUpRound(unittest.TestCase):
             v = _gen.generate_per_topic(ctx, "ai_native", lambda c, t: ("提示词", 1))
         self.assertEqual(len(calls), 1)
         self.assertEqual(v.meta["topup_per_topic"], {})
+
+
+class TestLatestWeeklyIsNewestPeriod(unittest.TestCase):
+    """The front page shows the newest week, not the most recently executed run.
+
+    Ordering by started_at alone held only while runs happened in period order.
+    Backfilling a missing historical week reverses that: the newest execution
+    is the oldest period, and the front page silently reverts to July while
+    the books show today's positions.
+    """
+
+    def test_backfilled_older_period_does_not_take_the_front_page(self):
+        import sqlite3
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.execute("CREATE TABLE orch_runs (run_id TEXT, as_of TEXT, kind TEXT,"
+                    " ok INT, ended_at TEXT, started_at TEXT, calls INT,"
+                    " data_classification TEXT)")
+        con.executemany(
+            "INSERT INTO orch_runs VALUES (?,?,?,?,?,?,?,?)",
+            [("live-0826", "2026-08-26", "weekly", 1, "2026-08-26T00:10",
+              "2026-08-26T00:00", 40, "live"),
+             # executed later, but it is an older week
+             ("back-0729", "2026-07-29", "weekly", 1, "2026-09-04T10:20",
+              "2026-09-04T10:00", 40, "backfill")])
+        sql = ("SELECT run_id, as_of FROM orch_runs WHERE kind='weekly' "
+               "ORDER BY as_of DESC, started_at DESC LIMIT 1")
+        row = dict(con.execute(sql).fetchone())
+        self.assertEqual(row["as_of"], "2026-08-26")
+        self.assertEqual(row["run_id"], "live-0826")
+
+    def test_retry_of_the_same_period_wins_over_the_first_attempt(self):
+        import sqlite3
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.execute("CREATE TABLE orch_runs (run_id TEXT, as_of TEXT, kind TEXT,"
+                    " started_at TEXT)")
+        con.executemany(
+            "INSERT INTO orch_runs VALUES (?,?,?,?)",
+            [("first", "2026-09-02", "weekly", "2026-09-02T07:00"),
+             ("retry", "2026-09-02", "weekly", "2026-09-02T09:00")])
+        row = dict(con.execute(
+            "SELECT run_id FROM orch_runs WHERE kind='weekly' "
+            "ORDER BY as_of DESC, started_at DESC LIMIT 1").fetchone())
+        self.assertEqual(row["run_id"], "retry")

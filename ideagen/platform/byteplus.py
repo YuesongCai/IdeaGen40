@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import threading
 import time
 from typing import Any, Iterable, Iterator, Sequence
 
@@ -210,7 +211,21 @@ class PostgresStateStore(StateStore):
                 self.connect_kwargs["sslmode"] = sslmode
         self.connect_timeout = connect_timeout
         self._con = None
+        self._lock = threading.RLock()
 
+    #: One connection, one lock. The dashboard is served by a threading HTTP
+    #: server, so /api/state and /api/journal arrive on different threads and
+    #: reach for the same store. Neither PyMySQL nor psycopg guarantees a
+    #: connection is safe to use from two threads, and the client protocol is a
+    #: strict request/response sequence on one socket: interleave two and the
+    #: packet numbering desynchronises — `Packet sequence number wrong - got 1
+    #: expected 5`, which is what the cloud dashboard was returning. SQLite never
+    #: showed it because that adapter serialises internally.
+    #:
+    #: A lock rather than a connection per thread: this server spawns a thread
+    #: per request, so thread-local connections would grow without bound and
+    #: exhaust the database's connection limit. Serialising costs nothing at a
+    #: few queries a minute.
     def _c(self):
         if self._con is None or getattr(self._con, "closed", 1):
             try:
@@ -234,24 +249,25 @@ class PostgresStateStore(StateStore):
         return _qmark_to_pyformat(sql)
 
     def q(self, sql: str, args: Sequence[Any] = ()) -> list[dict[str, Any]]:
-        with self._c().cursor() as cur:
+        with self._lock, self._c().cursor() as cur:
             cur.execute(self._sql(sql), tuple(args))
             return list(cur.fetchall())
 
     def execute(self, sql: str, args: Sequence[Any] = ()) -> int:
-        with self._c().cursor() as cur:
+        with self._lock, self._c().cursor() as cur:
             cur.execute(self._sql(sql), tuple(args))
             return cur.rowcount
 
     def executemany(self, sql: str, rows: Iterable[Sequence[Any]]) -> int:
-        with self._c().cursor() as cur:
+        with self._lock, self._c().cursor() as cur:
             cur.executemany(self._sql(sql), [tuple(r) for r in rows])
             return cur.rowcount
 
     @contextlib.contextmanager
     def tx(self):
-        con = self._c()
-        con.autocommit = False
+        with self._lock:
+            con = self._c()
+            con.autocommit = False
         try:
             yield con
             con.commit()
@@ -312,7 +328,21 @@ class MySQLStateStore(StateStore):
         if ssl_ca:
             self.connect_kwargs["ssl"] = {"ca": ssl_ca}
         self._con = None
+        self._lock = threading.RLock()
 
+    #: One connection, one lock. The dashboard is served by a threading HTTP
+    #: server, so /api/state and /api/journal arrive on different threads and
+    #: reach for the same store. Neither PyMySQL nor psycopg guarantees a
+    #: connection is safe to use from two threads, and the client protocol is a
+    #: strict request/response sequence on one socket: interleave two and the
+    #: packet numbering desynchronises — `Packet sequence number wrong - got 1
+    #: expected 5`, which is what the cloud dashboard was returning. SQLite never
+    #: showed it because that adapter serialises internally.
+    #:
+    #: A lock rather than a connection per thread: this server spawns a thread
+    #: per request, so thread-local connections would grow without bound and
+    #: exhaust the database's connection limit. Serialising costs nothing at a
+    #: few queries a minute.
     def _c(self):
         if self._con is None or not getattr(self._con, "open", False):
             try:
@@ -330,24 +360,25 @@ class MySQLStateStore(StateStore):
         return _qmark_to_pyformat(sql)
 
     def q(self, sql: str, args: Sequence[Any] = ()) -> list[dict[str, Any]]:
-        with self._c().cursor() as cur:
+        with self._lock, self._c().cursor() as cur:
             cur.execute(self._sql(sql), tuple(args))
             return list(cur.fetchall())
 
     def execute(self, sql: str, args: Sequence[Any] = ()) -> int:
-        with self._c().cursor() as cur:
+        with self._lock, self._c().cursor() as cur:
             cur.execute(self._sql(sql), tuple(args))
             return cur.rowcount
 
     def executemany(self, sql: str, rows: Iterable[Sequence[Any]]) -> int:
-        with self._c().cursor() as cur:
+        with self._lock, self._c().cursor() as cur:
             cur.executemany(self._sql(sql), [tuple(r) for r in rows])
             return cur.rowcount
 
     @contextlib.contextmanager
     def tx(self):
-        con = self._c()
-        con.begin()
+        with self._lock:
+            con = self._c()
+            con.begin()
         try:
             yield con
             con.commit()

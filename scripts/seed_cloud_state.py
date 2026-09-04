@@ -105,25 +105,34 @@ def cmd_import(args) -> int:
     src = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     have = {r[0] for r in src.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
+    # Row-level, not table-level. An empty-table guard looked right and was
+    # wrong: `platform --state-probe` writes one row into orch_runs to prove the
+    # database round-trips, and the scheduler writes a monitor run within
+    # minutes, so by the time this ran the table was never empty and 667 runs of
+    # history were skipped in silence. Letting the primary key decide is both
+    # idempotent and correct — rows the cloud already has win, rows it has never
+    # seen arrive, and the order of the two no longer matters.
+    ignore = {"mysql": "INSERT IGNORE INTO", "postgres": "INSERT INTO"}.get(
+        getattr(p.state, "dialect", ""), "INSERT OR IGNORE INTO")
+    suffix = " ON CONFLICT DO NOTHING" if getattr(
+        p.state, "dialect", "") == "postgres" else ""
     moved = 0
     for t in TABLES:
         if t not in have:
             continue
-        n = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
-        if n:
-            print(f"  {t}: 云端已有 {n} 行，不覆盖")
-            continue
+        before = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
         cols = _cols(src, t)
         rows = src.execute(f"SELECT {','.join(cols)} FROM {t}").fetchall()
         if not rows:
             continue
         ph = ",".join("?" * len(cols))
         p.state.executemany(
-            f"INSERT INTO {t} ({','.join(cols)}) VALUES ({ph})",
+            f"{ignore} {t} ({','.join(cols)}) VALUES ({ph}){suffix}",
             [tuple(r) for r in rows])
-        moved += len(rows)
-        print(f"  {t}: 写入 {len(rows)} 行")
-    print(f"导入完成，共 {moved} 行")
+        after = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
+        moved += after - before
+        print(f"  {t}: 种子 {len(rows)} 行，新增 {after - before}（原有 {before}）")
+    print(f"导入完成，新增 {moved} 行")
     return 0
 
 

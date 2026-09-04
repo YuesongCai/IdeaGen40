@@ -16,6 +16,14 @@ cd "$(dirname "$0")/.."
 PYBIN="${IDEAGEN_PYTHON:-/Library/Frameworks/Python.framework/Versions/3.12/bin/python3}"
 [ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
 mkdir -p data/logs
+# 日志只增不减，一年后它比数据库还大。超过 8MB 就留尾部 2000 行——
+# 排障看的永远是最近几次，而磁盘满会让整条链路(计价、发布)一起失败。
+for f in data/logs/daily.log data/logs/scheduler_tick.log; do
+  [ -f "$f" ] && [ "$(wc -c < "$f")" -gt 8388608 ] && {
+    tail -2000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    echo "$(date -u +%FT%TZ) 日志已轮转（保留最后 2000 行）" >> "$f"
+  }
+done
 [ -f "$HOME/.ideagen.env" ] && set -a && . "$HOME/.ideagen.env" && set +a
 echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
 

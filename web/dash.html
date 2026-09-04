@@ -453,6 +453,11 @@ tr.derive-row>td{
    一条 nowrap 会直接冲出容器 65px。给它们开一个可断行的档。 */
 .derive-kv span.kv-t{white-space:normal;overflow-wrap:anywhere}
 tr.expandable{cursor:pointer}
+/* 整行可点的那几类不是 <button>，浏览器不会替它们画焦点环。用和按钮同一套颜色，
+   键盘走到这里时看起来就是同一件事。offset 取负是因为行/表头会被裁在表格边框内。 */
+.doc-row:focus-visible,tr.expandable:focus-visible,th.sortable:focus-visible{
+  outline:2px solid var(--color-focus-ring);outline-offset:-2px;
+}
 
 /* epistemic caption — 诚实口径标注 */
 .epi{
@@ -1206,6 +1211,7 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .sel-leg{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;padding:6px 8px;border-radius:var(--radius-md)}
 .sel-leg .nm{font:500 13px/18px var(--font-sans);color:var(--color-text-primary);white-space:nowrap}
 .sel-leg .bel{font:400 12px/17px var(--font-sans);color:var(--color-text-metadata)}
+.ask-btn.ask-end{margin-left:auto;flex:none}
 .gate-table th.rot{height:84px;vertical-align:bottom;padding:0 0 8px}
 .gate-table th.rot .r-in{writing-mode:vertical-rl;transform:rotate(180deg);font:500 11px/14px var(--font-sans);color:var(--color-text-metadata);white-space:nowrap;margin:0 auto}
 .gate-table td.gd{text-align:center;padding:4px 6px}
@@ -2120,6 +2126,7 @@ var VIEWS=[
    icon:'<path d="M8 2 2.8 4.1v4c0 3 2.1 4.8 5.2 5.4 3.1-.6 5.2-2.4 5.2-5.4v-4L8 2Z"/>',
    secs:[{s:'strategies',label:'选取策略对比'},
          {s:'backtest',label:'历史回测'},
+         {s:'attribution',label:'价值出在哪一段'},
          {s:'limits',label:'已知局限'},
          {s:'receipt',label:'运行回执'}]}
 ];
@@ -2420,6 +2427,7 @@ function renderEvidence(){
   root.innerHTML=
      secWrap('evidence','strategies',raceHero(aggBooks()))
     +secWrap('evidence','backtest',backtestCard())
+    +secWrap('evidence','attribution',attributionCard())
     +secWrap('evidence','limits',limitsCard())
     +secWrap('evidence','receipt',runReceiptStrip());
   if($('candTable')){bindCandSort();renderCandBody()}
@@ -5685,8 +5693,11 @@ function stageSelectorsBody(d){
         +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b><span class="gloss gm" title="'+esc(selPlain(s.name))+'">ⓘ</span>　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
         +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+jss(s.name)+'\',\'策略 '+esc(m[1])+'\')">回候选池 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
         +(hasBook?'　<button type="button" class="exp-btn" onclick="openBookDrawer(\''+jss(s.name)+'\')">该账本 ›</button>':'')
-        +'　'+askBtn('selector',s.name,{cls:'sm'})
         +'</span>'
+        /* 追问按钮原本挂在 .bel 末尾，于是它的左边缘跟着每行文字的长度走——
+         * 十行策略十个位置，看着像没排过版。挪出来当 .sel-leg 的直接子元素，
+         * 用 margin-left:auto 顶到右端，十行对齐成一列。 */
+        +askBtn('selector',s.name,{cls:'sm ask-end'})
         /* 主题敞口的紧凑条：同一颜色在所有策略里是同一个主题，所以这一列
          * 竖着扫下来，就是「不同策略把钱压在了不同判断上」的直接对照。 */
         +(function(){
@@ -6596,6 +6607,42 @@ document.addEventListener('keydown',function(e){
   if(typeof helpOpen!=='undefined'&&helpOpen){toggleHelp();return}
 });
 
+/* ── 整行可点的键盘补位 ──────────────────────────────────────────────
+ * 页面上绝大多数可点的东西都是真的 <button>——但有三类做不成：整行可点的表格行、
+ * 研报行、可排序表头。它们只有 onclick / addEventListener，Tab 停不下来、回车也
+ * 没反应。而「打开这一仓」「展开这篇研报」「按上行排序」在别处没有等价入口，
+ * 也就是说纯键盘的人到不了。
+ * 不去改每一个生成器（它们散在十几处），统一在渲染之后补上：可聚焦 + 回车/空格
+ * 触发 + 同一套焦点环。 */
+var ROW_CLICKABLE='.doc-row[onclick],tr.expandable[onclick],#candTable th.sortable';
+function armRowKeys(){
+  var list=document.querySelectorAll(ROW_CLICKABLE);
+  for(var i=0;i<list.length;i++){
+    var el=list[i];
+    if(el.hasAttribute('tabindex'))continue;
+    el.setAttribute('tabindex','0');
+    /* <tr> 和 <th> 不加 role=button：它们得继续被读成表格行、表头，
+       否则读屏就报不出行列关系。.doc-row 是个 div，加上才说得清它可以按。 */
+    if(el.classList.contains('doc-row'))el.setAttribute('role','button');
+  }
+}
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  var t=e.target;
+  if(!t||!t.matches||!t.matches(ROW_CLICKABLE))return;
+  e.preventDefault();
+  t.click();
+});
+if(window.MutationObserver){
+  var _armQueued=false;
+  new MutationObserver(function(){
+    if(_armQueued)return;
+    _armQueued=true;
+    requestAnimationFrame(function(){_armQueued=false;armRowKeys()});
+  }).observe(document.body,{childList:true,subtree:true});
+  armRowKeys();
+}
+
 /* ── 候选池表格共用逻辑 ── */
 function candTh(key,label,align){
   var arr=candSort.key===key?(candSort.dir>0?' <span class="arr">↑</span>':' <span class="arr">↓</span>'):'';
@@ -6878,6 +6925,71 @@ function calDrawerBody(){
    （可信度与局限 › / 可信度与局限 → / 尚不排名的依据 ⓘ / 完整回测 ›），
    读者会以为点进去是四个不同的地方。它讲的是「凭什么信」，本来就属于证据
    这一页，不该是抽屉——抽屉留给某一个具体对象的详情。 */
+/* 归因（主题层）：每个宏观主题都挂着一个可交易的指示 ETF，所以每笔持仓
+   都有一个可定价的反事实——在完全相同的持有窗口里改持该主题的 ETF。
+   差额就是「挑了具体标的」在「认出主题」之上多买到的东西。
+   关键在对照臂：buy_all 不做任何挑选，仍然跑赢指示标的，各臂的超额都含着
+   这同一份，所以挑选本身只能记在 vs 对照那一列。
+   措辞严格跟随服务端 note：这是四层里的一层，市场 beta 层和「风控 vs
+   买入持有」那层都还没做。不写清楚，它会被当成「归因做完了」。 */
+function attributionCard(){
+  var a=(((S||{}).backtest||{}).summary||{}).attribution_theme_layer;
+  if(!a||!a.arms)return '';
+  var arms=a.arms, ctl=a.control, c=arms[ctl];
+  var names=Object.keys(arms);
+  var beat=names.filter(function(k){
+    return k!==ctl && arms[k].excess_over_control_pct>0
+        && arms[k].verdict==='not_ruled_out';
+  }).sort(function(x,y){return arms[y].excess_over_control_pct-arms[x].excess_over_control_pct});
+  var under=names.filter(function(k){return arms[k].verdict==='underpowered'}).length;
+  var lead='';
+  if(c){
+    lead='<b>'+esc(selMetaOf(ctl)[1]||ctl)+'</b>（把候选池里每一条都买下、不做任何挑选）'
+      +'相对主题指示标的多出 <span class="num '+pctCls(c.mean_excess_pct)+'">'
+      +fmtGapPp(c.mean_excess_pct,{signed:true})+'</span>。'
+      +'各选取策略的超额都含着这一份，所以「挑选」本身只能看它相对这个对照还多出多少——'
+      +(beat.length
+         ? '目前只有 <b>'+beat.map(function(k){return esc(selMetaOf(k)[1]||k)}).join('、')
+           +'</b> 为正，其余为负或样本不足。'
+         : '目前没有一个策略在这一层上被判定为有增量。');
+  }
+  var rows=names.sort(function(x,y){
+      var ax=arms[x].excess_over_control_pct,ay=arms[y].excess_over_control_pct;
+      return (ay===null||ay===undefined?-1e9:ay)-(ax===null||ax===undefined?-1e9:ax);
+    }).map(function(k){
+      var v=arms[k],isCtl=(k===ctl);
+      return '<tr'+(isCtl?' style="background:var(--color-surface-subtle)"':'')+'>'
+        +'<td class="primary">'+esc(selMetaOf(k)[1]||k)+(isCtl?' '+badge('neutral','对照'):'')+'</td>'
+        +'<td class="r num '+pctCls(v.mean_held_pct)+'">'+fmtPct(v.mean_held_pct)+'</td>'
+        +'<td class="r num '+pctCls(v.mean_indicator_pct)+'">'+fmtPct(v.mean_indicator_pct)+'</td>'
+        +'<td class="r num '+pctCls(v.mean_excess_pct)+'">'+fmtPct(v.mean_excess_pct)+'</td>'
+        +'<td class="r num '+pctCls(v.excess_over_control_pct)+'">'
+          +(isCtl?'<span class="card-note">基准</span>'
+                 :(v.excess_over_control_pct===null||v.excess_over_control_pct===undefined
+                    ?'—':fmtPct(v.excess_over_control_pct)))+'</td>'
+        +'<td class="r num">'+fmtInt(v.n)+'</td>'
+        +'<td>'+(v.verdict==='underpowered'?badge('neutral','样本不足'):badge('warning','未被排除'))+'</td>'
+      +'</tr>';
+    }).join('');
+  return '<div class="card section">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">价值出在哪一段</h2>'
+    +'<span class="card-note">每笔持仓 vs 同窗口改持该主题指示 ETF · '+fmtInt(a.n_positions||0)+' 笔</span></div>'
+    +(lead?'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)">'+lead+'</div>':'')
+    /* 这一句不折叠：它是这张卡最容易被误读的地方。 */
+    +'<div class="card-note" style="color:var(--color-feedback-warning-text)">'
+      +'这是四层归因里的<b>一层</b>——市场 beta 层、以及区分风控与买入持有的那层都还没有做，'
+      +'不能据此说归因已经完成。'+(under?'另有 '+under+' 个臂样本不足以判断。':'')
+      +'<span class="gloss" title="'+esc(a.note||'')+'">ⓘ</span></div>'
+    +foldBlock('evidence.attribution.detail','逐臂明细','持有 · 主题指示 · 超额 · 相对对照',
+      '<div class="table-wrap"><table><thead><tr>'
+        +'<th>选取策略</th><th class="r">实际持有</th><th class="r" title="同一持有窗口内改持该主题的指示 ETF">主题指示</th>'
+        +'<th class="r" title="实际持有减去主题指示：挑了具体标的比只认出主题多买到的部分">超额</th>'
+        +'<th class="r" title="再减去对照臂的超额：这一列才是「挑选」本身的贡献">相对对照</th>'
+        +'<th class="r">笔数</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +(a.unmatched_positions?'<div class="card-note" style="margin-top:var(--space-2)">'
+        +fmtInt(a.unmatched_positions)+' 笔持仓没有匹配到主题指示标的，未计入。</div>':''))
+  +'</div>';
+}
 function limitsCard(){
   var assum=S.assumptions||[],fixes=S.fixes||[];
   if(!assum.length&&!fixes.length)return '';

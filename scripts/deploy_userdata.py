@@ -114,9 +114,29 @@ def build_userdata(runtime_env_url: str | None) -> str:
         raise SystemExit(f"{BOOTSTRAP.name} 缺少 {PLACEHOLDER} 占位符")
     url = runtime_env_url or ""
     loader = f"""#!/bin/bash
-mkdir -p /opt/ideagen/config /opt/ideagen/app /opt/ideagen/health
+mkdir -p /opt/ideagen/config /opt/ideagen/app /opt/ideagen/health /opt/ideagen/oauth
+# The image runs as uid 10001 and writes refreshed OAuth tokens into this
+# mount; root-owned 0700 makes even the existence check raise.
+chmod 700 /opt/ideagen/oauth; chown -R 10001:10001 /opt/ideagen/oauth 2>/dev/null || true
+CONF=/opt/ideagen/config/runtime.env
 if [ -n '{url}' ]; then
   umask 077; printf '%s' '{url}' > /opt/ideagen/config/.runtime_env_url
+  # Config delivery happens HERE rather than in the bootstrap, because the
+  # bootstrap has to build an image first and an updater container recreates
+  # the app from origin/main every couple of minutes regardless. That means new
+  # CODE reaches the box while new CONFIG does not, and the box looks deployed
+  # while the keys never arrive. The loader has nothing to stall on.
+  if curl -fsS --max-time 60 '{url}' -o "$CONF.new"; then
+    if [ -s "$CONF" ]; then
+      awk -F= 'NR==FNR{{ if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/) seen[$1]=1; next }}
+               $0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/ && !seen[$1]' \\
+          "$CONF.new" "$CONF" > "$CONF.keep"
+      cat "$CONF.new" "$CONF.keep" > "$CONF"; rm -f "$CONF.keep"
+    else
+      cp "$CONF.new" "$CONF"
+    fi
+    rm -f "$CONF.new"; chmod 600 "$CONF"
+  fi
 fi
 for i in 1 2 3; do apt-get update -qq && break || sleep 10; done
 apt-get install -y -qq git ca-certificates curl || true

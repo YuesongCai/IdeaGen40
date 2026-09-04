@@ -5087,7 +5087,7 @@ function stagePoolBody(d){
       +candTh('p_up','P↑','r')+candTh('p_base','P基','r')+candTh('p_down','P↓','r')
       +candTh('n_proposals','提出','r')+'<th>生成方法</th></tr></thead>'
       +'<tbody id="candBody"></tbody></table></div>'
-      +epi('同一标的被多方法提出时合并为一条，赔率取中位数；赔率低于 1.5 不进入候选池')
+      +epi('赔率低于 1.5 的想法不进入候选池')
       +'</div>';
   }else{
     candCard='<div id="candCard" style="margin-top:var(--space-6)"><h2 class="card-title">候选池全表</h2>'
@@ -5200,7 +5200,7 @@ function stageSelectorsBody(d){
     matrix='<div class="empty-sm" style="margin-top:var(--space-3)">候选池为空——闸门矩阵无从谈起</div>';
   }
   return tabs+focusHead+legend+matrix
-    +epi('各策略使用完全相同的候选池，账本净值差异仅来自选取策略；结论需待配对样本量满足预注册要求');
+    +epi('各策略同池同期，净值差异仅来自选取策略 '+glossMark('因此账本之间可以直接配对比较。但当前配对样本量尚未满足预注册要求，带内排名不构成结论。'));
 }
 
 /* ── 6 · 自动建仓 ── */
@@ -5468,7 +5468,7 @@ function bookDrawerBody(sel){
   }else{
     html+='<div class="empty-sm" style="margin-top:var(--space-4)">该账本空仓：无标的达到门槛，留存现金</div>';
   }
-  html+=epi('各账本使用同一期、同一候选池，净值差异即选取策略差异；结论需待样本量满足要求');
+  html+=epi('与其他账本同池同期，净值差异即选取策略差异 '+glossMark('当前配对样本量尚未满足预注册要求，排名不构成结论。'));
   return html;
 }
 /* ══════════ 追问记录 — 历次追问的运营视图 ══════════

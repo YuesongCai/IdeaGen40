@@ -6972,7 +6972,7 @@ function attributionCard(){
     lead='<b>'+esc(selMetaOf(ctl)[1]||ctl)+'</b>（把候选池里每一条都买下、不做任何挑选）'
       +'相对主题指示标的多出 <span class="num '+pctCls(c.mean_excess_pct)+'">'
       +fmtGapPp(c.mean_excess_pct,{signed:true})+'</span>。'
-      +'各选取策略的超额都含着这一份，所以「挑选」本身只能看它相对这个对照还多出多少——'
+      +'各选取策略的超额都含着这一份，所以「挑选」本身只能看它相对这个对照还多出多少。'
       +(beat.length
          ? '目前只有 <b>'+beat.map(function(k){return esc(selMetaOf(k)[1]||k)}).join('、')
            +'</b> 越过了自己的可检出下界。'

@@ -538,6 +538,20 @@ def state(con=None, p=None) -> dict[str, Any]:
                       "wins": realized["w"] if realized else 0,
                       "win_rate": (round(realized["w"] / realized["n"], 4)
                                    if realized and realized["n"] else None),
+                      # Orders placed but not yet filled, and orders that
+                      # expired without ever filling. A book that shows nine
+                      # positions after being handed thirty picks is not
+                      # obviously broken or obviously fine — these two numbers
+                      # are what tell the difference between "waiting for the
+                      # close" and "ran out of cash".
+                      "pending_orders": (db.q1(
+                          con, "SELECT COUNT(*) n FROM orders "
+                               "WHERE book_id=? AND status='pending'",
+                          (b["book_id"],)) or {"n": 0})["n"],
+                      "expired_orders": (db.q1(
+                          con, "SELECT COUNT(*) n FROM orders "
+                               "WHERE book_id=? AND status='expired'",
+                          (b["book_id"],)) or {"n": 0})["n"],
                       "exits": exits})
     out["books"] = books
     # The do-nothing alternative, over exactly the dates the books were marked.

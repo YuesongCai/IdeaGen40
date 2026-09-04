@@ -888,6 +888,30 @@ button.chain-node:hover .cn-go{opacity:1}
 .rl-chip.ok::before{content:'';display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--color-accent);margin-right:6px}
 .rl-chip.bad{border-color:rgb(255 122 122 / 50%);color:#ffb1b1}
 .rl-scroll{overflow-x:auto}
+/* 人话/工程切换 */
+.rl-dl{border:1px solid rgb(184 255 58 / 45%);border-radius:var(--radius-pill);padding:1px 12px;color:var(--color-accent);text-decoration:none;white-space:nowrap;font:500 11px/18px var(--font-sans)}
+.rl-dl:hover{background:rgb(184 255 58 / 14%)}
+.rr-row{display:flex;align-items:stretch;gap:var(--space-3)}
+.rr-row .run-receipt{width:auto;flex:1;min-width:0}
+@media(max-width:720px){.rr-row{flex-direction:column}}
+.rr-dl{display:flex;align-items:center;padding:4px 12px;border:1px solid var(--color-border-brand-subtle);border-radius:var(--radius-pill);background:var(--color-surface-white);color:var(--color-text-brand);text-decoration:none;white-space:nowrap;font:500 12px/16px var(--font-sans)}
+.rr-dl:hover{background:var(--color-surface-brand-subtle)}
+.rl-seg{display:inline-flex;border:1px solid rgb(255 255 255 / 16%);border-radius:var(--radius-pill);overflow:hidden;margin-left:auto}
+.rl-seg button{border:none;background:none;cursor:pointer;padding:2px 12px;font:500 11px/18px var(--font-sans);color:#aeb6b2}
+.rl-seg button.on{background:var(--color-accent);color:var(--color-text-primary)}
+.rl-seg button:not(.on):hover{background:rgb(255 255 255 / 8%);color:#e6ebe8}
+/* 人话视图 */
+.rlp{display:flex;flex-direction:column;gap:2px}
+.rlp-item{display:grid;grid-template-columns:26px minmax(0,1fr) 92px;gap:var(--space-3);align-items:start;padding:var(--space-3) 0;border-bottom:1px solid rgb(255 255 255 / 8%)}
+.rlp-item:last-child{border-bottom:none}
+.rlp-n{width:22px;height:22px;border-radius:999px;background:rgb(255 255 255 / 10%);color:#c9d1cd;font:600 11px/22px var(--font-mono);text-align:center}
+.rlp-item.bad .rlp-n{background:rgb(255 122 122 / 22%);color:#ffb1b1}
+.rlp-t{font:600 14px/21px var(--font-sans);color:#f2f5f3}
+.rlp-d{margin-top:3px;font:400 13px/20px var(--font-sans);color:#c2cac6}
+.rlp-w{margin-top:5px;padding-left:9px;border-left:2px solid rgb(184 255 58 / 45%);font:400 12px/18px var(--font-sans);color:#8f9c96}
+.rlp-time{text-align:right;font:400 11px/18px var(--font-mono);color:#6f7a75;white-space:nowrap}
+.rlp-time span{display:block;color:#57615d}
+@media(max-width:720px){.rlp-item{grid-template-columns:22px minmax(0,1fr);}.rlp-time{grid-column:2;text-align:left}.rlp-time span{display:inline;margin-left:6px}}
 .rl-body{font:400 12px/19px var(--font-mono);min-width:640px}
 .rl-line{display:flex;gap:12px;padding:1.5px 0;align-items:baseline}
 .rl-t{color:#6f7a75;flex:none;width:96px}
@@ -921,6 +945,12 @@ button.chain-node:hover .cn-go{opacity:1}
 .race-side .sc{font:600 13px/18px var(--font-mono);color:var(--color-text-primary)}
 .race-row.lost .race-side .sc{color:var(--color-text-tertiary);font-weight:500}
 .race-side .d{font:400 11px/14px var(--font-sans);color:var(--color-text-tertiary)}
+.rej-why{margin:0 0 var(--space-3);padding:var(--space-2) var(--space-3);background:var(--color-feedback-neutral-subtle);border-left:3px solid var(--color-border-strong);border-radius:var(--radius-xs);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
+.rej-why b{font-weight:600;color:var(--color-text-primary)}
+.race-why{display:grid;grid-template-columns:200px minmax(0,1fr);gap:var(--space-3);padding:0 6px 6px;font:400 11px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.race-why .w{grid-column:2;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.race-why b{font-weight:600;color:var(--color-text-metadata)}
+.drawer .race-why{grid-template-columns:132px minmax(0,1fr);gap:var(--space-2)}
 .race-cut{display:flex;align-items:center;gap:10px;margin:7px 0;font:500 11px/16px var(--font-sans);color:var(--color-text-brand);white-space:nowrap}
 .race-cut::before,.race-cut::after{content:'';flex:1;border-top:2px dashed var(--color-border-brand-subtle)}
 .race-detail{margin:2px 6px 8px;padding:var(--space-3) var(--space-4);background:var(--color-surface-subtle);border-radius:var(--radius-md);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
@@ -1882,7 +1912,11 @@ function holdMapCard(ag){
   var w=S.weekly||{};
   var head='<div class="qhead"><h2 class="qtitle">钱押在哪几个宏观判断上？<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+((ag&&ag.books)?ag.books.length:8)+' 本账合计 · 共识越高越显眼</span></h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(5,'建仓 · 持仓束')
-    +'<span role="group" aria-label="视图切换"><button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')">地图</button><button type="button" class="seg-btn'+(holdView==='list'?' on':'')+'" onclick="setHoldView(\'list\')">列表</button></span>'
+    +'<span role="group" aria-label="视图切换">'
+      +'<button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')" title="按宏观主题分组的持仓地图——先看钱押在哪个判断上">地图</button>'
+      +'<button type="button" class="seg-btn'+(holdView==='axis'?' on':'')+'" onclick="setHoldView(\'axis\')" title="把每一仓放到坐标轴上：横轴是几本账同时看好它，纵轴是它到现在赚了还是亏了">Y 轴</button>'
+      +'<button type="button" class="seg-btn'+(holdView==='list'?' on':'')+'" onclick="setHoldView(\'list\')" title="一行一仓的明细表，可排序、可复制">列表</button>'
+      +'</span>'
     +'<button type="button" class="qlink" onclick="goto(\'process\')">整个选仓过程 →</button></span></div>';
   if(!ag||!ag.openN){
     var nr=nextRunInfo();
@@ -1901,6 +1935,8 @@ function holdMapCard(ag){
   var body;
   if(holdView==='list'){
     body=holdListTable(ag,mp);
+  }else if(holdView==='axis'){
+    body=holdAxisBody(ag,mp,totalV,maxV);
   }else{
     /* 按主题分组 */
     var groups={},gOrder=[];
@@ -1957,6 +1993,106 @@ function holdMapCard(ag){
     +'<div class="quiet" style="margin-bottom:var(--space-3)">'+fmtInt(order.length)+' 个标的 · 被 '+fmtInt(ag.books.length)+' 本账共 '+fmtInt(ag.openN)+' 次持有</div>'
     +body
   +'</div>';
+}
+/* ── Y 轴视图 ──────────────────────────────────────────────────
+ * 地图回答「钱押在哪个判断上」，列表回答「具体持了什么」，
+ * 这一张回答第三个问题：「十本账不约而同看好的那些，真的更好吗？」
+ * 横轴 = 有几本账同时持有（跨账本共识），纵轴 = 这一仓到现在的盈亏。
+ * 共识本身不加分、不参与挑选，所以它与收益的关系是可以事后检验的——
+ * 一条正斜率才说明「多种挑法同时想到」这件事有信息量。 */
+function holdAxisBody(ag,mp,totalV,maxV){
+  var byCode=mp.byCode,order=mp.order;
+  var nb=ag.books.length||1;
+  var pts=order.map(function(k){
+    var p=byCode[k];
+    return {p:p,x:p.books.length,y:p.cost?(p.unrealized/p.cost*100):0};
+  });
+  if(!pts.length)return '<div class="quiet">没有可作图的持仓。</div>';
+  var ys=pts.map(function(o){return o.y});
+  var yMax=Math.max.apply(null,ys),yMin=Math.min.apply(null,ys);
+  var pad=Math.max(0.6,(yMax-yMin)*0.18);
+  yMax+=pad;yMin-=pad;
+  if(yMax===yMin){yMax+=1;yMin-=1}
+  var W=1000,H=380,pl=64,pr=22,pt=18,pb=54;
+  function X(v){return pl+(nb<=1?0.5:(v-1)/(nb-1))*(W-pl-pr)}
+  function Y(v){return pt+(yMax-v)/(yMax-yMin)*(H-pt-pb)}
+  var g='<svg class="pipe-svg" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="持仓：跨账本共识 × 盈亏">';
+  /* 横向刻度 */
+  var ticks=4;
+  for(var i=0;i<=ticks;i++){
+    var v=yMin+(yMax-yMin)*i/ticks,y=Y(v);
+    g+='<line x1="'+pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-pr)+'" y2="'+y.toFixed(1)+'" stroke="var(--color-border-subtle)" stroke-width="1"/>'
+      +'<text x="'+(pl-8)+'" y="'+(y+4).toFixed(1)+'" text-anchor="end" font-family="var(--font-mono)" font-size="10" fill="var(--color-text-tertiary)">'+v.toFixed(1)+'%</text>';
+  }
+  /* 零线 */
+  if(yMin<0&&yMax>0){
+    g+='<line x1="'+pl+'" y1="'+Y(0).toFixed(1)+'" x2="'+(W-pr)+'" y2="'+Y(0).toFixed(1)+'" stroke="var(--color-border-strong)" stroke-width="1.5" stroke-dasharray="5 4"/>'
+      +'<text x="'+(W-pr)+'" y="'+(Y(0)-6).toFixed(1)+'" text-anchor="end" font-family="var(--font-sans)" font-size="10" fill="var(--color-text-metadata)">不赚不亏</text>';
+  }
+  /* 每个共识档的均值折线——这条线的斜率就是问题的答案 */
+  var buckets={};
+  pts.forEach(function(o){(buckets[o.x]=buckets[o.x]||[]).push(o.y)});
+  var bKeys=Object.keys(buckets).map(Number).sort(function(a,b){return a-b});
+  var poly=bKeys.map(function(k){
+    var arr=buckets[k],m=arr.reduce(function(a,b){return a+b},0)/arr.length;
+    return X(k).toFixed(1)+','+Y(m).toFixed(1);
+  }).join(' ');
+  if(bKeys.length>1){
+    g+='<polyline points="'+poly+'" fill="none" stroke="var(--color-fill-brand-green)" stroke-width="2.5" stroke-linejoin="round" opacity="0.55"/>';
+    bKeys.forEach(function(k){
+      var arr=buckets[k],m=arr.reduce(function(a,b){return a+b},0)/arr.length;
+      g+='<circle cx="'+X(k).toFixed(1)+'" cy="'+Y(m).toFixed(1)+'" r="3.5" fill="var(--color-fill-brand-green)"/>';
+    });
+  }
+  /* X 轴刻度 */
+  for(var b=1;b<=nb;b++){
+    g+='<text x="'+X(b).toFixed(1)+'" y="'+(H-pb+22)+'" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--color-text-tertiary)">'+b+'</text>';
+    var cnt=(buckets[b]||[]).length;
+    if(cnt)g+='<text x="'+X(b).toFixed(1)+'" y="'+(H-pb+36)+'" text-anchor="middle" font-family="var(--font-sans)" font-size="9" fill="var(--color-text-disabled)">'+cnt+' 只</text>';
+  }
+  g+='<text x="'+((pl+W-pr)/2)+'" y="'+(H-4)+'" text-anchor="middle" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">横轴 = 有几本账同时持有这个标的（跨账本共识，共 '+nb+' 本）</text>'
+   +'<text x="14" y="'+(pt+10)+'" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">纵轴 = 这一仓的盈亏</text>';
+  /* 泡：同一档内左右轻微错开，避免完全重叠 */
+  var seen={};
+  pts.sort(function(a,b){return b.p.value-a.p.value}).forEach(function(o){
+    var p=o.p;
+    seen[o.x]=(seen[o.x]||0)+1;
+    var idx=seen[o.x]-1;
+    var jitter=((idx%7)-3)*6.5;
+    var cx=X(o.x)+jitter,cy=Y(o.y);
+    var r=Math.max(7,Math.round(7+Math.sqrt(p.value/maxV)*17));
+    var up=p.unrealized>0.0001,down=p.unrealized<-0.0001;
+    var a=Math.min(0.66,0.16+Math.abs(o.y)*0.10);
+    var fill=up?('rgba(191,22,22,'+a.toFixed(2)+')'):(down?('rgba(11,143,74,'+a.toFixed(2)+')'):'var(--color-surface-muted)');
+    var stroke=up?'var(--color-stock-up-default)':(down?'var(--color-stock-down-default)':'var(--color-border-strong)');
+    var share1=totalV?(p.value/totalV*100):0;
+    var th=String(p.thesis||'');if(th.length>64)th=th.slice(0,63)+'…';
+    var ph='<div class="pp-t">'+esc(p.name||bareCode(p.code))+' <span class="mono" style="font-weight:400;color:var(--color-text-tertiary)">'+esc(bareCode(p.code))+'</span></div>'
+      +'<div class="pp-n"><span class="'+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'（'+fmtPct(o.y)+'）</span> · 仓位 '+share1.toFixed(1)+'%</div>'
+      +(th?'<div>'+esc(th)+'</div>':'')
+      +'<div class="pp-s">'+o.x+'/'+nb+' 本账共同持有'+(p.theme_id?' · 主题 '+esc(p.theme_id):'')+' · 点击看这一仓的推理链</div>';
+    g+='<g class="pc-click" onclick="openPosDrawer(\''+esc(p.code)+'\')"'+popRef(ph)+'>'
+      +'<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="'+r+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.2" opacity="0.92"/>'
+      +(r>=13?'<text x="'+cx.toFixed(1)+'" y="'+(cy+3.5).toFixed(1)+'" text-anchor="middle" font-family="var(--font-mono)" font-size="9" font-weight="600" fill="'+(a>0.42?'#fff':'var(--color-text-primary)')+'">'+esc(bareCode(p.code))+'</text>':'')
+      +'</g>';
+  });
+  g+='</svg>';
+  /* 一句读法：这条线现在是什么形状 */
+  var read='';
+  if(bKeys.length>1){
+    var lo=buckets[bKeys[0]],hi=buckets[bKeys[bKeys.length-1]];
+    var mLo=lo.reduce(function(a,b){return a+b},0)/lo.length;
+    var mHi=hi.reduce(function(a,b){return a+b},0)/hi.length;
+    var d=mHi-mLo;
+    read='只被 '+bKeys[0]+' 本账看中的平均 '+mLo.toFixed(2)+'%，被 '+bKeys[bKeys.length-1]+' 本账同时看中的平均 '+mHi.toFixed(2)+'%，'
+      +(Math.abs(d)<0.3?'两头基本没差别——目前看不出「多种挑法同时想到」带来任何优势。'
+        :(d>0?'高共识的这一端高 '+d.toFixed(2)+' 个百分点。':'高共识的这一端反而低 '+Math.abs(d).toFixed(2)+' 个百分点。'))
+      +'第 1 周的样本量下这只是读数，不是结论。';
+  }
+  return '<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向（红涨绿跌）</span><span>绿线 = 每个共识档的平均盈亏</span><span>悬停看论点 · 点击拉开这一仓</span></div>'
+    +g
+    +(read?'<div class="quiet" style="margin-top:var(--space-3)">'+read+'</div>':'')
+    +epi('共识度只记录、不加分——它不参与挑选，所以它和收益的关系才是可以事后检验的');
 }
 function holdListTable(ag,mp){
   var byCode=mp.byCode,order=mp.order.slice();
@@ -2129,6 +2265,12 @@ function bookCard(b,bi){
       +'<div class="meta-kv"><div class="k">开仓 / 已平</div><div class="v num">'+fmtInt(pos.length)+' / '+fmtInt(b.closed_n)+'</div></div>'
     +'</div>'
       +'<div class="meta-kv"><div class="k">胜率</div><div class="v">'+fmtWinRate(b.wins||0,b.closed_n||0)+'</div></div>'
+      +((b.pending_orders||b.expired_orders)
+        ?'<div class="meta-kv"><div class="k">挂单 / 未成交作废</div><div class="v num" '
+          +'title="挂单 = 已下单、等下一个收盘成交（补跑的期次会一次性挂很多）；'
+          +'作废 = 到期前始终没成交，通常是现金不够或标的当日无价">'
+          +fmtInt(b.pending_orders||0)+' / '+fmtInt(b.expired_orders||0)+'</div></div>'
+        :'')
     +(exitChips?'<div style="margin-top:var(--space-3);display:flex;gap:6px;flex-wrap:wrap">'+exitChips+'</div>':'')
     +(pos.length
       ?'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
@@ -2875,9 +3017,20 @@ function pipeCanvasSVG(){
     pop('筛选C · 八道闸',sels.length?sels.length+' 种挑法同池并行':'还没出手','唯一变量是挑法本身——只有同池配对比较才可能加冕'),
     pop('建仓',books.length?books.length+' 本账 · '+fmtInt(openTotal)+' 仓在持':'未建仓','等权买入 · 进场即挂 σ×2 止损 / σ×3 止盈 · 每天盯市')
   ];
-  var cols=[[60,'语料',0],[255,'筛选A · 主题',1],[505,'筛选B · 写想法',2],[705,'合并 · 候选池',3],[888,'筛选C · 八道闸',4],[1058,'建仓',5]];
+  /* 每列一句「这里的数字是什么」——画布上不留没有单位的裸数字。
+   * 一个非技术读者第一次看这张图时问的第一个问题就是「这个数是几什么」，
+   * 而答案此前只藏在 hover 里；hover 不存在于截图、投屏和打印件中。 */
+  var cols=[[60,'语料',0,'块内 = 研报篇数'],
+            [255,'筛选A · 主题',1,'圆内 = 命中研报篇数'],
+            [505,'筛选B · 写想法',2,'框内 = 写出想法条数'],
+            [705,'合并 · 候选池',3,'环内 = 合并后候选条数'],
+            [888,'筛选C · 八道闸',4,'行末 = 该挑法挑中条数'],
+            [1058,'建仓',5,'块内 = 当前在持仓位数']];
   cols.forEach(function(c){
-    s+='<g class="pc-click" onclick="openStageDrawer('+c[2]+')"'+popRef(stagePop[c[2]])+'>'+txt(c[0],16,c[1],11,'var(--color-text-metadata)','middle',600)+'</g>';
+    s+='<g class="pc-click" onclick="openStageDrawer('+c[2]+')"'+popRef(stagePop[c[2]])+'>'
+      +txt(c[0],16,c[1],11,'var(--color-text-metadata)','middle',600)
+      +txt(c[0],30,c[3],9,'var(--color-text-tertiary)','middle',400)
+      +'</g>';
   });
 
   /* ── 语料块 ── */
@@ -3043,10 +3196,13 @@ function runReceiptStrip(){
       +'<span class="go">详情 →</span></button>';
   }
   var j=J.journal;
-  return '<button type="button" class="run-receipt section" onclick="openRunLog(\''+esc(j.run_id||'')+'\')" title="打开这次周跑的完整运行日志">'
+  return '<div class="rr-row section">'
+    +'<button type="button" class="run-receipt" onclick="openRunLog(\''+esc(j.run_id||'')+'\')" title="打开这次周跑的完整运行日志">'
     +'<span class="dot'+(j.ok?'':' bad')+'"></span>'
     +'<span class="rr-main">'+(j.ok?'● 完成':'● 失败')+' · run '+esc(j.run_id||'—')+' · '+esc(j.as_of||'')+' 期 · '+fmtInt((j.steps||[]).length)+' 步 · '+(j.duration_s!==undefined&&j.duration_s!==null?Number(j.duration_s).toFixed(2)+'s':'—')+' · '+fmtInt((j.artifacts||[]).length)+' 件产物</span>'
-    +'<span class="go">查看完整日志 →</span></button>';
+    +'<span class="go">查看完整日志 →</span></button>'
+    +'<a class="rr-dl" href="/api/audit'+(j.run_id?'?run_id='+encodeURIComponent(j.run_id):'')+'" title="整包下载这次运行：逐步日志、每一步产出、每一次追问与回答，附 SHA-256 校验。给需要自己核对的人。">↓ 下载审计包</a>'
+    +'</div>';
 }
 function ensureJournal(runId){
   var key=runId||'latest';
@@ -3128,12 +3284,135 @@ function rlKvHTML(st){
   }
   return parts.join('　');
 }
+/* ══════════ 运行日志的人话视图 ══════════
+ * 同一份 journal，两种读法。工程视图是原始步骤 + 键值，给要核对的人；
+ * 人话视图把每一步写成一句完整的话——做了什么、得到什么、这一步为什么在这里。
+ * 数字全部来自同一个 journal 字段，没有一个是叙述时补出来的：
+ * 换句话说，人话视图只是措辞不同，不是另一套说法。 */
+function rlPlainStep(st,idx){
+  var step=st.step||'';
+  var T={};
+  if(step==='universe'){
+    T.t='先点货架：这周能买的东西有哪些';
+    T.d='一共 '+fmtInt((st.shelf_dating||{}).total)+' 个标的在货架上，'+fmtInt(st.eligible)
+      +' 个这周合格，'+fmtInt(st.excluded)+' 个被排除。';
+    T.w='合格的这些才是后面所有想法能落到的范围——想法再好，标的不在货架上也写不出来。';
+  }else if(step.indexOf('feed:')===0){
+    var src=step.slice(5);
+    T.t='取数据：'+src;
+    T.d=st.ok?('这一路数据取到了'+(st.kind?'（'+st.kind+'）':'')+'。')
+             :('这一路取失败了'+(st.error?'：'+st.error:'')+'。');
+    T.w=st.ok?'':'缺这一路数据，这一期的判断会建立在更少的材料上。';
+    T.bad=!st.ok;
+  }else if(step==='theme_discovery'){
+    T.t='扫一遍语料，看有没有说不进现有主题的新东西';
+    T.d='本周语料的 '+numOr(st.coverage_pct)+'% 能落进已登记的主题里；'
+      +fmtInt(st.unmatched)+' 篇没对上，其中够格当新主题的有 '+fmtInt(st.candidates)+' 个。';
+    T.w='这一步防的是「世界变了但主题表没变」——够格的新主题会被登记进去，登记后不可回填。';
+  }else if(step==='inputs'){
+    T.t='把这次要用的材料封存，之后不许再添';
+    T.d='封存了 '+fmtInt(st.corpus)+' 篇研报、'+fmtInt(st.calendar)+' 条宏观日历'
+      +(st.sha?'，指纹 '+st.sha:'')+'。';
+    T.w='封存之后所有判断只能用这一份材料。日后追问「它当时怎么想」，问的也是这一份——这就是答案不可能事后编的原因。';
+  }else if(step==='topics'){
+    T.t='选主题：这周押哪几个宏观判断';
+    T.d='用 '+esc(st.strategy||'')+(st.version?' v'+esc(st.version):'')+' 打分，选出 '
+      +((st.chosen||[]).length||0)+' 个：'+((st.chosen||[]).join('、')||'—')+'。'
+      +(st.calls!==undefined?'（这一步调用模型 '+fmtInt(st.calls)+' 次'+(st.calls===0?'——纯规则打分，没有模型参与':'')+'）':'');
+    T.w='落选的主题这一期就到此为止，不会有任何一条想法出自它们。';
+  }else if(step==='generators'){
+    var pr=st.produced||{};
+    var ks=Object.keys(pr);
+    T.t='写想法：4 种写法各写各的，互不通气';
+    T.d='一共写出 '+fmtInt(st.pool)+' 条：'
+      +ks.map(function(k){return methodName(k)+' '+fmtInt(pr[k])+' 条'}).join('、')+'。';
+    T.w='刻意让它们互相不知道对方在写什么——四种写法都想到同一个标的时，那个「共识」才有意义。';
+    var ge=st.errors||{};
+    if(Object.keys(ge).length){T.bad=true;T.d+=' 其中 '+Object.keys(ge).map(function(k){return methodName(k)+' 出错'}).join('、')+'。';}
+  }else if(step==='pool'){
+    var cv=st.convergence||{};
+    /* 共识分布的键是「4种方式」这样的中文串，不是数字键 */
+    var four=0;Object.keys(cv).forEach(function(k){if(/^\s*4/.test(k))four=cv[k]||0});
+    T.t='合并成一个候选池：同一个标的只留一条';
+    T.d=fmtInt(st.raw)+' 条原始想法合并成 '+fmtInt(st.merged)+' 条'
+      +(four?'，其中 '+fmtInt(four)+' 条是 4 种写法不约而同都提到的标的':'')+'。';
+    T.w='合并之后，下一步的 10 种挑法面对的是同一个池子——这样它们之间的差别才只剩下「怎么挑」这一件事。';
+  }else if(step==='selectors'){
+    var ch=st.chosen||{};
+    var ks2=Object.keys(ch);
+    T.t='挑持仓：10 种挑法从同一个池子里各挑各的';
+    T.d='池子里 '+fmtInt(st.pool)+' 条候选，'
+      +ks2.map(function(k){return selMetaOf(k)[1]+' 挑 '+fmtInt(ch[k])+' 条'}).join('、')+'。';
+    T.w='同池、同期、同规则，唯一的变量是挑法本身——这是它们之间的胜负日后能算数的前提。';
+    var se=st.errors||{};
+    if(Object.keys(se).length){T.bad=true;T.d+=' 其中 '+Object.keys(se).map(function(k){return selMetaOf(k)[1]+' 出错'}).join('、')+'。';}
+  }else{
+    T.t=rlStepName(step);
+    T.d=rlKvHTML(st).replace(/<[^>]+>/g,' ');
+    T.w='';
+  }
+  return T;
+}
+/* 流水线的叙述顺序。写想法和合并候选池是同一毫秒落盘的，按时间戳排会读成
+ * 「先合并再写」——时间没错，但顺序读起来是假的。同秒内改按管线顺序排，
+ * 相隔超过 2 秒的仍以真实时钟为准。 */
+var RL_ORDER={'universe':1,'theme_discovery':3,'inputs':4,'topics':5,'generators':6,'pool':7,'selectors':8};
+function rlRank(st){
+  var k=String(st.step||'');
+  if(k.indexOf('feed:')===0)return 2;
+  return RL_ORDER[k]!==undefined?RL_ORDER[k]:9;
+}
+function rlPlainHTML(j){
+  var steps=(j.steps||[]).slice();
+  if(!steps.length)return '<div class="rl-empty">这条运行没有留下步骤记录。</div>';
+  steps.sort(function(a,b){
+    var ta=a.at?new Date(a.at).getTime():0,tb=b.at?new Date(b.at).getTime():0;
+    if(Math.abs(ta-tb)>2000)return ta-tb;
+    return rlRank(a)-rlRank(b);
+  });
+  /* 同一来源的多条 feed 合成一句，否则「取数据」会连着刷四行 */
+  var merged=[],feeds=[];
+  steps.forEach(function(st){
+    if(String(st.step||'').indexOf('feed:')===0){feeds.push(st);return}
+    if(feeds.length){merged.push({_feeds:feeds});feeds=[]}
+    merged.push(st);
+  });
+  if(feeds.length)merged.push({_feeds:feeds});
+  var t0=j.started_at?new Date(j.started_at).getTime():null;
+  var n=0;
+  var body=merged.map(function(st){
+    var T,at;
+    if(st._feeds){
+      var fs=st._feeds,okN=fs.filter(function(f){return f.ok}).length;
+      at=fs[0].at;
+      T={t:'取数据：'+fs.length+' 路来源',
+         d:fs.map(function(f){return (f.step||'').slice(5)+(f.ok?' ok':' 失败')}).join('、')+'。',
+         w:okN<fs.length?'有来源没取到，这一期的材料比正常少。':'四路数据齐了：研报语料、宏观日历、可买标的清单。',
+         bad:okN<fs.length};
+    }else{T=rlPlainStep(st);at=st.at}
+    n++;
+    var dt=(t0!==null&&at)?((new Date(at).getTime()-t0)/1000):null;
+    return '<div class="rlp-item'+(T.bad?' bad':'')+'">'
+      +'<div class="rlp-n">'+n+'</div>'
+      +'<div class="rlp-main">'
+      +'<div class="rlp-t">'+T.t+'</div>'
+      +'<div class="rlp-d">'+T.d+'</div>'
+      +(T.w?'<div class="rlp-w">'+T.w+'</div>':'')
+      +'</div>'
+      +'<div class="rlp-time">'+rlTime(at)+(dt!==null?'<span>+'+dt.toFixed(0)+'s</span>':'')+'</div>'
+      +'</div>';
+  }).join('');
+  return '<div class="rlp">'+body+'</div>';
+}
+
 var RL_STEP_ZH={'universe':'货架核实','theme_discovery':'主题发现','inputs':'输入封存','topics':'筛选A 选题','generators':'筛选B 写想法','pool':'合并候选池','selectors':'筛选C 挑持仓'};
 function rlStepName(step){
   if(RL_STEP_ZH[step])return RL_STEP_ZH[step];
   if(String(step).indexOf('feed:')===0)return '写入数据源';
   return step;
 }
+var rlMode='plain'; /* 'plain' 人话 | 'raw' 工程——默认给不看代码的人 */
+function setRlMode(m){rlMode=m;renderDrawers()}
 function runLogDrawerBody(d){
   var cached=ensureJournal(d.p);
   if(!cached){
@@ -3160,6 +3439,11 @@ function runLogDrawerBody(d){
     +'<span class="rl-chip">'+esc(j.kind||'')+' · '+esc(j.as_of||'')+' 期</span>'
     +(j.started_at?'<span class="rl-chip">'+hktFmt(j.started_at,true)+' HKT 启动</span>':'')
     +(j.duration_s!==undefined&&j.duration_s!==null?'<span class="rl-chip">总时长 '+Number(j.duration_s).toFixed(2)+'s</span>':'')
+    +'<a class="rl-dl" href="/api/audit'+(j.run_id?'?run_id='+encodeURIComponent(j.run_id):'')+'" title="把这次运行整包下载下来：逐步日志、每一步的产出、每一次追问和回答，附校验用的 SHA-256。可离线打开、可转给别人核对。">↓ 审计包</a>'
+    +'<span class="rl-seg">'
+      +'<button type="button" class="'+(rlMode==='plain'?'on':'')+'" onclick="setRlMode(\'plain\')" title="把每一步写成一句话：做了什么、得到什么、这一步为什么在这里">人话</button>'
+      +'<button type="button" class="'+(rlMode==='raw'?'on':'')+'" onclick="setRlMode(\'raw\')" title="原始步骤 + 键值 + 产物 URI，用来核对">工程</button>'
+    +'</span>'
     +'</div>';
   var lines=steps.map(function(st){
     var dt=(t0!==null&&st.at)?((new Date(st.at).getTime()-t0)/1000):null;
@@ -3189,6 +3473,12 @@ function runLogDrawerBody(d){
     note+='<div class="rl-note">这是 '+esc(j.as_of)+' 期周跑的原始日志——本期（'+esc(curPeriod)+'）失败，没有可展示的成功记录。时间戳为真实时钟（HKT），产物 URI 指向对象存储。</div>';
   }else{
     note+='<div class="rl-note">原始步骤日志：真实时钟（HKT）、相对耗时、逐件产物。</div>';
+  }
+  if(rlMode==='plain'){
+    return '<div class="runlog">'+head
+      +'<div class="rl-scroll scroll-thin">'+rlPlainHTML(j)+'</div>'
+      +'<div class="rl-note">同一份运行记录的人话读法——每个数字都直接取自这次运行留下的日志字段，没有一个是叙述时补的。要核对原始步骤、键值和产物清单，切到「工程」。</div>'
+      +'</div>';
   }
   return '<div class="runlog">'+head
     +'<div class="rl-scroll scroll-thin"><div class="rl-body'+(anim?' rl-anim':'')+'">'+lines+artHtml+'</div></div>'
@@ -3262,6 +3552,29 @@ function stageCorpusBody(){
 }
 
 /* ── 2 · 筛选A：赛马（focus = 主题 id：该行高亮+证据就地展开，其余压暗） ── */
+/* 落选理由——用当时打分本身算出来的，不是事后编的说法。
+ * 把落选主题的四个加权贡献，与入选主题在同一因子上的平均贡献相减，
+ * 差得最多的那一项就是它的短板；再报出与入选线的分差。
+ * 「差 0.1 分」只说明结果，「短板在 G 分歧」才说明原因。 */
+function topicLossReason(r,avgComps,cutScore){
+  var SEGL2=['H 热度','G 分歧','E 实据','P 已定价'];
+  var comps=[0.30*(r.H||0),0.25*(r.G||0),0.25*(r.E||0),0.20*(100-(r.P||0))];
+  var worst=0,worstGap=comps[0]-avgComps[0];
+  for(var i=1;i<4;i++){var g=comps[i]-avgComps[i];if(g<worstGap){worstGap=g;worst=i}}
+  var gap=(cutScore!==null&&r.score!==undefined)?(cutScore-(r.score||0)):null;
+  var vals=[r.H,r.G,r.E,r.P];
+  var txt='';
+  /* 分差已经写在行末，这里只说原因：短在哪个因子、短多少 */
+  if(worstGap<-0.2){
+    txt='短板在 <b>'+SEGL2[worst]+'</b>（本主题 '+numOr(vals[worst])
+      +(worst===3?'，这一项越低越好':'')+'，比入选主题平均少拿 '+Math.abs(worstGap).toFixed(1)+' 分）';
+  }else{
+    txt='四个因子都不落后，是被前几名整体挤下来的';
+  }
+  if(gap!==null&&gap<=1.0)txt+=' · 离入选线只有 '+gap.toFixed(1)+' 分，下一期很可能上来';
+  return txt;
+}
+
 function stageTopicsBody(d){
   var foc=(d&&d.f)?String(d.f):null;
   var w=S.weekly||{};
@@ -3280,6 +3593,16 @@ function stageTopicsBody(d){
   var cRank={},cMax=1;
   Object.keys(cScores).sort(function(a,b){return ((cScores[b]||{}).score||0)-((cScores[a]||{}).score||0)})
     .forEach(function(k,i){cRank[k]=i+1;cMax=Math.max(cMax,(cScores[k]||{}).score||0)});
+  /* 入选主题在每个因子上的平均加权贡献——落选理由的参照系 */
+  var inRows=rows.filter(function(r){return chosenSet[r._id]});
+  var avgComps=[0,0,0,0];
+  if(inRows.length){
+    inRows.forEach(function(r){
+      avgComps[0]+=0.30*(r.H||0);avgComps[1]+=0.25*(r.G||0);
+      avgComps[2]+=0.25*(r.E||0);avgComps[3]+=0.20*(100-(r.P||0));
+    });
+    avgComps=avgComps.map(function(v){return v/inRows.length});
+  }
   var SEGC=['var(--color-data-1)','var(--color-data-2)','var(--color-data-3)','var(--color-data-4)'];
   var SEGL=['H 热度','G 分歧','E 实据','P 已定价'];
   var SEGW=[0.30,0.25,0.25,0.20];
@@ -3306,10 +3629,12 @@ function stageTopicsBody(d){
     var comps=[0.30*(r.H||0),0.25*(r.G||0),0.25*(r.E||0),0.20*(100-(r.P||0))];
     var wsum=comps.reduce(function(a,b){return a+b},0);
     var segs='';
-    if(isIn&&wsum>0){
+    /* 落选行同样画出四个因子的构成，只是压暗：落选的理由是「哪一段短了」，
+     * 一根没有分段的灰条把这个理由抹掉了，读者只能看到结果看不到原因。 */
+    if(wsum>0){
       var vals=[r.H,r.G,r.E,r.P];
       segs=comps.map(function(c,i){
-        return '<div class="race-seg" style="width:'+(c/wsum*100).toFixed(1)+'%;background:'+SEGC[i]+'" title="'+SEGG[i]+'。本主题 '+SEGL[i].slice(0,1)+' = '+numOr(vals[i])+'（权重 '+SEGW[i].toFixed(2)+(i===3?'，反向计分':'')+'，贡献 '+c.toFixed(1)+' 分）"></div>';
+        return '<div class="race-seg" style="width:'+(c/wsum*100).toFixed(1)+'%;background:'+SEGC[i]+(isIn?'':';opacity:.34')+'" title="'+SEGG[i]+'。本主题 '+SEGL[i].slice(0,1)+' = '+numOr(vals[i])+'（权重 '+SEGW[i].toFixed(2)+(i===3?'，反向计分':'')+'，贡献 '+c.toFixed(1)+' 分）"></div>';
       }).join('');
     }else{
       segs='<div class="race-seg" style="width:100%;background:var(--color-surface-sunken)" title="未入选——综合分 '+numOr(r.score)+'"></div>';
@@ -3341,11 +3666,14 @@ function stageTopicsBody(d){
       +'<span class="race-track"><span class="race-bar" style="width:'+barPct.toFixed(1)+'%">'+segs+'</span>'+cnt+'</span>'
       +'<span class="race-side">'+side+'</span>'
       +'</button>';
+    if(!isIn&&!foc){
+      html+='<div class="race-why"><span class="w">'+topicLossReason(r,avgComps,cutScore)+'</span></div>';
+    }
     if(foc===r._id){
       html+='<div class="race-detail" style="margin-top:6px">'+topicDrawerBody(r._id)+'</div>';
     }
     if(ri===cutIdx&&cutIdx<rows.length-1){
-      html+='<div class="race-cut'+(foc?' dim':'')+'">入选线 · 以上 '+topicChosen('hgep').length+' 个主题进入筛选B</div>';
+      html+='<div class="race-cut'+(foc?' dim':'')+'">入选线 · 以上 '+topicChosen('hgep').length+' 个主题进入筛选B，以下 '+(rows.length-topicChosen('hgep').length)+' 个落选（每条下面写了为什么）</div>';
     }
   });
   html+='</div>';
@@ -3361,11 +3689,11 @@ function stageTopicsBody(d){
       +'——意见相左的主题就是这场实验正在积累的样本。</div>';
   }
   var legend='<div class="race-legend">'
-    +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度</span>'
-    +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 增长</span>'
-    +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 证据</span>'
-    +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 政策</span>'
-    +'<span><span class="sw" style="background:var(--color-surface-sunken)"></span>落选（灰条）</span>'
+    +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度 <span class="gloss" title="'+esc(HGEP_GLOSS.H)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 分歧 <span class="gloss" title="'+esc(HGEP_GLOSS.G)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 实据 <span class="gloss" title="'+esc(HGEP_GLOSS.E)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 已定价 <span class="gloss" title="'+esc(HGEP_GLOSS.P)+'">ⓘ</span></span>'
+    +'<span><span class="sw" style="background:var(--color-data-1);opacity:.34"></span>落选（同样的色块，压暗）</span>'
     +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>纯数数对照的排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span>（绿圈 = 数数也选）</span>'
     +'</div>';
   if(foc&&d&&!d.scrolled){drawerScrollSel='#topicrow-'+foc;d.scrolled=true}
@@ -3389,6 +3717,20 @@ function topicDrawerBody(tid){
       +(chosen?badge('success','入选'):badge('neutral','落选'))
       +(ctrl?'<span class="card-note">纯数数臂：'+(ctrlChosen?'也选了':'没选')+'</span>':'')
       +'</div>';
+    /* 落选主题：打开它第一眼就该看到「为什么没选它」，而不是自己去比分数 */
+    if(!chosen){
+      var allSc=(hgep&&hgep.scores)||{};
+      var inIds=topicChosen('hgep');
+      var aC=[0,0,0,0],cut=null;
+      inIds.forEach(function(t){
+        var o=allSc[t]||{};
+        aC[0]+=0.30*(o.H||0);aC[1]+=0.25*(o.G||0);aC[2]+=0.25*(o.E||0);aC[3]+=0.20*(100-(o.P||0));
+        if(o.score!==undefined&&(cut===null||o.score<cut))cut=o.score;
+      });
+      if(inIds.length)aC=aC.map(function(v){return v/inIds.length});
+      html+='<div class="rej-why">为什么落选：'+topicLossReason(r,aC,cut)
+        +'。落选主题不进入筛选B，本期没有一条想法出自它。</div>';
+    }
     html+='<div class="derive-formula num" title="'+esc(HGEP_GLOSS.H+'；'+HGEP_GLOSS.G+'；'+HGEP_GLOSS.E+'；'+HGEP_GLOSS.P)+'">综合分 '+numOr(r.score)+' ≈ 0.30×H热度('+numOr(r.H)+') + 0.25×G分歧('+numOr(r.G)+') + 0.25×E实据('+numOr(r.E)+') + 0.20×(100−P已定价('+numOr(r.P)+')) = '+wsum.toFixed(1)+' <span class="gloss" title="'+esc(HGEP_GLOSS.H+'。'+HGEP_GLOSS.G+'。'+HGEP_GLOSS.E+'。'+HGEP_GLOSS.P)+'">ⓘ</span></div>'
       +'<div class="derive-kv">'
       +'<span>打分用证据：'+fmtInt(r.n_evidence)+' 条 · '+fmtInt(r.n_institutions)+' 家机构</span>'

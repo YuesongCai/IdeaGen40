@@ -205,9 +205,11 @@ def _parse_sse(text: str) -> dict:
 
     kept: list[str] = []
     for ln in text.split("\n"):
-        if ln.startswith("data: "):
-            kept.append(ln[6:])
-        elif ln.startswith(_SSE_FIELD) and not ln.startswith("data:"):
+        if ln.startswith("data:"):
+            # The space after the colon is optional in the SSE grammar, and
+            # Olive's gateway omits it ("data:{...}"). Strip one if present.
+            kept.append(ln[6:] if ln.startswith("data: ") else ln[5:])
+        elif ln.startswith(_SSE_FIELD):
             kept.append("\x00")           # event boundary marker
         else:
             kept.append(ln)

@@ -535,6 +535,21 @@ class TestOliveMCP(unittest.TestCase):
         self.assertEqual(merged["navDate"], "2026-09-01")
         date.fromisoformat(olive._normalise("funds", merged)["nav_d"])
 
+    def test_sse_data_lines_parse_without_the_optional_space(self):
+        """Olive's gateway frames replies as "data:{...}" with no space.
+
+        The space after the colon is optional in the SSE grammar; requiring it
+        made every Olive tools/call fail as "unparseable response".
+        """
+        from ideagen.sources.wisburg import _parse_sse
+        tight = _parse_sse(
+            'event:message\ndata:{"jsonrpc":"2.0","id":2,"result":{"ok":1}}')
+        loose = _parse_sse(
+            'event: message\ndata: {"jsonrpc":"2.0","id":3,"result":{"ok":2}}')
+        self.assertEqual(tight["result"], {"ok": 1})
+        self.assertEqual(loose["result"], {"ok": 2})
+        self.assertEqual(_parse_sse('{"plain":true}'), {"plain": True})
+
     def test_issuer_is_discovered_from_the_endpoint_alone(self):
         """The operator should only have to know the MCP URL (RFC 9728)."""
         seen = []

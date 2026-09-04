@@ -108,11 +108,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         the file it writes on every cycle.
         """
         import json as _json
-        state = {"deployed": None, "updater": None}
-        try:
-            state["deployed"] = (Path("/app") / ".git" / "HEAD").exists()
-        except Exception:  # noqa: BLE001
-            pass
+        # The running commit comes from the updater's own record, not from
+        # looking for a .git here: the image copies source without history, so
+        # any check made inside the container can only ever answer "no".
+        state = {"updater": None}
         for candidate in (Path("/run/ideagen-health/updater.json"),
                           Path("/opt/ideagen/health/updater.json")):
             try:
@@ -376,7 +375,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/legacy":
             return self._live_dashboard()
         if path == "/healthz":
-            return self._json({"ok": True, "ts": config.now_hkt().isoformat()})
+            return self._json({"ok": True, "ts": config.now_hkt().isoformat(),
+                               "code": _code_version()})
         return super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -767,6 +767,61 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
             self._set_download = None
         self.end_headers()
         self.wfile.write(body)
+
+
+#: What code this process is actually running, reported on the one endpoint
+#: that needs no login.
+#:
+#: The updater writes `deployed_sha` into a health file on the box, and gates
+#: each self-update on the test suite passing inside the image. When that gate
+#: goes red the deployment simply stops moving — and from outside, a server
+#: that has been updating every five minutes and one frozen three hours ago
+#: look identical. That is the same failure the page's staleness stamp exists
+#: to prevent, one layer down.
+#:
+#: The fingerprint is over the source this process loaded, so it changes when
+#: and only when the deployed code changes, with no build-time injection
+#: needed — it works the same in the image, in a git checkout, and here.
+#: `sha` is filled in when the environment supplies one and is null otherwise,
+#: rather than guessing. Nothing here is sensitive: a hash and a timestamp.
+_code_version_cache: dict[str, object] | None = None
+
+
+def _code_version() -> dict[str, object]:
+    global _code_version_cache
+    if _code_version_cache is not None:
+        return _code_version_cache
+    import hashlib
+    h = hashlib.sha256()
+    newest = 0.0
+    n = 0
+    try:
+        roots = [Path(__file__).resolve().parent, config.WEB]
+        for root in roots:
+            if not root.exists():
+                continue
+            for f in sorted(root.rglob("*")):
+                if not f.is_file() or f.suffix not in (".py", ".html"):
+                    continue
+                if "__pycache__" in f.parts:
+                    continue
+                st = f.stat()
+                h.update(f.name.encode())
+                h.update(str(st.st_size).encode())
+                newest = max(newest, st.st_mtime)
+                n += 1
+    except Exception:  # noqa: BLE001 — health must answer even if this cannot
+        pass
+    from datetime import datetime, timezone
+    _code_version_cache = {
+        "fingerprint": h.hexdigest()[:12],
+        "files": n,
+        "newest_source": (datetime.fromtimestamp(newest, timezone.utc).isoformat()
+                          if newest else None),
+        "sha": os.environ.get("IDEAGEN_BUILD_SHA") or None,
+        "started": config.now_hkt().isoformat(),
+    }
+    return _code_version_cache
 
 
 #: The state document is the page's first paint and its 60-second poll.

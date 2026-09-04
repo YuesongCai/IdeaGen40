@@ -97,6 +97,11 @@ services:
       # 构建上下文与 git 工作树；docker socket 用来构建和换容器。
       - /opt/ideagen/app:/opt/ideagen/app
       - /opt/ideagen/health:/opt/ideagen/health
+      # compose 在**自己这个容器**的文件系统里找 env_file，找不到就整个
+      # `up` 失败——代码更新了、部署没发生，而且失败信息只在容器日志里。
+      # 口令确实因此进了这个容器，但它已经握着 docker socket（等于宿主 root），
+      # 多一个只读挂载不改变它的权限级别。
+      - /opt/ideagen/config:/opt/ideagen/config:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ./updater.sh:/updater.sh:ro
     restart: always

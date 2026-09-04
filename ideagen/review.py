@@ -342,6 +342,33 @@ def _port_health(p, scrub) -> dict[str, Any]:
             "ports_pending": False}
 
 
+def _gen_meta(meta: dict, hide_licensed: bool) -> dict:
+    """A generator's meta, with the one prose-bearing key redacted for export.
+
+    `thesis` a few lines below is set to None under the same flag, for the same
+    reason: model-written prose derived from licensed research bodies is not
+    ours to republish. `topic_errors` was a hole through that same wall, and not
+    a hypothetical one — a topic whose model call returns prose instead of JSON
+    fails with `ValueError: 模型返回无法解析为 JSON：<200 chars of the model's
+    answer>`, and every one of those characters was reaching the public payload.
+
+    The class name is kept rather than the whole key dropped. Which topics
+    failed, and with what kind of failure, is exactly the diagnostic worth
+    publishing; the model's own words are the part that is not.
+
+    This is the near side of the wall. The publish gate's bookkeeping-prose rule
+    is the far side, and it is what catches the next key someone adds here.
+    """
+    if not hide_licensed:
+        return meta
+    errs = meta.get("topic_errors")
+    if isinstance(errs, dict) and errs:
+        meta = dict(meta)
+        meta["topic_errors"] = {k: str(v).split(":", 1)[0].strip()
+                                for k, v in errs.items()}
+    return meta
+
+
 def state(con=None, p=None) -> dict[str, Any]:
     """The full system state as one JSON document.
 
@@ -443,7 +470,7 @@ def state(con=None, p=None) -> dict[str, Any]:
                                "WHERE run_id=? AND kind='topic_scorer'", (rid,))]
         weekly["generators"] = [
             {"method": v["strategy"], "n": len(json.loads(v["chosen"])),
-             "meta": json.loads(v["meta"] or "{}"),
+             "meta": _gen_meta(json.loads(v["meta"] or "{}"), hide_licensed),
              "rejected": len(json.loads(v["rejected"] or "{}"))}
             for v in p.state.q("SELECT strategy, chosen, meta, rejected FROM "
                                "verdicts WHERE run_id=? AND kind='idea_generator'",

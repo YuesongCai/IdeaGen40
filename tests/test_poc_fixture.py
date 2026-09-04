@@ -368,8 +368,24 @@ class TestPublicPocFixture(unittest.TestCase):
 
     def test_ecs_runtime_config_is_podman_safe_and_redacts_headers(self):
         root = Path(__file__).resolve().parent.parent
-        compose = (root / "deploy" / "compose.yaml").read_text()
-        caddy = (root / "deploy" / "Caddyfile").read_text()
+        # This asserts properties of the deployment config as it sits in the
+        # repository. The runtime image does not carry that config — the
+        # Dockerfile copies only the two entrypoint scripts out of `deploy/` —
+        # so inside the image there is nothing here to check, and reading the
+        # file raised FileNotFoundError instead. That is not a finding about
+        # compose.yaml, and it was expensive: the updater gates every
+        # self-update on this suite passing inside the image, so one absent
+        # file quietly froze the deployed code while the page kept looking
+        # like it was up to date.
+        compose_p = root / "deploy" / "compose.yaml"
+        caddy_p = root / "deploy" / "Caddyfile"
+        missing = [p.name for p in (compose_p, caddy_p) if not p.exists()]
+        if missing:
+            raise unittest.SkipTest(
+                "deployment config not present in this tree "
+                f"({', '.join(missing)}) — nothing to assert about it here")
+        compose = compose_p.read_text()
+        caddy = caddy_p.read_text()
         self.assertIn('test: ["CMD-SHELL"', compose)
         self.assertNotIn('test: ["CMD", "python3", "-c"', compose)
         # Every service restarts, checked per service rather than by counting

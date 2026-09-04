@@ -775,3 +775,85 @@ def doc_detail(con=None, doc_id: str = "", p=None) -> dict[str, Any]:
     d = dict(r)
     d["body_len"] = len(d.get("body") or "")
     return d
+
+
+# ---------------------------------------------------------------------------
+# proposals — what each method actually wrote, before the merge
+# ---------------------------------------------------------------------------
+def proposals_for(instrument: str, run_id: str | None = None,
+                  p=None, con=None) -> dict[str, Any]:
+    """Every individual proposal for one instrument, before they were merged.
+
+    The candidate pool shows one row per instrument: a merged thesis and the
+    median of the odds. That is the right unit for selection and the wrong
+    unit for the question "how did this idea come about" — four methods wrote
+    four different arguments for the same ticker, and the merge is exactly
+    where those differences stop being visible.
+
+    So this reads them back out of the run's own generator artifacts, each with
+    the reports it cited, and resolves those citations to titles so the chain
+    from idea to source document is clickable rather than a bare id.
+    """
+    p = p or plat.load()
+    con = con or db.init()
+    rows = (p.state.q("SELECT run_id, as_of FROM orch_runs WHERE run_id=?",
+                      (run_id,)) if run_id else
+            p.state.q("SELECT run_id, as_of FROM orch_runs "
+                      "WHERE kind='weekly' AND ok=1 ORDER BY as_of DESC LIMIT 1"))
+    if not rows:
+        return {"error": "没有可读的运行记录"}
+    run = dict(rows[0])
+    want = str(instrument or "").strip()
+    if not want:
+        return {"error": "缺少标的代码"}
+    bare = want.split(".")[-1].upper()
+
+    found: list[dict[str, Any]] = []
+    cite_ids: set[str] = set()
+    for method in ("ai_native", "carl_constraint", "chain", "gap"):
+        try:
+            raw = p.blobs.get(
+                f"runs/{run['as_of']}/{run['run_id']}/B_generators/{method}.json")
+            art = json.loads(raw)
+        except Exception:  # noqa: BLE001 — a missing method is reported, not fatal
+            continue
+        for item in (art.get("produced") or []):
+            iid = str(item.get("instrument_id") or "")
+            if iid.split(".")[-1].upper() != bare:
+                continue
+            cites = [str(c) for c in (item.get("citations") or []) if c]
+            cite_ids.update(cites)
+            found.append({
+                "method": item.get("method") or method,
+                "topic_id": item.get("topic_id"),
+                "thesis": item.get("thesis"),
+                "upside_pct": item.get("upside_pct"),
+                "downside_pct": item.get("downside_pct"),
+                "p_up": item.get("p_up"), "p_base": item.get("p_base"),
+                "p_down": item.get("p_down"),
+                "vehicle": item.get("vehicle"), "exposure": item.get("exposure"),
+                "horizon_days": item.get("horizon_days"),
+                "citations": cites,
+                "bad_citations": item.get("bad_citations"),
+                "instrument_name": item.get("instrument_name"),
+            })
+
+    # Citations are ids until they carry a title; a bare `ib:103758` is not a
+    # link to anything a reader can check.
+    docs: dict[str, Any] = {}
+    if cite_ids:
+        ids = sorted(cite_ids)
+        try:
+            for chunk in (ids[i:i + 400] for i in range(0, len(ids), 400)):
+                for r in db.q(con,
+                              "SELECT doc_id, title, published_d, "
+                              "COALESCE(institution, line) AS institution, tier "
+                              "FROM documents WHERE doc_id IN (%s)"
+                              % ",".join("?" * len(chunk)), chunk):
+                    docs[r["doc_id"]] = dict(r)
+        except Exception:  # noqa: BLE001 — titles are a nicety, ids still work
+            pass
+    found.sort(key=lambda x: (str(x.get("method")), str(x.get("topic_id"))))
+    return {"run_id": run["run_id"], "as_of": run["as_of"],
+            "instrument": bare, "n": len(found),
+            "proposals": found, "docs": docs}

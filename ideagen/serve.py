@@ -184,6 +184,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json({"error": name}, status=404)
             self._set_download = name
             return self._raw(blob, "application/zip")
+        if path == "/api/proposals":
+            # What each generation method wrote for one instrument, before the
+            # merge collapsed them into a single candidate row.
+            from urllib.parse import parse_qs, urlparse
+            from . import review
+            q = parse_qs(urlparse(self.path).query)
+            return self._json(review.proposals_for(
+                (q.get("instrument") or [""])[0],
+                (q.get("run_id") or [None])[0]))
         if path == "/api/asks":
             # The session record: every question put to a past run, newest
             # first. Read-only view of the same log the audit bundle ships.

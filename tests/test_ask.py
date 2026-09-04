@@ -23,7 +23,7 @@ os.environ.setdefault("OLIVE_MCP_URL", "https://catalog.example/mcp")
 os.environ.setdefault("OLIVE_OAUTH_ISSUER", "https://sso.example")
 os.environ.setdefault("OLIVE_OAUTH_TOKEN_URL", "https://sso.example/token")
 
-from ideagen import ask, db, schema
+from ideagen import ask, db, review, schema
 from ideagen.platform import Platform, Unavailable
 from ideagen.platform.local import (FileCache, FileEventBus, LocalBlobStore,
                                     SqliteStateStore)
@@ -212,6 +212,63 @@ class SelectionContextCase(_FrozenRun, unittest.TestCase):
         self.assertIn("selection", ask.SUBJECT_KINDS)
         bad = self._ctx("nonsense", "topics")
         self.assertIn("error", bad)
+
+
+class ProposalsCase(_FrozenRun, unittest.TestCase):
+    """The proposals behind one merged candidate.
+
+    The pool row is a merge: one thesis, median odds. That is the right unit
+    to select on and the wrong one to answer "how did this idea come about",
+    because the merge is exactly where four methods' different arguments stop
+    being visible. These read them back out of the run's own artifacts.
+    """
+
+    def setUp(self):
+        super().setUp()
+        pre = f"runs/{AS_OF}/{RUN_ID}"
+        for method, thesis, cite in (
+                ("ai_native", "端到端的理由", "feed:0"),
+                ("chain", "传导链的理由", "feed:1")):
+            self.p.blobs.put(f"{pre}/B_generators/{method}.json", json.dumps({
+                "as_of": AS_OF, "kind": "idea_generator", "strategy": method,
+                "version": "1.0", "produced": [
+                    {"id": f"{method}:T-TEST:AAA", "instrument_id": "AAA",
+                     "instrument_name": "A Fund", "method": method,
+                     "topic_id": "T-TEST", "thesis": thesis,
+                     "upside_pct": 4.0, "downside_pct": -2.0,
+                     "p_up": 0.5, "p_base": 0.3, "p_down": 0.2,
+                     "citations": [cite], "bad_citations": 0},
+                    {"id": f"{method}:T-TEST:ZZZ", "instrument_id": "ZZZ",
+                     "topic_id": "T-TEST", "thesis": "别的标的",
+                     "citations": []},
+                ]}).encode())
+
+    def test_returns_every_method_that_proposed_the_instrument(self):
+        out = review.proposals_for("AAA", RUN_ID, p=self.p, con=self.con)
+        self.assertEqual(2, out["n"])
+        self.assertEqual({"ai_native", "chain"},
+                         {x["method"] for x in out["proposals"]})
+        self.assertEqual({"端到端的理由", "传导链的理由"},
+                         {x["thesis"] for x in out["proposals"]})
+
+    def test_citations_resolve_to_titles_so_the_chain_is_clickable(self):
+        out = review.proposals_for("AAA", RUN_ID, p=self.p, con=self.con)
+        self.assertIn("feed:0", out["docs"])
+        self.assertTrue(out["docs"]["feed:0"]["title"])
+
+    def test_a_prefixed_code_finds_the_same_instrument(self):
+        """Positions carry `US.AAA`; the pool carries `AAA`."""
+        self.assertEqual(2, review.proposals_for(
+            "US.AAA", RUN_ID, p=self.p, con=self.con)["n"])
+
+    def test_an_instrument_nobody_proposed_is_empty_not_an_error(self):
+        out = review.proposals_for("NOPE", RUN_ID, p=self.p, con=self.con)
+        self.assertEqual(0, out["n"])
+        self.assertNotIn("error", out)
+
+    def test_a_blank_code_is_refused(self):
+        self.assertIn("error", review.proposals_for(
+            "", RUN_ID, p=self.p, con=self.con))
 
 
 class AskLogCase(unittest.TestCase):

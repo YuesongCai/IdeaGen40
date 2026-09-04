@@ -1709,6 +1709,19 @@ function robustArm(name){
 function robustBadge(name){
   var v=robustArm(name);
   if(!v||!v.verdict)return '';
+  var r=(((S||{}).backtest||{}).summary||{}).robustness_drop_top||{};
+  var stable=(r.verdict_stable_across_depths||{})[name];
+  /* 这项检验本身也要接受它自己提的那个反对：剔多少个标的是人选的。
+     同一个臂在剔 5 / 10 / 20 三个深度下判定不一致时，那个判定说的是
+     「10」这个数，不是这个臂——挂成结论会让读者带走一个不存在的发现。
+     所以不稳定时换一个明确不构成结论的角标。 */
+  if(stable===false){
+    return '<span style="margin-left:6px;white-space:nowrap" title="'
+      +esc('该判定随剔除个数变化：剔 5 / 10 / 20 个标的得到的结论不一致，'
+           +'因此它取决于剪切多少个标的，不构成关于该策略的结论。'
+           +(r.depth_note?'　'+r.depth_note:''))+'">'
+      +badge('neutral','判定随口径变化')+'</span>';
+  }
   var kind=v.verdict==='not_ruled_out'?'warning':'neutral';
   var word=v.verdict==='not_ruled_out'?'剔除后变动'
           :(v.verdict==='underpowered'?'样本不足以检验':v.verdict);
@@ -1719,8 +1732,10 @@ function robustBadge(name){
 function robustNote(){
   var r=(((S||{}).backtest||{}).summary||{}).robustness_drop_top;
   if(!r||!r.arms)return '';
-  var shifted=0,under=0;
+  var st=r.verdict_stable_across_depths||{};
+  var shifted=0,under=0,unstable=0;
   Object.keys(r.arms).forEach(function(k){
+    if(st[k]===false){unstable++;return}
     var v=r.arms[k].verdict;
     if(v==='not_ruled_out')shifted++;else if(v==='underpowered')under++;
   });
@@ -1729,6 +1744,7 @@ function robustNote(){
     +'<b>剔除高频标的复测</b>：删掉本期最常被持有的 '+fmtInt(r.top_n||0)+' 个标的重算，'
     +fmtInt(r.n_arms||0)+' 个臂里 <b>'+shifted+'</b> 个的变动未被排除、'
     +under+' 个样本不足以检验'
+    +(unstable?'、'+unstable+' 个的判定随剔除个数变化（剔 5 / 10 / 20 结论不一致，不构成结论）':'')
     /* r.note 说的就是这句话的前半段，两句并排等于说了两遍。 */
     +(dropped?'<span class="gloss" title="被删掉的标的：'+esc(dropped)+'">ⓘ</span>':'')
     +'</div>';
@@ -2449,7 +2465,10 @@ function mainLine(ag){
       +'<span class="ml-idx">0'+(o.i+1)+'</span>'
       +'<span class="ml-name">'+esc(o.name)+'</span>'
       +'<span class="ml-stat">'+o.stat+'</span>'
-      +'<span class="ml-more"'+(o.moreTip?' title="'+esc(o.moreTip)+'"':'')+'>'+esc(o.more)+'</span>'
+      /* 摘要只在折叠时有用——它是「里面有什么」。展开之后正文自己会说，
+       * 而且说得更细：03 段的「执行路径: 1 种 AI 端到端 · 3 种 约束边界」
+       * 在正文第一行原样又画了一遍。展开就把摘要让出去。 */
+      +(open?'':'<span class="ml-more"'+(o.moreTip?' title="'+esc(o.moreTip)+'"':'')+'>'+esc(o.more)+'</span>')
       +chev
     +'</button>';
     var body='';
@@ -2489,7 +2508,10 @@ function mlStageBody(i){
     return stageGeneratorsBody({f:mlFocus[2]})
       +'<div style="margin-top:var(--space-6);padding-top:var(--space-5);border-top:1px solid var(--color-border-subtle)">'
       +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0;font-size:16px">合并候选池</h2>'
-      +'<span class="card-note">同一标的合并为一条，赔率取中位数</span></div>'
+      /* 这里曾挂一句「同一标的合并为一条，赔率取中位数」，
+       * 而它正下方的大字行写的就是「400 条原始想法 → 同一标的合并、
+       * 赔率取中位数 → 73 条候选」。同一句话，隔了一行说两遍。 */
+      +'</div>'
       +stagePoolBody({f:null})+'</div>';
   }catch(e){
     return '<div class="empty-sm">该阶段渲染失败（'+esc(e&&e.message?e.message:String(e))+'）</div>';
@@ -3576,8 +3598,8 @@ function portfolioHeadline(ag){
      基准不能叫「什么都不做」：买 SPY 是满仓 beta，不是空仓，把跑输 SPY
      说成「不如躺着」在给 PM 看的材料里是错的。 */
   var verdict = vs===null ? '尚无可比的收益数据'
-    : (vs>=0 ? '<b>跑赢 '+esc(benchName())+' '+vs.toFixed(2)+' 个百分点</b>'
-             : '<b>跑输 '+esc(benchName())+' '+Math.abs(vs).toFixed(2)+' 个百分点</b>');
+    : '<b>'+(vs>=0?'跑赢 ':'跑输 ')+esc(benchName())+' '
+        +fmtGapPp(vs,{unit:' 个百分点'})+'</b>';
   return '<div class="card section" id="wkHeadline">'
     +'<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-6) var(--space-8)">'
       +'<div>'
@@ -3631,12 +3653,14 @@ function portfolioHeadline(ag){
         +'<span class="hs-h">这 '+fmtPct(pp(gain))+' 从哪来</span>'
         +'<span class="hs-i"><b class="num '+pctCls(pos)+'">'+(pp(pos)>=0?'+':'')+pp(pos).toFixed(2)+' pp</b> 选出来的持仓</span>'
         +'<span class="hs-i"><b class="num">'+(pp(cash)>=0?'+':'')+pp(cash).toFixed(2)+' pp</b> 未投出资金的货币市场利息'
-        +'<span class="gloss" title="'+esc(cashRateNote())+'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。">ⓘ</span></span>'
-        +'<span class="hs-d">目前只投出 <b class="num">'+depPct.toFixed(0)+'%</b> 的资金'
-        +'<span class="gloss" title="组合按 4 周滚动建仓：每周投入约四分之一，第五周换掉第一周。'
-        +(wk?'现在是第 '+wk+' 周，':'')+'所以大部分资金还在现金里。'
-        +(ag.pending?'另有 '+fmtInt(ag.pending)+' 笔挂单尚未成交。':'')
-        +'　对照的 '+esc(benchName())+' 是满仓，两边仓位不同——这也是为什么现在的差距不能直接读成选股能力的差距。">ⓘ</span></span>'
+        +'<span class="gloss" title="'+esc(cashRateNote())+'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。'
+          +'当前实际投出 '+depPct.toFixed(0)+'%'
+          +(ag.pending?'，低于每周约四分之一的设计值，因为还有 '+fmtInt(ag.pending)+' 笔挂单没有成交':'')
+          +'。">ⓘ</span></span>'
+        /* 「已投出 N%」现在标在上面那个大数旁边，正对着基准栏的「满仓」——
+         * 那是它该待的位置。这里不再说第二遍：同一个数字在半屏之内出现两次，
+         * 读者会去想它们是不是两件事。它独有的那点信息（挂单没成交，所以
+         * 实际投出比设计值还低）并进了上面现金那一项的说明里。 */
         +'</div>';
     })()
     /* 一个人看完这个数字，下一句必然是「为什么」。追问入口就该在这里，
@@ -3657,6 +3681,18 @@ function portfolioHeadline(ag){
   +'</div>';
 }
 
+/* 组合与基准的差距，全站唯一的格式化入口。
+   这个差就是读者拿两个头条数字相减能自己验的那一个（+0.46% 与 +5.99% →
+   5.53），所以精度必须和那两个数对得上。之前概览写「5.53 个百分点」、
+   证据写「−5.5pp」，同一个事实两个写法，谁去核对谁都会以为算错了。 */
+function fmtGapPp(gap,opts){
+  if(gap===null||gap===undefined||!isFinite(gap))return '—';
+  opts=opts||{};
+  var v=Math.abs(gap).toFixed(2);
+  return opts.signed
+    ? (gap>=0?'+':'−')+v+(opts.unit||'pp')
+    : v+(opts.unit||'pp');
+}
 function spyLine(ret){
   // 同一段日期里持有基准指数的收益。合计收益没有这个零点就没有含义：
   // 组合 +1% 而 SPY +3%，相对收益为负。
@@ -3666,7 +3702,7 @@ function spyLine(ret){
   var t=' · 同期 '+benchName()+' <span class="num '+pctCls(r)+'" title="'+sr[0].d+' 至 '+sr[sr.length-1].d+' 的收盘价涨跌，作为满仓基准的参照">'+fmtPct(r)+'</span>';
   if(ret!==null&&isFinite(ret)){
     var d=ret-r;
-    t+=' <span class="num '+pctCls(d)+'" title="合计收益减去同期基准收益：正 = 跑赢基准">（'+(d>=0?'+':'−')+Math.abs(d).toFixed(1)+'pp vs SPY）</span>';
+    t+=' <span class="num '+pctCls(d)+'" title="合计收益减去同期基准收益：正 = 跑赢基准">（'+fmtGapPp(d,{signed:true})+' vs '+benchName()+'）</span>';
   }
   return t;
 }

@@ -204,7 +204,12 @@ CREATE TABLE IF NOT EXISTS instruments (
     aum         REAL,
     expense     REAL,
     meta        TEXT,
-    updated_at  TEXT
+    updated_at  TEXT,
+    -- The date the instrument became available, used by universe.eligible to
+    -- keep a replayed period from picking something that did not exist yet.
+    -- It lived only in schema.py, which db.init() does not run, so every
+    -- freshly created database was missing the column the as-of gate reads.
+    first_seen_d TEXT
 );
 
 -- ============================================================ paper book
@@ -331,8 +336,27 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 def init(path: Path | str | None = None) -> sqlite3.Connection:
     con = connect(path)
     con.executescript(SCHEMA)
+    _ensure_columns(con)
     _ensure_books(con)
     return con
+
+
+#: Columns added to a table that already existed. `CREATE TABLE IF NOT EXISTS`
+#: is a no-op on a database created before the column was declared, so the
+#: statement above only helps new files; a laptop carrying months of history
+#: would keep a schema no code still expects. Kept to additive column adds on
+#: purpose — this is not a migration framework and should not become one by
+#: accident.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("instruments", "first_seen_d", "TEXT"),
+)
+
+
+def _ensure_columns(con: sqlite3.Connection) -> None:
+    for table, column, decl in _ADDED_COLUMNS:
+        have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+        if have and column not in have:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 def _ensure_books(con: sqlite3.Connection) -> None:

@@ -668,6 +668,31 @@ tr.expandable{cursor:pointer}
 
 /* ── 推理链（语料→主题→想法→候选→账本→持仓） ─────────────── */
 .chain-card{padding:var(--space-4) var(--space-5)}
+/* 三段式主线：默认折叠，逐层下钻 */
+.mainline{padding:var(--space-5) var(--space-6) var(--space-4)}
+.ml-row+.ml-row{border-top:1px solid var(--color-border-subtle)}
+.ml-head{
+  display:grid;grid-template-columns:34px minmax(96px,auto) 1fr auto auto;
+  align-items:center;gap:var(--space-4);width:100%;
+  padding:14px 4px;background:none;border:0;cursor:pointer;text-align:left;
+}
+.ml-head:hover{background:var(--color-surface-muted)}
+.ml-idx{font:500 11px/16px var(--font-mono);color:var(--color-text-tertiary);letter-spacing:.04em}
+.ml-name{font:600 16px/24px var(--font-sans);color:var(--color-text-primary)}
+.ml-stat{font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);min-width:0}
+.ml-stat .num{font-family:var(--font-mono);font-weight:600;color:var(--color-text-primary)}
+.ml-stat .sep{color:var(--color-text-tertiary);margin:0 6px}
+.ml-more{font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.ml-chev{width:16px;height:16px;flex:none;color:var(--color-text-tertiary);transition:transform .15s ease}
+.ml-row.open .ml-chev{transform:rotate(90deg)}
+.ml-row.open .ml-name{color:var(--color-text-brand)}
+.ml-body{padding:var(--space-2) 4px var(--space-6);border-top:1px solid var(--color-border-subtle)}
+.ml-body-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-4)}
+@media (max-width:900px){
+  .ml-head{grid-template-columns:28px 1fr auto;row-gap:2px}
+  .ml-stat{grid-column:2/4}
+  .ml-more{display:none}
+}
 .chain-scroll{overflow-x:auto;padding-bottom:2px}
 .chain{display:flex;align-items:stretch;gap:0;min-width:min-content}
 .chain-node{
@@ -888,7 +913,7 @@ button.chain-node:hover .cn-go{opacity:1}
 .rl-chip.ok::before{content:'';display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--color-accent);margin-right:6px}
 .rl-chip.bad{border-color:rgb(255 122 122 / 50%);color:#ffb1b1}
 .rl-scroll{overflow-x:auto}
-/* 人话/工程切换 */
+/* 摘要/工程切换 */
 .rl-dl{border:1px solid rgb(184 255 58 / 45%);border-radius:var(--radius-pill);padding:1px 12px;color:var(--color-accent);text-decoration:none;white-space:nowrap;font:500 11px/18px var(--font-sans)}
 .rl-dl:hover{background:rgb(184 255 58 / 14%)}
 .rr-row{display:flex;align-items:stretch;gap:var(--space-3)}
@@ -900,7 +925,7 @@ button.chain-node:hover .cn-go{opacity:1}
 .rl-seg button{border:none;background:none;cursor:pointer;padding:2px 12px;font:500 11px/18px var(--font-sans);color:#aeb6b2}
 .rl-seg button.on{background:var(--color-accent);color:var(--color-text-primary)}
 .rl-seg button:not(.on):hover{background:rgb(255 255 255 / 8%);color:#e6ebe8}
-/* 人话视图 */
+/* 摘要视图 */
 .rlp{display:flex;flex-direction:column;gap:2px}
 .rlp-item{display:grid;grid-template-columns:26px minmax(0,1fr) 92px;gap:var(--space-3);align-items:start;padding:var(--space-3) 0;border-bottom:1px solid rgb(255 255 255 / 8%)}
 .rlp-item:last-child{border-bottom:none}
@@ -928,7 +953,39 @@ button.chain-node:hover .cn-go{opacity:1}
 @keyframes rlIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.rl-anim .rl-line{animation:none;opacity:1}}
 
-/* 筛选A 赛马条 */
+/* 执行路径标签：AI 端到端 / 约束边界 / 纯代码 */
+.ptag{display:inline-flex;align-items:center;gap:4px;flex:none;
+  padding:1px 7px;border-radius:9999px;cursor:help;
+  font:500 11px/16px var(--font-sans);white-space:nowrap}
+.ptag::before{content:'';width:5px;height:5px;border-radius:9999px;background:currentColor}
+.ptag-ai{background:var(--color-surface-brand-muted);color:var(--color-text-brand)}
+.ptag-frame{background:var(--color-surface-info-subtle,var(--color-surface-muted));color:var(--color-text-secondary)}
+.ptag-code{background:var(--color-surface-sunken);color:var(--color-text-tertiary)}
+.ptag-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:var(--space-3)}
+/* 策略 × 主题分布矩阵 */
+.tmx{margin-top:var(--space-5);padding-top:var(--space-5);border-top:1px solid var(--color-border-subtle)}
+.tmx-legend{display:flex;flex-wrap:wrap;gap:10px;margin:var(--space-2) 0 var(--space-4)}
+.tmx-legend span{display:inline-flex;align-items:center;gap:5px;font:400 12px/16px var(--font-sans);color:var(--color-text-secondary)}
+.tmx-legend i{width:9px;height:9px;border-radius:2px;flex:none}
+.tmx-row{display:grid;grid-template-columns:132px 1fr 74px;align-items:center;gap:var(--space-3);
+  width:100%;padding:5px 4px;background:none;border:0;cursor:pointer;text-align:left}
+.tmx-row:hover{background:var(--color-surface-muted)}
+.tmx-name{font:400 12px/17px var(--font-sans);color:var(--color-text-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tmx-bar{display:flex;height:16px;border-radius:3px;overflow:hidden;background:var(--color-surface-sunken)}
+.tmx-seg{height:100%}
+.tmx-n{font:400 11px/16px var(--font-mono);color:var(--color-text-tertiary);text-align:right}
+.tmx-row.ctl .tmx-name{color:var(--color-text-tertiary)}
+@media (max-width:900px){.tmx-row{grid-template-columns:100px 1fr 60px}}
+/* 入选 / 落选分列 */
+.race-sec+.race-sec{margin-top:var(--space-6)}
+.race-sec-h{display:flex;align-items:baseline;gap:var(--space-3);flex-wrap:wrap;
+  padding-bottom:6px;margin-bottom:var(--space-3);border-bottom:1px solid var(--color-border-default)}
+.race-sec-h .t{font:600 14px/20px var(--font-sans);color:var(--color-text-primary)}
+.race-sec-h .s{font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.race-sec.lost .race-sec-h{border-bottom-color:var(--color-border-subtle)}
+.race-sec.lost .race-sec-h .t{color:var(--color-text-secondary)}
+/* 筛选A 主题评分条 */
 .race{display:flex;flex-direction:column}
 .race-row{display:grid;grid-template-columns:200px minmax(0,1fr) 170px;gap:var(--space-3);align-items:center;padding:5px 6px;cursor:pointer;border-radius:var(--radius-sm);border:none;text-align:left;width:100%}
 .race-row:hover{background:var(--color-surface-subtle)}
@@ -1112,7 +1169,7 @@ body.drawer-lock{overflow:hidden}
 .seg-btn:first-child{border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
 .seg-btn:last-child{border-radius:0 var(--radius-sm) var(--radius-sm) 0;border-left:none}
 .seg-btn.on{background:var(--color-surface-brand);color:var(--color-text-on-brand);border-color:var(--color-surface-brand)}
-/* 挑法奖牌条 */
+/* 选取策略指标条 */
 .medal-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--space-4)}
 .medal{
   display:inline-flex;align-items:center;gap:8px;border-radius:var(--radius-pill);
@@ -1145,7 +1202,7 @@ body.drawer-lock{overflow:hidden}
 .hm-cloud{row-gap:12px;padding-bottom:5px}
 .agg-line{font:400 13px/19px var(--font-sans);color:var(--color-text-metadata);margin-top:var(--space-3)}
 .agg-line .num{font-weight:600;color:var(--color-text-secondary)}
-/* 噪音带图（赛马 hero 的主视觉） */
+/* 噪音带图（策略对比主视觉） */
 .nb-axis{font:500 11px/15px var(--font-sans);color:var(--color-text-metadata)}
 .nb-head{position:relative;height:14px;margin:2px 86px 0 142px;font:400 10px/14px var(--font-mono);color:var(--color-text-tertiary)}
 .nb-head i{position:absolute;transform:translateX(-50%);font-style:normal}
@@ -1398,8 +1455,8 @@ function isSynthetic(){
   return String(((S||{}).weekly||{}).data_classification||'').indexOf('public-synthetic')===0;
 }
 function backtestArmName(name){
-  /* 回测表里的挑法名要和面板别处叫法一致——同一本账在两处两个名字，
-     读者会以为是两个东西。SEL_META 是那张唯一的对照表。 */
+  /* 回测表的策略名须与面板别处一致：同一账本在两处两个名字，
+     否则会被当作两个对象。SEL_META 是唯一的对照表。 */
   var extra={'generated_ai_native':'只信 AI 端到端','generated_carl_constraint':'只信约束边界'};
   if(extra[name])return extra[name];
   var m=(typeof SEL_META!=='undefined')?selMetaOf(name):null;
@@ -1437,11 +1494,11 @@ function hbOutcome(job){
   return os.find(function(o){return o.job===job})||null;
 }
 function currentBooks(){
-  /* 十本账是一场持续的赛马，不是某一期的快照——某本账这期没建成仓（标的当天
+  /* 各账本是持续记录而非单期快照：某账本本期未建仓（标的当天
      没有价格、或这期它一条也没选中），不代表它退出比较，只代表它这期没加仓。
      原来这里按 run_id 过滤，而 booked_batch 存的是 batch_id，两者永不相等，
      过滤静默失效、靠兜底才显示全部。删掉这个从未生效的过滤，比让它"生效"
-     然后把账本从赛马图里抹掉要对：本期是否入账用 booked_as_of 单独标注。 */
+     然后把账本从对比图里抹掉才对：本期是否入账用 booked_as_of 单独标注。 */
   return (S&&S.books)||[];
 }
 /* 这本账这期加没加仓——供标注用，不用来决定谁出现在图里。 */
@@ -1599,8 +1656,13 @@ function renderAll(){
   if(bootDrawer){var bd=bootDrawer;bootDrawer=null;bd()}
 }
 
-/* ════════════════════ ① 本周 v2 — 老板一眼版：一张卡讲盈亏，一张地图讲押注 ════════════════════ */
+/* ════════════════════ ① 组合 — 三段式主线 + 策略对比 + 敞口分布 ════════════════════ */
 var holdView='map';
+/* 主链路三段：默认全部折叠；展开后就地渲染该阶段的完整现场 */
+var mlOpen={0:false,1:false,2:false};
+var mlFocus={1:null,2:null};
+function toggleStage(i){mlOpen[i]=!mlOpen[i];renderWeek()}
+
 function renderWeek(){
   if(!S){$('view-week').innerHTML='';return}
   var w=S.weekly||{};
@@ -1608,63 +1670,90 @@ function renderWeek(){
   var period=w.as_of||((S.schedule||{}).current_period)||'—';
 
   var html='';
-  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合'+periodBadge()+'</div>'
-    +'<div class="wk-sub">AI 读完一周宏观研报 → 选主题 → 写想法 → 合并候选 → 多种挑法各记一本模拟账 → 自动建仓、逐日盯市。下面的链条节点直接拉开对应环节的抽屉。</div>';
+  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合'+periodBadge()+'</div>';
   html+=statusStrip();
-  html+=chainStrip(ag);
+  html+=mainLine(ag);
   html+=raceHero(ag);
-  html+=backtestCard();
   html+=holdMapCard(ag);
+  html+=backtestCard();
   $('view-week').innerHTML=html;
+  if($('candTable')){bindCandSort();renderCandBody()}
 }
 
-/* ── 推理链条（故事的副标题——节点直接开过程抽屉，不切页） ── */
-function chainStrip(ag){
+/* ── 主链路：读研报 → 选主题 → 写想法 ── */
+function mainLine(ag){
   var w=S.weekly||{};
   var gens=w.generators||[];
   var nIdeas=gens.reduce(function(s,g){return s+(g.n||0)},0);
-  var nTopics=topicChosen('hgep').length;
+  var hgep=topicArm('hgep');
+  var nTopicsAll=(hgep&&hgep.scores)?Object.keys(hgep.scores).length:0;
+  var nChosen=topicChosen('hgep').length;
   var poolN=(w.pool||{}).n||0;
-  var books=ag?ag.books:[];
-  var uniq={};books.forEach(function(b){(b.open_positions||[]).forEach(function(p){uniq[p.code]=1})});
-  var nUniq=Object.keys(uniq).length;
-  var nr=nextRunInfo();
+  var nCorpus=w.corpus_total||0;
+  var insts={};
+  Object.keys(w.evidence||{}).forEach(function(t){
+    ((w.evidence[t]||{}).docs||[]).forEach(function(d){if(d&&d.institution)insts[d.institution]=1});
+  });
+  var nInst=Object.keys(insts).length;
 
-  function node(val,unit,label,sub,click,hot){
-    var inner='<span class="cn-num num">'+val+(unit?'<span class="u"> '+unit+'</span>':'')+'</span>'
-      +'<span class="cn-label">'+label+'</span>'
-      +(sub?'<span class="cn-sub">'+sub+'</span>':'')
-      +(click?'<span class="cn-go">展开 ›</span>':'');
-    return click
-      ?'<button type="button" class="chain-node'+(hot?' hot':'')+'" onclick="'+click+'">'+inner+'</button>'
-      :'<div class="chain-node'+(hot?' hot':'')+'">'+inner+'</div>';
-  }
-  var arrow='<span class="chain-arrow" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h7M7.5 4 11 7l-3.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+  var chev='<svg class="ml-chev" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var pending=w.in_flight?'进行中':'—';
 
-  var nodes=[];
-  nodes.push(node(w.corpus_total?fmtInt(w.corpus_total):'—','篇','读研报',w.corpus_total?'宏观语料':'本期未读入','gotoProc(0)'));
-  nodes.push(node(nTopics?fmtInt(nTopics):'—','个','选主题',nTopics?'HGEP 打分':'待筛选A','gotoProc(1)'));
-  nodes.push(node(nIdeas?fmtInt(nIdeas):'—','条','写想法',gens.length?gens.length+' 种方式':'待筛选B','gotoProc(2)'));
-  nodes.push(node(poolN?fmtInt(poolN):'—','条','合并候选',poolN?'一标一条':'待合并','gotoProc(3)'));
-  nodes.push(node(books.length?fmtInt(books.length):'—','本','账各自挑',(w.selectors||[]).length?(w.selectors||[]).length+' 种挑法':'待筛选C','gotoProc(4)'));
-  nodes.push(node(ag?fmtInt(ag.openN):'—','仓','现在持有',ag?(nUniq+' 个标的'):'尚未建仓','gotoWeekAnchor(\'holdCard\')',true));
+  var STG=[
+    {i:0,name:'读研报',
+     stat:nCorpus?('<b class="num">'+fmtInt(nCorpus)+'</b> 篇研报'+(nInst?'<span class="sep">·</span><b class="num">'+fmtInt(nInst)+'</b> 家机构':'')):pending,
+     more:'语料来源与来源分布'},
+    {i:1,name:'选主题',
+     stat:nTopicsAll?('<b class="num">'+fmtInt(nTopicsAll)+'</b> 个候选主题<span class="sep">·</span><b class="num">'+fmtInt(nChosen)+'</b> 入选<span class="sep">/</span><b class="num">'+fmtInt(nTopicsAll-nChosen)+'</b> 落选'):pending,
+     more:'HGEP 评分与落选理由'},
+    {i:2,name:'写想法',
+     stat:nIdeas?('<b class="num">'+fmtInt(gens.length)+'</b> 种方法<span class="sep">·</span><b class="num">'+fmtInt(nIdeas)+'</b> 条想法<span class="sep">→</span><b class="num">'+fmtInt(poolN)+'</b> 条候选'):pending,
+     more:(function(){
+       var n={};gens.forEach(function(g){var t=GEN_PATH[g.method];if(t)n[t]=(n[t]||0)+1});
+       var parts=['ai','frame','code'].filter(function(t){return n[t]}).map(function(t){return PATH_META[t][0]+' '+n[t]});
+       return parts.length?('执行路径：'+parts.join(' · ')):'生成方法与合并候选池';
+     })()}
+  ];
 
-  var story;
-  if(ag&&books.length){
-    story='这一期：<b class="num">'+fmtInt(w.corpus_total||0)+'</b> 篇研报 → <b class="num">'+fmtInt(nTopics)+'</b> 个主题 → '
-      +'<b class="num">'+fmtInt(nIdeas)+'</b> 条想法 → <b class="num">'+fmtInt(poolN)+'</b> 条候选 → '
-      +'<b class="num">'+fmtInt(books.length)+'</b> 本账 → <b class="num">'+fmtInt(ag.openN)+'</b> 仓（'+fmtInt(nUniq)+' 个标的）。点任何节点拉开那一步的现场。';
-  }else if(w.in_flight){
-    story='本期选仓正在进行——链条节点会随每一步完成逐个亮起。';
-  }else{
-    story='还没有入账的组合'+(nr?'——下次周跑 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）后，这条链会填上全部数字':'（API 未提供下次时刻）')+'。';
-  }
-  return '<div class="card chain-card chain-lite section" aria-label="本期推理链">'
-    +'<div class="chain-scroll scroll-thin"><div class="chain">'+nodes.join(arrow)+'</div></div>'
-    +'<div class="chain-story">'+story+'</div>'
+  var rows=STG.map(function(o){
+    var open=!!mlOpen[o.i];
+    var head='<button type="button" class="ml-head" onclick="toggleStage('+o.i+')" aria-expanded="'+open+'">'
+      +'<span class="ml-idx">0'+(o.i+1)+'</span>'
+      +'<span class="ml-name">'+esc(o.name)+'</span>'
+      +'<span class="ml-stat">'+o.stat+'</span>'
+      +'<span class="ml-more">'+esc(o.more)+'</span>'
+      +chev
+    +'</button>';
+    var body='';
+    if(open){
+      body='<div class="ml-body">'
+        +'<div class="ml-body-head">'+miniChain(o.i,STAGES[o.i]?STAGES[o.i].t:o.name)
+        +'<button type="button" class="exp-btn" onclick="event.stopPropagation();openStageDrawer('+o.i+')">在抽屉中打开 ›</button></div>'
+        +mlStageBody(o.i)
+      +'</div>';
+    }
+    return '<div class="ml-row'+(open?' open':'')+'">'+head+body+'</div>';
+  }).join('');
+
+  return '<div class="card mainline section" aria-label="主链路">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">主链路</h2>'
+    +'<span class="card-note">'+esc(w.as_of||'')+' 期 · 逐段展开可回溯依据与语料来源</span></div>'
+    +rows
   +'</div>';
 }
-function gotoProc(step){openStageDrawer(step)} /* 链条节点直接开抽屉，不切页 */
+function mlStageBody(i){
+  try{
+    if(i===0)return stageCorpusBody();
+    if(i===1)return stageTopicsBody({f:mlFocus[1],scrolled:true});
+    return stageGeneratorsBody({f:mlFocus[2]})
+      +'<div style="margin-top:var(--space-6);padding-top:var(--space-5);border-top:1px solid var(--color-border-subtle)">'
+      +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0;font-size:16px">合并候选池</h2>'
+      +'<span class="card-note">同一标的合并为一条，赔率取中位数</span></div>'
+      +stagePoolBody({f:null})+'</div>';
+  }catch(e){
+    return '<div class="empty-sm">该阶段渲染失败（'+esc(e&&e.message?e.message:String(e))+'）</div>';
+  }
+}
 function gotoWeekAnchor(id){
   var el=$(id);
   if(el)el.scrollIntoView({block:'start',behavior:'smooth'});
@@ -1688,37 +1777,37 @@ function statusStrip(){
     word='调度心跳丢失';
     sub='页面仍可读取已持久化结果，但 scheduler 最近没有写入心跳';
   }else if(!alive){
-    word='系统可能停了';
-    sub='最后心跳 '+ageWord(a.age_s)+'——点开看哪里断了';
+    word='调度可能已停止';
+    sub='最后心跳 '+ageWord(a.age_s);
   }else if(inf){
     var mins=inf.started_at?Math.max(0,Math.round((Date.now()-new Date(inf.started_at).getTime())/60000)):null;
-    word='本期的选仓正在进行';
-    sub='AI 正在读研报、写想法、挑持仓'+(mins!==null?'（已运行 '+mins+' 分钟）':'')+'，完成后自动建仓';
+    word='本期周跑进行中';
+    sub='读研报 · 选主题 · 写想法 · 筛选持仓'+(mins!==null?'，已运行 '+mins+' 分钟':'')+'，完成后自动建仓';
   }else if(weeklyDelegated){
-    word='系统在跑（本机为观察节点）';
-    sub='本机只负责盯市与展示；本期周产由生产实例（云端）承担，这里展示的是本机账本截至最新收盘的计价'+(lw&&lw.as_of?'（本机最近一次完整周产：'+esc(lw.as_of)+' 期）':'');
+    word='运行中 · 本机为观察节点';
+    sub='本机仅负责盯市与展示，本期周产由云端生产实例执行；下列为本机账本截至最新收盘的计价'+(lw&&lw.as_of?'（本机最近一次完整周产：'+esc(lw.as_of)+' 期）':'');
   }else if(weeklyFailed){
-    word='系统在跑，但本期周跑失败了';
-    sub='心跳记录：'+esc(wkOut.period||curPeriod||'本期')+' 期周跑失败——页面显示的是上一期（'+esc(lw?lw.as_of:'—')+'）的成果，点开看失败线索';
+    word='运行中 · 本期周跑失败';
+    sub='心跳记录：'+esc(wkOut.period||curPeriod||'本期')+' 期周跑失败，下列为上一期（'+esc(lw?lw.as_of:'—')+'）结果';
   }else if(badPorts.length){
-    word='系统在跑，有告警';
-    sub=badPorts.map(function(p){return esc(p.name)}).join(' / ')+' 端口异常——点开看详情';
+    word='运行中 · 有告警';
+    sub=badPorts.map(function(p){return esc(p.name)}).join(' / ')+' 端口异常';
   }else{
-    word='系统在跑';
-    sub='心跳、端口、数据源都正常，按周频自动运行';
+    word='运行正常';
+    sub='心跳、端口、数据源均正常，按周频自动运行';
   }
   var p=hktParts();
   var gaps=(S.gaps||[]).length;
   var anchor='今天'+WD[p.wd]+' <span class="num js-now">'+String(p.H).padStart(2,'0')+':'+String(p.M).padStart(2,'0')+'</span>'
     +' · <button type="button" class="exp-btn" style="padding:1px 4px" onclick="openCalDrawer()" title="按期查看运行记录">上次成功'
-    +'<span class="gloss" title="每周自动运行一次的全流程：读研报 → 选主题 → 写想法 → 挑持仓 → 建仓">周跑</span>'
+    +'<span class="gloss" title="每周自动执行一次的全流程：读研报 → 选主题 → 写想法 → 筛选持仓 → 建仓">周跑</span>'
     +(lw?'：'+esc(lw.as_of)+' 期'+(lw.ended_at?'（'+hktFmt(lw.ended_at,true)+'）':''):'：尚无成功记录')+' ›</button>'
     +' · '+nextRunPhrase();
 
   return '<div class="card status-card section">'
     +'<button type="button" class="status-line" onclick="openStatusDrawer()" title="查看系统状态">'
       +'<span class="status-dot '+cls+'"></span>'
-      +(gaps?'<span class="tag" style="flex:none;background:var(--color-feedback-error-subtle);color:var(--color-feedback-error-text)" title="有 '+gaps+' 期周跑永久缺失——迟超 48 小时即判死，不补跑。点状态条看周历">'+gaps+' 期缺失</span>':'')
+      +(gaps?'<span class="tag" style="flex:none;background:var(--color-feedback-error-subtle);color:var(--color-feedback-error-text)" title="'+gaps+' 期周跑永久缺失：超过 48 小时宽限即判定失败，不补跑">'+gaps+' 期缺失</span>':'')
       +'<span class="status-word">'+word+'<span class="sub">　'+sub+'</span></span>'
       +'<svg class="status-chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="transform:rotate(-90deg)"><path d="M3 5.5 7 9.5 11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     +'</button>'
@@ -1730,7 +1819,7 @@ function latestMonitorLine(){
   var m=(S.runs||[]).find(function(r){return r.kind==='monitor'});
   if(!m)return '';
   return '<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-text-metadata)">'
-    +'最近盯市 '+hktFmt(m.started_at,true)+'：'+(m.ok?'正常':'<span style="color:var(--color-feedback-warning-text)">失败——'+esc(plainRunError(m.error)||m.error||'')+'</span>')
+    +'最近盯市 '+hktFmt(m.started_at,true)+'：'+(m.ok?'正常':'<span style="color:var(--color-feedback-warning-text)">失败 · '+esc(plainRunError(m.error)||m.error||'')+'</span>')
     +'</div>';
 }
 function toggleStatus(){openStatusDrawer()}
@@ -1775,7 +1864,7 @@ function noiseBandHTML(books,weekN){
   var out=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)>2});
   var headline=out.length
     ?'第 '+weekN+' 周：<b>'+out.map(function(r){return esc(selMetaOf(r.b.selector)[1])}).join('、')+'</b> 已冲出噪音带——其余 '+inBand+' 本仍分不出高下'
-    :'第 '+weekN+' 周：'+books.length+' 本账全部还在噪音带里——<b>分不出高下，而且这是正常的</b>';
+    :'第 '+weekN+' 周：'+books.length+' 个账本的净值差异全部落在噪声区间内，尚不具备区分度';
   var html='<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin-bottom:var(--space-3)">'+headline+'</div>';
   /* 轴头 + 刻度（与每行的轨道列同几何） */
   html+='<div class="nb-axis">横轴：与「全买对照」的差距（百分点）<span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>'
@@ -1802,10 +1891,10 @@ function noiseBandHTML(books,weekN){
         +'</button>';
     }).join('')
     +'</div>'
-    +'<div class="nb-cap">灰带 = ±2 个百分点以内：按预注册标准仍是噪音 <span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span> · 有账本冲出灰带的那一刻，这张图会让它自己跳出来</div>';
-  /* 距宣布赢家的进度 */
+    +'<div class="nb-cap">灰带 = ±2 个百分点，预注册的可检出差距 <span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span>；带内排名不构成结论</div>';
+  /* 判定所需样本量进度 */
   var pct=Math.min(100,weekN/TARGET_WEEKS*100);
-  html+='<div class="nb-prog"><span>距有资格宣布赢家：第 '+weekN+' 周 / 约 '+TARGET_WEEKS+' 周 <span class="gloss" title="'+esc(VERDICT_GLOSS)+'">ⓘ</span></span>'
+  html+='<div class="nb-prog"><span>判定所需样本量：第 '+weekN+' 周 / 约 '+TARGET_WEEKS+' 周 <span class="gloss" title="'+esc(VERDICT_GLOSS)+'">ⓘ</span></span>'
     +'<span class="nb-pbar"><span style="width:'+pct.toFixed(0)+'%"></span></span></div>';
   return html;
 }
@@ -1815,10 +1904,10 @@ function raceHero(ag){
   var nr=nextRunInfo();
   if(!books.length){
     var line=w.in_flight
-      ?'本期还没建仓：周跑正在进行，筛选完成后 8 本账自动下单，各自记账、同轴赛马。'
+      ?'本期尚未建仓：周跑进行中，筛选完成后各账本自动下单并独立记账。'
       :'还没有账本入账'+(nr?'：下次周跑 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）自动建仓，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>':'（API 未提供下次时刻）')+'。';
     return '<div class="card section" id="whoWins">'
-      +'<div class="qhead"><h2 class="qtitle">多种'+gloss('挑法','从同一个候选池里挑持仓的策略，各记一本模拟账，同轴对比')+'在赛马</h2>'+miniChain(4,'筛选C · 八道闸')+'</div>'
+      +'<div class="qhead"><h2 class="qtitle">选取策略对比</h2>'+miniChain(4,'筛选C · 选取策略')+'</div>'
       +'<div class="quiet">'+line+'</div>'
     +'</div>';
   }
@@ -1829,11 +1918,11 @@ function raceHero(ag){
     var days=(Date.now()-new Date(minBooked+'T00:00:00+08:00').getTime())/86400000;
     weekN=Math.max(1,Math.ceil(days/7));
   }
-  var head='<div class="qhead"><h2 class="qtitle">'+books.length+' 种'+gloss('挑法','从同一个候选池里挑持仓的策略，各记一本模拟账，同轴对比')+'在赛马 · 第 '+weekN+' 周</h2>'
-    +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(4,'筛选C · 八道闸')
-    +'<button type="button" class="qlink" onclick="openStageDrawer(4)">这 '+books.length+' 本账就是过程图的八道闸 →</button></span></div>';
-  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一个候选池、'+books.length+' 种信念各记一本账；统一用一个刻度衡量：<b>与「全买对照」的差距</b>。'
-    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()" title="未验证的赌注 · 出过的坑 · 历史回测">为什么现在不排名 ⓘ</button></div>';
+  var head='<div class="qhead"><h2 class="qtitle">选取策略对比 · '+books.length+' 个账本 · 第 '+weekN+' 周</h2>'
+    +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(4,'筛选C · 选取策略')
+    +'<button type="button" class="qlink" onclick="openStageDrawer(4)">筛选C 详情 →</button></span></div>';
+  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各记一本模拟账；统一口径：<b>与全量基准的差距</b>。'
+    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()" title="未验证假设 · 已修复缺陷 · 历史回测">尚不排名的依据 ⓘ</button></div>';
   /* 芯片：与噪音带同序、同色点、同一个指标（vs 全买），不再印名次大字 */
   var rows=pairedDiffs(books).slice().sort(function(a,b){return (b.diff===null?-1e9:b.diff)-(a.diff===null?-1e9:a.diff)});
   var medals='<div class="medal-strip">'
@@ -1846,9 +1935,10 @@ function raceHero(ag){
         +'<b>'+(r.diff===null?'—':(r.isRef?'基准':(r.diff>0?'+':'')+r.diff.toFixed(2)+'pp'))+'</b></button>';
     }).join('')
     +'</div>'
-    +'<div class="card-note" style="margin-bottom:var(--space-3)">数字 = 与全买对照的差距（百分点），和上图同一把尺 · 绿底 = 主策略（正式比较臂 <span class="gloss" title="'+esc(ARM_GLOSS)+'">ⓘ</span>）· 灰底 = 对照（量尺 <span class="gloss" title="'+esc(RULER_GLOSS)+'">ⓘ</span>）· 白底 = 常驻探索 · 小字 = 功能标签，悬停看完整解释</div>';
+    +'<div class="card-note" style="margin-bottom:var(--space-3)">数值 = 与全量基准的差距（百分点） · 绿底 = 主策略（正式比较臂 <span class="gloss" title="'+esc(ARM_GLOSS)+'">ⓘ</span>）· 灰底 = 对照（基准 <span class="gloss" title="'+esc(RULER_GLOSS)+'">ⓘ</span>）· 白底 = 常驻探索</div>'
+    +pathLegend(SEL_PATH,books.map(function(b){return b.selector}));
   var table='<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
-    +'<thead><tr><th>挑法</th><th class="r">持仓数</th><th class="r">收益</th><th class="r" title="相对「全买候选池」对照账本的差值">vs 全买</th></tr></thead><tbody>'
+    +'<thead><tr><th>选取策略</th><th class="r">持仓数</th><th class="r">收益</th><th class="r" title="相对全量基准账本的差值">vs 全量基准</th></tr></thead><tbody>'
     +rows.map(function(r){
       var b=r.b;
       return '<tr class="expandable" onclick="openBookDrawer(\''+esc(b.selector||'')+'\')"><td class="primary">'+esc(selMetaOf(b.selector)[1])+'</td>'
@@ -1860,25 +1950,26 @@ function raceHero(ag){
   var eq=ag?(ag.equity||[]):[];
   var last=eq&&eq.length?eq[eq.length-1].equity:null;
   var ret=(ag&&ag.capital&&last!==null)?((last/ag.capital-1)*100):null;
-  var agg=ag?'<div class="agg-line">'+books.length+' 本合计：浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
+  var agg=ag?'<div class="agg-line">'+books.length+' 个账本合计：浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
     +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
     +(ret!==null?' · 合计收益 <span class="num '+pctCls(ret)+'">'+fmtPct(ret)+'</span>':'')
     +' · 胜率 '+fmtWinRate(ag.wins||0,ag.closedN||0)
     +spyLine(ret)
-    +'（实验总规模的体温计，无实盘含义——没有哪一本叫「本周组合」）'
-    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">能信多少？ ›</button></div>':'';
+    +'（全账本合计口径，非实盘组合）'
+    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">可信度与局限 ›</button></div>':'';
   return '<div class="card section" id="whoWins">'+head+sentence
     +noiseBandHTML(books,weekN)
     +medals
+    +themeMixCard(books)
     +agg
-    +'<div style="margin-top:var(--space-4)"><button type="button" class="copy-btn" onclick="toggleCompare()">'+(cmpOpen?'收起对比详情':'展开对比详情（含 8 条净值曲线）')+'</button></div>'
+    +'<div style="margin-top:var(--space-4)"><button type="button" class="copy-btn" onclick="toggleCompare()">'+(cmpOpen?'收起对比详情':'展开对比详情')+'</button></div>'
     +'<div id="cmpDetail" style="'+(cmpOpen?'':'display:none')+';margin-top:var(--space-5)">'
       +pairedEquitySVG(books)
       +table
       +holdingsMatrix(books)
       +'<div class="book-grid" style="margin-top:var(--space-6)">'+books.map(bookCard).join('')+'</div>'
     +'</div>'
-    +epi('纸面成交未计费用 · 净值指数期初 = 100 · SPY 同期对照见上方合计行 · 噪音带内的排名不构成任何结论')
+    +epi('纸面成交，未计交易费用 · 净值指数期初 = 100 · 噪声区间内的排名不构成结论')
   +'</div>';
 }
 
@@ -1906,22 +1997,22 @@ function singleCurveSVG(lb){
   svg+='</svg>';
   return '<div class="funnel-wrap">'+svg+'</div>';
 }
-/* ── 持仓 = 组合地图：钱押在哪几个宏观判断上 ── */
+/* ── 持仓组合地图：主题敞口分布 ── */
 function setHoldView(v){holdView=v;renderWeek()}
 function holdMapCard(ag){
   var w=S.weekly||{};
-  var head='<div class="qhead"><h2 class="qtitle">钱押在哪几个宏观判断上？<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+((ag&&ag.books)?ag.books.length:8)+' 本账合计 · 共识越高越显眼</span></h2>'
+  var head='<div class="qhead"><h2 class="qtitle">主题敞口分布<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+((ag&&ag.books)?ag.books.length:8)+' 个账本合计</span></h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(5,'建仓 · 持仓束')
     +'<span role="group" aria-label="视图切换">'
-      +'<button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')" title="按宏观主题分组的持仓地图——先看钱押在哪个判断上">地图</button>'
+      +'<button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')" title="按宏观主题分组的持仓分布">地图</button>'
       +'<button type="button" class="seg-btn'+(holdView==='axis'?' on':'')+'" onclick="setHoldView(\'axis\')" title="把每一仓放到坐标轴上：横轴是几本账同时看好它，纵轴是它到现在赚了还是亏了">Y 轴</button>'
       +'<button type="button" class="seg-btn'+(holdView==='list'?' on':'')+'" onclick="setHoldView(\'list\')" title="一行一仓的明细表，可排序、可复制">列表</button>'
       +'</span>'
-    +'<button type="button" class="qlink" onclick="goto(\'process\')">整个选仓过程 →</button></span></div>';
+    +'<button type="button" class="qlink" onclick="goto(\'process\')">生成链路 →</button></span></div>';
   if(!ag||!ag.openN){
     var nr=nextRunInfo();
     var line=w.in_flight
-      ?'选仓正在进行——完成后这里出现持仓地图，每个泡都带一句「为什么买」。'
+      ?'选仓进行中，完成后载入持仓分布。'
       :'还没有在场持仓'+(nr?'——下次建仓 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）自动发生，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>':'（API 未提供下次建仓时刻）')+'。';
     return '<div class="card section" id="holdCard">'+head
       +stepperHTML()
@@ -1948,7 +2039,7 @@ function holdMapCard(ag){
     });
     gOrder.sort(function(a,b){return groups[b].value-groups[a].value});
     var nb=ag.books.length;
-    body='<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向与幅度（红涨绿跌）</span><span>徽标 n/'+nb+' = 几本账'+'<span class="gloss" title="账 = 筛选C 的 '+nb+' 种挑法各记的一本模拟账。同一标的被越多本账独立选中，跨账本共识越高——这不需要先选出冠军就成立">ⓘ</span>共同持有（≥6 本描边加亮）</span><span>分组 = 宏观主题</span></div>';
+    body='<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向与幅度（红涨绿跌）</span><span>徽标 n/'+nb+' = 共同持有的账本数'+'<span class="gloss" title="筛选C 的 '+nb+' 个选取策略各记一本模拟账；同一标的被越多账本独立选中，跨策略共识度越高">ⓘ</span>（≥6 个描边加亮）</span><span>分组 = 宏观主题</span></div>';
     gOrder.forEach(function(t){
       var g=groups[t];
       g.list.sort(function(a,b){return b.value-a.value});
@@ -1995,11 +2086,11 @@ function holdMapCard(ag){
   +'</div>';
 }
 /* ── Y 轴视图 ──────────────────────────────────────────────────
- * 地图回答「钱押在哪个判断上」，列表回答「具体持了什么」，
- * 这一张回答第三个问题：「十本账不约而同看好的那些，真的更好吗？」
- * 横轴 = 有几本账同时持有（跨账本共识），纵轴 = 这一仓到现在的盈亏。
+ * 地图呈现主题敞口分布，列表呈现具体持仓，
+ * 本图检验：跨策略共识度高的持仓，收益是否更好。
+ * 横轴 = 同时持有该标的的账本数（跨账本共识度），纵轴 = 该仓位当前盈亏。
  * 共识本身不加分、不参与挑选，所以它与收益的关系是可以事后检验的——
- * 一条正斜率才说明「多种挑法同时想到」这件事有信息量。 */
+ * 正斜率方说明跨策略共识度具有信息量。 */
 function holdAxisBody(ag,mp,totalV,maxV){
   var byCode=mp.byCode,order=mp.order;
   var nb=ag.books.length||1;
@@ -2050,8 +2141,8 @@ function holdAxisBody(ag,mp,totalV,maxV){
     var cnt=(buckets[b]||[]).length;
     if(cnt)g+='<text x="'+X(b).toFixed(1)+'" y="'+(H-pb+36)+'" text-anchor="middle" font-family="var(--font-sans)" font-size="9" fill="var(--color-text-disabled)">'+cnt+' 只</text>';
   }
-  g+='<text x="'+((pl+W-pr)/2)+'" y="'+(H-4)+'" text-anchor="middle" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">横轴 = 有几本账同时持有这个标的（跨账本共识，共 '+nb+' 本）</text>'
-   +'<text x="14" y="'+(pt+10)+'" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">纵轴 = 这一仓的盈亏</text>';
+  g+='<text x="'+((pl+W-pr)/2)+'" y="'+(H-4)+'" text-anchor="middle" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">横轴 = 跨账本共识度：同时持有该标的的账本数（共 '+nb+' 本）</text>'
+   +'<text x="14" y="'+(pt+10)+'" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">纵轴 = 该仓位当前盈亏</text>';
   /* 蜂群排布：同一档里的泡沿横轴让开彼此。
    * 固定步长的抖动在这里不够用——泡的半径随仓位从 7 变到 24，
    * 一个 6px 的错位会让五个大泡叠成一坨，图上就只剩最上面那一个可读。
@@ -2105,15 +2196,15 @@ function holdAxisBody(ag,mp,totalV,maxV){
     var mLo=lo.reduce(function(a,b){return a+b},0)/lo.length;
     var mHi=hi.reduce(function(a,b){return a+b},0)/hi.length;
     var d=mHi-mLo;
-    read='只被 '+bKeys[0]+' 本账看中的平均 '+mLo.toFixed(2)+'%，被 '+bKeys[bKeys.length-1]+' 本账同时看中的平均 '+mHi.toFixed(2)+'%，'
-      +(Math.abs(d)<0.3?'两头基本没差别——目前看不出「多种挑法同时想到」带来任何优势。'
-        :(d>0?'高共识的这一端高 '+d.toFixed(2)+' 个百分点。':'高共识的这一端反而低 '+Math.abs(d).toFixed(2)+' 个百分点。'))
-      +'第 1 周的样本量下这只是读数，不是结论。';
+    read='共识度最低档（'+bKeys[0]+' 个账本）平均 '+mLo.toFixed(2)+'%，最高档（'+bKeys[bKeys.length-1]+' 个账本）平均 '+mHi.toFixed(2)+'%，'
+      +(Math.abs(d)<0.3?'两端差异不显著，跨策略共识度当前未体现增量。'
+        :(d>0?'高共识端高出 '+d.toFixed(2)+' 个百分点。':'高共识端低 '+Math.abs(d).toFixed(2)+' 个百分点。'))
+      +'当前样本量下仅为读数，不构成结论。';
   }
-  return '<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向（红涨绿跌）</span><span>绿线 = 每个共识档的平均盈亏</span></div>'
+  return '<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向（红涨绿跌）</span><span>绿线 = 各共识档的平均盈亏</span></div>'
     +g
     +(read?'<div class="quiet" style="margin-top:var(--space-3)">'+read+'</div>':'')
-    +epi('共识度只记录、不加分——它不参与挑选，所以它和收益的关系才是可以事后检验的');
+    +epi('共识度只记录、不计分——它不参与选取，因此它与收益的关系是可事后检验的');
 }
 function holdListTable(ag,mp){
   var byCode=mp.byCode,order=mp.order.slice();
@@ -2144,7 +2235,7 @@ function stageStates(){
   var steps=[
     {name:'筛选A',sub:nt?('选出 '+nt+' 个宏观主题'):'选择宏观主题',done:nt>0},
     {name:'筛选B',sub:ng?(ng+' 种方法生成想法'):'生成交易想法',done:ng>0},
-    {name:'筛选C',sub:ns?(ns+' 种挑法并行筛选'):'多种挑法并行筛选',done:ns>0},
+    {name:'筛选C',sub:ns?(ns+' 个选取策略并行'):'选取策略并行',done:ns>0},
     {name:'自动建仓',sub:'等权买入 · 挂止损止盈',done:books.length>0}
   ];
   var activeIdx=-1;
@@ -2186,7 +2277,7 @@ function pairedEquitySVG(books){
   var xw=(W-pl-pr)/Math.max(1,ds.length-1);
   function X(i){return pl+i*xw}
   function Y(v){return pt+(mx-v)/(mx-mn)*(H-pt-pb)}
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:800px" role="img" aria-label="多种挑法净值对比，期初=100">';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:800px" role="img" aria-label="各选取策略净值对比，期初=100">';
   [mx,100,mn].forEach(function(g){
     if(g<mn-0.01||g>mx+0.01)return;
     svg+='<line x1="'+pl+'" y1="'+Y(g)+'" x2="'+(W-pr)+'" y2="'+Y(g)+'" stroke="var(--color-border-subtle)" stroke-width="1"'+(g===100?' stroke-dasharray="4 3"':'')+'/>'
@@ -2244,6 +2335,65 @@ function holdingsMatrix(books){
     +'<div class="overlap-note"><span class="matrix-dot" aria-hidden="true"></span>多本共持&nbsp;&nbsp;<span class="matrix-dot uniq" aria-hidden="true"></span>仅一本独有</div>';
 }
 function shortName(s){s=String(s||'');return s.length>8?s.slice(0,7)+'…':s}
+
+/* ── 策略 × 主题分布：并列各策略的主题权重，差异即策略间 diff ── */
+function themeColor(i){return 'var(--color-data-'+((i%8)+1)+')'}
+function themeMixCard(books){
+  if(!books||!books.length)return '';
+  var tot={},mix=[];
+  books.forEach(function(b){
+    var by={},sum=0;
+    (b.open_positions||[]).forEach(function(p){
+      var t=p.theme_id||'未归类';
+      var v=Math.abs((p.qty||0)*(p.last_px||p.entry_px||0))||1;
+      by[t]=(by[t]||0)+v;sum+=v;tot[t]=(tot[t]||0)+v;
+    });
+    mix.push({b:b,by:by,sum:sum,n:(b.open_positions||[]).length});
+  });
+  var themes=Object.keys(tot).sort(function(a,b){return tot[b]-tot[a]});
+  if(!themes.length)return '';
+  var ci={};themes.forEach(function(t,i){ci[t]=i});
+  var grand=themes.reduce(function(a,t){return a+tot[t]},0)||1;
+  var avgW={};themes.forEach(function(t){avgW[t]=tot[t]/grand});
+
+  var legend='<div class="tmx-legend">'+themes.map(function(t,i){
+    return '<span><i style="background:'+themeColor(i)+'"></i>'+esc(t)+' '+(avgW[t]*100).toFixed(0)+'%</span>';
+  }).join('')+'</div>';
+
+  var order=SEL_META.map(function(m){return m[0]});
+  mix.sort(function(a,b){
+    var x=order.indexOf(a.b.selector),y=order.indexOf(b.b.selector);
+    return (x<0?99:x)-(y<0?99:y);
+  });
+
+  var rows=mix.map(function(o){
+    var m=selMetaOf(o.b.selector);
+    var segs='',dev=null;
+    if(o.sum>0){
+      segs=themes.filter(function(t){return o.by[t]}).map(function(t){
+        var w=o.by[t]/o.sum;
+        var d=w-avgW[t];
+        if(dev===null||Math.abs(d)>Math.abs(dev.d))dev={t:t,d:d,w:w};
+        return '<span class="tmx-seg" style="width:'+(w*100).toFixed(2)+'%;background:'+themeColor(ci[t])+'" '
+          +'title="'+esc(t)+' '+(w*100).toFixed(1)+'%（全策略均值 '+(avgW[t]*100).toFixed(1)+'%，'
+          +(d>=0?'超配 +':'低配 −')+Math.abs(d*100).toFixed(1)+' pp）"></span>';
+      }).join('');
+    }
+    var devTxt=dev?((dev.d>=0?'超配 ':'低配 ')+dev.t+' '+(dev.d>=0?'+':'−')+Math.abs(dev.d*100).toFixed(0)+'pp'):'—';
+    return '<button type="button" class="tmx-row'+(m[2]==='对照'?' ctl':'')+'" onclick="openBookDrawer(\''+esc(o.b.selector||'')+'\')" '
+      +'title="'+esc(m[1])+' · '+o.n+' 仓 · 相对全策略均值最大偏离：'+esc(devTxt)+'">'
+      +'<span class="tmx-name">'+esc(m[1])+'</span>'
+      +'<span class="tmx-bar">'+(segs||'<span class="tmx-seg" style="width:100%;background:var(--color-surface-sunken)"></span>')+'</span>'
+      +'<span class="tmx-n">'+(o.n?o.n+' 仓':'空仓')+'</span>'
+    +'</button>';
+  }).join('');
+
+  return '<div class="tmx">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0;font-size:15px">各策略的主题分布</h2>'
+    +'<span class="card-note">按持仓市值占比 · 同一候选池下的分布差异即策略间 diff</span></div>'
+    +legend+rows
+  +'</div>';
+}
 function sparkline(eq){
   if(!eq||eq.length<2)return '<span class="card-note">净值待累积</span>';
   var w=140,h=36,p=3;
@@ -2302,7 +2452,7 @@ function bookCard(b,bi){
 }
 function spyLine(ret){
   // 同一段日期里「什么都不做、只买 SPY」的收益。合计收益没有这个零点就没有含义：
-  // 赚了 1% 而 SPY 涨了 3%，机器其实输了。
+  // 组合 +1% 而 SPY +3%，相对收益为负。
   var bm=(S&&S.benchmark)||{},sr=bm.series||[];
   if(sr.length<2)return '';
   var r=(sr[sr.length-1].close/sr[0].close-1)*100;
@@ -2382,15 +2532,15 @@ function pairedVerdictLine(sum){
   }
   if(flat.length){
     return '<div class="card-note" style="margin-top:var(--space-3)">'
-      +'配对检验：<b>没有任何一种挑法被判定赢了全买对照。</b>其中 '
+      +'配对检验：<b>无选取策略被判定跑赢全量基准。</b>其中 '
       +flat.map(function(k){return esc(backtestArmName(k))}).join('、')
       +' 的样本量已足够检出预注册的差距，但差距没有出现——'
-      +'这是「没看出优势」，不是「还看不出来」；其余各臂样本仍然不足。</div>';
+      +'属于未检出优势，而非样本不足；其余各臂样本量仍不足。</div>';
   }
   return '<div class="card-note" style="margin-top:var(--space-3)">'
-    +'配对检验：<b>目前没有任何一种挑法能被判定赢了全买对照</b>——'
+    +'配对检验：<b>当前无选取策略被判定跑赢全量基准</b>——'
     +'只有 '+fmtInt(n)+' 对配对样本，远低于预注册门槛。'
-    +'上面的胜率是描述这段窗口发生了什么，不是对未来的预测，也还不足以排名。</div>';
+    +'胜率为该窗口的历史描述，不构成预测，亦不足以支持排名。</div>';
 }
 
 function backtestCard(){
@@ -2443,17 +2593,15 @@ function backtestCard(){
         :'')
     +'</div>'
     +'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
-      +'<thead><tr><th>挑法</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
+      +'<thead><tr><th>选取策略</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
       +'<tbody>'+rows+'</tbody></table></div>'
     +pairedVerdictLine(sum)
     +'<div class="card-note" style="margin-top:var(--space-3)">'
-      +'<b>这张表和上面的赛马图测的不是同一件事。</b>'
-      +'这里算的是「每条想法本身」——当期候选池里每条想法，按当时的收盘价买入、'
-      +fmtInt(sum.horizon_days)+' 天后卖出，赚了还是亏了。上面的赛马图算的是「账本」——'
-      +'挑法只选十条左右，还受仓位、止损、现金约束，两者结论不一致很正常：'
-      +'想法平均是对的，不等于按它建的仓这周赚钱。<br>'
+      +'<b>本表与策略对比图口径不同。</b>'
+      +'本表以单条想法为单位：候选池内每条想法按当时收盘价买入、'
+      +fmtInt(sum.horizon_days)+' 天后卖出的损益。策略对比图以账本为单位，受选取条数、仓位、止损与现金约束，两者结论可以不一致。<br>'
       +esc(sum.disclaimer||'')+'</div>'
-    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">看完整回测（曲线 · 每笔持仓）›</button>'
+    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">完整回测 ›</button>'
     +'</div>';
 }
 
@@ -2462,7 +2610,7 @@ function backtestSection(){
   var b=S.backtest||{},sum=b.summary||{},arms=sum.arms||{};
   if(!b.backtest_id){
     return '<div class="card section" id="sec-backtest"><h2 class="card-title">历史回测</h2>'
-      +'<div class="empty-sm">还没有云端回测记录——回测 runner 完成后，两种生成方法在相同历史输入下的配对回放（曲线、指标、模拟持仓）会从 RDS 自动出现在这里。</div></div>';
+      +'<div class="empty-sm">暂无回测记录，回测任务完成后自动载入。</div></div>';
   }
 
   var windowStart=backtestStart||b.window_start;
@@ -2647,12 +2795,12 @@ var poolFilter=null;
 var procStep=null, tocOpen=false; /* 兼容旧变量 */
 
 var STAGES=[
-  {t:'读研报',q:'这一步没有判断——它是后面一切判断的原材料'},
-  {t:'筛选A · 选主题',q:'几百篇研报里，哪几个宏观主题值得下注？'},
-  {t:'筛选B · 写想法',q:'每个主题，4 种性格不同的方法各自能写出什么？'},
-  {t:'合并候选池',q:'重复提出的想法怎么归一？谁被不约而同选中？'},
+  {t:'读研报',q:'本期语料范围与来源分布'},
+  {t:'筛选A · 选主题',q:'主题评分、入选与落选理由'},
+  {t:'筛选B · 写想法',q:'4 种生成方法的产出与差异'},
+  {t:'合并候选池',q:'同一标的合并规则与跨方法共识度'},
   {t:'筛选C · 选取策略',q:'同一候选池，各选取策略分别放行哪些标的'},
-  {t:'自动建仓',q:'选出的持仓怎么落地？风控在进场那一刻就已挂好'}
+  {t:'自动建仓',q:'持仓落地与进场即挂的风控参数'}
 ];
 
 /* ══════════ 抽屉核心 ══════════ */
@@ -2680,12 +2828,12 @@ function drawerLabel(d){
 function drawerQ(d){
   if(d.t==='stage')return STAGES[d.p]?STAGES[d.p].q:'';
   if(d.t==='topic')return '评分构成 · 证据研报 · 下游产出';
-  if(d.t==='ask')return '回答只依据当时封存的材料——材料里没有的它会明说没有';
-  if(d.t==='runlog')return '真实时钟 · 逐步耗时 · 逐件产物——它真的跑过的凭据';
-  if(d.t==='pos')return '论点 → 主题 → 提出方式 → 赔率 → 风控，一条链看完';
-  if(d.t==='book')return '这本账信什么、挑了什么、赚亏如何';
-  if(d.t==='status')return '心跳、端口、数据源——系统现在的原始体征';
-  if(d.t==='cal')return '过去每周发生了什么——每期一行，含失败与永久缺失';
+  if(d.t==='ask')return '仅依据当期封存材料作答';
+  if(d.t==='runlog')return '逐步耗时与产物清单';
+  if(d.t==='pos')return '论点 · 主题 · 生成方法 · 赔率 · 风控';
+  if(d.t==='book')return '选取规则 · 持仓 · 损益';
+  if(d.t==='status')return '心跳 · 端口 · 数据源';
+  if(d.t==='cal')return '按期运行记录，含失败与缺失期';
   if(d.t==='trust')return '未验证假设 · 已修复缺陷 · 历史回测';
   return '';
 }
@@ -2704,7 +2852,12 @@ function openStageDrawer(i,f){drawerStack=[{t:'stage',p:i,f:(f===undefined?null:
 function goStage(i){openStageDrawer(i)}
 function setDrawerFocus(f){
   var top=drawerStack[drawerStack.length-1];
-  if(top){top.f=f;top.scrolled=false;renderDrawers()}
+  if(top){top.f=f;top.scrolled=false;renderDrawers();return}
+  /* 无抽屉时聚焦落在主链路的就地展开区：按取值归属判定属于哪一段 */
+  if(f===null||f===undefined){mlFocus[1]=null;mlFocus[2]=null;renderWeek();return}
+  var isGen=GEN_ORDER.some(function(o){return o[0]===f||methodName(o[0])===methodName(f)});
+  if(isGen)mlFocus[2]=f; else mlFocus[1]=f;
+  renderWeek();
 }
 function openTopicDrawer(tid){pushDrawer({t:'topic',p:tid})}
 function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
@@ -2717,7 +2870,7 @@ function openTrustDrawer(){pushDrawer({t:'trust',p:''})}
 function openRunLog(runId){drawerStack=[{t:'runlog',p:runId||((J&&J.run_id)||'')}];renderDrawers()}
 function openRunLogStacked(runId){pushDrawer({t:'runlog',p:runId||''})}
 
-var CRUMB_KIND={stage0:'语料',stage1:'筛选A',stage2:'筛选B',stage3:'候选池',stage4:'筛选C',stage5:'建仓',topic:'主题',runlog:'日志',pos:'持仓',book:'账本',status:'状态',cal:'周历',trust:'可信度',ask:'追问'};
+var CRUMB_KIND={stage0:'语料',stage1:'筛选A',stage2:'筛选B',stage3:'候选池',stage4:'筛选C',stage5:'建仓',topic:'主题',runlog:'日志',pos:'持仓',book:'账本',status:'状态',cal:'周历',trust:'可信度',ask:'追问',selection:'选题'};
 function crumbKind(d){return d.t==='stage'?(CRUMB_KIND['stage'+d.p]||'阶段'):(CRUMB_KIND[d.t]||'')}
 function crumbName(d){
   if(d.t==='stage'){
@@ -2764,7 +2917,7 @@ function renderDrawers(){
     if(sh.top){
       var dots='';
       for(var k2=0;k2<n;k2++)dots+='<span class="dd'+(k2===n-1?' cur':'')+'"></span>';
-      depth='<span class="depth-ind" title="抽屉深度：每往里点一层加一格">第 '+n+' 层 / 共 '+n+' 层<span class="depth-dots">'+dots+'</span></span>'
+      depth='<span class="depth-ind" title="下钻层级">第 '+n+' 层 / 共 '+n+' 层<span class="depth-dots">'+dots+'</span></span>'
         +(n>1?'<button type="button" class="drawer-crumb" style="flex:none" onclick="closeDrawers()" title="也可按 Shift+Esc">关闭全部 ✕</button>':'');
     }
     var peekStrip=(!sh.top)?'<button type="button" class="peek-strip" onclick="truncDrawers(1)" title="回到第 1 层：'+esc(drawerLabel(d))+'"><span>'+esc(crumbKind(d))+' · '+esc(crumbName(d))+'</span></button>':'';
@@ -2872,8 +3025,8 @@ function filterPool(type,value,label){
   renderDrawers();
 }
 function filterPoolCode(code){filterPool('code',code,'标的 '+code)}
-function convLabel(k){return k==='4'?'4 种方式都提出':(k==='1'?'仅 1 种方式提出':k+' 种方式共同提出')}
-var CONV_GLOSS='「方式」= 筛选B 的 4 种写想法方法（AI 端到端 / 约束边界 / 传导链 / 共识缺口），互不通气、独立写想法。同一个标的被越多种方法不约而同提出，共识度越高——4/4 是机器内部的最高共识。';
+function convLabel(k){return k==='4'?'4 种方法全部提出':(k==='1'?'仅 1 种方法提出':k+' 种方法共同提出')}
+var CONV_GLOSS='方法 = 筛选B 的 4 种生成方法（AI 端到端 / 约束边界 / 传导链 / 共识缺口），彼此独立生成。同一标的被越多方法提出，跨方法共识度越高，4/4 为最高。';
 function filterPoolConv(k){
   poolFilter={type:'conv',value:k,label:convLabel(k)};
   ensurePoolDrawer();
@@ -2911,7 +3064,7 @@ function corpusRowsFor(asOf){
   return n||null;
 }
 
-/* ── 生成方式 / 挑法口径 ── */
+/* ── 生成方法 / 选取策略口径 ── */
 /* [key, 名称, tag(功能标签), plain(它到底在干嘛), example(具体例子)] —— 口径为唯一权威，全站引用这里 */
 var GEN_ORDER=[
  ['ai_native','AI 端到端','无框架基线','不施加推理框架，模型自主决定论证路径与标的。其余三种方法的对照基线。','读入通胀研报后直接输出「买入 TIP，依据多家投行的再加速证据」，推理路径由模型自选。'],
@@ -2947,6 +3100,27 @@ function selPlain(name){
   });
 }
 function selGlossTitle(m){return (m[3]?m[3]+'——':'')+selPlain(m[0])}
+/* ── 执行路径：环节内每条路径的自动化程度，口径唯一 ── */
+var PATH_META={
+  ai:['AI 端到端','模型自主决定推理路径与结论，不施加人为框架。本环节唯一不受结构约束的路径，用作其余路径的对照基线。'],
+  frame:['约束边界','模型在人工规定的推理框架内作答（约束条件 / 因果链 / 定价背离），输出须通过框架校验，不满足即作废。'],
+  code:['纯代码','确定性规则计算，无模型调用。同一输入必得同一输出，可离线复算与审计。']
+};
+var GEN_PATH={ai_native:'ai',carl_constraint:'frame',chain:'frame',gap:'frame'};
+var SEL_PATH={ai_native:'ai',omega_loose:'code',omega_strict:'code',spread:'code',calib:'code',
+  left_tail:'code',buy_all:'code',random_pick:'code',
+  generated_ai_native:'code',generated_carl_constraint:'code'};
+function pathTag(k){
+  var m=PATH_META[k];if(!m)return '';
+  return '<span class="ptag ptag-'+k+'" title="'+esc(m[0]+'——'+m[1])+'">'+esc(m[0])+'</span>';
+}
+function pathLegend(map,keys){
+  var n={};keys.forEach(function(k){var t=map[k];if(t)n[t]=(n[t]||0)+1});
+  var out=['ai','frame','code'].filter(function(t){return n[t]}).map(function(t){
+    return '<span class="ptag ptag-'+t+'" title="'+esc(PATH_META[t][0]+'——'+PATH_META[t][1])+'">'+esc(PATH_META[t][0])+' '+n[t]+'</span>';
+  });
+  return out.length?'<div class="ptag-row"><span class="card-note">执行路径</span>'+out.join('')+'</div>':'';
+}
 /* HGEP 四字母 & 其他必须挂 ⓘ 的口径 */
 var HGEP_GLOSS={
   H:'H 热度 = 覆盖广度与提及增速',
@@ -2971,11 +3145,45 @@ function orderedSelectors(){
 function renderProcess(){
   var root=$('view-process');
   if(!S){root.innerHTML='';return}
-  var html='<div class="view-intro">这一页就是一张流水线：<b>悬停</b>任何节点看速览，<b>点击</b>打开该阶段的决策现场抽屉，抽屉里还能继续往深处点——主题的证据、候选池、账本，一层层拉开，随手关上。</div>';
+  var html='';
   html+=procFailBanner();
   html+=pipeCanvasCard();
+  html+=corpusSourceCard();
   html+=runReceiptStrip();
   root.innerHTML=html;
+}
+
+/* 语料来源：本期各来源的期次与条数，直达逐篇研报清单 */
+function corpusSourceCard(){
+  var w=S.weekly||{};
+  var rows=(S.feeds||[]).filter(function(x){return x.kind==='corpus'&&x.as_of===w.as_of});
+  var n=w.corpus_total||corpusRowsFor(w.as_of);
+  if(!n&&!rows.length)return '';
+  var g={};rows.forEach(function(f){(g[f.feed]=g[f.feed]||[]).push(f)});
+  var keys=Object.keys(g);
+  var tbl=keys.length
+    ?'<div class="table-wrap"><table>'
+      +'<thead><tr><th>来源</th><th>期次</th><th class="r">条数</th><th>状态</th><th></th></tr></thead><tbody>'
+      +keys.map(function(k){
+        var arr=g[k],f=arr[0];
+        var sum=arr.reduce(function(a,x){return Math.max(a,x.n_rows||0)},0);
+        return '<tr class="expandable" onclick="openCorpus(\''+esc(f.as_of)+'\')">'
+          +'<td class="primary">'+esc(feedMeta(f.feed)[0])+'</td>'
+          +'<td class="mono">'+esc(f.as_of||'')+'</td>'
+          +'<td class="r num">'+fmtInt(sum)+'</td>'
+          +'<td>'+(arr.every(function(x){return x.ok})?badge('success','正常'):badge('error','异常'))
+          +(arr.length>1?' <span class="card-note">'+arr.length+' 次抓取</span>':'')+'</td>'
+          +'<td class="r"><span class="exp-btn">研报清单 ›</span></td></tr>';
+      }).join('')+'</tbody></table></div>'
+    :'';
+  return '<div class="card section">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">语料来源</h2>'
+    +'<span class="card-note">本期读入 '+fmtInt(n)+' 条 · 各环节的唯一输入</span></div>'
+    +tbl
+    +'<div style="margin-top:var(--space-3)">'
+    +'<button type="button" class="exp-btn" onclick="openCorpus(\''+esc(w.as_of||'')+'\')">逐篇研报清单 ›</button>'
+    +'<button type="button" class="exp-btn" style="margin-left:8px" onclick="openStageDrawer(0)">来源分布与主题归属 ›</button>'
+    +'</div></div>';
 }
 
 /* 本期失败、展示上期时的诚实横幅 */
@@ -2986,7 +3194,7 @@ function procFailBanner(){
   if(!(wkOut&&wkOut.action==='failed'))return '';
   if(!w.as_of||w.as_of===curPeriod)return '';
   return '<div class="card section" style="border-left:3px solid var(--color-feedback-warning-default);padding:var(--space-3) var(--space-5);margin-bottom:var(--space-5)">'
-    +'<div style="font:500 13px/19px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||curPeriod||'')+'）周跑失败——下面展示的是最近一次成功的完整过程（'+esc(w.as_of)+' 期）。失败线索见「本周」状态条与「底账」。</div>'
+    +'<div style="font:500 13px/19px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||curPeriod||'')+'）周跑失败，下列为最近一次成功运行的完整过程（'+esc(w.as_of)+' 期）。</div>'
     +'</div>';
 }
 
@@ -2996,13 +3204,13 @@ function pipeCanvasCard(){
   var svg=pipeCanvasSVG();
   return '<div class="card" id="pipeCard">'
     +'<div class="card-title-row"><h2 class="card-title">本期流水线'+(w.as_of?' · <span class="num" style="font:600 15px/26px var(--font-mono)">'+esc(w.as_of)+'</span>':'')+'</h2>'
-    +'<span class="card-note">节点大小与连线宽度 = 真实数量 · 悬停速览 · 点击深入</span></div>'
+    +'<span class="card-note">节点大小与连线宽度对应实际数量</span></div>'
     +'<div class="pipe-wrap scroll-thin">'+svg+'</div>'
     +'<div class="pipe-legend">'
-    +'<span><b>筛选A</b> 语义打分选 5 主题（灰色分流 = 落选）</span>'
-    +'<span><b>筛选B</b> 4 种方式并行写想法（线宽 = 条数）</span>'
-    +'<span><b>合并</b> 一标一条，同心环 = 共识度</span>'
-    +'<span><b>筛选C</b> 8 道闸同池并行（灰 = 对照）</span>'
+    +'<span><b>筛选A</b> 语义打分选出 5 个主题（灰色分流 = 落选）</span>'
+    +'<span><b>筛选B</b> 4 种方法并行生成想法（线宽 = 条数）</span>'
+    +'<span><b>合并</b> 一标的一条，同心环 = 共识度</span>'
+    +'<span><b>筛选C</b> 各策略同池并行（灰 = 对照臂）</span>'
     +'</div></div>';
 }
 function pipeCanvasSVG(){
@@ -3016,7 +3224,9 @@ function pipeCanvasSVG(){
   var sels=orderedSelectors();
   var books=currentBooks();
   var corpusN=w.corpus_total||corpusRowsFor(w.as_of);
-  var W=1120,H=430;
+  var W=1120;
+  var SEL_Y0=44,SEL_GAP=42,PAD_TOP=20;
+  var H=Math.max(450,PAD_TOP+SEL_Y0+Math.max(0,sels.length-1)*SEL_GAP+31);
   var s='<svg class="pipe-svg" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="本期选仓流水线">';
   var FS='var(--font-sans)',FM='var(--font-mono)';
   function txt(x,y,t,size,fill,anchor,weight,mono){
@@ -3038,28 +3248,30 @@ function pipeCanvasSVG(){
   var conv=pool.convergence||{};
   var openTotal=0;books.forEach(function(b){openTotal+=(b.open_positions||[]).length});
   var stagePop=[
-    pop('语料'+(corpusN?' · '+fmtInt(corpusN)+' 条研报':''),null,'本期所有判断的原材料——四种写法共用这一份，所以「共识」不算独立证据'),
-    pop('筛选A · 选主题',totalScored?fmtInt(totalScored)+' 个主题被打分 · 前 '+chosen.length+' 入选':'还没打分',ctrl?'与纯数数对照臂重合 '+overlapN+'/'+chosen.length+'——两种打分的分歧是正在攒的实验样本':''),
-    pop('筛选B · 写想法',gens.length?'4 种方式共写出 '+fmtInt(rawIdeas)+' 条':'还没产出','互不通气，各自从同样 '+chosen.length+' 个主题出发'),
-    pop('合并 · 候选池',pool.n?fmtInt(rawIdeas)+' → '+fmtInt(pool.n)+' 条（一标一条）':'池子还空着','同标的合并、赔率取中位数；「方式」指筛选B 的 4 种写法（AI 端到端/约束边界/传导链/共识缺口）——共识度只记录、不加分'),
-    pop('筛选C · 八道闸',sels.length?sels.length+' 种挑法同池并行':'还没出手','唯一变量是挑法本身——只有同池配对比较才可能加冕'),
-    pop('建仓',books.length?books.length+' 本账 · '+fmtInt(openTotal)+' 仓在持':'未建仓','等权买入 · 进场即挂 σ×2 止损 / σ×3 止盈 · 每天盯市')
+    pop('语料'+(corpusN?' · '+fmtInt(corpusN)+' 条研报':''),null,'本期全部判断的输入；4 种生成方法共用同一份语料'),
+    pop('筛选A · 选主题',totalScored?fmtInt(totalScored)+' 个主题被打分 · 前 '+chosen.length+' 入选':'还没打分',ctrl?'与计数对照臂重合 '+overlapN+'/'+chosen.length:''),
+    pop('筛选B · 写想法',gens.length?'4 种方法合计 '+fmtInt(rawIdeas)+' 条':'尚无产出','彼此独立，输入为同一批 '+chosen.length+' 个主题'),
+    pop('合并 · 候选池',pool.n?fmtInt(rawIdeas)+' → '+fmtInt(pool.n)+' 条（一标的一条）':'候选池为空','同标的合并，赔率取中位数；共识度仅作记录，不参与打分'),
+    pop('筛选C · 选取策略',sels.length?sels.length+' 个策略同池并行':'尚未执行','同一候选池，唯一变量为选取策略'),
+    pop('建仓',books.length?books.length+' 个账本 · '+fmtInt(openTotal)+' 个在持仓位':'未建仓','等权买入 · 进场即挂 σ×2 止损 / σ×3 止盈 · 逐日盯市')
   ];
-  /* 每列一句「这里的数字是什么」——画布上不留没有单位的裸数字。
+  /* 每列标注数值口径，画布上不出现无单位的裸数字。
    * 一个非技术读者第一次看这张图时问的第一个问题就是「这个数是几什么」，
    * 而答案此前只藏在 hover 里；hover 不存在于截图、投屏和打印件中。 */
   var cols=[[60,'语料',0,'块内 = 研报篇数'],
             [255,'筛选A · 主题',1,'圆内 = 命中研报篇数'],
             [505,'筛选B · 写想法',2,'框内 = 写出想法条数'],
             [705,'合并 · 候选池',3,'环内 = 合并后候选条数'],
-            [888,'筛选C · 八道闸',4,'行末 = 该挑法挑中条数'],
+            [888,'筛选C · 选取策略',4,'行末 = 该策略选中条数'],
             [1058,'建仓',5,'块内 = 当前在持仓位数']];
   cols.forEach(function(c){
     s+='<g class="pc-click" onclick="openStageDrawer('+c[2]+')"'+popRef(stagePop[c[2]])+'>'
-      +txt(c[0],16,c[1],11,'var(--color-text-metadata)','middle',600)
-      +txt(c[0],30,c[3],9,'var(--color-text-tertiary)','middle',400)
+      +txt(c[0],14,c[1],11,'var(--color-text-metadata)','middle',600)
+      +txt(c[0],28,c[3],9,'var(--color-text-tertiary)','middle',400)
       +'</g>';
   });
+  /* 列头之下留出固定的净空，图形整体下移，避免第一行标签压在表头上 */
+  s+='<g transform="translate(0,'+PAD_TOP+')">';
 
   /* ── 语料块 ── */
   var cX=110,cY=200;
@@ -3093,7 +3305,7 @@ function pipeCanvasSVG(){
       var nIdeas=poolCountBy('topic',t);
       var tp=pop(esc(t)+(sc.label?' · '+esc(sc.label):''),
         '综合分 '+(sc.score!==undefined?Number(sc.score).toFixed(1):'—')+' · 词表命中研报 '+evN+' 篇 · 想法 '+nIdeas+' 条',
-        (cRank[t]?'纯数数对照臂：第 '+cRank[t]+' 名'+(ctrlChosen[t]?'（它也选了）':'（它没选——意见相左）'):'')+'　点击看证据与打分明细');
+        (cRank[t]?'计数对照臂：第 '+cRank[t]+' 名'+(ctrlChosen[t]?'，亦选入':'，未选入'):''));
       s+='<g class="pc-click" onclick="openStageDrawer(1,\''+esc(t)+'\')"'+popRef(tp)+'>'
         +'<circle cx="'+tX+'" cy="'+y+'" r="'+r+'" fill="var(--color-surface-brand-strong)"/>'
         +txt(tX,y+4,String(evN),11,'var(--color-text-on-brand)','middle',600,true)
@@ -3102,7 +3314,7 @@ function pipeCanvasSVG(){
     });
     if(lostN>0){
       if(corpusN)s+=link(cX,cY,tX-13,404,3,'var(--color-border-default)',0.9);
-      s+='<g class="pc-click" onclick="openStageDrawer(1)"'+popRef(pop('落选主题 · '+lostN+' 个',null,'打分后没过入选线——点击到赛道上看各差多少分'))+'>'
+      s+='<g class="pc-click" onclick="openStageDrawer(1)"'+popRef(pop('落选主题 · '+lostN+' 个',null,'综合分未达入选线'))+'>'
         +'<circle cx="'+tX+'" cy="404" r="12" fill="var(--color-surface-sunken)"/>'
         +txt(tX,408,String(lostN),10,'var(--color-text-metadata)','middle',600,true)
         +txt(tX+20,408,'个主题落选',10,'var(--color-text-tertiary)','start')
@@ -3110,7 +3322,7 @@ function pipeCanvasSVG(){
     }
   }else{
     s+='<g class="pc-click" onclick="openStageDrawer(1)"'+popRef(stagePop[1])+'><rect x="200" y="170" width="110" height="60" rx="10" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
-      +txt(255,204,w.in_flight?'打分中…':'还没打分',11,'var(--color-text-tertiary)','middle')+'</g>';
+      +txt(255,204,w.in_flight?'评分中':'尚未评分',11,'var(--color-text-tertiary)','middle')+'</g>';
   }
 
   /* ── 生成方式泳道 ── */
@@ -3168,16 +3380,16 @@ function pipeCanvasSVG(){
     });
   }else{
     s+='<g class="pc-click" onclick="openStageDrawer(3)"'+popRef(stagePop[3])+'><circle cx="'+pX+'" cy="'+pY+'" r="46" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="5 5"/>'
-      +txt(pX,pY+4,w.in_flight?'合并中…':'池子还空着',10.5,'var(--color-text-tertiary)','middle')+'</g>';
+      +txt(pX,pY+4,w.in_flight?'合并中':'候选池为空',10.5,'var(--color-text-tertiary)','middle')+'</g>';
   }
 
-  /* ── 八道挑法闸门 ── */
-  var sX1=830,sW=122,sYs=[];
+  /* ── 选取策略闸门 ── */
+  var sX1=800,sW=152,sYs=[];
   var haveSels=sels.length>0;
   if(haveSels){
     var chMax=1;sels.forEach(function(x){chMax=Math.max(chMax,(x.chosen||[]).length)});
     sels.forEach(function(sel,i){
-      var y=48+i*44;sYs.push(y);
+      var y=SEL_Y0+i*SEL_GAP;sYs.push(y);
       var m=selMetaOf(sel.name);
       var isCtl=m[2]==='对照';
       var nCh=(sel.chosen||[]).length;
@@ -3191,7 +3403,7 @@ function pipeCanvasSVG(){
     });
   }else{
     s+='<g class="pc-click" onclick="openStageDrawer(4)"'+popRef(stagePop[4])+'><rect x="'+sX1+'" y="170" width="'+sW+'" height="60" rx="10" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
-      +txt(sX1+sW/2,204,w.in_flight?'挑选中…':'还没出手',10.5,'var(--color-text-tertiary)','middle')+'</g>';
+      +txt(sX1+sW/2,204,w.in_flight?'选取中':'尚未执行',10.5,'var(--color-text-tertiary)','middle')+'</g>';
   }
 
   /* ── 持仓束 ── */
@@ -3211,7 +3423,7 @@ function pipeCanvasSVG(){
     s+='<g class="pc-click" onclick="openStageDrawer(5)"'+popRef(stagePop[5])+'><rect x="'+bX+'" y="152" width="98" height="96" rx="14" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
       +txt(bX+49,204,'未建仓',11,'var(--color-text-tertiary)','middle')+'</g>';
   }
-  s+='</svg>';
+  s+='</g></svg>';
   return s;
 }
 
@@ -3220,16 +3432,18 @@ var JCache={},JLoading={};
 function runReceiptStrip(){
   if(!J||!J.journal){
     return '<button type="button" class="run-receipt section" onclick="openRunLog()">'
-      +'<span class="dot bad"></span><span class="rr-main">运行日志读不到（/api/journal'+(JErr?'：'+esc(JErr):' 返回为空')+'）——不演，点开看原因</span>'
+      +'<span class="dot bad"></span><span class="rr-main">运行日志不可读（/api/journal'+(JErr?'：'+esc(JErr):'，返回为空')+'）</span>'
       +'<span class="go">详情 →</span></button>';
   }
   var j=J.journal;
   return '<div class="rr-row section">'
-    +'<button type="button" class="run-receipt" onclick="openRunLog(\''+esc(j.run_id||'')+'\')" title="打开这次周跑的完整运行日志">'
+    +'<button type="button" class="run-receipt" onclick="openRunLog(\''+esc(j.run_id||'')+'\')" title="打开本次周跑的完整运行日志">'
     +'<span class="dot'+(j.ok?'':' bad')+'"></span>'
     +'<span class="rr-main">'+(j.ok?'● 完成':'● 失败')+' · run '+esc(j.run_id||'—')+' · '+esc(j.as_of||'')+' 期 · '+fmtInt((j.steps||[]).length)+' 步 · '+(j.duration_s!==undefined&&j.duration_s!==null?Number(j.duration_s).toFixed(2)+'s':'—')+' · '+fmtInt((j.artifacts||[]).length)+' 件产物</span>'
     +'<span class="go">查看完整日志 →</span></button>'
-    +'<a class="rr-dl" href="/api/audit'+(j.run_id?'?run_id='+encodeURIComponent(j.run_id):'')+'" title="整包下载这次运行：逐步日志、每一步产出、每一次追问与回答，附 SHA-256 校验。给需要自己核对的人。">↓ 下载审计包</a>'
+    +(isSnapshot()
+      ?'<span class="rr-dl" style="opacity:.55;cursor:default" title="审计包为实时打包，静态快照不提供；请在运行台下载">↓ 下载审计包（快照不可用）</span>'
+      :'<a class="rr-dl" href="/api/audit'+(j.run_id?'?run_id='+encodeURIComponent(j.run_id):'')+'" title="下载本次运行的完整审计包：逐步日志、各步产出、追问记录，附 SHA-256 校验">↓ 下载审计包</a>')
     +'</div>';
 }
 function ensureJournal(runId){
@@ -3312,68 +3526,68 @@ function rlKvHTML(st){
   }
   return parts.join('　');
 }
-/* ══════════ 运行日志的人话视图 ══════════
+/* ══════════ 运行日志摘要视图 ══════════
  * 同一份 journal，两种读法。工程视图是原始步骤 + 键值，给要核对的人；
- * 人话视图把每一步写成一句完整的话——做了什么、得到什么、这一步为什么在这里。
+ * 摘要视图把每一步写成一句完整的话：动作、产出、作用。
  * 数字全部来自同一个 journal 字段，没有一个是叙述时补出来的：
- * 换句话说，人话视图只是措辞不同，不是另一套说法。 */
+ * 摘要视图仅措辞不同，与工程视图同源。 */
 function rlPlainStep(st,idx){
   var step=st.step||'';
   var T={};
   if(step==='universe'){
-    T.t='先点货架：这周能买的东西有哪些';
-    T.d='一共 '+fmtInt((st.shelf_dating||{}).total)+' 个标的在货架上，'+fmtInt(st.eligible)
-      +' 个这周合格，'+fmtInt(st.excluded)+' 个被排除。';
-    T.w='合格的这些才是后面所有想法能落到的范围——想法再好，标的不在货架上也写不出来。';
+    T.t='可交易货架：本期可买入标的范围';
+    T.d='货架共 '+fmtInt((st.shelf_dating||{}).total)+' 个标的，本期合格 '+fmtInt(st.eligible)
+      +' 个，排除 '+fmtInt(st.excluded)+' 个。';
+    T.w='合格集合构成后续所有候选的取值范围：不在货架上的标的，无法出现在任何一条候选里。';
   }else if(step.indexOf('feed:')===0){
     var src=step.slice(5);
-    T.t='取数据：'+src;
-    T.d=st.ok?('这一路数据取到了'+(st.kind?'（'+st.kind+'）':'')+'。')
-             :('这一路取失败了'+(st.error?'：'+st.error:'')+'。');
-    T.w=st.ok?'':'缺这一路数据，这一期的判断会建立在更少的材料上。';
+    T.t='数据接入：'+src;
+    T.d=st.ok?('该来源已取得'+(st.kind?'（'+st.kind+'）':'')+'。')
+             :('该来源取数失败'+(st.error?'：'+st.error:'')+'。');
+    T.w=st.ok?'':'该来源缺失，本期判断所依据的材料相应减少。';
     T.bad=!st.ok;
   }else if(step==='theme_discovery'){
-    T.t='扫一遍语料，看有没有说不进现有主题的新东西';
-    T.d='本周语料的 '+numOr(st.coverage_pct)+'% 能落进已登记的主题里；'
-      +fmtInt(st.unmatched)+' 篇没对上，其中够格当新主题的有 '+fmtInt(st.candidates)+' 个。';
-    T.w='这一步防的是「世界变了但主题表没变」——够格的新主题会被登记进去，登记后不可回填。';
+    T.t='主题发现：检查现有主题表是否覆盖本期语料';
+    T.d='本期语料 '+numOr(st.coverage_pct)+'% 可归入已登记主题；未匹配 '
+      +fmtInt(st.unmatched)+' 篇，其中达标的新主题候选 '+fmtInt(st.candidates)+' 个。';
+    T.w='用于防止主题表滞后于宏观环境变化。达标的新主题自动登记，登记记录 append-only，不可回填。';
   }else if(step==='inputs'){
-    T.t='把这次要用的材料封存，之后不许再添';
-    T.d='封存了 '+fmtInt(st.corpus)+' 篇研报、'+fmtInt(st.calendar)+' 条宏观日历'
-      +(st.sha?'，指纹 '+st.sha:'')+'。';
-    T.w='封存之后所有判断只能用这一份材料。日后追问「它当时怎么想」，问的也是这一份——这就是答案不可能事后编的原因。';
+    T.t='输入封存：固定本期可用材料';
+    T.d='封存研报 '+fmtInt(st.corpus)+' 篇、宏观日历 '+fmtInt(st.calendar)+' 条'
+      +(st.sha?'，输入指纹 '+st.sha:'')+'。';
+    T.w='封存后所有判断只能取用这一份材料。事后追问决策依据时，模型读到的仍是这一份，因此回答无法在事后重构。';
   }else if(step==='topics'){
-    T.t='选主题：这周押哪几个宏观判断';
-    T.d='用 '+esc(st.strategy||'')+(st.version?' v'+esc(st.version):'')+' 打分，选出 '
+    T.t='筛选A 选主题：确定本期宏观主题';
+    T.d='按 '+esc(st.strategy||'')+(st.version?' v'+esc(st.version):'')+' 打分，入选 '
       +((st.chosen||[]).length||0)+' 个：'+((st.chosen||[]).join('、')||'—')+'。'
-      +(st.calls!==undefined?'（这一步调用模型 '+fmtInt(st.calls)+' 次'+(st.calls===0?'——纯规则打分，没有模型参与':'')+'）':'');
-    T.w='落选的主题这一期就到此为止，不会有任何一条想法出自它们。';
+      +(st.calls!==undefined?'（本步模型调用 '+fmtInt(st.calls)+' 次'+(st.calls===0?'，为纯规则打分，无模型参与':'')+'）':'');
+    T.w='落选主题不进入筛选B，本期不会有任何候选出自这些主题。'
   }else if(step==='generators'){
     var pr=st.produced||{};
     var ks=Object.keys(pr);
-    T.t='写想法：4 种写法各写各的，互不通气';
-    T.d='一共写出 '+fmtInt(st.pool)+' 条：'
+    T.t='筛选B 生成候选：4 种方式并行、互不可见';
+    T.d='共生成 '+fmtInt(st.pool)+' 条：'
       +ks.map(function(k){return methodName(k)+' '+fmtInt(pr[k])+' 条'}).join('、')+'。';
-    T.w='刻意让它们互相不知道对方在写什么——四种写法都想到同一个标的时，那个「共识」才有意义。';
+    T.w='四种生成方式之间相互隔离，因此「多种方式指向同一标的」才是独立信号而非相互抄袭的结果。';
     var ge=st.errors||{};
-    if(Object.keys(ge).length){T.bad=true;T.d+=' 其中 '+Object.keys(ge).map(function(k){return methodName(k)+' 出错'}).join('、')+'。';}
+    if(Object.keys(ge).length){T.bad=true;T.d+=' 其中 '+Object.keys(ge).map(function(k){return methodName(k)+' 执行失败'}).join('、')+'。';}
   }else if(step==='pool'){
     var cv=st.convergence||{};
     /* 共识分布的键是「4种方式」这样的中文串，不是数字键 */
     var four=0;Object.keys(cv).forEach(function(k){if(/^\s*4/.test(k))four=cv[k]||0});
-    T.t='合并成一个候选池：同一个标的只留一条';
-    T.d=fmtInt(st.raw)+' 条原始想法合并成 '+fmtInt(st.merged)+' 条'
-      +(four?'，其中 '+fmtInt(four)+' 条是 4 种写法不约而同都提到的标的':'')+'。';
-    T.w='合并之后，下一步的 10 种挑法面对的是同一个池子——这样它们之间的差别才只剩下「怎么挑」这一件事。';
+    T.t='合并候选池：同一标的归并为一条';
+    T.d=fmtInt(st.raw)+' 条原始候选归并为 '+fmtInt(st.merged)+' 条'
+      +(four?'，其中 '+fmtInt(four)+' 条为 4 种生成方式共同指向的标的':'')+'。';
+    T.w='合并后各选取策略面对同一候选池，策略间差异仅来自选取规则本身。';
   }else if(step==='selectors'){
     var ch=st.chosen||{};
     var ks2=Object.keys(ch);
-    T.t='挑持仓：10 种挑法从同一个池子里各挑各的';
-    T.d='池子里 '+fmtInt(st.pool)+' 条候选，'
-      +ks2.map(function(k){return selMetaOf(k)[1]+' 挑 '+fmtInt(ch[k])+' 条'}).join('、')+'。';
-    T.w='同池、同期、同规则，唯一的变量是挑法本身——这是它们之间的胜负日后能算数的前提。';
+    T.t='选取持仓：各策略自同一候选池独立选取';
+    T.d='候选池 '+fmtInt(st.pool)+' 条，'
+      +ks2.map(function(k){return selMetaOf(k)[1]+' 选中 '+fmtInt(ch[k])+' 条'}).join('、')+'。';
+    T.w='同池、同期、同风控规则，唯一变量为选取策略，是后续配对比较成立的前提。';
     var se=st.errors||{};
-    if(Object.keys(se).length){T.bad=true;T.d+=' 其中 '+Object.keys(se).map(function(k){return selMetaOf(k)[1]+' 出错'}).join('、')+'。';}
+    if(Object.keys(se).length){T.bad=true;T.d+=' 其中 '+Object.keys(se).map(function(k){return selMetaOf(k)[1]+' 执行失败'}).join('、')+'。';}
   }else{
     T.t=rlStepName(step);
     T.d=rlKvHTML(st).replace(/<[^>]+>/g,' ');
@@ -3413,9 +3627,9 @@ function rlPlainHTML(j){
     if(st._feeds){
       var fs=st._feeds,okN=fs.filter(function(f){return f.ok}).length;
       at=fs[0].at;
-      T={t:'取数据：'+fs.length+' 路来源',
-         d:fs.map(function(f){return (f.step||'').slice(5)+(f.ok?' ok':' 失败')}).join('、')+'。',
-         w:okN<fs.length?'有来源没取到，这一期的材料比正常少。':'四路数据齐了：研报语料、宏观日历、可买标的清单。',
+      T={t:'数据接入：'+fs.length+' 路来源',
+         d:fs.map(function(f){return (f.step||'').slice(5)+(f.ok?' 正常':' 失败')}).join('、')+'。',
+         w:okN<fs.length?'存在取数失败的来源，本期可用材料低于正常水平。':'四路来源均已接入：研报语料、宏观日历、可交易标的清单。',
          bad:okN<fs.length};
     }else{T=rlPlainStep(st);at=st.at}
     n++;
@@ -3439,7 +3653,7 @@ function rlStepName(step){
   if(String(step).indexOf('feed:')===0)return '写入数据源';
   return step;
 }
-var rlMode='plain'; /* 'plain' 人话 | 'raw' 工程——默认给不看代码的人 */
+var rlMode='plain'; /* 'plain' 摘要 | 'raw' 工程 */
 function setRlMode(m){rlMode=m;renderDrawers()}
 function runLogDrawerBody(d){
   var cached=ensureJournal(d.p);
@@ -3467,9 +3681,11 @@ function runLogDrawerBody(d){
     +'<span class="rl-chip">'+esc(j.kind||'')+' · '+esc(j.as_of||'')+' 期</span>'
     +(j.started_at?'<span class="rl-chip">'+hktFmt(j.started_at,true)+' HKT 启动</span>':'')
     +(j.duration_s!==undefined&&j.duration_s!==null?'<span class="rl-chip">总时长 '+Number(j.duration_s).toFixed(2)+'s</span>':'')
-    +'<a class="rl-dl" href="/api/audit'+(j.run_id?'?run_id='+encodeURIComponent(j.run_id):'')+'" title="把这次运行整包下载下来：逐步日志、每一步的产出、每一次追问和回答，附校验用的 SHA-256。可离线打开、可转给别人核对。">↓ 审计包</a>'
+    +(isSnapshot()
+      ?'<span class="rl-dl" style="opacity:.55;cursor:default" title="审计包是现场打包的，静态快照下不到——在运行台上下载。">↓ 审计包（快照下不到）</span>'
+      :'<a class="rl-dl" href="/api/audit'+(j.run_id?'?run_id='+encodeURIComponent(j.run_id):'')+'" title="下载本次运行的完整审计包：逐步日志、各步产出、追问记录，附 SHA-256 校验">↓ 审计包</a>')
     +'<span class="rl-seg">'
-      +'<button type="button" class="'+(rlMode==='plain'?'on':'')+'" onclick="setRlMode(\'plain\')" title="把每一步写成一句话：做了什么、得到什么、这一步为什么在这里">人话</button>'
+      +'<button type="button" class="'+(rlMode==='plain'?'on':'')+'" onclick="setRlMode(\'plain\')" title="每步以一句话概述：动作、产出、作用">摘要</button>'
       +'<button type="button" class="'+(rlMode==='raw'?'on':'')+'" onclick="setRlMode(\'raw\')" title="原始步骤 + 键值 + 产物 URI，用来核对">工程</button>'
     +'</span>'
     +'</div>';
@@ -3505,7 +3721,7 @@ function runLogDrawerBody(d){
   if(rlMode==='plain'){
     return '<div class="runlog">'+head
       +'<div class="rl-scroll scroll-thin">'+rlPlainHTML(j)+'</div>'
-      +'<div class="rl-note">同一份运行记录的人话读法——每个数字都直接取自这次运行留下的日志字段，没有一个是叙述时补的。要核对原始步骤、键值和产物清单，切到「工程」。</div>'
+      +'<div class="rl-note">数值均取自本次运行的日志字段。原始步骤、键值与产物清单见「工程」视图。</div>'
       +'</div>';
   }
   return '<div class="runlog">'+head
@@ -3552,7 +3768,7 @@ function stageCorpusBody(){
   var evKeys=Object.keys(evAll).sort(function(a,b){return (evAll[b].n||0)-(evAll[a].n||0)});
   if(evKeys.length){
     topicChips='<div style="margin-top:var(--space-4)">'
-      +'<div class="card-note" style="margin-bottom:6px">这些研报流向了哪些主题（点任意主题拉开它的证据抽屉，同一篇可命中多个主题）：</div>'
+      +'<div class="card-note" style="margin-bottom:6px">研报的主题归属（同一篇可命中多个主题）</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
       +evKeys.map(function(t){
         return '<button type="button" class="tag" style="cursor:pointer" onclick="openTopicDrawer(\''+esc(t)+'\')" title="'+esc(topicLabel(t))+'">'+esc(t)+' · '+fmtInt(evAll[t].n)+' 篇 ›</button>';
@@ -3579,7 +3795,7 @@ function stageCorpusBody(){
     +epi('语料是唯一的信息来源——多种写想法的方式共用这一份，所以它们的「共识」不算独立证据');
 }
 
-/* ── 2 · 筛选A：赛马（focus = 主题 id：该行高亮+证据就地展开，其余压暗） ── */
+/* ── 2 · 筛选A：主题评分（focus = 主题 id：该行高亮+证据就地展开，其余压暗） ── */
 /* 落选理由——用当时打分本身算出来的，不是事后编的说法。
  * 把落选主题的四个加权贡献，与入选主题在同一因子上的平均贡献相减，
  * 差得最多的那一项就是它的短板；再报出与入选线的分差。
@@ -3594,12 +3810,12 @@ function topicLossReason(r,avgComps,cutScore){
   var txt='';
   /* 分差已经写在行末，这里只说原因：短在哪个因子、短多少 */
   if(worstGap<-0.2){
-    txt='短板在 <b>'+SEGL2[worst]+'</b>（本主题 '+numOr(vals[worst])
-      +(worst===3?'，这一项越低越好':'')+'，比入选主题平均少拿 '+Math.abs(worstGap).toFixed(1)+' 分）';
+    txt='主要失分项 <b>'+SEGL2[worst]+'</b>（本主题 '+numOr(vals[worst])
+      +(worst===3?'，该项反向计分，数值越低越好':'')+'，低于入选主题均值 '+Math.abs(worstGap).toFixed(1)+' 分）';
   }else{
-    txt='四个因子都不落后，是被前几名整体挤下来的';
+    txt='四项因子均无明显缺口，综合分低于入选名额内主题';
   }
-  if(gap!==null&&gap<=1.0)txt+=' · 离入选线只有 '+gap.toFixed(1)+' 分，下一期很可能上来';
+  if(gap!==null&&gap<=1.0)txt+=' · 距入选线 '+gap.toFixed(1)+' 分';
   return txt;
 }
 
@@ -3642,14 +3858,15 @@ function stageTopicsBody(d){
         return '<button type="button" class="ftab'+(t===foc?' on':'')+'" onclick="setDrawerFocus(\''+esc(t)+'\')">'+esc(t)+'</button>';
       }).join('')+'</div>';
   }
-  var dotLegend='<div class="card-note" style="margin-bottom:var(--space-2)">带圈数字 = 纯数数对照给同一主题的排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span> · 绿圈 = 数数也选它进前 5 · 灰圈 = 数数没选 · 悬停每个圈看两边名次</div>';
+  var dotLegend='<div class="card-note" style="margin-bottom:var(--space-2)">圈内数字 = 计数对照臂对同一主题的排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span>；绿圈 = 计数臂亦选入前 5，灰圈 = 未选入</div>';
   var agree0=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
   var hOnly0=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
   var cOnly0=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
-  var disLine=ctrl?'<div class="card-note" style="margin-bottom:var(--space-3)">本期重合 '+agree0.length+'/'+topicChosen('hgep').length+'：双选 '+(agree0.map(esc).join('·')||'—')
-    +'；仅语义 '+(hOnly0.map(esc).join('·')||'—')+'；仅数数 '+(cOnly0.map(esc).join('·')||'—')+'——分歧就是「语义理解值不值钱」的实时读数</div>':'';
-  var html=tabs+dotLegend+disLine+'<div class="race">';
+  var disLine=ctrl?'<div class="card-note" style="margin-bottom:var(--space-3)">两臂重合 '+agree0.length+'/'+topicChosen('hgep').length+'：双选 '+(agree0.map(esc).join('·')||'—')
+    +'；仅语义臂 '+(hOnly0.map(esc).join('·')||'—')+'；仅计数臂 '+(cOnly0.map(esc).join('·')||'—')+'</div>':'';
+  var inHTML='',outHTML='';
   rows.forEach(function(r,ri){
+    var rowHTML='';
     var isIn=!!chosenSet[r._id];
     var focCls=foc?(r._id===foc?' foc':' dim'):'';
     var barPct=Math.max(2,(r.score||0)/maxScore*100);
@@ -3679,54 +3896,64 @@ function stageTopicsBody(d){
       else if(isIn)dotTip='纯数数把它排第 '+cRank[r._id]+'、没选进前 5；HGEP 排第 '+hR+' 并选中——本期两种打分的分歧之一';
       else dotTip='纯数数把它排第 '+cRank[r._id]+'（HGEP 排第 '+hR+'）· 两边都没选';
       dotTip+='。提及 '+fmtInt(cs.mentions!==undefined?cs.mentions:cs.score)+' 次。'+COUNT_GLOSS;
-      cnt='<span class="race-cnt'+(ctrlChosen[r._id]?' pick':'')+'" style="left:'+pos.toFixed(1)+'%" title="'+esc(dotTip)+'">'+cRank[r._id]+'</span>';
+      cnt='<span class="race-cnt'+(ctrlChosen[r._id]?' pick':'')+'" style="left:'+pos.toFixed(1)+'%" title="'+esc(dotTip)+'">#'+cRank[r._id]+'</span>';
     }
     var side;
     if(isIn){
       side='<span class="sc num">'+numOr(r.score)+'</span>'
-        +(ctrlChosen[r._id]?'<span class="d" title="两种打分都把它选进前 5">双选</span>':(cs?'<span class="d" title="语义臂选了它，纯数数臂没选——分歧之一">仅语义选</span>':''));
+        +(ctrlChosen[r._id]?'<span class="d" title="两臂均选入前 5">双选</span>':(cs?'<span class="d" title="仅语义臂选入">仅语义臂</span>':''));
     }else{
       var gap=(cutScore!==null&&r.score!==undefined)?(cutScore-(r.score||0)):null;
-      side='<span class="sc num">'+numOr(r.score)+'</span><span class="d">'+(gap!==null?'差 '+gap.toFixed(1)+' 分':'落选')+(ctrlChosen[r._id]?' · <span style="color:var(--color-text-brand)">仅数数选</span>':'')+'</span>';
+      side='<span class="sc num">'+numOr(r.score)+'</span><span class="d">'+(gap!==null?'差 '+gap.toFixed(1)+' 分':'落选')+(ctrlChosen[r._id]?' · <span style="color:var(--color-text-brand)">仅计数臂</span>':'')+'</span>';
     }
-    html+='<button type="button" class="race-row'+(isIn?'':' lost')+focCls+'" id="topicrow-'+esc(r._id)+'" onclick="'+(foc===r._id?'setDrawerFocus(null)':'setDrawerFocus(\''+esc(r._id)+'\')')+'" title="'+(foc===r._id?'再点一次取消聚焦':'点击聚焦这个主题：高亮赛道并展开证据')+'">'
+    rowHTML+='<button type="button" class="race-row'+(isIn?'':' lost')+focCls+'" id="topicrow-'+esc(r._id)+'" onclick="'+(foc===r._id?'setDrawerFocus(null)':'setDrawerFocus(\''+esc(r._id)+'\')')+'" title="'+(foc===r._id?'取消聚焦':'聚焦该主题并展开证据')+'">'
       +'<span class="race-name"><span class="id">'+esc(r._id)+'</span><span class="lbl">'+esc(r.label||'')+'</span></span>'
       +'<span class="race-track"><span class="race-bar" style="width:'+barPct.toFixed(1)+'%">'+segs+'</span>'+cnt+'</span>'
       +'<span class="race-side">'+side+'</span>'
       +'</button>';
-    if(!isIn&&!foc){
-      html+='<div class="race-why"><span class="w">'+topicLossReason(r,avgComps,cutScore)+'</span></div>';
+    if(!isIn){
+      rowHTML+='<div class="race-why"><span class="w">'+topicLossReason(r,avgComps,cutScore)+'</span></div>';
     }
     if(foc===r._id){
-      html+='<div class="race-detail" style="margin-top:6px">'+topicDrawerBody(r._id)+'</div>';
+      rowHTML+='<div class="race-detail" style="margin-top:6px">'+topicDrawerBody(r._id)+'</div>';
     }
-    if(ri===cutIdx&&cutIdx<rows.length-1){
-      html+='<div class="race-cut'+(foc?' dim':'')+'">入选线 · 以上 '+topicChosen('hgep').length+' 个主题进入筛选B，以下 '+(rows.length-topicChosen('hgep').length)+' 个落选（每条下面写了为什么）</div>';
-    }
+    if(isIn)inHTML+=rowHTML; else outHTML+=rowHTML;
   });
-  html+='</div>';
+  var nIn=topicChosen('hgep').length,nOut=rows.length-nIn;
+  /* 整步追问的入口放在这一层最上面：读者看完这张表最先冒出来的问题是
+   * 「凭什么是这几个」，而不是某一个主题的细节。整步追问交给模型的是
+   * 完整打分表 + 计数对照臂，不附研报正文——这一步的取舍就是在表上做的。 */
+  var askStep='<div style="margin:0 0 var(--space-3)">'
+    +'<button type="button" class="exp-btn" onclick="openAskDrawer(\'selection\',\'topics\')" '
+    +'title="把本期全部主题的打分表与计数对照臂交给模型，仅依据这两份当期封存材料作答">'
+    +'问它当时凭什么选这 '+nIn+' 个 ›</button></div>';
+  var html=tabs+askStep+dotLegend+disLine
+    +'<div class="race-sec"><div class="race-sec-h"><span class="t">入选 · '+nIn+'</span><span class="s">进入筛选B，各生成方法据此写想法</span></div>'
+    +'<div class="race">'+inHTML+'</div></div>'
+    +(nOut?('<div class="race-sec lost"><div class="race-sec-h"><span class="t">落选 · '+nOut+'</span><span class="s">按综合分排序，每条标注落选理由与分差</span></div>'
+      +'<div class="race">'+outHTML+'</div></div>'):'');
   var agree=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
   var hOnly=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
   var cOnly=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
   var cmp='';
   if(ctrl){
     cmp='<div style="margin-top:var(--space-4);font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)">'
-      +'两种打分本期重叠 <b class="num">'+agree.length+'</b> 个'
-      +(hOnly.length?'；仅语义臂选了 '+hOnly.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(' '):'')
-      +(cOnly.length?'；仅数数臂选了 '+cOnly.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(' '):'')
-      +'——意见相左的主题就是这场实验正在积累的样本。</div>';
+      +'两臂本期重叠 <b class="num">'+agree.length+'</b> 个'
+      +(hOnly.length?'；仅语义臂选入 '+hOnly.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(' '):'')
+      +(cOnly.length?'；仅计数臂选入 '+cOnly.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(' '):'')
+      +'。</div>';
   }
   var legend='<div class="race-legend">'
     +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度 <span class="gloss" title="'+esc(HGEP_GLOSS.H)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 分歧 <span class="gloss" title="'+esc(HGEP_GLOSS.G)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 实据 <span class="gloss" title="'+esc(HGEP_GLOSS.E)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 已定价 <span class="gloss" title="'+esc(HGEP_GLOSS.P)+'">ⓘ</span></span>'
-    +'<span><span class="sw" style="background:var(--color-data-1);opacity:.34"></span>落选（同样的色块，压暗）</span>'
-    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>纯数数对照的排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span>（绿圈 = 数数也选）</span>'
+    +'<span><span class="sw" style="background:var(--color-data-1);opacity:.34"></span>落选</span>'
+    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>计数对照臂排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span></span>'
     +'</div>';
   if(foc&&d&&!d.scrolled){drawerScrollSel='#topicrow-'+foc;d.scrolled=true}
   return html+legend+cmp
-    +epi('「AI 语义打分比纯数数强」还没被证明——对照臂每周并行记录，正在攒证据；条内色块 = 四个因子对综合分的贡献');
+    +epi('语义打分相对计数打分的增量尚未验证，对照臂每周并行记录；条内色块为四项因子对综合分的贡献');
 }
 
 /* ── 主题证据抽屉（第 2/3 层） ── */
@@ -3756,14 +3983,14 @@ function topicDrawerBody(tid){
         if(o.score!==undefined&&(cut===null||o.score<cut))cut=o.score;
       });
       if(inIds.length)aC=aC.map(function(v){return v/inIds.length});
-      html+='<div class="rej-why">为什么落选：'+topicLossReason(r,aC,cut)
-        +'。落选主题不进入筛选B，本期没有一条想法出自它。</div>';
+      html+='<div class="rej-why">落选依据：'+topicLossReason(r,aC,cut)
+        +'。落选主题不进入筛选B，本期无任何候选出自该主题。</div>';
     }
     html+='<div class="derive-formula num" title="'+esc(HGEP_GLOSS.H+'；'+HGEP_GLOSS.G+'；'+HGEP_GLOSS.E+'；'+HGEP_GLOSS.P)+'">综合分 '+numOr(r.score)+' ≈ 0.30×H热度('+numOr(r.H)+') + 0.25×G分歧('+numOr(r.G)+') + 0.25×E实据('+numOr(r.E)+') + 0.20×(100−P已定价('+numOr(r.P)+')) = '+wsum.toFixed(1)+' <span class="gloss" title="'+esc(HGEP_GLOSS.H+'。'+HGEP_GLOSS.G+'。'+HGEP_GLOSS.E+'。'+HGEP_GLOSS.P)+'">ⓘ</span></div>'
       +'<div class="derive-kv">'
       +'<span>打分用证据：'+fmtInt(r.n_evidence)+' 条 · '+fmtInt(r.n_institutions)+' 家机构</span>'
       +'<span>P 来源：'+esc(r.p_source||'—')+(r.p_source==='neutral_default'?'（中性默认 50，不代表判断）':'')+'</span>'
-      +'<span>量尺标的：'+esc(r.indicator||'—')+'</span>'
+      +'<span>指示标的：'+esc(r.indicator||'—')+'</span>'
       +'</div>';
     var nIdeas=poolCountBy('topic',tid);
     html+='<div class="derive-kv">'
@@ -3819,15 +4046,16 @@ function stageGeneratorsBody(d){
     var pct=mine.length?Math.round(overlap/mine.length*100):0;
     focusHead='<div class="focus-head">'
       +'<b>'+esc(fo2[1])+'</b><span class="tag tag-brand" style="margin-left:6px">'+esc(fo2[2])+'</span>'
+      +'<span style="margin-left:6px">'+pathTag(GEN_PATH[focKey])+'</span>'
       +'<div style="margin-top:4px">'+esc(fo2[3])+'</div>'
       +'<div style="margin-top:4px;color:var(--color-text-metadata)">例：'+esc(fo2[4])+'</div>'
       +'<div style="margin-top:6px">'
       +(fg?'本期产出 <b class="num">'+fmtInt(fg.n)+'</b> 条 · 被拒 <b class="num">'+fmtInt(fg.rejected||0)+'</b> 条 · 合并后在池 <b class="num">'+fmtInt(mine.length)+'</b> 条。':'本期没有它的产出记录。')
       +'</div>'
-      +'<div style="margin-top:6px"><b>它独有的 '+fmtInt(uniq.length)+' 个标的</b>（只有它提出、其余三种都没提——方法之间最真实的差别）：'
+      +'<div style="margin-top:6px"><b>独有标的 '+fmtInt(uniq.length)+' 个</b>（仅该方法提出）：'
       +(uniq.length?'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle;margin-left:4px">'
         +uniq.map(function(c){return '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="'+esc(c.instrument_name||'')+' · '+esc(c.topic_id||'')+' — 在候选池里看这条" onclick="filterPoolCode(\''+esc(c.instrument_id)+'\')">'+esc(c.instrument_id)+' ›</button>'}).join('')
-        +'</span>':'<span style="color:var(--color-text-tertiary)">本期没有——它提的每一条都有别的方法也提了</span>')
+        +'</span>':'<span style="color:var(--color-text-tertiary)">本期无独有标的</span>')
       +'</div>'
       +'<div style="margin-top:4px;color:var(--color-text-metadata)">与其他方式重合 '+fmtInt(overlap)+' / '+fmtInt(mine.length)+' 条（'+pct+'%）——重合读的是同一批研报，不算独立证据</div>'
       +'</div>';
@@ -3875,9 +4103,10 @@ function stageGeneratorsBody(d){
   html+='</div></div>';
   var total=gens.reduce(function(a,g){return a+(g.n||0)},0);
   return tabs+focusHead
-    +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方式对同样 '+chosen.length+' 个主题并行写一个月期的结构化想法（带概率、上下行情景与论点），互不通气。色深 = 产量；点任意格子看那批想法。本期共写出 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条。</div>'
+    +pathLegend(GEN_PATH,GEN_ORDER.map(function(o){return o[0]}))
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法对同一批 '+chosen.length+' 个主题并行生成 1 个月期限的结构化想法（含概率、上下行情景与论点），彼此独立。色深对应产量。本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条。</div>'
     +html
-    +epi('目标是每方式每主题 '+(target||20)+' 条——没写满不硬凑：写不出就是写不出，缺口本身是信息');
+    +epi('目标为每方法每主题 '+(target||20)+' 条；未写满不补足，缺口本身为观测量');
 }
 
 /* ── 4 · 合并候选池 ── */
@@ -3895,7 +4124,7 @@ function stagePoolBody(d){
       +'<span class="arr">→ 同一标的合并、赔率取中位数 →</span>'
       +'<span class="big">'+fmtInt(pool.n)+'</span><span class="quiet">条候选（一标一条）</span>'
       +'</div>'
-      +'<div class="card-note" style="margin-bottom:var(--space-2)">「方式」= 筛选B 的 4 种写想法方法：AI 端到端 / 约束边界 / 传导链 / 共识缺口——互不通气、独立写想法 <span class="gloss" title="'+esc(CONV_GLOSS)+'">ⓘ</span></div>';
+      +'<div class="card-note" style="margin-bottom:var(--space-2)">方法 = 筛选B 的 4 种生成方法：AI 端到端 / 约束边界 / 传导链 / 共识缺口，彼此独立生成 <span class="gloss" title="'+esc(CONV_GLOSS)+'">ⓘ</span></div>';
     /* 共识度 = 几种不同方式提出（与 API convergence 同口径） */
     var groups={};cands.forEach(function(c){
       var uniq={};(c.proposed_by||[]).forEach(function(m){uniq[m]=1});
@@ -3918,7 +4147,7 @@ function stagePoolBody(d){
         }).join('')
         +'</div></div>';
     });
-    merge+=epi('「不约而同」不等于「更可能对」——各生成方式读的是同一批研报；共识度只是记录，不是加分项');
+    merge+=epi('各生成方法读取同一批研报，共识度不构成独立证据，仅作记录，不参与打分');
   }else{
     head='<div class="empty-sm">候选池还没合并'+(w.in_flight?'——各生成方式写完后自动合并':'')+'</div>';
   }
@@ -3931,15 +4160,15 @@ function stagePoolBody(d){
         +'<button type="button" class="exp-btn" style="padding:0 4px" onclick="clearPoolFilter()" aria-label="清除筛选">×</button></div>';
     }
     candCard='<div id="candCard" style="margin-top:var(--space-6)">'
-      +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">候选池全表</h2><span class="card-note">'+fmtInt(cands.length)+' 条 · 点列头排序 · 点行看论点和去向</span></div>'
+      +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">候选池全表</h2><span class="card-note">'+fmtInt(cands.length)+' 条 · 列头排序</span></div>'
       +flt
       +'<div class="table-wrap scroll-y scroll-thin" style="margin-top:var(--space-3)"><table id="candTable">'
       +'<thead><tr>'+candTh('instrument_id','标的')+candTh('instrument_name','名称')+candTh('topic_id','主题')
       +candTh('upside_pct','上行','r')+candTh('downside_pct','下行','r')
       +candTh('p_up','P↑','r')+candTh('p_base','P基','r')+candTh('p_down','P↓','r')
-      +candTh('n_proposals','提出','r')+'<th>方式</th></tr></thead>'
+      +candTh('n_proposals','提出','r')+'<th>生成方法</th></tr></thead>'
       +'<tbody id="candBody"></tbody></table></div>'
-      +epi('同一标的被多个方式提出时合并成一条，赔率取中位数；赚亏比低于 1.5 的进不来——差行情宁可留现金')
+      +epi('同一标的被多方法提出时合并为一条，赔率取中位数；赔率低于 1.5 不进入候选池')
       +'</div>';
   }else{
     candCard='<div id="candCard" style="margin-top:var(--space-6)"><h2 class="card-title">候选池全表</h2>'
@@ -3956,12 +4185,13 @@ function stageSelectorsBody(d){
   var cands=((w.pool)||{}).candidates||[];
   var books=currentBooks();
   if(!sels.length){
-    return '<div class="empty-sm">本期挑法还没出手'+(w.in_flight?'——候选池合并后开始挑':'')+'</div>';
+    return '<div class="empty-sm">本期选取策略尚未执行'+(w.in_flight?'，候选池合并后开始':'')+'</div>';
   }
   var tabs='<div class="ftabs"><button type="button" class="ftab'+(!foc?' on':'')+'" onclick="setDrawerFocus(null)">全景</button>'
     +sels.map(function(sl){
       return '<button type="button" class="ftab'+(foc===sl.name?' on':'')+'" onclick="setDrawerFocus(\''+esc(sl.name)+'\')">'+esc(selMetaOf(sl.name)[1])+'</button>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'
+    +pathLegend(SEL_PATH,sels.map(function(sl){return sl.name}));
   var focusHead='';
   if(foc){
     var fs=sels.find(function(x){return x.name===foc});
@@ -3971,11 +4201,12 @@ function stageSelectorsBody(d){
       var hasB=books.some(function(b){return b.selector===foc});
       focusHead='<div class="focus-head">'
         +'<b>'+esc(fm[1])+'</b><span class="tag tag-brand" style="margin-left:6px">'+esc(fm[3])+'</span><span class="tag" style="margin-left:4px">'+esc(fm[2])+'</span>'
+        +'<span style="margin-left:6px">'+pathTag(SEL_PATH[foc])+'</span>'
         +'<div style="margin-top:4px">'+esc(selPlain(foc))+'</div>'
         +'<div style="margin-top:6px"><b>它放行的 '+fmtInt(ids.length)+' / '+fmtInt(cands.length)+' 条</b>：'
         +(ids.length?'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle;margin-left:4px">'
           +ids.map(function(id){return '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="在候选池里看这条" onclick="filterPoolCode(\''+esc(id)+'\')">'+esc(id)+' ›</button>'}).join('')
-          +'</span>':'<span style="color:var(--color-text-tertiary)">空仓——没够门槛，留现金</span>')
+          +'</span>':'<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
         +'</div>'
         +(hasB?'<div style="margin-top:4px"><button type="button" class="exp-btn" onclick="openBookDrawer(\''+esc(foc)+'\')">看这本账的持仓与净值 ›</button></div>':'')
         +'</div>';
@@ -3991,7 +4222,7 @@ function stageSelectorsBody(d){
         +'<span class="nm">'+esc(m[1])+'</span>'
         +'<span class="tag" style="flex:none">'+esc(m[2])+'</span>'
         +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b> <span class="gloss" title="'+esc(selGlossTitle(m))+'">ⓘ</span>　'+esc(selPlain(s.name))+'　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
-        +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+esc(s.name)+'\',\'挑法 '+esc(m[1])+'\')">回池子看 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓——没够门槛，留现金</span>')
+        +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+esc(s.name)+'\',\'策略 '+esc(m[1])+'\')">回候选池 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
         +(hasBook?'　<button type="button" class="exp-btn" onclick="openBookDrawer(\''+esc(s.name)+'\')">这本账 ›</button>':'')
         +'</span></div>';
     }).join('')+'</div>';
@@ -4024,12 +4255,12 @@ function stageSelectorsBody(d){
           +'<td class="r num">'+r.pass+'/'+sels.length+'</td></tr>';
       }).join('')
       +'</tbody></table></div>'
-      +'<div class="card-note" style="margin-top:var(--space-2)">灰点 = 对照挑法（全买对照按设计整列放行）；同一行亮点越多 = 越多挑法独立看上它</div>';
+      +'<div class="card-note" style="margin-top:var(--space-2)">灰点 = 对照臂（全量基准按设计整列放行）；同一行亮点越多 = 越多策略独立选中</div>';
   }else{
     matrix='<div class="empty-sm" style="margin-top:var(--space-3)">候选池为空——闸门矩阵无从谈起</div>';
   }
   return tabs+focusHead+legend+matrix
-    +epi('八道闸吃的是完全相同的候选池——账本之间的净值差只能来自挑法本身；谁更强要等同池配对样本攒够，单周不加冕');
+    +epi('各策略使用完全相同的候选池，账本净值差异仅来自选取策略；结论需待配对样本量满足预注册要求');
 }
 
 /* ── 6 · 自动建仓 ── */
@@ -4151,7 +4382,7 @@ function posDrawerBody(code){
   html+='<div style="margin:var(--space-4) 0"><div class="pos-headr" style="grid-template-columns:minmax(0,1fr)"><span>σ×2 止损 ─ 进场（竖线）─ 现价（圆点）─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS)+'">ⓘ</span></span></div>'
     +'<div style="max-width:420px">'+rngBarHTML(p)+'</div></div>';
   html+='<div style="font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin-bottom:4px">哪些账本在持有</div>'
-    +'<div class="table-wrap"><table><thead><tr><th>账本（挑法）</th><th class="r">数量</th><th class="r">浮动盈亏</th></tr></thead><tbody>'
+    +'<div class="table-wrap"><table><thead><tr><th>账本（选取策略）</th><th class="r">数量</th><th class="r">浮动盈亏</th></tr></thead><tbody>'
     +p.perBook.map(function(pb){
       return '<tr><td class="primary"><button type="button" class="exp-btn" style="padding:2px 4px" onclick="openBookDrawer(\''+esc(pb.sel)+'\')">'+esc(selMetaOf(pb.sel)[1])+' ›</button></td>'
         +'<td class="r num">'+fmtInt(Math.round(pb.qty||0))+'</td>'
@@ -4199,7 +4430,7 @@ function bookDrawerBody(sel){
   }else{
     html+='<div class="empty-sm" style="margin-top:var(--space-4)">这本账空仓——没够门槛，留现金</div>';
   }
-  html+=epi('8 本账吃同一周、同一候选池——净值差 = 挑法差；样本够了才宣布赢家');
+  html+=epi('各账本使用同一期、同一候选池，净值差异即选取策略差异；结论需待样本量满足要求');
   return html;
 }
 function statusDrawerBody(){
@@ -4234,7 +4465,7 @@ function statusDrawerBody(){
     +'</div>'
     +'<div style="margin-top:var(--space-4);display:flex;gap:var(--space-3);flex-wrap:wrap">'
     +'<button type="button" class="qlink" onclick="openCalDrawer()">周历 →</button>'
-    +'<button type="button" class="qlink" onclick="openTrustDrawer()">能信多少？ →</button>'
+    +'<button type="button" class="qlink" onclick="openTrustDrawer()">可信度与局限 →</button>'
     +(J&&J.run_id?'<button type="button" class="qlink" onclick="openRunLogStacked(\''+esc(J.run_id)+'\')">最近成功周跑的日志 →</button>':'')
     +'</div>';
 }
@@ -4244,6 +4475,11 @@ function statusDrawerBody(){
    实现是检索+严格接地：/api/ask/context 只取那次运行封存的材料，
    /api/ask 的回答被限定在这些材料里，材料没有的它必须明说没有。 */
 var ASKCTX={},ASKLOAD={},ASKH={},ASKS={};
+/* 静态快照没有后端：/api/* 在 Pages 上返回的是 404 页面（HTML），
+   直接 .json() 会炸成「Unexpected token '<'」——那是把「这里没有这个功能」
+   说成了「接口坏了」。凡是要现场取材料的入口，先问这一句。 */
+function isSnapshot(){return !!window.__STATIC__}
+var SNAP_WHERE='要追问请在运行台打开：本机 http://localhost:8765/review，或飞书里那条隧道地址。';
 function askSubjName(pstr){var i=pstr.indexOf(':');return i<0?pstr:pstr.slice(i+1)}
 function askSubjKind(pstr){var i=pstr.indexOf(':');return i<0?'':pstr.slice(0,i)}
 function askRunId(){return ((S||{}).weekly||{}).run_id||''}
@@ -4251,6 +4487,7 @@ function askKey(pstr){return askRunId()+'|'+pstr}
 var ASK_KIND_ZH={topic:'主题',idea:'想法',selector:'选取策略'};
 function ensureAskCtx(key,kind,id){
   if(ASKCTX[key])return ASKCTX[key];
+  if(isSnapshot())return null;
   if(!ASKLOAD[key]){
     ASKLOAD[key]=true;
     fetch('/api/ask/context?run_id='+encodeURIComponent(askRunId())+'&kind='+encodeURIComponent(kind)+'&id='+encodeURIComponent(id),{cache:'no-store'})
@@ -4302,10 +4539,27 @@ function askChipsFor(kind,ctx){
   var nTxt=nDocs?String(nDocs):'N';
   if(kind==='topic')return ['为什么读了 '+nTxt+' 篇报告选出了这个主题？','当时反对它的证据是什么？','如果重来，材料里有什么被低估了？'];
   if(kind==='idea')return ['为什么当时提出并保留了这条想法？','当时反对它的证据是什么？','如果重来，材料里有什么被低估了？'];
+  /* 整步追问：问的是取舍本身，不是某一个主题 */
+  if(kind==='selection'){
+    var nIn2=topicChosen('hgep').length||5;
+    return ['读了 '+nTxt+' 篇研报，为什么最后入选的是这 '+nIn2+' 个主题？',
+            '落选的里面最接近入选线的是哪一个，差在哪个因子？',
+            '计数对照臂和语义臂为什么选出了不同的主题？'];
+  }
   return ['为什么挑了这几条、拒了其余的？','被拒的候选里当时最可惜的是哪条？','如果重来，材料里有什么被低估了？'];
 }
 function askDrawerBody(d){
   var pstr=String(d.p),kind=askSubjKind(pstr),sid=askSubjName(pstr),key=askKey(pstr);
+  if(isSnapshot()){
+    /* 快照带得动结论，带不动追问：追问要现场取那次运行封存的研报原文与
+       打分记录，再让模型只依据它们作答——两步都要后端。 */
+    return '<div class="ask-scope">'
+      +'<b>这是静态快照，追问只能在运行台上问。</b><br>'
+      +'追问不是把结论再讲一遍：它要现场翻出那次运行当时封存的研报原文和打分记录，'
+      +'再让模型只依据这些材料回答。这一页是导出的快照，页面里只烙了当期结论，没有后端可以翻材料。<br>'
+      +esc(SNAP_WHERE)
+      +'</div>';
+  }
   var cached=ensureAskCtx(key,kind,sid);
   if(!cached)return '<div class="empty-sm">正在封存材料清单——只取那次运行当时存下的东西……</div>';
   if(!cached.c){
@@ -4449,9 +4703,9 @@ function renderCandBody(){
       +'<span>主题：'+esc(topicLabel(c.topic_id))+'</span>'
       +'</div>'
       +(sels.length?'<div style="margin-top:6px">'
-        +(pickers.length?('被 '+pickers.length+' 种挑法选中：'
+        +(pickers.length?('被 '+pickers.length+' 个选取策略选中：'
           +pickers.map(function(o){return '<button type="button" class="tag tag-brand" style="cursor:pointer" onclick="goSelector(\''+esc(o.s.name)+'\')">'+esc(selMetaOf(o.s.name)[1])+' ›</button>'}).join(' '))
-          :'<span style="color:var(--color-text-tertiary)">没被任何挑法选中</span>')
+          :'<span style="color:var(--color-text-tertiary)">未被任何选取策略选中</span>')
         +'</div>':'')
       +'</td></tr>';
   }).join('');
@@ -4469,9 +4723,9 @@ function toggleThesis(btn,i){
   btn.textContent=open?'详情 ›':'收起 ˄';
 }
 
-/* ════════════════════ ③ 档案 — 两个问题:发生了什么 / 能信多少 ════════════════════ */
+/* ════════════════════ ③ 档案 — 运行记录与可信度 ════════════════════ */
 
-/* 把机器错误信息翻成人话 */
+/* 错误信息的可读化映射 */
 function plainRunError(e){
   if(!e)return null;
   if(e.indexOf('permanently missed')>=0)return '错过了，不补：当时的研报现在取不回同样的深度，补跑等于开卷考试。';
@@ -4651,7 +4905,7 @@ function calDrawerBody(){
     +(calRows||'<div class="empty-sm">还没有周跑记录</div>');
 }
 
-/* ── 能信多少抽屉：未验证的赌注 + 出过的坑 + 历史回测（原「底账」第二三段） ── */
+/* ── 可信度与局限抽屉：未验证假设 + 已修复缺陷 + 历史回测 ── */
 function trustDrawerBody(){
   var assum=S.assumptions||[],fixes=S.fixes||[];
   var aRows=assum.map(function(a,ai){
@@ -4757,13 +5011,13 @@ function glossaryHTML(){
     +[['周跑','每周三 07:00 自动运行一次的全流程：读研报 → 选主题 → 写想法 → 挑持仓 → 建仓'],
       ['HGEP','筛选A 的主题打分：H 热度（多少人在说且在加速）/ G 分歧（多空吵得多凶）/ E 实据（证据落到订单利润还是停留在叙事）/ P 已定价（价格消化了多少，越低越好，反向计分），权重 0.30/0.25/0.25/0.20（先验，待逐因子归因）'],
       ['纯数数对照','对照臂：不做语义理解，只数提及次数选主题——用来检验「语义打分更好」这个立论'],
-      ['挑法','从同一个候选池里挑持仓的策略：4 个生成方法 + 2 个探索 + 2 个对照，各记一本模拟账'],
+      ['选取策略','自同一候选池选取持仓的规则：4 个生成方法臂 + 2 个探索臂 + 2 个对照臂，各记一本模拟账'],
       ['共识度','同一标的被几个生成方法独立提出（4/3/2/1）。共识 ≠ 独立证据：四方法共用同一份语料'],
       ['赚亏比','upside ÷ |downside|，准入下限 1.5；低赔率周宁可留现金，不凑满仓位'],
       ['σ×2 止损 / σ×3 止盈','σ = 标的自身近月波动率。止损/止盈按它的倍数定距离（−2σ / +3σ）：波动大的标的止损放得远——「止损有多紧」在不同资产间才是同一个意思。进场即挂，触发自动执行'],
-      ['配对对比','8 个账本吃同一周、同一候选池，只有挑法不同——账本间净值之差就是挑法之差；配对相关 ρ≈0.8 是验证时间表的地基'],
+      ['配对对比','各账本使用同一期、同一候选池，仅选取策略不同，净值之差即策略之差；配对相关 ρ≈0.8 为样本量测算的输入'],
       ['盯市','每个交易日收盘后用最新价格重算一遍所有持仓的盈亏，并触发该触发的退出'],
-      ['量尺标的','每个宏观主题挂一个可交易的指示 ETF，用它的走势为主题打分提供价格锚'],
+      ['指示标的','每个宏观主题挂钩一只可交易 ETF，其走势为主题打分提供价格锚'],
       ['永久缺失','周跑迟超 48 小时即判死：语料无法同深度取回，补跑会带后见之明，宁缺不假'],
       ['事件退出','thesis 被证伪（宏观事件反向）时告警，次日收盘平仓——第三类退出，与止损止盈并列']
      ].map(function(g){
@@ -4791,6 +5045,10 @@ var corpusOpen=false,corpusCache={},corpusQuery='',corpusTier=null,corpusAsOf=nu
 var docReg={},docCache={};
 function openCorpus(asOf){
   corpusOpen=true;corpusAsOf=asOf;corpusQuery='';corpusTier=null;corpusError=null;
+  if(isSnapshot()&&!corpusCache[asOf]){
+    corpusLoading=false;corpusError='静态快照不带语料清单——清单要现场查库。'+SNAP_WHERE;
+    renderCorpus();return;
+  }
   if(!corpusCache[asOf]){
     corpusLoading=true;renderCorpus();
     fetch('/api/corpus?as_of='+encodeURIComponent(asOf),{cache:'no-store'}).then(function(r){
@@ -4819,8 +5077,10 @@ function renderCorpus(){
   if(corpusLoading){
     body='<div class="quiet" style="padding:var(--space-6) 0">正在读取语料清单……</div>';
   }else if(corpusError){
-    body='<div class="quiet" style="padding:var(--space-6) 0">取不到语料清单——服务没响应（'+esc(corpusError)+'）。'
-      +'<button type="button" class="exp-btn" onclick="openCorpus(\''+esc(corpusAsOf)+'\')">再试一次</button></div>';
+    body=isSnapshot()
+      ?'<div class="quiet" style="padding:var(--space-6) 0">'+esc(corpusError)+'</div>'
+      :'<div class="quiet" style="padding:var(--space-6) 0">取不到语料清单——服务没响应（'+esc(corpusError)+'）。'
+        +'<button type="button" class="exp-btn" onclick="openCorpus(\''+esc(corpusAsOf)+'\')">再试一次</button></div>';
   }else if(d&&(d.docs||[]).length){
     var counts={1:0,2:0,3:0};(d.docs||[]).forEach(function(x){counts[x.tier]=(counts[x.tier]||0)+1});
     body='<input type="search" class="corpus-search" placeholder="搜标题或机构……" value="'+esc(corpusQuery)+'" oninput="corpusInput(this)" aria-label="搜索语料">'
@@ -4869,13 +5129,16 @@ function toggleDoc(uid){
     el.innerHTML='<span class="quiet">正在取这篇的档案……</span>';
     fetchDoc(d.doc_id).then(function(j){
       docReg[uid]=j;el.innerHTML=docDetailHTML(j,uid);el.setAttribute('data-loaded','1');
-    }).catch(function(){
-      el.innerHTML='<span class="quiet">取不到这篇的档案——服务没响应，收起后再点一次可重试。</span>';
+    }).catch(function(e){
+      el.innerHTML='<span class="quiet">'+(isSnapshot()
+        ?'静态快照不带研报档案——原文要现场查库。'+esc(SNAP_WHERE)
+        :'档案读取失败，服务无响应。')+'</span>';
     });
   }
 }
 function fetchDoc(id){
   if(docCache[id])return Promise.resolve(docCache[id]);
+  if(isSnapshot())return Promise.reject(new Error('静态快照不带研报档案'));
   return fetch('/api/doc?id='+encodeURIComponent(id),{cache:'no-store'}).then(function(r){
     if(!r.ok)throw new Error('HTTP '+r.status);return r.json();
   }).then(function(j){docCache[id]=j;return j});
@@ -4923,7 +5186,7 @@ function tick(){
 buildNav();
 var bootDrawer=null;
 var initHash=(location.hash||'').replace('#','');
-/* 旧链接：底账/回测已溶进抽屉——落到本周并自动拉开对应抽屉 */
+/* 旧链接：底账/回测已并入抽屉，落到组合页并展开对应抽屉 */
 if(initHash==='audit'){initHash='week';bootDrawer=function(){openCalDrawer()}}
 if(initHash==='backtest'){initHash='week';bootDrawer=function(){openTrustDrawer()}}
 if(VIEWS.some(function(v){return v.id===initHash}))switchView(initHash);else switchView('week');

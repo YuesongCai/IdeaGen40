@@ -443,6 +443,10 @@ tr.derive-row>td{
 .fbd-sum .v{font:600 15px/20px var(--font-mono);color:var(--color-text-primary)}
 .derive-kv{display:flex;gap:var(--space-5);flex-wrap:wrap;margin-top:6px}
 .derive-kv span{white-space:nowrap}
+/* 数字口径要整块读——「上行 12.3%（P 0.55）」断在括号里就没法看了，所以默认 nowrap。
+   但文字型的那几条（生成方法、主题、指示标的）长度不可控：抽屉只有 430px 宽时，
+   一条 nowrap 会直接冲出容器 65px。给它们开一个可断行的档。 */
+.derive-kv span.kv-t{white-space:normal;overflow-wrap:anywhere}
 tr.expandable{cursor:pointer}
 
 /* epistemic caption — 诚实口径标注 */
@@ -958,7 +962,7 @@ button.chain-node:hover .cn-go{opacity:1}
 }
 .doc-row:first-child{border-top:none}
 .doc-row:hover{background:var(--color-surface-subtle)}
-.doc-title{color:var(--color-text-secondary);min-width:0}
+.doc-title{color:var(--color-text-secondary);min-width:0;overflow-wrap:anywhere}
 .doc-detail{
   background:var(--color-surface-subtle);border-radius:var(--radius-md);
   padding:10px 12px;margin:2px 0 8px;
@@ -1207,6 +1211,13 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .gate-dot{width:11px;height:11px;border-radius:999px;display:inline-block;background:var(--color-surface-brand-strong)}
 .gate-dot.ctl{background:var(--color-border-strong)}
 .gate-miss{color:var(--color-border-default);font:400 11px/11px var(--font-mono)}
+/* 候选池全表的「生成方法」曾把 4 个方法名竖着堆进 220px 的格子里，每行因此
+ * 四倍高，73 行的表长得离谱，右边两列还被挤出可视区。而展开的详情行里
+ * 本来就写着「生成方法：A / B / C / D」——列里那份是第二遍。
+ * 改用闸门矩阵已有的语言：一行四个点，亮 = 这个方法提出了它。 */
+.mdots{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
+.mdot{width:9px;height:9px;border-radius:999px;display:inline-block;background:var(--color-border-default)}
+.mdot.on{background:var(--color-surface-brand-strong)}
 
 /* 建仓刻度条 */
 .pos-line{display:grid;grid-template-columns:78px 26px minmax(0,1fr) 212px 78px;gap:var(--space-2);align-items:center;padding:5px 0;border-top:1px solid var(--color-border-subtle)}
@@ -3546,11 +3557,21 @@ function portfolioHeadline(ag){
   return '<div class="card section" id="wkHeadline">'
     +'<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-6) var(--space-8)">'
       +'<div>'
-        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">本期组合 · '+nBooks+' 个账本合计</div>'
+        /* 分母必须和数字同一高度。这两栏并排放着，读者默认它们可比，
+           但组合按设计只投出四分之一（四周梯队第 1 周，其余在货币基金），
+           而 SPY 那栏是满仓。不写出来，「跑输 4 个百分点」会被读成选股差，
+           实际上有相当一部分是被授权的现金拖累——那是仓位节奏，不是判断失误。 */
+        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">本期组合 · '+nBooks+' 个账本合计'
+          +(function(){
+            var d=(ag.capital&&ag.deployed!==undefined)?(ag.deployed/ag.capital*100):null;
+            return d===null?'':'<span style="color:var(--color-feedback-warning-text)"> · 已投出 '+d.toFixed(0)+'%</span>'
+              +'<span class="gloss" title="按设计每周只投出四分之一本金（四周梯队），未投出的部分放在货币基金里。现在是第 '+wk+' 周，所以这一栏是一个部分建仓的组合，而右边的基准是满仓——两个数的分母不同，差距里有一部分来自仓位节奏而非选股。">ⓘ</span>';
+          })()
+        +'</div>'
         +'<div class="num '+pctCls(ret)+'" style="font:600 34px/40px var(--font-sans)">'+(ret===null?'—':fmtPct(ret))+'</div>'
       +'</div>'
       +'<div>'
-        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">同期 '+esc(benchName())+' · 基准'
+        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">同期 '+esc(benchName())+' · 基准<span style="color:var(--color-text-tertiary)"> · 满仓</span>'
           +(function(){var n=benchWindowNote();return n?'<span class="gloss" title="'+esc(n)+'">ⓘ</span>':''})()
         +'</div>'
         +'<div class="num" style="font:600 34px/40px var(--font-sans);color:var(--color-text-secondary)">'+(spy===null?'—':fmtPct(spy))+'</div>'
@@ -5351,7 +5372,7 @@ function topicDrawerBody(tid,embedded){
       +'<div class="derive-kv">'
       +'<span>证据 '+fmtInt(r.n_evidence)+' 条 · '+fmtInt(r.n_institutions)+' 家机构</span>'
       +'<span>P 来源 <span'+(r.p_source==='neutral_default'?' class="gloss" title="中性默认 50——没有取到价格已定价程度的读数，不代表判断"':'')+'>'+esc(r.p_source||'—')+'</span></span>'
-      +'<span>指示标的 '+esc(r.indicator||'—')+'</span>'
+      +'<span class="kv-t">指示标的 '+esc(r.indicator||'—')+'</span>'
       +'</div>';
     var nIdeas=poolCountBy('topic',tid);
     html+='<div class="derive-kv">'
@@ -5533,7 +5554,7 @@ function stagePoolBody(d){
       +'<thead><tr>'+candTh('instrument_id','标的')+candTh('instrument_name','名称')+candTh('topic_id','主题')
       +candTh('upside_pct','上行','r')+candTh('downside_pct','下行','r')
       +candTh('p_up','P↑','r')+candTh('p_base','P基','r')+candTh('p_down','P↓','r')
-      +candTh('n_proposals','提出','r')+'<th>生成方法</th><th class="r">当时的理由</th></tr></thead>'
+      +candTh('n_proposals','提出','r')+'<th>生成方法 '+glossMark('一行四个点，按 '+GEN_ORDER.map(function(o){return o[1]}).join(' · ')+' 排列；亮 = 该方法提出了这条。展开「详情」看方法名与各自的论点。')+'</th><th class="r">当时的理由</th></tr></thead>'
       +'<tbody id="candBody"></tbody></table></div>'
       +epi('赔率低于 1.5 的想法不进入候选池')
       +'</div>';
@@ -5783,8 +5804,8 @@ function posDrawerBody(code){
   html+='<div style="margin-bottom:var(--space-3);color:var(--color-text-secondary)"><b style="font-weight:600;color:var(--color-text-primary)">论点</b>　'+esc(p.thesis||'（这仓没有存论点）')+'</div>';
   if(cand){
     html+='<div class="derive-kv" style="margin-top:0">'
-      +'<span>生成方法：'+(cand.proposed_by||[]).map(methodName).map(esc).join(' / ')
-      +'　<button type="button" class="exp-btn" onclick="openProposalsDrawer(\''+esc(cand.instrument_id||'')+'\')" title="打开合并前的每一条提案：各方法自己写的论点、赔率，以及它当时引用的研报">看这 '+fmtInt(cand.n_proposals)+' 条提案的原文 ›</button></span>'
+      +'<span class="kv-t">生成方法：'+(cand.proposed_by||[]).map(methodName).map(esc).join(' / ')+'</span>'
+      +'<span><button type="button" class="exp-btn" onclick="openProposalsDrawer(\''+esc(cand.instrument_id||'')+'\')" title="打开合并前的每一条提案：各方法自己写的论点、赔率，以及它当时引用的研报">看这 '+fmtInt(cand.n_proposals)+' 条提案的原文 ›</button></span>'
       +'</div>'
       +'<div class="derive-kv">'
       +'<span class="num">上行 '+fmtPct(cand.upside_pct)+'（P '+fmtProb(cand.p_up)+'）</span>'
@@ -5793,7 +5814,7 @@ function posDrawerBody(code){
       +'<span><button type="button" class="exp-btn" onclick="filterPoolCode(\''+jss(bareCode(p.code))+'\')">在候选池里看这条 ›</button></span>'
       +'</div>';
   }else{
-    html+='<div class="derive-kv"><span style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
+    html+='<div class="derive-kv"><span class="kv-t" style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
   }
   html+='<div style="margin:var(--space-4) 0"><div class="pos-headr" style="grid-template-columns:minmax(0,1fr)"><span>σ×2 止损 ─ 进场（竖线）─ 现价（圆点）─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS)+'">ⓘ</span></span></div>'
     +'<div style="max-width:420px">'+rngBarHTML(p)+'</div></div>';
@@ -6533,7 +6554,13 @@ function renderCandBody(){
     return;
   }
   $('candBody').innerHTML=arr.map(function(c,i){
-    var pb=(c.proposed_by||[]).map(function(m){return '<span class="tag">'+esc(methodName(m))+'</span>'}).join(' ');
+    var pbSet={};(c.proposed_by||[]).forEach(function(m){pbSet[m]=1});
+    var pbN=Object.keys(pbSet).length;
+    var pb='<span class="mdots" title="'+esc('按 '+GEN_ORDER.map(function(o){return o[1]}).join(' · ')+' 的顺序；亮点 = 该方法提出了这条')+'">'
+      +GEN_ORDER.map(function(o){
+        return '<i class="mdot'+(pbSet[o[0]]?' on':'')+'" title="'+esc(o[1]+(pbSet[o[0]]?'：提出了':'：未提出'))+'"></i>';
+      }).join('')
+      +'</span> <span class="num" style="color:var(--color-text-metadata)">'+pbN+'/'+GEN_ORDER.length+'</span>';
     var pickers=sels.map(function(s,si){return {s:s,si:si}}).filter(function(o){
       return ((o.s.chosen)||[]).some(function(ch){return selChosenId(ch)===c.instrument_id});
     });
@@ -6547,7 +6574,7 @@ function renderCandBody(){
       +'<td class="r num">'+fmtProb(c.p_base)+'</td>'
       +'<td class="r num">'+fmtProb(c.p_down)+'</td>'
       +'<td class="r num">'+fmtInt(c.n_proposals)+'</td>'
-      +'<td style="max-width:220px">'+pb
+      +'<td style="white-space:nowrap">'+pb
       +' <button type="button" class="exp-btn" onclick="toggleThesis(this,'+i+')" aria-label="展开论点与去向">详情 ›</button>'
       +'</td>'
       /* 候选池是「它写了什么」的全表，逐行都会冒出「这条凭什么在这」。
@@ -6558,8 +6585,8 @@ function renderCandBody(){
       +'<div class="derive-kv" style="margin-top:0">'
       +'<span class="num">赚亏比 '+rrText(c)+'</span>'
       +'<span><button type="button" class="exp-btn" onclick="openProposalsDrawer(\''+esc(c.instrument_id||'')+'\')" title="打开合并前的每一条提案：各方法自己写的论点、赔率，以及它当时引用的研报">由 '+fmtInt(c.n_proposals)+' 个提案合并（赔率取中位数）· 看原文 ›</button></span>'
-      +'<span>生成方法：'+(c.proposed_by||[]).map(methodName).map(esc).join(' / ')+'</span>'
-      +'<span>主题：'+esc(topicLabel(c.topic_id))+'</span>'
+      +'<span class="kv-t">生成方法：'+(c.proposed_by||[]).map(methodName).map(esc).join(' / ')+'</span>'
+      +'<span class="kv-t">主题：'+esc(topicLabel(c.topic_id))+'</span>'
       +'</div>'
       +(sels.length?'<div style="margin-top:6px">'
         +(pickers.length?('被 '+pickers.length+' 个选取策略选中：'

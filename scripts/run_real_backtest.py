@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -324,13 +325,29 @@ def _theme_attribution(con, positions: list[dict]) -> dict:
             if mde_a is None or mde_c is None:
                 entry["mde_over_control_pct"] = None
                 entry["verdict_over_control"] = "underpowered"
+                continue
+            joint = (mde_a ** 2 + mde_c ** 2) ** 0.5
+            entry["mde_over_control_pct"] = round(joint, 3)
+            # Three states, because two of them are opposite conclusions that a
+            # single "underpowered" hides — the distinction `backtest.py` makes
+            # for the paired test and that this layer collapsed when it shipped.
+            # An arm whose sample would have surfaced the pre-registered edge and
+            # did not has answered the question; saying "not enough data" there
+            # is false, and it is the reading people hope for.
+            edge = backtest.TARGET_EDGE * 100.0
+            # The bound scales as 1/sqrt(n), so the sample that would put it at
+            # the declared edge is n·(bound/edge)². Written this way rather than
+            # by recovering sd first, because the critical values cancel and
+            # carrying them through only hides that.
+            need = math.ceil(len(own) * (joint / edge) ** 2)
+            entry["n_needed_for_edge"] = need
+            entry["edge_pct"] = round(edge, 2)
+            if abs(entry["excess_over_control_pct"]) >= joint:
+                entry["verdict_over_control"] = "not_ruled_out"
+            elif len(own) >= need:
+                entry["verdict_over_control"] = "no_edge_detected"
             else:
-                joint = (mde_a ** 2 + mde_c ** 2) ** 0.5
-                entry["mde_over_control_pct"] = round(joint, 3)
-                entry["verdict_over_control"] = (
-                    "not_ruled_out"
-                    if abs(entry["excess_over_control_pct"]) >= joint
-                    else "underpowered")
+                entry["verdict_over_control"] = "underpowered"
     return {
         "layer": "theme_indicator_vs_instrument",
         "control": CONTROL,
@@ -344,7 +361,10 @@ def _theme_attribution(con, positions: list[dict]) -> dict:
             "excess_over_control_pct 上——那一列有它自己的下界与判定"
             "（mde_over_control_pct / verdict_over_control），顶层 verdict "
             "说的是相对指示标的那一列，两者不可混用。"
-            "同样只用可检出下界否定，不用它确认。"
+            "verdict_over_control 有三态：not_ruled_out（变动越过下界，值得盯）、"
+            "no_edge_detected（样本已够检出预注册的 2 个百分点优势，而它没有出现"
+            "——这是「没看出优势」，不是「还看不出来」）、underpowered"
+            "（样本还不够，n_needed_for_edge 给出需要多少笔）。"
             "这是四层归因里的一层——市场 beta 层、以及区分风控与买入持有的那层，"
             "都还没有做。"),
     }

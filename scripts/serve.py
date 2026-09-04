@@ -1,0 +1,60 @@
+"""The dashboard server, with inference resolved for this process only.
+
+Same reasoning as `scripts/tick.py`: the ModelArk key lives commented out in
+the operator env so ad-hoc CLI runs stay model-free, and un-commenting it would
+turn inference on for everything on the machine. The dashboard needs it for one
+feature — 「问它当时怎么想」, which is answered by a model reading only the
+frozen material of a past run — so it is resolved here, handed to this one
+process, and never written back.
+
+With no key the server still starts; the ask endpoint then reports that this
+node cannot answer instead of pretending it can.
+
+Installed as com.ideagen40.serve's ProgramArguments.
+"""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ENV_FILE = Path.home() / ".ideagen.env"
+PYBIN = os.environ.get(
+    "IDEAGEN_PYTHON",
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3")
+
+
+def _ark_key() -> str:
+    try:
+        text = ENV_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    m = re.search(r"ARK_API_KEY=(\S+)", text)
+    return m.group(1) if m else ""
+
+
+def main(argv: list[str]) -> int:
+    env = dict(os.environ)
+    key = _ark_key()
+    if key:
+        env["ARK_API_KEY"] = key
+        env.setdefault("IDEAGEN_ARK_MODEL", "deepseek-v4-pro-260425")
+        env.setdefault("IDEAGEN_INFERENCE_BASE_URL",
+                       "https://ark.ap-southeast.bytepluses.com/api/v3")
+        env["IDEAGEN_INFERENCE_MODE"] = "modelark"
+        # The local proxy hangs on full-size generation responses (a small probe
+        # returns fine, a real prompt does not), so inference goes direct.
+        for var in ("NO_PROXY", "no_proxy"):
+            env[var] = ",".join(filter(None, [
+                env.get(var, ""), "bytepluses.com", ".bytepluses.com",
+                "volces.com", ".volces.com"]))
+    return subprocess.run(
+        [PYBIN, "-m", "ideagen.cli", "serve", *argv],
+        cwd=ROOT, env=env).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

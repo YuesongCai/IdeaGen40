@@ -5,8 +5,11 @@
   <key>Label</key><string>com.ideagen40.serve</string>
   <key>ProgramArguments</key>
   <array>
+    <!-- Entry point is scripts/serve.py rather than the module directly: it
+         resolves inference for this process only, so 「问它当时怎么想」 can
+         answer here while ad-hoc CLI runs stay model-free. -->
     <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
-    <string>-m</string><string>ideagen.cli</string><string>serve</string>
+    <string>/Users/yuesongcai/IdeaGen40/scripts/serve.py</string>
     <string>--port</string><string>8765</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/yuesongcai/IdeaGen40</string>

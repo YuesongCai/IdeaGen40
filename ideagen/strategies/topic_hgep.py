@@ -104,6 +104,31 @@ def hgep(ctx: RunContext) -> Verdict:
                                reverse=True)],
         }
 
+    # A factor that takes the same value for every topic adds a constant to
+    # every score and cannot move the ranking, however much weight it carries.
+    # This period E is 100 everywhere and P is 50 everywhere, so 0.45 of the
+    # declared weight decided nothing and the ordering came from H and G alone
+    # — while the panel names four factors and draws four coloured segments.
+    #
+    # Not corrected here: what E and P should measure is a methodology question,
+    # and a scorer is not where it gets answered. Reported instead, every period,
+    # so the condition is visible as it happens rather than noticed by someone
+    # reading an answer the ask-endpoint gave about something else. `spread` is
+    # zero exactly when a factor is inert.
+    dispersion = {}
+    for factor in WEIGHTS:
+        seen = [row[factor] for row in scores.values() if row.get(factor) is not None]
+        if not seen:
+            continue
+        dispersion[factor] = {
+            "distinct_values": len(set(seen)),
+            "spread": round(max(seen) - min(seen), 1),
+            "weight": WEIGHTS[factor],
+            "discriminates": len(set(seen)) > 1,
+        }
+    inert = sorted(f for f, d in dispersion.items() if not d["discriminates"])
+    inert_weight = round(sum(WEIGHTS[f] for f in inert), 2)
+
     ranked = sorted(scores.items(), key=lambda kv: -kv[1]["score"])
     top = int(ctx.params.get("top_n", 5))
     chosen = [tid for tid, _ in ranked[:top]]
@@ -112,4 +137,10 @@ def hgep(ctx: RunContext) -> Verdict:
         rejected={tid: f"rank {i+1}" for i, (tid, _) in enumerate(ranked[top:], top)},
         meta={"weights": WEIGHTS, "registered_topics": len(topics),
               "topics_with_evidence": len(scores), "loudest_count": loudest,
-              "top_n": top})
+              "top_n": top, "factor_dispersion": dispersion,
+              "inert_factors": inert, "inert_weight": inert_weight,
+              "ranking_note": (
+                  f"本期 {'、'.join(inert)} 对所有主题取值相同，合计权重 "
+                  f"{inert_weight:.2f} 不参与排序，实际由 "
+                  f"{'、'.join(f for f in WEIGHTS if f not in inert)} 决定"
+                  if inert else "本期四个因子都有区分度")})

@@ -218,3 +218,9 @@ Assistant 起来后用 RunCommand + TOS 预签名 URL,要么在 UserData 里放�
    在此之前,同步是否还活着只能看 `GetConsoleOutput` 里的 `IG_SYNC_*`。
 2. `deploy/state/` 只增不删,每天约 48MB。`BlobStore` 故意没有 delete
    (见 base.py 的 immutability 注释),要清理得先决定是否给接口开这个口子。
+3. **`/api/state` 的单条查询偏慢。** 2026-09-05 实测:云端全程 1.7–2.0s
+   (`/healthz` 基线 0.38–0.95s),够用;本机首次 3.38s、第二次 0.87s。
+   剖出来 0.83s 是 93 次 execute 分摊在 33 个 `db.q` 里,约 9ms/次 ——
+   **不是 N+1,是单条查询在 48MB 库上慢,像缺索引**。本机偶发的 9–69s 是
+   并发写(scheduler + daily 写同一个库)造成的,展示节点没有写入方,量不出来。
+   要动就动索引,不要先加缓存掩盖。

@@ -1389,6 +1389,9 @@ body.drawer-lock{overflow:hidden}
 .ask-mats summary{cursor:pointer;font:500 12px/18px var(--font-sans);color:var(--color-text-brand)}
 .ask-mats .mrow{display:flex;gap:6px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--color-border-default);font:400 12px/17px var(--font-sans)}
 .ask-mats .mid{flex:none;font:500 11px/16px var(--font-mono,ui-monospace,monospace);color:var(--color-text-on-brand);background:var(--color-surface-brand);border-radius:var(--radius-xs);padding:0 4px}
+.mref{border:0;background:none;padding:0 1px;cursor:pointer;color:var(--color-text-brand);font:600 inherit/inherit var(--font-sans);text-decoration:underline dotted}
+.mref:hover{background:var(--color-surface-brand-subtle);border-radius:3px}
+.ask-mats .mrow.hit{background:var(--color-surface-brand-subtle);border-radius:var(--radius-xs)}
 .ask-mats .msrc{color:var(--color-text-metadata);font-family:var(--font-mono,ui-monospace,monospace);font-size:11px;word-break:break-all}
 .ask-chat{margin-top:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
 .ask-q{align-self:flex-end;max-width:86%;background:var(--color-surface-brand);color:var(--color-text-on-brand);border-radius:var(--radius-md) var(--radius-md) var(--radius-xs) var(--radius-md);padding:var(--space-2) var(--space-3);font:400 13px/19px var(--font-sans);white-space:pre-wrap}
@@ -5641,10 +5644,9 @@ function askPickerBody(){
   var first=PREFER[current];
   if(first&&groups[first])order=[first].concat(order.filter(function(g){return g!==first}));
   return '<div class="quiet" style="margin-bottom:var(--space-2)">'
-      +'下面每一条都能问。页面里那个绿色的「问它为什么选它」按钮问的是同一件事，'
-      +'只是替你把对象填好了。<br>'
-      +'答案只从这次运行当时封存的材料里来：运行日志、当期研报正文、评分与判定记录。'
-      +'材料里没有的，它会直说没有，不会补全，也不会用之后发生的事情回答。</div>'
+      +'挑一个对象追问，答案只依据这次运行封存的材料 '
+      +glossMark('封存的材料 = 运行日志、当期研报正文、评分与判定记录。材料里没有的，它会直说记录中不存在，不补全，也不用之后发生的事情回答。页面上那个绿色按钮问的是同一件事，只是替你把对象填好了。')
+      +'</div>'
     +order.map(function(g){
       return '<div class="askpick-g">'+esc(g)+'</div>'
         +groups[g].map(function(x){
@@ -5711,9 +5713,8 @@ function askLogDrawerBody(d){
       +'连同当时交给模型的材料清单。</div>';
   }
   var head='<div class="quiet" style="margin-bottom:var(--space-3)">'
-    +'共 '+fmtInt(rows.length)+' 次追问，最近的在最上面。每一条都记下了：问了什么、'
-    +'系统把哪些材料交给了模型、模型引用了其中哪几件、答的是什么。'
-    +'<span class="gloss" title="追问只依据该次运行当时封存的材料作答。把「交给了什么」和「引用了什么」一起记下来，是为了让「答得对不对」和「有没有依据」可以分开检验——引用 2 件和只有 2 件可引用，是两回事。">ⓘ</span></div>';
+    +'共 <b class="num">'+fmtInt(rows.length)+'</b> 次追问 · 最近的在最上面 '
+    +'<span class="gloss" title="每一条都记下了：问了什么、系统把哪些材料交给了模型、模型引用了其中哪几件、答的是什么。把「交给了什么」和「引用了什么」分开记，是为了让「答得对不对」和「有没有依据」可以分开检验——引用 2 件和只有 2 件可引用，是两回事。">ⓘ</span></div>';
   var list=rows.map(function(a,i){
     var open=!!askLogOpen[i];
     var prov=a.provenance||[];
@@ -5731,7 +5732,7 @@ function askLogDrawerBody(d){
     if(open){
       body='<div class="al-body">'
         +'<div class="al-sec">问</div><div class="al-q">'+esc(a.question||'')+'</div>'
-        +'<div class="al-sec">答</div><div class="al-a">'+askAnswerHTML(a.answer||'')+'</div>';
+        +'<div class="al-sec">答</div><div class="al-a">'+askAnswerHTML(a.answer||'',a.provenance||[])+'</div>';
       if(prov.length){
         body+='<div class="al-sec">它当时拿到的材料 · '+prov.length+' 件'
           +'<span class="gloss" title="这是问答发生时系统实际交给模型的全部材料。带「引用」的是模型在答案里指名用到的；其余是它可以看、但没有用上的。">ⓘ</span></div>'
@@ -6047,9 +6048,27 @@ function askSendFromInput(pstr){
   var el=$('askInput');if(!el)return;
   askSend(pstr,el.value);
 }
-function askAnswerHTML(text){
-  /* 把 [M3] 这样的引用标成可 hover 的编号；其余按纯文本转义 */
-  return esc(text).replace(/\[(M\d+)\]/g,'<b style="color:var(--color-text-brand);font-weight:600">[$1]</b>');
+/* 答案里的 [M3] 之前只是换了个颜色：读者知道它引了「第三件材料」，
+ * 却无从知道第三件是什么，更点不进去。Jon 要的是能一路追下去，
+ * 所以这里把编号接回它自己的那条材料——悬停给标题，点击展开清单并高亮。 */
+function askAnswerHTML(text,prov){
+  var by={};
+  (prov||[]).forEach(function(m){if(m&&m.id)by[m.id]=m});
+  return esc(text).replace(/\[(M\d+)\]/g,function(all,id){
+    var m=by[id];
+    if(!m)return '<b style="color:var(--color-text-brand);font-weight:600">'+all+'</b>';
+    return '<button type="button" class="mref" title="'+esc(m.title+'　'+(m.source||''))+'——点击在下面的材料清单里定位它" onclick="revealMaterial(this,\''+esc(id)+'\')">'+all+'</button>';
+  });
+}
+function revealMaterial(btn,id){
+  var root=btn.closest('.drawer-body')||document;
+  var det=root.querySelector('details.ask-mats');
+  if(det)det.open=true;
+  var row=root.querySelector('.mrow[data-mid="'+id+'"]');
+  if(!row)return;
+  root.querySelectorAll('.mrow.hit').forEach(function(e){e.classList.remove('hit')});
+  row.classList.add('hit');
+  try{row.scrollIntoView({block:'nearest'})}catch(e){}
 }
 function askChipsFor(kind,ctx){
   var nDocs=(ctx&&ctx.corpus&&ctx.corpus.n_docs)||((ctx&&ctx.stats&&ctx.stats.n_docs)||null);
@@ -6113,7 +6132,14 @@ function askDrawerBody(d){
     +((ctx.notes||[]).length?'<div style="margin-top:4px;color:var(--color-feedback-warning-text)">材料缺口：'+ctx.notes.map(esc).join('；')+'</div>':'')
     +(ctx.empty?'<div style="margin-top:4px;color:var(--color-feedback-warning-text)">'+esc(ctx.empty)+'</div>':'')
     +'<details class="ask-mats"><summary>材料清单 · '+fmtInt(stats.n_materials||prov.length)+' 件（'+fmtInt(stats.chars||0)+' 字）</summary>'
-    +prov.map(function(m){return '<div class="mrow"><span class="mid">'+esc(m.id)+'</span><span style="flex:1;min-width:0"><span style="color:var(--color-text-primary)">'+esc(m.title)+'</span><br><span class="msrc">'+esc(m.source)+'</span></span></div>'}).join('')
+    +prov.map(function(m){
+      var go=(typeof askMatOpen==='function')?askMatOpen(m):'';
+      return '<div class="mrow" data-mid="'+esc(m.id)+'"><span class="mid">'+esc(m.id)+'</span>'
+        +'<span style="flex:1;min-width:0"><span style="color:var(--color-text-primary)">'+esc(m.title)+'</span>'
+        +'<br><span class="msrc">'+esc(m.source)+'</span></span>'
+        +(go?'<button type="button" class="exp-btn" style="flex:none" onclick="'+go+'" title="打开这件材料所在的那一层">打开 ›</button>':'')
+        +'</div>';
+    }).join('')
     +'</details></div>';
   if(inf.ok===false){
     html+='<div class="ask-scope" style="margin-top:var(--space-2);border-color:var(--color-feedback-warning-default);color:var(--color-feedback-warning-text)">'+esc(inf.error||'推理端口不可用')+'</div>';
@@ -6125,7 +6151,7 @@ function askDrawerBody(d){
     if(h.err){
       html+='<div class="ask-a err">'+esc(h.err)+'</div>';
     }else{
-      html+='<div class="ask-a">'+askAnswerHTML(h.a)
+      html+='<div class="ask-a">'+askAnswerHTML(h.a,prov)
         +((h.cited||[]).length?'<div class="ask-cites">引用材料：'+h.cited.map(function(c){return '<span class="tag mono" title="'+esc((c.title||'')+' — '+(c.source||''))+'">'+esc(c.id)+' '+esc(c.title||'')+'</span>'}).join('')+'</div>':'')
         +(h.model?'<div style="margin-top:4px;font:400 11px/15px var(--font-sans);color:var(--color-text-metadata)">'+esc(h.model)+(h.via==='upstream'?' · 由生产实例作答':'')+' · 仅依据上列材料作答</div>':'')
         +'</div>';
@@ -6955,10 +6981,13 @@ function phReviewCard(){
       return '<div class="ph-field"><code>'+esc(f.field)+'</code><span>'+esc(f.desc)+'</span></div>'
     }).join('')
    +'</div><div class="card-note" style="margin-top:8px">'
-   +'这些字段是给你<b>核对</b>用的，不是可以直接相信的。必填字段不会让模型在'
-   +'材料里找不到时省略，只会让它写点什么出来——首次实测它就点名了一家材料里'
-   +'根本没提的机构。系统能保证的是：它必须写、必须带出处、写不出的整条丢弃，'
-   +'而丢弃率本身说明语料撑不撑得起这条准则。写得实不实，要你点开看。</div></div>';
+   +'每条想法还要写清它在<b>哪一篇材料</b>里读到这些，那个文献号会被逐个核对，'
+   +'对不上的整条丢弃。这是必要的：必填字段不会让模型在材料里找不到时省略，'
+   +'只会让它写点什么出来——首次实测它就点名了一家材料里根本没提的机构，'
+   +'而编一个文献号是查得出来的。<br>'
+   +'但一篇真实的材料不等于它支持挂在上面的那句话。所以这些字段是给你'
+   +'<b>核对</b>用的，不是可以直接相信的；丢弃率本身说明语料撑不撑得起这条准则。'
+   +'</div></div>';
 
   if(rw.length){
     h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">3</span>'

@@ -56,7 +56,8 @@ COPY prompts ./prompts
 COPY seed ./seed
 COPY web ./web
 COPY deploy/entrypoint.sh ./deploy/entrypoint.sh
-RUN chmod +x ./deploy/entrypoint.sh
+COPY deploy/dashboard_entrypoint.sh ./deploy/dashboard_entrypoint.sh
+RUN chmod +x ./deploy/entrypoint.sh ./deploy/dashboard_entrypoint.sh
 
 # State and artifacts belong in the platform ports, not on this filesystem: the
 # sandbox is discarded after the run. This directory exists only for the local

@@ -12,8 +12,12 @@
 services:
   dashboard:
     image: "ideagen40:${IMAGE_TAG:?set IMAGE_TAG to the built git SHA}"
-    # 同一镜像默认 ENTRYPOINT 跑 scheduler；这里覆盖为只起网页。
-    entrypoint: ["python3", "-m", "ideagen.cli", "serve"]
+    # 同一镜像默认 ENTRYPOINT 跑 scheduler；这里覆盖为先建表、再起网页。
+    # 不建表的话，页面第一次请求 /api/state 就会撞上「orch_runs 不存在」，
+    # 变成一条引用 MySQL 报错的 500——看起来像部署坏了，其实只是库是空的。
+    # 云端这条路上没有别的东西会建这些表：scheduler 要到第一次周跑才建，
+    # 而新实例上那可能是一周以后。
+    entrypoint: ["/app/deploy/dashboard_entrypoint.sh"]
     env_file:
       - /opt/ideagen/config/runtime.env
     environment:

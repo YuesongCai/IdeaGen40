@@ -102,12 +102,22 @@ def build_userdata(runtime_env_url: str | None) -> str:
 
     Not base64: UserData is meant to be read from the console, and an operator
     who cannot read what their instance runs at boot has no way to audit it.
+
+    The explanatory comments do not travel, though. The CLI sends this in a
+    query string, and past roughly 8KB the gateway answers with an HTML error
+    page instead of JSON — which surfaces as a parse error with nothing to do
+    with size. The prose lives in the repo file, which the header names; what
+    ships is the commands.
     """
     script = BOOTSTRAP.read_text(encoding="utf-8")
     if PLACEHOLDER not in script:
         raise SystemExit(f"{BOOTSTRAP.name} 缺少 {PLACEHOLDER} 占位符")
     if runtime_env_url:
         script = script.replace(PLACEHOLDER, runtime_env_url)
+    kept = [ln for ln in script.splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")]
+    kept.insert(0, "#!/bin/bash")
+    script = "\n".join(kept) + "\n"
     body = "\n".join(("    " + ln) if ln else "" for ln in script.splitlines())
     return (
         "#cloud-config\n"

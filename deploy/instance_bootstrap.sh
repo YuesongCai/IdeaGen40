@@ -81,15 +81,40 @@ pkill -f "http.server 80" >/dev/null 2>&1 || true
 sleep 1
 export IMAGE_TAG="$SHA"
 export IDEAGEN_PUBLIC_SITE=":80"
+
+# The database the dashboard reads starts out with no tables at all, and the
+# page's first request is what discovers that — as a 500 quoting a MySQL error,
+# which reads like a broken deploy rather than an empty database. Applying the
+# schema here makes the first page load a true one. `--state-probe` is
+# idempotent: it migrates, writes one probe row and reads it back, so a failure
+# is reported before the dashboard can present it as a mystery.
+say "applying database schema"
+if docker compose -f deploy/compose.yaml run --rm --entrypoint python3 \
+     dashboard -m ideagen platform --state-probe 2>&1 | tail -6 >> "$STATUS"; then
+  echo "state-probe done"
+else
+  say "state-probe FAILED — dashboard will not have a database to read"
+fi
+
 if docker compose -f deploy/compose.yaml up -d dashboard proxy; then
   echo "compose up ok"
-  sleep 15
-  if curl -fsS --max-time 10 http://127.0.0.1/healthz >/dev/null 2>&1; then
+  # Give the proxy time to pull and bind before deciding anything. Restarting
+  # the status server after fifteen seconds was worse than useless: it took :80
+  # back while Caddy was still starting, so Caddy could never bind it and
+  # restart:always turned that into a crash loop. The port stays Caddy's unless
+  # the stack has genuinely failed to answer.
+  ok=""
+  for i in $(seq 1 24); do
+    if curl -fsS --max-time 5 http://127.0.0.1/healthz >/dev/null 2>&1; then ok=1; break; fi
+    sleep 5
+  done
+  if [ -n "$ok" ]; then
     echo "healthz ok"
   else
-    say "compose up but /healthz not answering"
-    tail -40 /var/log/ideagen-bootstrap.log >> "$STATUS"
-    docker compose -f deploy/compose.yaml logs --tail 30 dashboard >> "$STATUS" 2>&1
+    say "两分钟内 /healthz 没有响应，代理没起来——下面是诊断"
+    docker compose -f deploy/compose.yaml ps >> "$STATUS" 2>&1
+    docker compose -f deploy/compose.yaml logs --tail 25 proxy >> "$STATUS" 2>&1
+    docker compose -f deploy/compose.yaml logs --tail 25 dashboard >> "$STATUS" 2>&1
     probe_up
   fi
 else

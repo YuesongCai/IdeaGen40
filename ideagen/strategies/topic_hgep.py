@@ -23,6 +23,53 @@ WEIGHTS = {"H": 0.30, "G": 0.25, "E": 0.25, "P": 0.20}
 DEPTH = {"policy": 100, "earnings": 75, "price": 50, "other": 25}
 
 
+def _partition_factors(dispersion: dict) -> tuple[list, float, list, list]:
+    """Split `WEIGHTS` into inert / live / unmeasured, covering all of it.
+
+    A factor no topic produced a value for is absent from `dispersion`
+    entirely, so it is neither inert nor discriminating — it is unmeasured, and
+    the two are not the same claim. The note used to end 「本期四个因子都有区分
+    度」 with the count written by hand, and an unmeasured factor was counted
+    among the four as one that discriminated: the one thing nobody looked at,
+    reported as the thing that worked.
+
+    Split here rather than inline so the partition is reachable by a test. It
+    was inline first, and a mutation that folded `unmeasured` back into the
+    discriminating set passed every check, because the checks could only reach
+    the sentence and the fault was in what got handed to it.
+    """
+    inert = sorted(f for f, d in dispersion.items() if not d["discriminates"])
+    inert_weight = round(sum(WEIGHTS[f] for f in inert), 2)
+    unmeasured = sorted(f for f in WEIGHTS if f not in dispersion)
+    live = [f for f in WEIGHTS if f in dispersion and f not in inert]
+    return inert, inert_weight, live, unmeasured
+
+
+def _ranking_note(inert: list[str], inert_weight: float,
+                  live: list[str], unmeasured: list[str]) -> str:
+    """What actually decided the ranking, with every factor accounted for.
+
+    Each factor lands in exactly one of three states and every state is said
+    out loud, so `len(inert) + len(live) + len(unmeasured) == len(WEIGHTS)`
+    holds by construction rather than by a number someone typed.
+    """
+    parts = []
+    if inert:
+        parts.append(f"{'、'.join(inert)} 对所有主题取值相同，合计权重 "
+                     f"{inert_weight:.2f} 不参与排序")
+    if unmeasured:
+        parts.append(f"{'、'.join(unmeasured)} 没有取到值，未参与打分")
+    if not parts:
+        return f"本期 {len(WEIGHTS)} 个因子都有区分度"
+    # Every factor inert or unmeasured is not a weaker version of the normal
+    # case, it is a different one: the scores are all equal and the top-5 is
+    # whatever order the dict happened to be in. Saying "实际由 无 决定" would
+    # read as a degenerate phrasing of a working run.
+    parts.append("实际由 " + "、".join(live) + " 决定" if live else
+                 "没有任何因子参与排序，本期名次不成立")
+    return "本期 " + "；".join(parts)
+
+
 def _match(text: str, terms) -> int:
     low = (text or "").lower()
     return sum(1 for t in terms if t.lower() in low)
@@ -126,8 +173,7 @@ def hgep(ctx: RunContext) -> Verdict:
             "weight": WEIGHTS[factor],
             "discriminates": len(set(seen)) > 1,
         }
-    inert = sorted(f for f, d in dispersion.items() if not d["discriminates"])
-    inert_weight = round(sum(WEIGHTS[f] for f in inert), 2)
+    inert, inert_weight, live, unmeasured = _partition_factors(dispersion)
 
     ranked = sorted(scores.items(), key=lambda kv: -kv[1]["score"])
     top = int(ctx.params.get("top_n", 5))
@@ -139,8 +185,6 @@ def hgep(ctx: RunContext) -> Verdict:
               "topics_with_evidence": len(scores), "loudest_count": loudest,
               "top_n": top, "factor_dispersion": dispersion,
               "inert_factors": inert, "inert_weight": inert_weight,
-              "ranking_note": (
-                  f"本期 {'、'.join(inert)} 对所有主题取值相同，合计权重 "
-                  f"{inert_weight:.2f} 不参与排序，实际由 "
-                  f"{'、'.join(f for f in WEIGHTS if f not in inert)} 决定"
-                  if inert else "本期四个因子都有区分度")})
+              "unmeasured_factors": unmeasured,
+              "ranking_note": _ranking_note(inert, inert_weight, live,
+                                            unmeasured)})

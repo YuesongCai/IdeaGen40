@@ -402,6 +402,30 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
     }
 
 
+#: The four counterfactual layers Jon asked for, named in docs/8个思考点.md:392
+#: as 选择、择时、仓位、因子. The count and the names both come from here, because
+#: they were separated once: the prose said "四层" — inherited from that ask — and
+#: then listed three layers of its own devising, so the missing one was 仓位, and
+#: nothing in the sentence let a reader notice. A number borrowed from one
+#: taxonomy and attached to a different list cannot be checked by anyone.
+ATTRIBUTION_LAYERS = (
+    ("选择", "同窗口改持该主题的 ETF，问选中具体标的比认出主题多赚了什么", True),
+    ("择时", "区分风控（止损/减仓）与买入持有，问进出时点值多少", False),
+    ("仓位", "相同成交、不同 sizing 的反事实组合", False),
+    ("因子", "对市场 beta 与常见因子回归，问超额里有多少不是暴露", False),
+)
+
+
+def _layers_note() -> str:
+    """Which attribution layers exist, and which of them this run computed."""
+    done = [n for n, _, ok in ATTRIBUTION_LAYERS if ok]
+    todo = [n for n, _, ok in ATTRIBUTION_LAYERS if not ok]
+    return (f"归因共 {len(ATTRIBUTION_LAYERS)} 层（"
+            + "、".join(n for n, _, _ in ATTRIBUTION_LAYERS)
+            + f"）。本表是其中的{'、'.join(done)}层；"
+            + "、".join(todo) + "层都还没有做。")
+
+
 def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
     """One layer of the attribution Jon asked for: theme versus instrument.
 
@@ -416,8 +440,8 @@ def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
     credited with the difference between the two, which is why both are reported
     and why neither is reported alone.
 
-    This is one layer, not the four. The market-beta layer and the layer
-    separating risk controls from buy-and-hold are still missing, and calling
+    This is one layer, not the four; `ATTRIBUTION_LAYERS` says which four and
+    which of them exists, so the claim and the list cannot drift apart. Calling
     this "attribution done" would be the overclaim the item was raised about.
     """
     from ideagen import lexicon
@@ -546,8 +570,7 @@ def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
             "no_edge_detected 额外要求配对检验也判定该臂 powered："
             "本层的下界把持仓当独立样本，而它们共享期次与持有窗口，"
             "只能用来否定；肯定「本该看见」需要配对检验按 n_eff 折算后的判断。"
-            "这是四层归因里的一层——市场 beta 层、以及区分风控与买入持有的那层，"
-            "都还没有做。"),
+            + _layers_note()),
     }
 
 

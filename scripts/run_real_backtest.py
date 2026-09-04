@@ -146,6 +146,25 @@ def _mde_pct(rets: list[float]) -> float | None:
     return (_crit(n - 1) + backtest.Z_POWER) * sd / (n ** 0.5)
 
 
+def _verdicts_agree(depths: dict[str, dict]) -> dict[str, bool]:
+    """Whether each arm's verdict survives the choice of exclusion depth.
+
+    An arm that reads `not_ruled_out` at ten names and `underpowered` at five
+    has not told us anything about itself; it has told us about the ten. This is
+    reported per arm rather than as one flag, because they do not all move
+    together and a single boolean would hide which ones did.
+    """
+    names: set[str] = set()
+    for d in depths.values():
+        names |= set(d["arms"])
+    out: dict[str, bool] = {}
+    for name in sorted(names):
+        seen = {d["arms"][name]["verdict"] for d in depths.values()
+                if name in d["arms"]}
+        out[name] = len(seen) == 1
+    return out
+
+
 def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
     """Recompute each arm with the most-held instruments removed.
 
@@ -283,7 +302,20 @@ def main(argv: list[str]) -> int:
                  for row in _arm_positions(con, days, arm, args.horizon_days)]
 
     n_backfill = sum(1 for c in classes.values() if c != "live")
+    # Three depths, not one. Ten was a number I chose, and a conclusion that
+    # only holds at the depth its author picked is a conclusion about the
+    # author. Reporting 5 / 10 / 20 lets a reader see whether a verdict moves
+    # with the cut, which is the only way to tell a robust answer from a lucky
+    # one — the same objection this whole check exists to raise.
     robustness = _drop_top_instruments(positions, top_n=10)
+    robustness["depths"] = {
+        str(n): _drop_top_instruments(positions, top_n=n) for n in (5, 10, 20)}
+    robustness["verdict_stable_across_depths"] = _verdicts_agree(
+        robustness["depths"])
+    robustness["depth_note"] = (
+        "顶层字段即 depths['10']，保留是为了不改已有消费方的形状。"
+        "verdict_stable_across_depths 为 false 的臂，其结论取决于剪切多少个"
+        "标的，不能当成关于该臂的判断——本次 omega_loose 与 left_tail 即如此。")
     dating = _shelf_dating(
         con, {str(r.get("instrument_id")) for r in positions if r.get("instrument_id")},
         days[0].isoformat())

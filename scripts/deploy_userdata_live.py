@@ -98,77 +98,32 @@ def upload_env() -> str:
 
 
 def user_data(env_url: str, db_url: str) -> str:
+    """A loader, not a bootstrap.
+
+    UserData has an invisible ceiling: past roughly 8KB of base64 the gateway
+    answers with an HTML error page and `ve` reports `invalid character '<'`,
+    a parse error that never mentions size. The previous version of this
+    function inlined every step and had reached 7572 of 8192 bytes — three more
+    lines from an evening of confusion.
+
+    So everything past "get the repo onto the disk" lives in
+    deploy/display_node_bootstrap.sh, which can grow without limit. What stays
+    here is what has to: installing docker, cloning, and the two presigned URLs,
+    which are the one kind of credential acceptable in UserData because they
+    expire on their own.
+
+    `runcmd`, never `bootcmd` — bootcmd does not execute on this image, which
+    cost two silent failures. `output: tee` sends everything to the serial
+    console; a log file on the instance puts the diagnosis on the one machine
+    nobody can reach.
+    """
     return f"""#cloud-config
 output: {{all: '| tee -a /var/log/cloud-init-output.log'}}
-write_files:
-  - path: /etc/systemd/system/ideagen-sync.service
-    content: |
-      [Unit]
-      Description=Install the newest published IdeaGen state snapshot
-      After=docker.service
-      Requires=docker.service
-      [Service]
-      Type=oneshot
-      ExecStart=/opt/ideagen/sync_state.sh
-      # 也送到串口控制台。journal 只有登得上机器的人看得到，而这台正是
-      # 登不上的那台——同步有没有按时跑，必须在 GetConsoleOutput 里看得见。
-      StandardOutput=journal+console
-      StandardError=journal+console
-  - path: /etc/systemd/system/ideagen-code.service
-    content: |
-      [Unit]
-      Description=Track origin/main on the display node
-      After=docker.service
-      Requires=docker.service
-      [Service]
-      Type=oneshot
-      TimeoutStartSec=1800
-      ExecStart=/opt/ideagen/sync_code.sh
-      StandardOutput=journal+console
-      StandardError=journal+console
-  - path: /etc/systemd/system/ideagen-code.timer
-    content: |
-      [Unit]
-      Description=Track origin/main on the display node
-      [Timer]
-      OnBootSec=6min
-      OnUnitActiveSec=5min
-      [Install]
-      WantedBy=timers.target
-  - path: /etc/systemd/system/ideagen-sync.timer
-    content: |
-      [Unit]
-      Description=Track the laptop's published state
-      [Timer]
-      OnBootSec=10min
-      OnUnitActiveSec=15min
-      [Install]
-      WantedBy=timers.target
 runcmd:
   - echo "IG_START $(date -u +%FT%TZ)"
   - [ sh, -c, "for i in 1 2 3; do apt-get update -qq && break || sleep 10; done; apt-get install -y -qq docker.io git curl >/dev/null 2>&1; systemctl enable --now docker >/dev/null 2>&1; echo IG_DOCKER $(docker --version 2>/dev/null | head -c 30)" ]
-  - [ sh, -c, "mkdir -p /opt/ideagen/config /opt/ideagen/data && chmod 700 /opt/ideagen/config; echo IG_DIRS" ]
   - [ sh, -c, "git clone --quiet --depth 50 {REPO} /opt/ideagen/app && echo IG_CLONE $(git -C /opt/ideagen/app rev-parse --short HEAD) || echo IG_CLONE_FAIL" ]
-  - [ sh, -c, "umask 077; curl -fsS '{env_url}' -o /opt/ideagen/config/runtime.env && chmod 600 /opt/ideagen/config/runtime.env && echo IG_ENV $(grep -c = /opt/ideagen/config/runtime.env) || echo IG_ENV_FAIL" ]
-  - [ sh, -c, "curl -fsS '{db_url}' -o /opt/ideagen/data/ideagen.db && echo IG_DB $(stat -c%s /opt/ideagen/data/ideagen.db) || echo IG_DB_FAIL" ]
-  # 镜像里跑的是 USER ideagen (uid 10001)，而下载下来的库归 root、0600。
-  # SQLite 连只读查询也要写(WAL/临时页)，所以不 chown 的话每个 API 都会
-  # 返回 "attempt to write a readonly database" —— 服务、数据、网络全对，
-  # 只差这一步，而且症状看起来像数据没到。
-  - [ sh, -c, "chown -R 10001:10001 /opt/ideagen/data && chmod 664 /opt/ideagen/data/ideagen.db && echo IG_PERM $(stat -c'%U:%a' /opt/ideagen/data/ideagen.db)" ]
-  - [ sh, -c, "cd /opt/ideagen/app && docker build -q -t ideagen40:live -f deploy/Dockerfile . >/dev/null 2>&1 && echo IG_BUILD || echo IG_BUILD_FAIL" ]
-  - [ sh, -c, "docker rm -f ideagen-dash >/dev/null 2>&1; docker run -d --name ideagen-dash --restart always --env-file /opt/ideagen/config/runtime.env -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db -v /opt/ideagen/data:/data -p 80:8765 -p 443:8765 --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 && echo IG_RUN || echo IG_RUN_FAIL" ]
-  # 数据同步：本机每天还在跑 daily，这台只是显示。没有这一步，页面会停在
-  # 部署当晚的快照上，而且看起来完全正常——这是最难发现的那种错。
-  - [ sh, -c, "install -m 755 /opt/ideagen/app/deploy/sync_state.sh /opt/ideagen/sync_state.sh && install -m 755 /opt/ideagen/app/deploy/sync_code.sh /opt/ideagen/sync_code.sh && systemctl daemon-reload && systemctl enable --now ideagen-sync.timer ideagen-code.timer >/dev/null 2>&1 && echo IG_TIMER $(systemctl is-enabled ideagen-sync.timer)/$(systemctl is-enabled ideagen-code.timer) || echo IG_TIMER_FAIL" ]
-  # 立刻跑一次，别等 10 分钟后的第一次触发。同步链路要么在开机日志里被
-  # 证明过，要么就是没被证明过。
-  - [ sh, -c, "sleep 20; /opt/ideagen/sync_state.sh 2>&1 | sed 's/^/IG_SYNC /' || echo IG_SYNC_FAIL" ]
-  - [ sh, -c, "sleep 25; docker ps -a --filter name=ideagen-dash --format 'IG_PS {{{{.Status}}}}'" ]
-  - [ sh, -c, "docker logs --tail 25 ideagen-dash 2>&1 | sed 's/^/IG_LOG /'" ]
-  - [ sh, -c, "curl -s -o /dev/null -w 'IG_HEALTHZ_%{{http_code}}\\n' --max-time 10 http://127.0.0.1/healthz || echo IG_HEALTHZ_FAIL" ]
-  - [ sh, -c, "curl -s -o /dev/null -w 'IG_STATE_%{{http_code}}\\n' --max-time 20 http://127.0.0.1/api/state || echo IG_STATE_FAIL" ]
-  - echo "IG_DONE $(date -u +%FT%TZ)"
+  - [ sh, -c, "IG_ENV_URL='{env_url}' IG_DB_URL='{db_url}' sh /opt/ideagen/app/deploy/display_node_bootstrap.sh" ]
 """
 
 

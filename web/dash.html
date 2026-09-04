@@ -516,6 +516,10 @@ tr.expandable{cursor:pointer}
    一行里认出来的东西，换个位置还得是同一个东西。 */
 .ask-btn.sm{padding:4px 10px;font-size:11px}
 .ask-btn.sm svg{width:11px;height:11px}
+/* 再小一档：只剩图标。持仓行是五列硬排版，整颗药丸（126px）挤掉的正是标的名称。
+   形状、配色、图标都留着——文案退到 title / aria-label，悬停和读屏仍然拿得到。 */
+.ask-btn.icon{padding:4px 6px}
+.ask-btn.icon>span{display:none}
 /* 静态快照没有后端，追问答不了：它要现场取当期封存的研报原文与打分记录。
    按钮仍然在——它是「去哪儿才能问」的指路牌——但不穿这身「点我」的绿，
    免得读者点开只收到一句「不支持」。 */
@@ -1003,6 +1007,14 @@ button.rr-dl{font:500 12px/16px var(--font-sans);cursor:pointer}
 .rlp-t{font:600 14px/21px var(--font-sans);color:#f2f5f3}
 .rlp-d{margin-top:3px;font:400 13px/20px var(--font-sans);color:#c2cac6}
 .rlp-w{margin-top:5px;padding-left:9px;border-left:2px solid rgb(184 255 58 / 45%);font:400 12px/18px var(--font-sans);color:#8f9c96}
+/* 「A 选中 3 条、B 选中 5 条、…」这种十来对名值本来就是一张表，
+ * 用「、」串成一句 90 字的话读不动。改成 chip 行。 */
+.rlp-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.rlp-chip{display:inline-flex;align-items:baseline;gap:5px;padding:2px 7px;border-radius:var(--radius-xs);background:rgb(255 255 255 / 7%);font:400 11px/17px var(--font-sans);color:#c2cac6;white-space:nowrap}
+.rlp-chip b{font:600 11px/17px var(--font-mono);color:#f2f5f3}
+.rlp-chip.bad{background:rgb(255 122 122 / 18%);color:#ffb1b1}
+.rlp-chip.bad b{color:#ffb1b1}
+.rlp-w .gloss{border-bottom-color:rgb(255 255 255 / 28%)}
 .rlp-time{text-align:right;font:400 11px/18px var(--font-mono);color:#6f7a75;white-space:nowrap}
 .rlp-time span{display:block;color:#57615d}
 @media(max-width:720px){.rlp-item{grid-template-columns:22px minmax(0,1fr);}.rlp-time{grid-column:2;text-align:left}.rlp-time span{display:inline;margin-left:6px}}
@@ -1182,7 +1194,7 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .gate-miss{color:var(--color-border-default);font:400 11px/11px var(--font-mono)}
 
 /* 建仓刻度条 */
-.pos-line{display:grid;grid-template-columns:88px minmax(0,1fr) 220px 78px;gap:var(--space-3);align-items:center;padding:5px 0;border-top:1px solid var(--color-border-subtle)}
+.pos-line{display:grid;grid-template-columns:78px 26px minmax(0,1fr) 212px 78px;gap:var(--space-2);align-items:center;padding:5px 0;border-top:1px solid var(--color-border-subtle)}
 .pos-line:first-child{border-top:none}
 .pos-code{font:500 12px/16px var(--font-mono);color:var(--color-text-primary)}
 .pos-nm{font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1193,14 +1205,28 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .rng-last{position:absolute;top:2px;width:10px;height:10px;border-radius:999px;border:2px solid var(--color-surface-white);box-shadow:var(--shadow-xs)}
 .rng-last.edge{box-shadow:0 0 0 2px var(--color-feedback-warning-default)}
 .rng-end{position:absolute;top:5px;width:2px;height:4px;background:var(--color-border-strong)}
-.rng-vals{display:flex;justify-content:space-between;gap:6px;font:400 9px/11px var(--font-mono);color:var(--color-text-tertiary);white-space:nowrap}
+.rng-vals{display:flex;justify-content:space-between;gap:4px;font:400 9px/11px var(--font-mono);color:var(--color-text-tertiary);white-space:nowrap}
 .rng-vals .cur{color:var(--color-text-primary);font-weight:600}
 .rng-ofl{font:500 10px/13px var(--font-sans)}
 .rng-ofl.down{color:var(--color-stock-down-text)}
 .rng-ofl.up{color:var(--color-stock-up-text)}
 .pos-pnl{text-align:right;font:500 12px/16px var(--font-mono)}
-.pos-headr{display:grid;grid-template-columns:88px minmax(0,1fr) 220px 78px;gap:var(--space-3);font:400 10px/14px var(--font-sans);color:var(--color-text-tertiary);padding-bottom:3px}
-@media (max-width:1180px){.pos-line,.pos-headr{grid-template-columns:80px minmax(0,1fr) 170px 70px}}
+.pos-headr{display:grid;grid-template-columns:78px 26px minmax(0,1fr) 212px 78px;gap:var(--space-2);font:400 10px/14px var(--font-sans);color:var(--color-text-tertiary);padding-bottom:3px}
+/* 窄屏：五列硬塞进 ~400px 的抽屉，被挤没的一定是标的名称（算下来正好 0px）。
+   与其让它消失，不如把刻度条整条挪到第二行——它本来就是四个价位一起读的东西，
+   横过来反而更看得清。按位置而不是按类名指派单元格：σ 算不出时第四格换成的是
+   .card-note，不是 .rngwrap。 */
+@media (max-width:1180px){
+  .pos-line{grid-template-columns:70px 26px minmax(0,1fr) 74px;
+            grid-template-areas:"code ask name pnl" "bar bar bar bar";row-gap:3px}
+  .pos-line>:nth-child(1){grid-area:code}
+  .pos-line>:nth-child(2){grid-area:ask}
+  .pos-line>:nth-child(3){grid-area:name}
+  .pos-line>:nth-child(4){grid-area:bar}
+  .pos-line>:nth-child(5){grid-area:pnl}
+  .pos-headr{grid-template-columns:70px 26px minmax(0,1fr) 74px}
+  .pos-headr>:nth-child(4){display:none}
+}
 
 /* ══════════ 抽屉系统（hover 速览 + 点击深钻 + 可叠三层） ══════════ */
 .drawer-scrim{position:fixed;inset:0;background:var(--color-overlay-image);z-index:69}
@@ -3193,6 +3219,11 @@ function bookCard(b,bi){
    数字，各算各的迟早会漂移——口径归一处，两边都从这里取。
    计算本身仍基于服务端 books/benchmark 的原始字段，前端只做换算与格式。 */
 function aggReturnPct(ag){
+  /* 服务端已经把跨账本聚合算好了（review._books_aggregate），口径写在
+     books_aggregate.basis 里、有测试钉住、可回放。前端优先用它——跨源聚合
+     不该由渲染层各自推导一遍。 */
+  var sa=(S||{}).books_aggregate;
+  if(sa&&sa.return_pct!==null&&sa.return_pct!==undefined)return sa.return_pct;
   if(!ag||!ag.capital)return null;
   var eq=ag.equity||[];
   var last=eq.length?eq[eq.length-1].equity:null;
@@ -3287,6 +3318,46 @@ function weekIndex(books){
   var days=(Date.now()-new Date(minBooked+'T00:00:00+08:00').getTime())/86400000;
   return Math.max(1,Math.ceil(days/7));
 }
+/* 组合 vs 基准的两条线，期初都归 100。两个数字说得清「跑赢还是跑输」，
+   说不清「什么时候拉开的、中间回撤过没有」——那是 PM 看曲线的原因。
+   数据全部来自服务端：books_aggregate.equity 与 benchmark.series。 */
+function overviewCurveSVG(){
+  var sa=(S||{}).books_aggregate||{}, eq=sa.equity||[];
+  var bm=(S||{}).benchmark||{}, bs=bm.series||[];
+  if(eq.length<2)return '';
+  var base=sa.capital||eq[0].equity;
+  var mine=eq.map(function(x){return {d:x.d,v:x.equity/base*100}});
+  var bBase=bs.length?bs[0].close:null;
+  var bmap={};bs.forEach(function(x){bmap[x.d]=x.close});
+  var carry=null;
+  var bench=bBase?mine.map(function(m){
+    if(bmap[m.d]!==undefined)carry=bmap[m.d];
+    return {d:m.d,v:carry===null?100:carry/bBase*100};
+  }):[];
+  var all=mine.map(function(x){return x.v}).concat(bench.map(function(x){return x.v}));
+  var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);
+  var pad=Math.max(0.15,(mx-mn)*0.18);mn-=pad;mx+=pad;
+  var W=760,H=132,pl=6,pr=6,pt=8,pb=16;
+  function X(i,n){return pl+i*(W-pl-pr)/Math.max(1,n-1)}
+  function Y(v){return pt+(mx-v)/(mx-mn||1)*(H-pt-pb)}
+  function path(a){return a.map(function(x,i){return (i?'L':'M')+X(i,a.length).toFixed(1)+' '+Y(x.v).toFixed(1)}).join(' ')}
+  var up=(mine[mine.length-1].v>=100);
+  var col=up?'var(--color-stock-up-default)':'var(--color-stock-down-default)';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block" role="img"'
+    +' aria-label="本期组合与基准的净值走势，期初均为 100">'
+    +'<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(100).toFixed(1)+'" y2="'+Y(100).toFixed(1)
+      +'" stroke="var(--color-border-default)" stroke-width="1" stroke-dasharray="3 3"/>';
+  if(bench.length)svg+='<path d="'+path(bench)+'" fill="none" stroke="var(--color-text-tertiary)" stroke-width="1.5"/>';
+  svg+='<path d="'+path(mine)+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/>'
+    +'</svg>';
+  return '<div style="margin-top:var(--space-4)">'+svg
+    +'<div style="display:flex;gap:var(--space-4);flex-wrap:wrap;margin-top:2px;'
+      +'font:400 11px/16px var(--font-sans);color:var(--color-text-tertiary)">'
+      +'<span><i style="display:inline-block;width:10px;height:2px;background:'+col+';vertical-align:middle;margin-right:5px"></i>本期组合</span>'
+      +(bench.length?'<span><i style="display:inline-block;width:10px;height:2px;background:var(--color-text-tertiary);vertical-align:middle;margin-right:5px"></i>同期 '+esc(benchName())+'</span>':'')
+      +'<span style="margin-left:auto">'+esc(eq[0].d)+' → '+esc(eq[eq.length-1].d)+' · 期初 = 100</span>'
+    +'</div></div>';
+}
 function portfolioHeadline(ag){
   if(!ag)return '';
   var ret=aggReturnPct(ag), spy=benchReturnPct();
@@ -3324,6 +3395,9 @@ function portfolioHeadline(ag){
         +'</div>'
       +'</div>'
     +'</div>'
+    /* 两个数字说得清「跑赢还是跑输」，说不清「什么时候拉开的、中间回撤过
+       没有」。PM 看的是形状。 */
+    +overviewCurveSVG()
     /* 把这个头条数拆开——它是全页最容易被读错的一个数。
      * 合计 +0.46% 里只有约 0.10pp 来自选股，其余来自没投出去的钱吃的货币
      * 市场利息。而右边的基准是满仓的。不写出来，「跑输 4 个百分点」会被
@@ -4612,7 +4686,7 @@ function rlPlainStep(st,idx){
     T.t='可交易货架：本期可买入标的范围';
     T.d='货架共 '+fmtInt((st.shelf_dating||{}).total)+' 个标的，本期合格 '+fmtInt(st.eligible)
       +' 个，排除 '+fmtInt(st.excluded)+' 个。';
-    T.w='合格集合构成后续所有候选的取值范围：不在货架上的标的，无法出现在任何一条候选里。';
+    T.w='合格集合 = 后续所有候选的取值范围 '+glossMark('不在货架上的标的，无法出现在任何一条候选里。');
   }else if(step.indexOf('feed:')===0){
     var src=step.slice(5);
     T.t='数据接入：'+src;
@@ -4624,27 +4698,28 @@ function rlPlainStep(st,idx){
     T.t='主题发现：检查现有主题表是否覆盖本期语料';
     T.d='本期语料 '+numOr(st.coverage_pct)+'% 可归入已登记主题；未匹配 '
       +fmtInt(st.unmatched)+' 篇，其中达标的新主题候选 '+fmtInt(st.candidates)+' 个。';
-    T.w='用于防止主题表滞后于宏观环境变化。达标的新主题自动登记，登记记录 append-only，不可回填。';
+    T.w='防止主题表滞后于宏观环境 '+glossMark('达标的新主题自动登记；登记记录 append-only，不可回填。');
   }else if(step==='inputs'){
     T.t='输入封存：固定本期可用材料';
     T.d='封存研报 '+fmtInt(st.corpus)+' 篇、宏观日历 '+fmtInt(st.calendar)+' 条'
       +(st.sha?'，输入指纹 '+st.sha:'')+'。';
-    T.w='封存后所有判断只能取用这一份材料。事后追问决策依据时，模型读到的仍是这一份，因此回答无法在事后重构。';
+    T.w='封存后所有判断只能取用这一份材料 '+glossMark('事后追问决策依据时，模型读到的仍是这一份，因此回答无法在事后重构。');
   }else if(step==='topics'){
     T.t='筛选A 选主题：确定本期宏观主题';
-    T.d='按 '+esc(st.strategy||'')+(st.version?' v'+esc(st.version):'')+' 打分，入选 '
-      +((st.chosen||[]).length||0)+' 个：'+((st.chosen||[]).join('、')||'—')+'。'
-      +(st.calls!==undefined?'（本步模型调用 '+fmtInt(st.calls)+' 次'+(st.calls===0?'，为纯规则打分，无模型参与':'')+'）':'');
+    T.d='按 '+(st.strategy||'')+(st.version?' v'+st.version:'')+' 打分，入选 '+((st.chosen||[]).length||0)+' 个'
+      +(st.calls!==undefined?' · 模型调用 '+fmtInt(st.calls)+' 次'+(st.calls===0?'（纯规则打分）':''):'');
+    T.chips=(st.chosen||[]).map(function(t){return {k:t,v:''}});
     T.w='落选主题不进入筛选B，本期不会有任何候选出自这些主题。'
   }else if(step==='generators'){
     var pr=st.produced||{};
     var ks=Object.keys(pr);
     T.t='筛选B 生成候选：4 种方法并行，彼此不可见';
-    T.d='共生成 '+fmtInt(st.pool)+' 条：'
-      +ks.map(function(k){return methodName(k)+' '+fmtInt(pr[k])+' 条'}).join('、')+'。';
-    T.w='四种生成方法相互隔离，多方法指向同一标的方可视为跨方法信号。';
+    T.d='共生成 '+fmtInt(st.pool)+' 条';
     var ge=st.errors||{};
-    if(Object.keys(ge).length){T.bad=true;T.d+=' 其中 '+Object.keys(ge).map(function(k){return methodName(k)+' 执行失败'}).join('、')+'。';}
+    T.chips=ks.map(function(k){return {k:methodName(k),v:fmtInt(pr[k])+' 条',bad:!!ge[k]}})
+      .concat(Object.keys(ge).filter(function(k){return !pr[k]}).map(function(k){return {k:methodName(k),v:'失败',bad:true}}));
+    if(Object.keys(ge).length)T.bad=true;
+    T.w='四种方法相互隔离 '+glossMark('多方法指向同一标的，方可视为跨方法信号。');
   }else if(step==='pool'){
     var cv=st.convergence||{};
     /* 共识分布的键是「4种方式」这样的中文串，不是数字键 */
@@ -4652,16 +4727,17 @@ function rlPlainStep(st,idx){
     T.t='合并候选池：同一标的归并为一条';
     T.d=fmtInt(st.raw)+' 条原始候选归并为 '+fmtInt(st.merged)+' 条'
       +(four?'，其中 '+fmtInt(four)+' 条为 4 种生成方法共同指向的标的':'')+'。';
-    T.w='合并后各选取策略面对同一候选池，策略间差异仅来自选取规则本身。';
+    T.w='合并后各选取策略面对同一候选池';
   }else if(step==='selectors'){
     var ch=st.chosen||{};
     var ks2=Object.keys(ch);
     T.t='选取持仓：各策略自同一候选池独立选取';
-    T.d='候选池 '+fmtInt(st.pool)+' 条，'
-      +ks2.map(function(k){return selMetaOf(k)[1]+' 选中 '+fmtInt(ch[k])+' 条'}).join('、')+'。';
-    T.w='同池、同期、同风控规则，唯一变量为选取策略，是后续配对比较成立的前提。';
+    T.d='候选池 '+fmtInt(st.pool)+' 条';
     var se=st.errors||{};
-    if(Object.keys(se).length){T.bad=true;T.d+=' 其中 '+Object.keys(se).map(function(k){return selMetaOf(k)[1]+' 执行失败'}).join('、')+'。';}
+    T.chips=ks2.map(function(k){return {k:selMetaOf(k)[1],v:fmtInt(ch[k])+' 条',bad:!!se[k]}})
+      .concat(Object.keys(se).filter(function(k){return ch[k]===undefined}).map(function(k){return {k:selMetaOf(k)[1],v:'失败',bad:true}}));
+    if(Object.keys(se).length)T.bad=true;
+    T.w='唯一变量是选取策略 '+glossMark('同池、同期、同风控规则——这是后续配对比较成立的前提。');
   }else{
     T.t=rlStepName(step);
     T.d=rlKvHTML(st).replace(/<[^>]+>/g,' ');
@@ -4702,8 +4778,9 @@ function rlPlainHTML(j){
       var fs=st._feeds,okN=fs.filter(function(f){return f.ok}).length;
       at=fs[0].at;
       T={t:'数据接入：'+fs.length+' 路来源',
-         d:fs.map(function(f){return (f.step||'').slice(5)+(f.ok?' 正常':' 失败')}).join('、')+'。',
-         w:okN<fs.length?'存在取数失败的来源，本期可用材料低于正常水平。':'四路来源均已接入：研报语料、宏观日历、可交易标的清单。',
+         d:okN+' / '+fs.length+' 路正常',
+         chips:fs.map(function(f){return {k:(f.step||'').slice(5),v:f.ok?'正常':'失败',bad:!f.ok}}),
+         w:okN<fs.length?'本期可用材料低于正常水平 '+glossMark('有来源取数失败。'):'',
          bad:okN<fs.length};
     }else{T=rlPlainStep(st);at=st.at}
     n++;
@@ -4713,7 +4790,10 @@ function rlPlainHTML(j){
       +'<div class="rlp-main">'
       +'<div class="rlp-t">'+esc(T.t)+'</div>'
       +'<div class="rlp-d">'+esc(T.d)+'</div>'
-      +(T.w?'<div class="rlp-w">'+esc(T.w)+'</div>':'')
+      +((T.chips&&T.chips.length)?'<div class="rlp-chips">'+T.chips.map(function(c){
+          return '<span class="rlp-chip'+(c.bad?' bad':'')+'">'+esc(c.k)+(c.v?'<b>'+esc(c.v)+'</b>':'')+'</span>';
+        }).join('')+'</div>':'')
+      +(T.w?'<div class="rlp-w">'+T.w+'</div>':'')
       +'</div>'
       +'<div class="rlp-time">'+rlTime(at)+(dt!==null?'<span>+'+dt.toFixed(0)+'s</span>':'')+'</div>'
       +'</div>';
@@ -5169,7 +5249,7 @@ function stageGeneratorsBody(d){
   return tabs+focusHead
     +pathLegend(GEN_PATH,GEN_ORDER.map(function(o){return o[0]}))
     +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法 × '+chosen.length+' 个主题并行生成，彼此独立 '+glossMark('每条想法是 1 个月期限的结构化输出，含概率、上下行情景与论点。四种方法互不可见。')+' · 本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条 · 色深 = 产量'
-    +(focKey?'':' · 点方法名只看一种，点格子去候选池看那批想法')+'</div>'
++'</div>'
     +html
     +epi('目标为每方法每主题 '+(target||20)+' 条；未写满不补足，缺口本身为观测量');
 }
@@ -5390,11 +5470,11 @@ function stageBookingBody(){
     var pos=b.open_positions||[];
     var posHtml;
     if(pos.length){
-      posHtml='<div class="pos-headr"><span>标的</span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS+'读法：左端止损、右端止盈，竖线是进场价，圆点是现价。')+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
+      posHtml='<div class="pos-headr"><span>标的</span><span></span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS+'读法：左端止损、右端止盈，竖线是进场价，圆点是现价。')+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
         +pos.map(function(p){
           return '<div class="pos-line">'
             +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\')">'+esc(bareCode(p.code))+'</button></span>'
-            +'<span>'+askBtn('idea','pool:'+bareCode(p.code),{stop:true,cls:'sm'})+'</span>'
+            +'<span>'+askBtn('idea','pool:'+bareCode(p.code),{stop:true,cls:'sm icon'})+'</span>'
             +'<span class="pos-nm" title="'+esc(p.thesis||'')+'">'+esc(p.instrument_name||'')+(p.theme_id?' · '+esc(p.theme_id):'')+'</span>'
             +rngBarHTML(p)
             +'<span class="pos-pnl '+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'</span>'
@@ -5577,7 +5657,7 @@ function themeBarHTML(b,compact){
     +' <span class="gloss" title="按各仓位当前市值占该账本在场市值的比例计算；主题取自标的所属主题。同色即同一主题，可跨策略横向比较。">ⓘ</span></div>'
     +'<span class="tx-bar">'+segs+'</span>'
     +'<div class="tx-keys">'+legend+'</div>'
-    +(nStale?'<div class="card-note" style="margin-top:6px">带「旧期」的主题本期未入选，这些仓位建于更早的期，按原风控继续持有——组合不会因为主题落选就被强制平掉。</div>':'')
+    +(nStale?'<div class="card-note" style="margin-top:6px">「旧期」= 本期未入选的主题，仓位来自更早的期 '+glossMark('按原风控继续持有到期或触发止损止盈——组合不会因为主题落选就被强制平掉。')+'</div>':'')
     +'</div>';
 }
 
@@ -5806,12 +5886,12 @@ function proposalsDrawerBody(d){
   var code=String(d.p||'');
   var r=ensureProposals(code);
   if(r===null&&!propsErr[code])return '<div class="empty-sm">正在取回 '+esc(code)+' 合并前的原始提案……</div>';
-  if(propsErr[code])return '<div class="empty-sm">取不到原始提案：'+esc(propsErr[code])
-    +'。原始提案存在这次运行的生成产物里，需要后端现场读取。</div>';
+  if(propsErr[code])return '<div class="empty-sm">取不到原始提案：'+esc(propsErr[code])+' '
+    +glossMark('原始提案存在这次运行的生成产物里，需要后端现场读取。')+'</div>';
   var ps=(r&&r.proposals)||[],docs=(r&&r.docs)||{};
   if(!ps.length){
-    return '<div class="empty-sm">这次运行的生成产物里没有 '+esc(code)+' 的提案记录。'
-      +'候选池里的这一行可能来自更早一期的持仓，而不是本期新写的想法。</div>';
+    return '<div class="empty-sm">本期生成产物里没有 '+esc(code)+' 的提案记录 '
+      +glossMark('候选池里的这一行可能来自更早一期的持仓，而不是本期新写的想法。')+'</div>';
   }
   var byM={},order=[];
   ps.forEach(function(x){var m=x.method||'—';if(!byM[m]){byM[m]=[];order.push(m)}byM[m].push(x)});
@@ -6443,7 +6523,9 @@ function calDrawerBody(){
     +'</div>';
   }).join('');
 
-  return '<div class="card-note" style="margin-bottom:var(--space-3)">'
+  /* ⓘ 必须挂在一个锚点上：孤零零一个图标浮在区块开头，读者不知道它在解释什么。
+     标签留在外面，说明全部收进 ⓘ。 */
+  return '<div class="card-note" style="margin-bottom:var(--space-3)">按期记录'
     +'<span class="gloss" title="每期一行，展开可见该期运行、数据与错误。时间为 HKT。">ⓘ</span></div>'
     +monLine
     +(calRows||'<div class="empty-sm">暂无周跑记录</div>');

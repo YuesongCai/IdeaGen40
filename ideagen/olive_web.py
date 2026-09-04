@@ -197,6 +197,29 @@ def start_sync() -> bool:
     return True
 
 
+def _dir_state() -> str:
+    """Owner and mode of the token directory, as this process sees it."""
+    token_file = config.olive_token_file()
+    if token_file is None:
+        return "unset"
+    try:
+        info = token_file.parent.stat()
+    except OSError as exc:
+        return f"unreadable ({exc.__class__.__name__})"
+    return f"uid={info.st_uid} gid={info.st_gid} mode={oct(info.st_mode & 0o777)}"
+
+
+def _boot_tail_env() -> list[str]:
+    """Boot log delivered through the environment instead of the filesystem.
+
+    The mount is exactly what may be unreadable, so the log copied into it is
+    unreadable in the same failure. env_file values reach the process whatever
+    the filesystem says, which makes this the channel that survives.
+    """
+    raw = os.environ.get("IDEAGEN_BOOT_TAIL", "").strip()
+    return [part for part in raw.split(" | ") if part] if raw else []
+
+
 def _boot_log(lines: int = 14) -> list[str]:
     """The tail of the instance's last boot, for a host with no shell.
 
@@ -263,7 +286,12 @@ def status() -> dict[str, Any]:
         "endpoint_set": bool(config.OLIVE_MCP_URL),
         "issuer_set": bool(config.OLIVE_OAUTH_ISSUER),
         "token_file": token_state,
-        "boot_log": _boot_log(),
+        # Who the process actually is, and what it can see of the mount. Every
+        # theory about the token directory so far has been an assumption about
+        # this number; five deploys is enough of that.
+        "runtime_uid": os.getuid(),
+        "token_dir": _dir_state(),
+        "boot_log": _boot_log() or _boot_tail_env(),
         "credential_keys": sorted(credentials),
         "configured": bool(credentials.get("access_token")),
         "refreshable": bool(credentials.get("refresh_token")),

@@ -124,6 +124,11 @@ say "oauth $(stat -c '%u %a' /opt/ideagen/oauth) [$(ls -A /opt/ideagen/oauth|tr 
 # ever in these lines -- the presigned URL is never echoed.
 cp "$STATUS" /opt/ideagen/oauth/bootstrap.log 2>/dev/null || true
 chown 10001:10001 /opt/ideagen/oauth/bootstrap.log 2>/dev/null || true
+# ...and again through env_file, because the mount is the very thing that may
+# be unreadable: a log stored inside the failure is unreadable in that failure.
+sed -i '/^IDEAGEN_BOOT_TAIL=/d' "$CONF"
+printf 'IDEAGEN_BOOT_TAIL=%s\n' \
+  "$(tail -8 "$STATUS" | tr -d '\r' | sed 's/[|=]/ /g' | paste -sd '|' - | cut -c1-900)" >> "$CONF"
 
 say "starting dashboard + proxy"
 pkill -f "http.server 80" >/dev/null 2>&1 || true

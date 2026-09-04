@@ -1386,8 +1386,10 @@ body.drawer-lock{overflow:hidden}
       </div>
       <div id="deadBanner"></div>
 
-      <section class="view" id="view-week"></section>
-      <section class="view" id="view-process"></section>
+      <section class="view" id="view-overview"></section>
+      <section class="view" id="view-holdings"></section>
+      <section class="view" id="view-method"></section>
+      <section class="view" id="view-evidence"></section>
     <section class="view" id="view-rules"></section>
     </div>
   </main>
@@ -1736,7 +1738,7 @@ function refresh(){
     if(!r.ok)throw new Error('HTTP '+r.status);
     return r.json();
   }).then(function(j){J=j;JErr=null}).catch(function(e){J=null;JErr=e&&e.message?e.message:String(e)})
-  .then(function(){if(S){renderProcess();renderDrawers()}});
+  .then(function(){if(S){renderMethod();renderDrawers()}});
   /* 重试与 60 秒轮询共用这条路径：在途时不再发第二次，
      避免连点重试或慢响应时请求堆叠。 */
   if(fetchInFlight)return;
@@ -1803,17 +1805,29 @@ function renderDeadBanner(msg,status,detail){
 /* ── navigation: 结论 / 推导 / 凭据 ──────────────────────────── */
 /* 领域与子项。slug 用拉丁字母，因为它同时是 URL 片段和埋点 element_id 的
    前缀——显示文案会改、会切语言，标识不能跟着变。 */
+/* 导航按「一个零背景 PM 打开这一页」的旅程切，不按数据结构切：
+   他依次要问「这是什么 / 它管用吗 / 现在拿着什么 / 凭什么信」。
+   之前 2 个 tab 装不下这个产品，内容只能塞进 13 个抽屉，同一个目的地
+   长出多个入口和多个名字。规则定为：tab = 一类内容，抽屉 = 某一个具体
+   对象的详情。 */
 var VIEWS=[
-  {id:'week',label:'组合',sub:'当期持仓与损益',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>',
-   secs:[{s:'overview',label:'概览'},
-         {s:'mainline',label:'主链路'},
-         {s:'strategies',label:'选取策略'},
-         {s:'holdings',label:'持仓'},
-         {s:'backtest',label:'回测'}]},
-  {id:'process',label:'链路',sub:'生成过程与凭据',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>',
-   secs:[{s:'canvas',label:'生成链路'},
+  {id:'overview',label:'概览',sub:'它管用吗',
+   icon:'<path d="M2 12.5 6 7l3 3 5-6.5"/><path d="M2 14h12"/>',
+   secs:[{s:'verdict',label:'结论'},
+         {s:'status',label:'运行状态'}]},
+  {id:'holdings',label:'持仓',sub:'现在拿着什么',
+   icon:'<path d="M2.5 5.5h11v8h-11z"/><path d="M5.5 5.5V3.5h5v2"/>',
+   secs:[{s:'exposure',label:'主题敞口'}]},
+  {id:'method',label:'方法',sub:'怎么选出来的',
+   icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>',
+   secs:[{s:'mainline',label:'三段主线'},
+         {s:'canvas',label:'生成链路'},
          {s:'corpus',label:'语料来源'},
-         {s:'universe',label:'标的货架'},
+         {s:'universe',label:'标的货架'}]},
+  {id:'evidence',label:'证据',sub:'凭什么信',
+   icon:'<path d="M8 2 2.8 4.1v4c0 3 2.1 4.8 5.2 5.4 3.1-.6 5.2-2.4 5.2-5.4v-4L8 2Z"/>',
+   secs:[{s:'strategies',label:'选取策略对比'},
+         {s:'backtest',label:'历史回测'},
          {s:'receipt',label:'运行回执'}]}
 ];
 function viewOf(id){return VIEWS.find(function(v){return v.id===id})||VIEWS[0]}
@@ -1997,8 +2011,10 @@ function renderAll(){
   $('deadBanner').innerHTML='';
   POPS={};popSeq=0; /* 速览注册表随全量重渲染重建 */
   renderStamp();
-  renderWeek();
-  renderProcess();
+  renderOverview();
+  renderHoldings();
+  renderMethod();
+  renderEvidence();
   renderRules();
   renderDrawers(); /* 抽屉打开时刷新其内容 */
   buildNav();      /* 子项依赖区块是否渲染，必须在内容之后重建 */
@@ -2014,26 +2030,39 @@ var holdView='map';
 /* 主链路三段：默认全部折叠；展开后就地渲染该阶段的完整现场 */
 var mlOpen={0:false,1:false,2:false};
 var mlFocus={1:null,2:null};
-function toggleStage(i){mlOpen[i]=!mlOpen[i];renderWeek()}
+function toggleStage(i){mlOpen[i]=!mlOpen[i];renderMethod()}
 
-function renderWeek(){
-  if(!S){$('view-week').innerHTML='';return}
+/* 概览：一个零背景的人在这一屏里要拿到三件事 ——
+   这是什么、它管用吗、还在不在跑。别的都不属于这里。 */
+function renderOverview(){
+  var root=$('view-overview');
+  if(!S){root.innerHTML='';return}
   var w=S.weekly||{};
   var ag=aggBooks();
   var period=w.as_of||((S.schedule||{}).current_period)||'—';
-
-  var html='';
-  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合'+periodBadge()+'</div>';
-  /* 页面此前从不说明自己是什么。首屏三问的第一问，一句话答完。 */
-  html+='<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
-    +'每周三自动读研报、选宏观主题、写出想法并建仓；'+currentBooks().length+' 个选取策略各记一本账，比较哪种选得更好。</div>';
-  html+=statusStrip();
-  html+=secWrap('week','overview',portfolioHeadline(ag));
-  html+=secWrap('week','mainline',mainLine(ag));
-  html+=secWrap('week','strategies',raceHero(ag));
-  html+=secWrap('week','holdings',holdMapCard(ag));
-  html+=secWrap('week','backtest',backtestCard());
-  $('view-week').innerHTML=html;
+  root.innerHTML=
+     '<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期'+periodBadge()+'</div>'
+    +'<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
+      +'每周三自动读研报、选宏观主题、写出想法并建仓；'+currentBooks().length
+      +' 个选取策略各记一本账，比较哪种选得更好。</div>'
+    +secWrap('overview','verdict',portfolioHeadline(ag))
+    +secWrap('overview','status',statusStrip());
+}
+/* 持仓：PM 的职业本能 —— 现在拿着什么、压在哪几个宏观判断上。 */
+function renderHoldings(){
+  var root=$('view-holdings');
+  if(!S){root.innerHTML='';return}
+  root.innerHTML=secWrap('holdings','exposure',holdMapCard(aggBooks()));
+}
+/* 证据：凭什么信。选取策略对比属于这里而不是首屏——它是一个还要十几周
+   才有结论的实验，放在概览会把「它管用吗」那一问挤掉。 */
+function renderEvidence(){
+  var root=$('view-evidence');
+  if(!S){root.innerHTML='';return}
+  root.innerHTML=
+     secWrap('evidence','strategies',raceHero(aggBooks()))
+    +secWrap('evidence','backtest',backtestCard())
+    +secWrap('evidence','receipt',runReceiptStrip());
   if($('candTable')){bindCandSort();renderCandBody()}
 }
 
@@ -2203,6 +2232,28 @@ function miniChain(stage,label){
 }
 /* ── Hero = 噪音带：第 2 周「还分不出高下」本身就是画面 ── */
 var TARGET_WEEKS=17;
+/* 回测表把 1 天和 30 天的持仓放在一起算胜率，页面却平铺写着「持有期 30 天」。
+ * 目标期限确实是 30 天，但最近几期还没跑完——它们的收益是中途读数，
+ * 不是完成的交易。把「目标」和「实际已过」分开写，胜率才不会被读成
+ * 「30 天交易的胜率」。后端的免责声明详述了前视风险，独独没提这一条。 */
+function backtestMaturity(){
+  var b=(S&&S.backtest)||{},pos=b.positions||[];
+  var sum=b.summary||{},target=Number(sum.horizon_days)||0;
+  var byPeriod={};
+  pos.forEach(function(x){
+    if(!x.entry_d||!x.exit_d)return;
+    var d=Math.round((new Date(x.exit_d)-new Date(x.entry_d))/86400000);
+    if(!isFinite(d))return;
+    var p=x.period||'—';
+    if(!byPeriod[p]||d>byPeriod[p])byPeriod[p]=d;
+  });
+  var ks=Object.keys(byPeriod).sort();
+  if(!ks.length)return null;
+  var ds=ks.map(function(k){return byPeriod[k]});
+  var full=ks.filter(function(k){return target&&byPeriod[k]>=target}).length;
+  return {periods:ks,byPeriod:byPeriod,min:Math.min.apply(null,ds),max:Math.max.apply(null,ds),
+          full:full,n:ks.length,target:target};
+}
 var VERDICT_GLOSS='样本量要求约 17 周（≈4 个月）：各账本使用同一候选池，净值差异仅来自选取策略。按预注册的配对检验口径（持有期重叠折算 + 配对相关 ρ≈0.8 先验），可靠识别 2 个百分点/月的真实差距需约 4 个月重叠持有样本。此前的排名不构成结论。';
 var BAND_GLOSS='±2 个百分点为预注册的可检出差距。当前样本量下，小于该幅度的领先无法与随机波动区分，带内排名不构成结论。';
 function bookColor(name){
@@ -2372,7 +2423,7 @@ function singleCurveSVG(lb){
   return '<div class="funnel-wrap">'+svg+'</div>';
 }
 /* ── 持仓组合地图：主题敞口分布 ── */
-function setHoldView(v){holdView=v;renderWeek()}
+function setHoldView(v){holdView=v;renderHoldings()}
 function holdMapCard(ag){
   var w=S.weekly||{};
   var head='<div class="qhead"><h2 class="qtitle">主题敞口分布<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+((ag&&ag.books)?ag.books.length:8)+' 个账本合计</span></h2>'
@@ -3157,7 +3208,19 @@ function backtestCard(){
     +'<div class="bt-meta">'
       +'<div class="meta-kv"><div class="k">窗口</div><div class="v num">'+esc(b.window_start||'—')+' → '+esc(b.window_end||'—')+'</div></div>'
       +'<div class="meta-kv"><div class="k">期数</div><div class="v">'+mix+'</div></div>'
-      +'<div class="meta-kv"><div class="k">持有期</div><div class="v num">'+fmtInt(sum.horizon_days)+' 天</div></div>'
+      +(function(){
+      var m=backtestMaturity();
+      if(!m||!m.target)return '<div class="meta-kv"><div class="k">持有期</div><div class="v num">'+fmtInt(sum.horizon_days)+' 天</div></div>';
+      var partial=m.n-m.full;
+      var tip='目标持有期 '+m.target+' 天。各期起点不同，所以到今天为止实际已过 '
+        +m.min+'~'+m.max+' 天：'+m.periods.map(function(k){return k+' '+m.byPeriod[k]+' 天'}).join('、')+'。'
+        +(partial?'其中 '+partial+' 期尚未满 '+m.target+' 天，它们的收益按最新收盘计价，是中途读数而不是已完成的交易——下表的胜率与平均收益把两类放在一起算，读的时候要记得这一点。'
+                :'所有期次均已满 '+m.target+' 天。');
+      return '<div class="meta-kv"><div class="k">持有期</div><div class="v num">目标 '+m.target+' 天'
+        +'<span style="font-family:var(--font-sans);font-weight:400;color:var(--color-text-tertiary)"> · 实际已过 '+m.min+'~'+m.max+' 天'
+        +(partial?'（'+partial+'/'+m.n+' 期未满）':'')+'</span>'
+        +'<span class="gloss" title="'+esc(tip)+'">ⓘ</span></div></div>';
+    })()
       +(sum.asof_audit
         ?'<div class="meta-kv"><div class="k">时间钳制</div><div class="v" '
           +'title="'+esc(sum.asof_audit.checks||'')+'。回放是 strict 模式：任一项越界直接中止，'
@@ -3204,7 +3267,19 @@ function backtestSection(){
   var meta='<div class="bt-meta">'
     +'<div class="meta-kv"><div class="k">回测窗口</div><div class="v num">'+esc(windowStart)+' → '+esc(b.window_end)+'</div></div>'
     +'<div class="meta-kv"><div class="k">周频周期</div><div class="v num">'+fmtInt(dates.length)+' 期</div></div>'
-    +'<div class="meta-kv"><div class="k">持有期</div><div class="v num">'+fmtInt(sum.horizon_days)+' 天</div></div>'
+    +(function(){
+      var m=backtestMaturity();
+      if(!m||!m.target)return '<div class="meta-kv"><div class="k">持有期</div><div class="v num">'+fmtInt(sum.horizon_days)+' 天</div></div>';
+      var partial=m.n-m.full;
+      var tip='目标持有期 '+m.target+' 天。各期起点不同，所以到今天为止实际已过 '
+        +m.min+'~'+m.max+' 天：'+m.periods.map(function(k){return k+' '+m.byPeriod[k]+' 天'}).join('、')+'。'
+        +(partial?'其中 '+partial+' 期尚未满 '+m.target+' 天，它们的收益按最新收盘计价，是中途读数而不是已完成的交易——下表的胜率与平均收益把两类放在一起算，读的时候要记得这一点。'
+                :'所有期次均已满 '+m.target+' 天。');
+      return '<div class="meta-kv"><div class="k">持有期</div><div class="v num">目标 '+m.target+' 天'
+        +'<span style="font-family:var(--font-sans);font-weight:400;color:var(--color-text-tertiary)"> · 实际已过 '+m.min+'~'+m.max+' 天'
+        +(partial?'（'+partial+'/'+m.n+' 期未满）':'')+'</span>'
+        +'<span class="gloss" title="'+esc(tip)+'">ⓘ</span></div></div>';
+    })()
     +'<div class="meta-kv"><div class="k">模型调用</div><div class="v num">'+fmtInt(sum.model_calls)+' 次</div></div>'
     +'<div class="meta-kv"><div class="k">持久化</div><div class="v">RDS 明细 · '+(b.artifact_archived?'TOS 不可变归档':'未归档')+'</div></div>'
     +'</div>';
@@ -3433,10 +3508,10 @@ function setDrawerFocus(f){
   var top=drawerStack[drawerStack.length-1];
   if(top){top.f=f;top.scrolled=false;renderDrawers();return}
   /* 无抽屉时聚焦落在主链路的就地展开区：按取值归属判定属于哪一段 */
-  if(f===null||f===undefined){mlFocus[1]=null;mlFocus[2]=null;renderWeek();return}
+  if(f===null||f===undefined){mlFocus[1]=null;mlFocus[2]=null;renderMethod();return}
   var isGen=GEN_ORDER.some(function(o){return o[0]===f||methodName(o[0])===methodName(f)});
   if(isGen)mlFocus[2]=f; else mlFocus[1]=f;
-  renderWeek();
+  renderMethod();
 }
 function openTopicDrawer(tid){pushDrawer({t:'topic',p:tid})}
 function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
@@ -3732,16 +3807,16 @@ function orderedSelectors(){
 }
 
 /* ══════════ 渲染入口：画布 + 回执，就这两样 ══════════ */
-function renderProcess(){
-  var root=$('view-process');
+/* 方法：它是怎么从 858 篇研报走到 73 条候选的。逐段可回溯。 */
+function renderMethod(){
+  var root=$('view-method');
   if(!S){root.innerHTML='';return}
-  var html='';
-  html+=procFailBanner();
-  html+=secWrap('process','canvas',pipeCanvasCard());
-  html+=secWrap('process','corpus',corpusSourceCard());
-  html+=secWrap('process','universe',universeCard());
-  html+=secWrap('process','receipt',runReceiptStrip());
-  root.innerHTML=html;
+  root.innerHTML=
+     procFailBanner()
+    +secWrap('method','mainline',mainLine(aggBooks()))
+    +secWrap('method','canvas',pipeCanvasCard())
+    +secWrap('method','corpus',corpusSourceCard())
+    +secWrap('method','universe',universeCard());
 }
 
 /* 语料来源：本期各来源的期次与条数，直达逐篇研报清单 */

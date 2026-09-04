@@ -425,11 +425,16 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
                 "mde_pct": None if mde is None else round(mde, 3)}
 
     arms: dict[str, Any] = {}
+    gone_set = set(dropped)
     for arm in sorted({str(r["arm"]) for r in positions}):
         mine = [r for r in positions if r["arm"] == arm]
         full = stats(mine)
-        kept = stats([r for r in mine
-                      if str(r.get("instrument_id")) not in set(dropped)])
+        kept_rows = [r for r in mine
+                     if str(r.get("instrument_id")) not in gone_set]
+        gone_rows = [r for r in mine
+                     if str(r.get("instrument_id")) in gone_set]
+        kept = stats(kept_rows)
+        gone = stats(gone_rows)
         if not full:
             continue
         entry: dict[str, Any] = {"full": full, "excluded": kept,
@@ -437,34 +442,49 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
                                                 if kept else 0.0)}
         delta = (None if not kept else
                  round(kept["mean_return_pct"] - full["mean_return_pct"], 4))
-        mde = kept.get("mde_pct") if kept else None
-        # The move has to clear what the remaining sample could have seen. A
-        # swing smaller than the sample's own detectable effect is not a finding
-        # about the strategy, and neither is a swing measured where no effect of
-        # any size could have been detected.
+        # `delta_mean_pct` describes the move and nothing more. The comparison
+        # that can carry a verdict is a different one: kept against dropped, two
+        # disjoint groups. Bounding kept-minus-full by kept's own MDE — which is
+        # what shipped — tests a subset against the superset containing it, and
+        # charges the difference to only one of the two samples that produced
+        # it. Third time tonight I put a verdict beside a quantity it did not
+        # cover, so this one states what it covers.
+        contrast = (None if not (kept and gone) else
+                    round(kept["mean_return_pct"] - gone["mean_return_pct"], 4))
+        mde_k = (kept or {}).get("mde_pct")
+        mde_g = (gone or {}).get("mde_pct")
+        mde = (None if mde_k is None or mde_g is None
+               else round((mde_k ** 2 + mde_g ** 2) ** 0.5, 3))
         entry["delta_mean_pct"] = delta
+        entry["dropped"] = gone
+        entry["kept_vs_dropped_pct"] = contrast
+        entry["mde_kept_vs_dropped_pct"] = mde
+        entry["verdict_applies_to"] = "kept_vs_dropped_pct"
+        delta = contrast
         n_kept = kept["n"] if kept else 0
         held = f"（{n_kept} / {full['n']} 笔持仓保留）"
         if mde is None or delta is None:
             entry["verdict"] = "underpowered"
-            entry["why"] = f"剔除后剩 {n_kept} 笔已计价持仓，不足以计算可检出差距{held}"
+            entry["why"] = (f"剔除后剩 {n_kept} 笔已计价持仓，"
+                            f"两组之一样本太小，算不出可检出差距{held}")
         elif abs(delta) < mde:
             # Not "the arm is stable" — "this sample could not have seen a move
             # this small". The distinction is the whole point of computing an
             # MDE instead of counting rows.
             entry["verdict"] = "underpowered"
             entry["why"] = (
-                f"剔除后平均收益变动 {delta:+.2f} 个百分点，小于该样本自身的"
-                f"最小可检出差距 {mde:.2f} 个百分点，无法判断{held}")
+                f"其余标的与被剔除的高频标的相差 {delta:+.2f} 个百分点，"
+                f"小于两组合并的可检出下界 {mde:.2f} 个百分点，无法判断{held}")
         else:
             # Deliberately not "shifted". The threshold it cleared is a lower
             # bound on this sample's blindness, so clearing it rules the move
             # in as worth watching and establishes nothing.
             entry["verdict"] = "not_ruled_out"
             entry["why"] = (
-                f"剔除后平均收益变动 {delta:+.2f} 个百分点，大于该样本可检出下界 "
-                f"{mde:.2f} 个百分点{held}；该下界忽略了同臂持仓的相关性，"
-                f"因此这是「未被排除」，不是「已确认变动」")
+                f"其余标的与被剔除的高频标的相差 {delta:+.2f} 个百分点，"
+                f"大于两组合并的可检出下界 {mde:.2f} 个百分点{held}；"
+                f"该下界忽略了同臂持仓的相关性，因此这是「未被排除」，"
+                f"不是「已确认变动」")
         arms[arm] = entry
 
     answerable = [a for a, e in arms.items() if e["verdict"] != "underpowered"]
@@ -479,7 +499,10 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
             "note": (
                 "剔除本期最常被持有的标的后重算。判据不是持仓条数，而是剩余样本"
                 "自己的最小可检出差距（α=0.05 / power=0.80，与配对检验同口径）："
-                "变动小于该门槛、或样本小到算不出门槛的臂，标为 underpowered。"
+                "判定比较的是两个不相交的组——其余标的与被剔除的高频标的，"
+                "而不是子集与包含它的全集；下界由两组合并给出。"
+                "delta_mean_pct 仅作描述（剔除后均值相对全样本的变动），不带判定。"
+                "差距小于该门槛、或某一组小到算不出门槛的臂，标为 underpowered。"
                 "该门槛忽略了同臂持仓之间的相关性，是真实盲区的下界，所以只能用来"
                 "否定：越过它的臂标为 not_ruled_out（值得盯，未确认），没有任何臂"
                 "会被这项检验判定为「确实依赖高频标的」。")}

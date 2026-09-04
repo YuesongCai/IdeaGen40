@@ -24,6 +24,7 @@ services:
     # 改不动；依赖关系写在这里，compose 会把 scheduler 一并拉起来。
     depends_on:
       - scheduler
+      - updater
     env_file:
       - /opt/ideagen/config/runtime.env
     environment:
@@ -35,6 +36,10 @@ services:
       IDEAGEN_OLIVE_TOKEN_FILE: "/run/ideagen-oauth/tokens.json"
     volumes:
       - /opt/ideagen/oauth:/run/ideagen-oauth
+      # 只读挂进来，好让 /deploy 能说出「云端现在是哪个 commit、跟 origin/main
+      # 差多少、上一次自更新成功还是被测试拦下」。自更新如果没人看得见，
+      # 它失败的那天和它正常的那天长得一模一样。
+      - /opt/ideagen/health:/run/ideagen-health:ro
     expose:
       - "8765"            # 仅 compose 内网可见，不映射到宿主
     # Podman's podman-restart.service restores only policy=always at boot.
@@ -63,6 +68,35 @@ services:
       - /opt/ideagen/oauth:/run/ideagen-oauth
     restart: always
 
+  # 自更新：盯着 origin/main，变了就构建 → 跑测试 → 换掉自己。
+  # 之前部署要手动重启实例，于是云端永远停在上次重启时的 commit——「云端是旧的」
+  # 成了常态，而且不看没人知道旧多少。它轮询而不是被推送，是因为这台机器没有
+  # 入站通道（没有 SSH、命令代理装不上），webhook 还要多开一个公网端点和一把
+  # 共享密钥去保护它。
+  #
+  # 测试是这个服务的重点，不是附赠：main 上有多个 agent 在推，装了它之后
+  # 「谁能推 main」就等于「谁能改生产」，中间没有人。构建出来的镜像先跑一遍
+  # 测试再切换，失败就留在原来那版并把原因写进 /opt/ideagen/health/updater.json。
+  updater:
+    image: "docker:27-cli"
+    entrypoint: ["/bin/sh", "/updater.sh"]
+    environment:
+      IDEAGEN_UPDATE_INTERVAL_S: "${IDEAGEN_UPDATE_INTERVAL_S:-120}"
+      IDEAGEN_UPDATE_REQUIRE_TESTS: "${IDEAGEN_UPDATE_REQUIRE_TESTS:-1}"
+      # 跟 origin/main = 推了就上（测试过了才上）。想把「写完」和
+      # 「可以给人看」分开，把它改成一个 tag ref 即可，代码不用动。
+      IDEAGEN_UPDATE_REF: "${IDEAGEN_UPDATE_REF:-origin/main}"
+      IDEAGEN_PUBLIC_HOST: "${IDEAGEN_PUBLIC_HOST:-101.47.152.106}"
+      IDEAGEN_PUBLIC_SITE: "${IDEAGEN_PUBLIC_SITE:-https://101.47.152.106}"
+      IDEAGEN_DEFAULT_SNI: "${IDEAGEN_DEFAULT_SNI:-101.47.152.106}"
+    volumes:
+      # 构建上下文与 git 工作树；docker socket 用来构建和换容器。
+      - /opt/ideagen/app:/opt/ideagen/app
+      - /opt/ideagen/health:/opt/ideagen/health
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./updater.sh:/updater.sh:ro
+    restart: always
+
   proxy:
     image: "caddy:2-alpine"
     depends_on:
@@ -73,12 +107,8 @@ services:
       # IP 客户端可能不发送 SNI；IP HTTPS 时设置为相同的公网 IP。
       IDEAGEN_DEFAULT_SNI: "${IDEAGEN_DEFAULT_SNI:-localhost}"
       IDEAGEN_PUBLIC_HOST: "${IDEAGEN_PUBLIC_HOST:-101.47.152.106}"
-      # 代理这一层管人的登录；dashboard 那把 key 由代理代发，不进浏览器。
-      # 这三个是代理需要的**全部**凭证——proxy 不挂 env_file，是为了不让
-      # 数据库口令进到一个只负责转发的容器里。
-      IDEAGEN_DASH_USER: "${IDEAGEN_DASH_USER:-}"
-      IDEAGEN_DASH_HASH: "${IDEAGEN_DASH_HASH:-}"
-      IDEAGEN_DASH_KEY: "${IDEAGEN_DASH_KEY:-}"
+      # 代理不再持有任何凭证：登录页、会话和账号都在应用里。一个只负责
+      # 转发的容器不该知道任何口令，现在它确实一个也不知道。
     ports:
       - "80:80"
       - "443:443"         # 配好域名与证书后启用；仅 HTTP 联调期可临时只留 80

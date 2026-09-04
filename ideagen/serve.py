@@ -367,8 +367,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             obj, status = philosophy_web.handle_list()
             return self._json(obj, status=status)
         if path == "/api/state":
-            from . import review
-            return self._json(review.state(db.init()))
+            return self._json(_state_document())
         if path == "/api/olive/status":
             from . import olive_web
             return self._json(olive_web.status())
@@ -752,6 +751,42 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
             self._set_download = None
         self.end_headers()
         self.wfile.write(body)
+
+
+#: The state document is the page's first paint and its 60-second poll. One
+#: build costs about six seconds — roughly three in SQLite across ninety
+#: queries, the rest in the platform probes — and the server is threaded, so
+#: two readers arriving together used to build it twice, three times, in
+#: parallel over the same connection. Measured on this machine: 6s idle, then
+#: 29s, 69s, 22s as concurrency piled up. That is not a slow page, that is a
+#: page that looks broken.
+#:
+#: Two changes, no new machinery: callers that arrive while a build is running
+#: wait for that build instead of starting their own, and a finished document
+#: is reused for a few seconds. The staleness is bounded by TTL and visible —
+#: `generated_at` travels in the document and the page prints it as 刷新于 —
+#: so nothing here can show old data while claiming to be current.
+_STATE_TTL_S = 20.0
+_state_lock = threading.Lock()
+_state_cache: dict[str, object] = {"at": 0.0, "doc": None}
+
+
+def _state_document():
+    now = time.time()
+    doc = _state_cache.get("doc")
+    if doc is not None and (now - float(_state_cache["at"])) < _STATE_TTL_S:
+        return doc
+    with _state_lock:
+        # Someone may have finished the build while this thread waited.
+        now = time.time()
+        doc = _state_cache.get("doc")
+        if doc is not None and (now - float(_state_cache["at"])) < _STATE_TTL_S:
+            return doc
+        from . import review
+        built = review.state(db.init())
+        _state_cache["doc"] = built
+        _state_cache["at"] = time.time()
+        return built
 
 
 class Server(socketserver.ThreadingTCPServer):

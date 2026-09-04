@@ -372,7 +372,15 @@ class TestPublicPocFixture(unittest.TestCase):
         caddy = (root / "deploy" / "Caddyfile").read_text()
         self.assertIn('test: ["CMD-SHELL"', compose)
         self.assertNotIn('test: ["CMD", "python3", "-c"', compose)
-        self.assertEqual(compose.count("restart: always"), 3)
+        # Every service restarts, checked per service rather than by counting
+        # them. The count broke the moment a fourth service was added, which
+        # taught nobody anything: what matters is that no service was left
+        # without a restart policy, not how many services there are.
+        import yaml as _yaml
+        services = _yaml.safe_load(compose)["services"]
+        for name, spec in services.items():
+            self.assertEqual(spec.get("restart"), "always",
+                             f"{name} 没有 restart: always")
         self.assertIn("scheduler:", compose)
         self.assertIn(
             'IDEAGEN_POC_WEEKLY_MODE: '

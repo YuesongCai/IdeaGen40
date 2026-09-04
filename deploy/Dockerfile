@@ -49,13 +49,18 @@ RUN pip install --no-cache-dir \
       "redis" \
       "kafka-python" \
       "openai" \
-      "volcengine"
+      "volcengine" \
+      "pytest"
 
 COPY ideagen ./ideagen
 # The instance has no shell, so anything an operator would have run by hand has
 # to be inside the image for the entrypoints to call — seeding the database from
 # the laptop's history is the current one.
 COPY scripts ./scripts
+# The updater runs this suite against a freshly built image before it
+# replaces the running one. Without the tests in the image there is no
+# gate between `git push` and production, and several agents push here.
+COPY tests ./tests
 COPY prompts ./prompts
 COPY seed ./seed
 COPY web ./web

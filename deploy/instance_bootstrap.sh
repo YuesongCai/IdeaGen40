@@ -196,10 +196,18 @@ if docker compose -f deploy/compose.yaml up -d --force-recreate dashboard proxy;
   # refused connection or a timeout means Caddy never came up — checking for
   # 200 here would report a working stack as broken the moment we added a
   # password.
+  #
+  # And it asks for the public name resolved to loopback, not for
+  # https://127.0.0.1: Caddy serves one site, named by the public address, so a
+  # request whose SNI and Host are 127.0.0.1 matches no site and answers
+  # non-200 on a perfectly healthy stack. That fired this branch on every boot,
+  # dumping logs onto the status page as though the deploy had failed. A probe
+  # that always cries wolf is worth exactly what one that never does is.
   ok=""
   for i in $(seq 1 36); do
     code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 6 \
-           "https://127.0.0.1/healthz" 2>/dev/null || echo 000)
+           --resolve "${PUBLIC_IP}:443:127.0.0.1" \
+           "https://${PUBLIC_IP}/healthz" 2>/dev/null || echo 000)
     case "$code" in 200|401) ok=1; break;; esac
     sleep 5
   done

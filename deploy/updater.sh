@@ -35,9 +35,24 @@ docker compose version >/dev/null 2>&1 || apk add --no-cache docker-cli-compose 
 
 say(){ echo "$(date -u +%FT%TZ) [updater] $*"; }
 
-report(){  # state, sha, detail — written where the operator can read it
-  printf '{"at":"%s","state":"%s","sha":"%s","detail":"%s"}\n' \
-    "$(date -u +%FT%TZ)" "$1" "$2" "$3" > "$REPORT" 2>/dev/null || true
+# What is actually running, as opposed to what is being attempted. They differ
+# whenever a build is blocked, and reporting only the target would say the
+# instance is on a commit it refused to deploy.
+DEPLOYED=$(sed -n 's/.*"deployed_sha":"\([^"]*\)".*/\1/p' "$REPORT" 2>/dev/null)
+DEPLOYED="${DEPLOYED:-unknown}"
+
+report(){  # state, target sha, detail
+  # `syncs` is not decoration. This updater carries CODE and nothing else: the
+  # instance's boot script is what delivers configuration, and it is baked into
+  # the system volume. So an instance can be perfectly up to date on code and
+  # two days stale on configuration, with every health signal green — which is
+  # exactly the failure a colleague found here. A status line that says "I am
+  # running and I am current" without saying *what* it keeps current is the
+  # same lie as a probe that reports a live box as dead.
+  printf '{"at":"%s","state":"%s","sha":"%s","deployed_sha":"%s","detail":"%s",'\
+'"syncs":"code from %s (image rebuilt, tests must pass)",'\
+'"does_not_sync":"runtime.env, the boot script, and anything else delivered by cloud-init — those need a reboot, and a UserData change needs the system volume replaced"}\n' \
+    "$(date -u +%FT%TZ)" "$1" "$2" "$DEPLOYED" "$3" "$REF" > "$REPORT" 2>/dev/null || true
 }
 
 say "watching $REF every ${INTERVAL}s (require_tests=${REQUIRE_TESTS})"
@@ -77,7 +92,7 @@ while :; do
           IDEAGEN_PUBLIC_SITE="${IDEAGEN_PUBLIC_SITE:-}" \
           IDEAGEN_DEFAULT_SNI="${IDEAGEN_DEFAULT_SNI:-}" \
             docker compose -f "$APP/deploy/compose.yaml" up -d >/tmp/updater-up.log 2>&1 \
-            && { say "deployed $want"; report deployed "$want" "up"; } \
+            && { say "deployed $want"; DEPLOYED="$want"; report deployed "$want" "up"; } \
             || { say "compose up failed"; report failed "$want" "$(tail -2 /tmp/updater-up.log | tr -d '"' | cut -c1-200)"; }
         fi
       else

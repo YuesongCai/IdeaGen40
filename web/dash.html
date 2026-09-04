@@ -1383,6 +1383,7 @@ body.drawer-lock{overflow:hidden}
 
       <section class="view" id="view-week"></section>
       <section class="view" id="view-process"></section>
+    <section class="view" id="view-rules"></section>
     </div>
   </main>
 </div>
@@ -1400,7 +1401,7 @@ body.drawer-lock{overflow:hidden}
 var S=null, lastFetchOk=null, fetchFailed=false;
 var J=null, JErr=null; /* /api/journal — 「真实在云端跑」的运行日志 */
 var candSort={key:'n_proposals',dir:-1};
-var statusOpen=false, statusForced=false;
+var statusOpen=false, statusForced=false, activeSec=null;
 var backtestStart=null;
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -1530,13 +1531,37 @@ function topicLabel(tid){
   for(var i=0;i<t.length;i++){var sc=(t[i].scores||{})[tid];if(sc&&sc.label)return sc.label}
   return tid;
 }
+/* 一次周跑正常在 20-45 分钟之间跑完。没写结束时间的运行有两种：真的还在跑，
+ * 和进程死了——进程死的时候把结束时间一起带走了，那一行会永远停在「没结束」。
+ * 用一个宽松的上限把两者分开：超过上限还没结束的，是没有正常收尾，不是在跑。
+ * 之前没有分开，于是一条崩溃的补跑让首页连续几小时显示「AI 正在工作」。 */
+var RUN_STALE_MIN=180;
+function runAgeMin(r){
+  if(!r||!r.started_at)return null;
+  return Math.max(0,Math.round((Date.now()-new Date(r.started_at).getTime())/60000));
+}
 function inFlightRun(){
   if(!S)return null;
   if(S.weekly&&S.weekly.in_flight){
     var r=(S.runs||[]).find(function(x){return x.run_id===S.weekly.run_id});
     return r||{run_id:S.weekly.run_id,started_at:null,as_of:S.weekly.as_of};
   }
-  return (S.runs||[]).find(function(x){return x.kind==='weekly'&&!x.ended_at})||null;
+  /* 后端说本期没有在跑时，只认新近开始、确实可能还在跑的那一条 */
+  var cand=(S.runs||[]).filter(function(x){return x.kind==='weekly'&&!x.ended_at});
+  for(var i=0;i<cand.length;i++){
+    var age=runAgeMin(cand[i]);
+    if(age===null||age<=RUN_STALE_MIN)return cand[i];
+  }
+  return null;
+}
+/* 没有正常收尾的周跑——用来把「它没结束」说清楚，而不是当成在跑 */
+function abandonedRun(){
+  if(!S)return null;
+  if(S.weekly&&S.weekly.in_flight)return null;
+  var cand=(S.runs||[]).filter(function(x){
+    return x.kind==='weekly'&&!x.ended_at&&(runAgeMin(x)||0)>RUN_STALE_MIN;});
+  cand.sort(function(a,b){return String(b.started_at||'').localeCompare(String(a.started_at||''))});
+  return cand[0]||null;
 }
 /* 上次成功周跑：weekly 摘要本身就是最近一次的记录（runs 只保留近 30 条，可能已滚出） */
 function lastOkWeekly(){
@@ -1624,7 +1649,17 @@ function injectBootStyle(){
     +'.sk-line{height:12px;border-radius:6px;margin:0 0 10px;'
     +'background:linear-gradient(90deg,var(--color-border-subtle) 25%,var(--color-surface-subtle) 50%,var(--color-border-subtle) 75%);'
     +'background-size:200% 100%;animation:skShimmer 1.4s linear infinite}'
-    +'@media (prefers-reduced-motion:reduce){.sk-line{animation:none}}';
+    +'@media (prefers-reduced-motion:reduce){.sk-line{animation:none}}'
+    /* 侧栏子项：把产品的深度画在地图上，而不是藏在抽屉里 */
+    +'.nav-secs{display:flex;flex-direction:column;gap:1px;margin:2px 0 var(--space-2) 0;padding-left:26px}'
+    +'.nav-sec{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;'
+    +'cursor:pointer;padding:5px 10px;border-radius:var(--radius-lg);'
+    +'font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)}'
+    +'.nav-sec:hover{background:var(--color-surface-muted);color:var(--color-text-secondary)}'
+    +'.nav-sec.on{background:var(--color-surface-sunken);color:var(--color-text-primary);font-weight:500}'
+    +'.nav-sec .nav-dot{width:5px;height:5px;border-radius:999px;flex:none;background:var(--color-border-strong)}'
+    +'.nav-sec.on .nav-dot{background:var(--color-fill-brand)}'
+    +'.nav-sec .nav-sec-n{margin-left:auto;font:400 11px/16px var(--font-mono);color:var(--color-text-disabled)}';
   document.head.appendChild(el);
 }
 function renderBootState(){
@@ -1726,39 +1761,194 @@ function renderDeadBanner(msg){
 }
 
 /* ── navigation: 结论 / 推导 / 凭据 ──────────────────────────── */
+/* 领域与子项。slug 用拉丁字母，因为它同时是 URL 片段和埋点 element_id 的
+   前缀——显示文案会改、会切语言，标识不能跟着变。 */
 var VIEWS=[
-  {id:'week',label:'组合',sub:'当期持仓与损益',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>'},
-  {id:'process',label:'链路',sub:'生成过程与凭据',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>'}
+  {id:'week',label:'组合',sub:'当期持仓与损益',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>',
+   secs:[{s:'overview',label:'概览'},
+         {s:'mainline',label:'主链路'},
+         {s:'strategies',label:'选取策略'},
+         {s:'holdings',label:'持仓'},
+         {s:'backtest',label:'回测'}]},
+  {id:'process',label:'链路',sub:'生成过程与凭据',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>',
+   secs:[{s:'canvas',label:'生成链路'},
+         {s:'corpus',label:'语料来源'},
+         {s:'universe',label:'标的货架'},
+         {s:'receipt',label:'运行回执'}]}
 ];
+function viewOf(id){return VIEWS.find(function(v){return v.id===id})||VIEWS[0]}
+/* 「准则」只在活的面板上注册：公开快照是导出的静态 HTML，没有后端，
+   注册了就会多一格点进去什么都不会发生的导航——死链比少一格更糟。 */
+if(!window.__STATIC__)VIEWS.push(
+  {id:'rules',label:'准则',sub:'教它你怎么选',
+   icon:'<path d="M8 2 2.5 4.2v4.1c0 3 2.2 4.9 5.5 5.5 3.3-.6 5.5-2.5 5.5-5.5V4.2L8 2Z"/><path d="M5.8 8.1 7.3 9.6l3-3.2"/>',
+   secs:[{s:'teach',label:'教一条'},{s:'running',label:'在跑的'}]});
+
+/* 路由契约：解析永远回落到合法值不抛错，构造只此一处，默认子项不写进 URL。 */
+function parseRoute(raw){
+  var str=String(raw||'').replace(/^#\/?/,'');
+  var qi=str.indexOf('?'), q=qi>=0?str.slice(qi+1):'';
+  var parts=(qi>=0?str.slice(0,qi):str).split('/');
+  var v=VIEWS.find(function(x){return x.id===parts[0]})||VIEWS[0];
+  var secs=v.secs||[];
+  var sec=secs.find(function(x){return x.s===parts[1]});
+  var dm=/(?:^|&)d=([^&]*)/.exec(q);
+  return {view:v.id, sec:sec?sec.s:(secs[0]?secs[0].s:null),
+          drawers:dm?decDrawers(dm[1]):[]};
+}
+
+/* ── 下钻进路由 ──────────────────────────────────────────────
+   抽屉是这个产品最深的一层内容：阶段现场、单个账本、单个标的、运行日志。
+   在此之前它们完全不可寻址——看到的东西发不出去，刷新回到起点，按浏览器
+   后退直接离开页面。栈按层序列化进 URL，恢复时逐层压回。
+   白名单之外的层直接丢弃：URL 是外部输入，不认识的就不猜。 */
+var DRAWER_T={stage:1,topic:1,ask:1,asklog:1,props:1,runlog:1,
+              pos:1,book:1,status:1,cal:1,trust:1};
+function encDrawers(){
+  return drawerStack.filter(function(d){return DRAWER_T[d.t]}).map(function(d){
+    var t=d.t+':'+encodeURIComponent(d.p==null?'':String(d.p));
+    if(d.f!==undefined&&d.f!==null&&d.f!=='')t+=':'+encodeURIComponent(String(d.f));
+    return t;
+  }).join(',');
+}
+function decDrawers(raw){
+  if(!raw)return [];
+  return String(raw).split(',').map(function(x){
+    var a=x.split(':');
+    if(a.length<2||!DRAWER_T[a[0]])return null;
+    var d={t:a[0],p:decodeURIComponent(a[1]||'')};
+    if(a[0]==='stage')d.p=parseInt(d.p,10)||0;
+    if(a.length>2)d.f=decodeURIComponent(a[2]||'');
+    return d;
+  }).filter(Boolean);
+}
+/* URL 只在这里写。push 用于「进入更深一层」，这样浏览器后退退回上一层
+   而不是离开页面；其余一律 replace，避免滚动和轮询把历史刷满。 */
+var routeDepth=0, routeSuspend=false;
+function syncRoute(){
+  if(routeSuspend)return;
+  var dz=encDrawers();
+  var url=buildRoute(current,activeSec)+(dz?'?d='+dz:'');
+  var depth=drawerStack.length;
+  try{
+    if(depth>routeDepth)history.pushState(null,'',url);
+    else history.replaceState(null,'',url);
+  }catch(e){}
+  routeDepth=depth;
+}
+function applyRoute(r){
+  routeSuspend=true;
+  try{
+    if(r.view!==current)switchView(r.view,r.sec);
+    else if(r.sec&&r.sec!==activeSec)setActiveSection(r.sec);
+    drawerStack=r.drawers||[];
+    renderDrawers();
+  }finally{routeSuspend=false}
+  routeDepth=drawerStack.length;
+}
+function buildRoute(view,sec){
+  var v=viewOf(view),first=(v.secs&&v.secs[0])?v.secs[0].s:null;
+  return '#/'+v.id+((sec&&sec!==first)?'/'+sec:'');
+}
+function secDomId(view,sec){return 'sec_'+view+'_'+sec}
 var current='week';
+/* 只有内容真的渲染出来了才在地图上标出这一格：一个不存在的目的地
+   比没有这一格更糟——点了没反应，用户会以为页面坏了。 */
+function secWrap(view,slug,inner){
+  return inner?'<section id="'+secDomId(view,slug)+'" class="pg-sec">'+inner+'</section>':'';
+}
 function buildNav(){
   $('nav').innerHTML=VIEWS.map(function(v){
-    return '<button type="button" class="nav-item'+(v.id===current?' active':'')+'" data-v="'+v.id+'" aria-label="'+v.label+'——'+v.sub+'">'
+    var on=(v.id===current);
+    var subs=on?(v.secs||[]).filter(function(x){return !!$(secDomId(v.id,x.s))}):[];
+    return '<button type="button" class="nav-item'+(on?' active':'')+'" data-v="'+v.id+'"'
+      +' data-el="nav.'+v.id+'" aria-label="'+esc(v.label)+'——'+esc(v.sub)+'"'
+      +' aria-current="'+(on?'page':'false')+'">'
       +'<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+v.icon+'</svg>'
-      +'<span class="nav-txt nav-label"><span>'+v.label+'</span><span class="nav-sub">'+v.sub+'</span></span>'
-      +'</button>';
+      +'<span class="nav-txt nav-label"><span>'+esc(v.label)+'</span><span class="nav-sub">'+esc(v.sub)+'</span></span>'
+      +'</button>'
+      +(subs.length?'<div class="nav-secs">'+subs.map(function(x){
+          return '<button type="button" class="nav-sec" data-v="'+v.id+'" data-s="'+x.s+'"'
+            +' data-el="nav.'+v.id+'.'+x.s+'">'
+            +'<span class="nav-dot"></span>'+esc(x.label)+'</button>';
+        }).join('')+'</div>':'');
   }).join('');
   $('nav').querySelectorAll('.nav-item').forEach(function(b){
     b.addEventListener('click',function(){switchView(b.getAttribute('data-v'))});
   });
+  $('nav').querySelectorAll('.nav-sec').forEach(function(b){
+    b.addEventListener('click',function(){
+      gotoSection(b.getAttribute('data-v'),b.getAttribute('data-s'));
+    });
+  });
+  markActiveSection();
 }
-function switchView(id){
+/* 页面的实际滚动元素是 <html>：body 虽然声明了 overflow-y:auto，却因为
+   .app 撑满高度而滚不动，scrollIntoView 会被它误导成「已经在容器里可见」
+   从而什么都不做。所以锚点跳转一律换算成文档坐标后滚动窗口。 */
+function scrollToEl(el){
+  if(!el)return;
+  var cur=window.scrollY||document.documentElement.scrollTop||0;
+  var to=Math.max(0,el.getBoundingClientRect().top+cur-12);
+  var reduce=false;
+  try{reduce=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}
+  if(reduce||Math.abs(to-cur)<8){window.scrollTo(0,to);return}
+  /* 自己做缓动，而不是交给 behavior:'smooth'。后者在无头浏览器和部分
+     关闭动效的环境里会被静默忽略——不是慢，是根本不滚，跳转看上去就像
+     点了没反应。自绘动画在哪里都成立，且照样尊重 reduce-motion。 */
+  var t0=null,done=false,dur=Math.min(520,160+Math.abs(to-cur)*0.35);
+  (function frame(){
+    requestAnimationFrame(function(ts){
+      if(t0===null)t0=ts;
+      var q=Math.min(1,(ts-t0)/dur);
+      var e=q<0.5?4*q*q*q:1-Math.pow(-2*q+2,3)/2;
+      window.scrollTo(0,cur+(to-cur)*e);
+      if(q<1)frame();else done=true;
+    });
+  })();
+  /* 兜底：标签页隐藏时 requestAnimationFrame 不触发，动画一帧都不会跑，
+     跳转就悄悄失败了。定时器仍在（只是被节流），到点没走完就直接落位——
+     宁可少一段动效，也不能让导航看起来没反应。 */
+  setTimeout(function(){if(!done)window.scrollTo(0,to)},dur+150);
+}
+function gotoSection(view,slug){
+  if(view!==current)switchView(view,slug);
+  scrollToEl($(secDomId(view,slug)));
+  setActiveSection(slug);
+  try{history.replaceState(null,'',buildRoute(view,slug))}catch(e){}
+}
+function setActiveSection(slug){
+  activeSec=slug;
+  document.querySelectorAll('.nav-sec').forEach(function(b){
+    b.classList.toggle('on',b.getAttribute('data-s')===slug);
+  });
+}
+/* 滚动高亮：以视口上缘往下 120px 为判定线，取最后一个越线的区块。 */
+function markActiveSection(){
+  var v=viewOf(current),secs=(v.secs||[]);
+  var line=120,best=null;
+  secs.forEach(function(x){
+    var el=$(secDomId(v.id,x.s));
+    if(el&&el.getBoundingClientRect().top<=line)best=x.s;
+  });
+  if(!best&&secs.length)best=secs[0].s;
+  if(best!==activeSec)setActiveSection(best);
+}
+function switchView(id,sec){
   current=id;
-  document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-v')===id)});
   VIEWS.forEach(function(v){$('view-'+v.id).classList.toggle('active',v.id===id)});
-  var vv=VIEWS.find(function(v){return v.id===id});
-  $('pageTitle').textContent=vv?vv.label:'';
-  window.scrollTo(0,0);
-  try{history.replaceState(null,'','#'+id)}catch(e){}
+  var vv=viewOf(id);
+  $('pageTitle').textContent=vv.label;
+  if(!sec)window.scrollTo(0,0);
+  activeSec=null;
+  buildNav();
+  try{history.replaceState(null,'',buildRoute(id,sec))}catch(e){}
 }
 /* cross-link: jump to a view and anchor within it */
 function goto(view,anchor){
   switchView(view);
   if(anchor){
-    requestAnimationFrame(function(){
-      var el=$(anchor);
-      if(el)el.scrollIntoView({block:'start',behavior:'smooth'});
-    });
+    setTimeout(function(){scrollToEl($(anchor))},0);
   }
 }
 
@@ -1769,7 +1959,13 @@ function renderAll(){
   renderStamp();
   renderWeek();
   renderProcess();
+  renderRules();
   renderDrawers(); /* 抽屉打开时刷新其内容 */
+  buildNav();      /* 子项依赖区块是否渲染，必须在内容之后重建 */
+  /* 用 setTimeout 而不是 requestAnimationFrame：标签页隐藏时 rAF 一帧都不
+     触发，深链跳转会静默失效。动画可以没有，落位不能没有。 */
+  if(bootSec){var bs=bootSec;bootSec=null;
+    setTimeout(function(){gotoSection(current,bs)},0);}
   if(bootDrawer){var bd=bootDrawer;bootDrawer=null;bd()}
 }
 
@@ -1788,12 +1984,15 @@ function renderWeek(){
 
   var html='';
   html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合'+periodBadge()+'</div>';
+  /* 页面此前从不说明自己是什么。首屏三问的第一问，一句话答完。 */
+  html+='<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
+    +'每周三自动读研报、选宏观主题、写出想法并建仓；'+currentBooks().length+' 种选法各记一本模拟账，比谁选得好。</div>';
   html+=statusStrip();
-  html+=portfolioHeadline(ag);
-  html+=mainLine(ag);
-  html+=raceHero(ag);
-  html+=holdMapCard(ag);
-  html+=backtestCard();
+  html+=secWrap('week','overview',portfolioHeadline(ag));
+  html+=secWrap('week','mainline',mainLine(ag));
+  html+=secWrap('week','strategies',raceHero(ag));
+  html+=secWrap('week','holdings',holdMapCard(ag));
+  html+=secWrap('week','backtest',backtestCard());
   $('view-week').innerHTML=html;
   if($('candTable')){bindCandSort();renderCandBody()}
 }
@@ -1872,10 +2071,7 @@ function mlStageBody(i){
     return '<div class="empty-sm">该阶段渲染失败（'+esc(e&&e.message?e.message:String(e))+'）</div>';
   }
 }
-function gotoWeekAnchor(id){
-  var el=$(id);
-  if(el)el.scrollIntoView({block:'start',behavior:'smooth'});
-}
+function gotoWeekAnchor(id){scrollToEl($(id))}
 
 /* 状态条：一行体征 + 详情抽屉 */
 function statusStrip(){
@@ -1904,6 +2100,13 @@ function statusStrip(){
     var mins=inf.started_at?Math.max(0,Math.round((Date.now()-new Date(inf.started_at).getTime())/60000)):null;
     word='本期周跑进行中';
     sub='读研报 · 选主题 · 写想法 · 筛选持仓'+(mins!==null?'，已运行 '+mins+' 分钟':'')+'，完成后自动建仓';
+  }else if(abandonedRun()&&!lastOkWeekly()){
+    /* 只有在没有任何成功周产可展示时才把它抬到状态条上：有成功结果时，
+     * 一条没收尾的旧运行不该盖过「系统在正常工作」这个更重要的事实。 */
+    var ab=abandonedRun();
+    word='上一次周跑没有正常收尾';
+    sub='run '+esc(String(ab.run_id||'').slice(0,24))+' 于 '+esc(hktFmt(ab.started_at,true))+' 启动后再没有写下结束时间'
+      +'（已过去 '+fmtInt(runAgeMin(ab))+' 分钟，正常一次约 20-45 分钟）——进程多半在中途退出了。点开看它跑到哪一步。';
   }else if(weeklyDelegated){
     word='运行中 · 本机为观察节点';
     sub='本机仅负责盯市与展示，本期周产由云端生产实例执行；下列为本机账本截至最新收盘的计价'+(lw&&lw.as_of?'（本机最近一次完整周产：'+esc(lw.as_of)+' 期）':'');
@@ -1978,16 +2181,21 @@ function pairedDiffs(books){
     return {b:b,ret:r,isRef:b===allB,diff:(b===allB)?0:((r!==null&&ar!==null)?r-ar:null)};
   });
 }
+/* 结论句单独一份：折叠时外面显示它，展开时图里也是它，两处不会说不一样的话。 */
+function noiseHeadline(books,weekN){
+  var rows=pairedDiffs(books);
+  var out=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)>2});
+  var inBand=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)<=2}).length;
+  return out.length
+    ?'<b>'+out.map(function(r){return esc(selMetaOf(r.b.selector)[1])}).join('、')+'</b> 已明显跑赢或跑输，其余 '+inBand+' 种选法仍分不出高下'
+    :'目前还看不出哪种选法更好 —— '+books.length+' 种选法的差距都还在误差范围内';
+}
 function noiseBandHTML(books,weekN){
   var rows=pairedDiffs(books).slice().sort(function(a,b){return (b.diff===null?-1e9:b.diff)-(a.diff===null?-1e9:a.diff)});
   var maxAbs=0;rows.forEach(function(r){if(r.diff!==null)maxAbs=Math.max(maxAbs,Math.abs(r.diff))});
   var R=Math.max(2.5,Math.ceil(maxAbs*1.25*10)/10);
   function X(v){return ((v+R)/(2*R)*100)}
-  var inBand=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)<=2}).length;
-  var out=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)>2});
-  var headline=out.length
-    ?'第 '+weekN+' 周：<b>'+out.map(function(r){return esc(selMetaOf(r.b.selector)[1])}).join('、')+'</b> 已冲出噪音带——其余 '+inBand+' 本仍分不出高下'
-    :'第 '+weekN+' 周：'+books.length+' 个账本的净值差异全部落在噪声区间内，尚不具备区分度';
+  var headline=noiseHeadline(books,weekN);
   var html='<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin-bottom:var(--space-3)">'+headline+'</div>';
   /* 轴头 + 刻度（与每行的轨道列同几何） */
   html+='<div class="nb-axis">横轴：与全量基准的差距（百分点）<span class="gloss" title="'+esc(BAND_GLOSS)+'">ⓘ</span></div>'
@@ -2082,18 +2290,26 @@ function raceHero(ag){
      芯片带（medals）呈现的是同一批账本、同一个 pp 数值、同一个 openBookDrawer
      目标，主题分布条同样是这批账本的下一层细节——三者并列展示不增加信息，
      只增加首屏噪音，因此一并降级到明细区，由读者主动展开。 */
-  return '<div class="card section" id="whoWins">'+head+sentence
-    +noiseBandHTML(books,weekN)
+  /* 这张卡的全部内容都在支撑一句话：现在还分不出高下。那就只留这句话。
+     十行几乎重合在 0 附近的点、它们那些 ±0.0x pp 的数字，是这一页最大的
+     困惑来源——读者盯着十个数字，而页面自己写着「带内排名不构成结论」。
+     图不删，但要读者主动去看。 */
+  return '<div class="card section" id="whoWins">'+head
+    +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
+      +noiseHeadline(books,weekN)+'</div>'
+    +'<div class="quiet">第 '+weekN+' 周 · 大约要到第 '+TARGET_WEEKS+' 周才够判定'
+      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="openTrustDrawer()">为什么现在不排名 ⓘ</button></div>'
     +agg
-    +foldBlock('week.books.detail',
-        books.length+' 个账本的明细','净值曲线 · 持仓 · 主题分布',
-        medals
+    +foldBlock('week.books.compare','对比图与 '+books.length+' 个账本明细','谁跑赢谁 · 净值曲线 · 持仓 · 主题分布',
+        sentence
+        +noiseBandHTML(books,weekN)
+        +medals
         +themeMixCard(books)
         +pairedEquitySVG(books)
         +table
         +holdingsMatrix(books)
-        +'<div class="book-grid" style="margin-top:var(--space-6)">'+books.map(bookCard).join('')+'</div>')
-    +epi('纸面成交，未计交易费用 · 净值指数期初 = 100 · 噪声区间内的排名不构成结论')
+        +'<div class="book-grid" style="margin-top:var(--space-6)">'+books.map(bookCard).join('')+'</div>'
+        +epi('纸面成交，未计交易费用 · 净值指数期初 = 100 · 噪声区间内的排名不构成结论'))
   +'</div>';
 }
 
@@ -2147,6 +2363,35 @@ function holdMapCard(ag){
   var byCode=mp.byCode,order=mp.order;
   var totalV=0,maxV=1;
   order.forEach(function(k){totalV+=byCode[k].value;maxV=Math.max(maxV,byCode[k].value)});
+  /* 这张图有四条编码规则要先学（泡的大小、颜色、徽标、分组）读者才看得懂，
+     等于让人自己看图归纳。先把归纳好的结论写成一句话，图留给要核对的人。 */
+  var tg={},tOrder=[];
+  order.forEach(function(k){
+    var pp=byCode[k],t=pp.theme_id||'（无主题记录）';
+    if(!tg[t]){tg[t]={value:0,unreal:0,n:0};tOrder.push(t)}
+    tg[t].value+=pp.value;tg[t].unreal+=pp.unrealized;tg[t].n++;
+  });
+  function themeName(t){return t==='（无主题记录）'?t:(topicLabel(t)||t)}
+  var byVal=tOrder.slice().sort(function(a,b){return tg[b].value-tg[a].value});
+  var byPnl=tOrder.slice().sort(function(a,b){return tg[b].unreal-tg[a].unreal});
+  var lead='';
+  if(byVal.length){
+    var t0=byVal[0],tb=byPnl[0],tw=byPnl[byPnl.length-1];
+    var pctOf=function(t){return totalV?(tg[t].value/totalV*100).toFixed(0):'0'};
+    var money=function(t){return '<span class="num '+pctCls(tg[t].unreal)+'">'+signedMoney(tg[t].unreal)+'</span>'};
+    /* 仓位最重的往往也是赚最多的，分成两句会把同一个主题念两遍。 */
+    if(tb&&tb===t0&&tg[tb].unreal>0){
+      lead='仓位最重、目前也赚最多的是<b>'+esc(themeName(t0))+'</b>（'
+        +pctOf(t0)+'% 仓位 · '+tg[t0].n+' 个标的 · '+money(t0)+'）';
+    }else{
+      lead='仓位最重的是<b>'+esc(themeName(t0))+'</b>（'+pctOf(t0)+'% 仓位 · '+tg[t0].n+' 个标的）';
+      if(tb&&tg[tb].unreal>0)
+        lead+='；赚最多的是<b>'+esc(themeName(tb))+'</b> '+money(tb);
+    }
+    if(tw&&tw!==t0&&tw!==tb&&tg[tw].unreal<0)
+      lead+='；亏最多的是<b>'+esc(themeName(tw))+'</b> '+money(tw);
+    lead+='。';
+  }
   var body;
   if(holdView==='list'){
     body=holdListTable(ag,mp);
@@ -2163,7 +2408,9 @@ function holdMapCard(ag){
     });
     gOrder.sort(function(a,b){return groups[b].value-groups[a].value});
     var nb=ag.books.length;
-    body='<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向与幅度（红涨绿跌）</span><span>徽标 n/'+nb+' = 共同持有的账本数'+'<span class="gloss" title="筛选C 的 '+nb+' 个选取策略各记一本模拟账；同一标的被越多账本独立选中，跨策略共识度越高">ⓘ</span>（≥6 个描边加亮）</span><span>分组 = 宏观主题</span></div>';
+    body='<div class="hm-legend"><span>按宏观主题分组，每个圆点是一个标的'
+      +'<span class="gloss" title="圆点大小 = 该标的的仓位市值；颜色 = 浮动盈亏方向与幅度（红涨绿跌）；'
+      +'徽标 n/'+nb+' = 有几本账同时选中它——'+nb+' 个选取策略各记一本模拟账，被越多账本独立选中，说明跨策略共识度越高，≥6 个会加亮描边">ⓘ 怎么看</span></span></div>';
     gOrder.forEach(function(t){
       var g=groups[t];
       g.list.sort(function(a,b){return b.value-a.value});
@@ -2171,8 +2418,10 @@ function holdMapCard(ag){
       var isTopic=t!=='（无主题记录）';
       body+='<div class="hm-group">'
         +'<div class="hm-k">'
-        +(isTopic?'<button type="button" class="t" style="cursor:pointer;padding:0" onclick="openTopicDrawer(\''+jss(t)+'\')" title="查看该主题的评分与证据"><i class="thm-sw" style="background:'+themeColor(t)+'"></i>'+esc(t)+' ›</button>':'<span class="t"><i class="thm-sw" style="background:'+themeColor(t)+'"></i>'+esc(t)+'</span>')
-        +'<div class="l">'+esc(isTopic?topicLabel(t):'')+'</div>'
+        /* 中文名打头、英文代号降为次要：读者认的是「央行政策路径与流动性」，
+           不是 POLICY-PATH。同一主题在别处也照这个次序显示。 */
+        +(isTopic?'<button type="button" class="t" style="cursor:pointer;padding:0" onclick="openTopicDrawer(\''+jss(t)+'\')" title="查看该主题的评分与证据"><i class="thm-sw" style="background:'+themeColor(t)+'"></i>'+esc(topicLabel(t)||t)+' ›</button>':'<span class="t"><i class="thm-sw" style="background:'+themeColor(t)+'"></i>'+esc(t)+'</span>')
+        +'<div class="l mono" style="font-size:11px;letter-spacing:.04em">'+esc(isTopic?t:'')+'</div>'
         +'<div class="s num">'+share.toFixed(0)+'% 仓位 · '+g.list.length+' 标的 · <span class="'+pctCls(g.unreal)+'">'+signedMoney(g.unreal)+'</span></div>'
         +'</div>'
         +'<div class="hm-cloud">'
@@ -2205,7 +2454,8 @@ function holdMapCard(ag){
     body+=epi('等权买入 · '+gloss('σ×2 止损 / σ×3 止盈',SIGMA_GLOSS)+'自动执行 · 盈亏为全账本合计');
   }
   return '<div class="card section" id="holdCard">'+head
-    +'<div class="quiet" style="margin-bottom:var(--space-3)">'+fmtInt(order.length)+' 个标的 · 被 '+fmtInt(ag.books.length)+' 个账本共 '+fmtInt(ag.openN)+' 次持有</div>'
+    +(lead?'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'+lead+'</div>':'')
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">共 '+fmtInt(order.length)+' 个标的，'+fmtInt(ag.books.length)+' 本模拟账合计持有 '+fmtInt(ag.openN)+' 仓</div>'
     +body
   +'</div>';
 }
@@ -2600,7 +2850,16 @@ function aggReturnPct(ag){
   if(!ag||!ag.capital)return null;
   var eq=ag.equity||[];
   var last=eq.length?eq[eq.length-1].equity:null;
-  return last===null?null:((last/ag.capital-1)*100);
+  if(last!==null)return (last/ag.capital-1)*100;
+  /* 合计净值曲线要求各账本日期轴完全一致，有账本晚一期建仓就拿不到。
+     退而用各账本自己的收益率按本金加权——bookRet 是系统对「一本账的
+     收益率」的既有定义，这里只是把它们合起来，不是另造一套公式。 */
+  var num=0,den=0;
+  currentBooks().forEach(function(b){
+    var r=bookRet(b);
+    if(r!==null&&b.capital){num+=r*b.capital;den+=b.capital}
+  });
+  return den?num/den:null;
 }
 function benchReturnPct(){
   var sr=((S&&S.benchmark)||{}).series||[];
@@ -2619,20 +2878,30 @@ function portfolioHeadline(ag){
   var ret=aggReturnPct(ag), spy=benchReturnPct();
   var vs=(ret!==null&&spy!==null)?(ret-spy):null;
   var nBooks=currentBooks().length;
-  function tile(v,k,cls){
-    return '<div class="bt-kpi"><div class="v num'+(cls?' '+cls:'')+'">'+v+'</div>'
-      +'<div class="k">'+k+'</div></div>';
-  }
+  /* 首屏只回答一个问题：这一个月，这套系统比「什么都不做」强还是弱。
+     浮动盈亏那种大额金额单独看会骗人——+103,515 在 1 亿本金上是 0.10%，
+     而同期躺着买 SPY 是 4.63%。所以头条是收益率与对照，金额降为附注。 */
+  var verdict = vs===null ? '还没有可比的收益数据'
+    : (vs>=0 ? '<b>比什么都不做多赚 '+vs.toFixed(2)+' 个百分点</b>'
+             : '<b>比什么都不做少赚 '+Math.abs(vs).toFixed(2)+' 个百分点</b>');
   return '<div class="card section" id="wkHeadline">'
-    +'<div class="bt-kpis">'
-      +tile(ret===null?'—':fmtPct(ret),'本期合计收益',pctCls(ret))
-      +tile(vs===null?'—':((vs>=0?'+':'−')+Math.abs(vs).toFixed(1)+' pp'),
-            '相对同期 '+esc(benchName())+(spy===null?'':'（'+fmtPct(spy)+'）'),pctCls(vs))
-      +tile(signedMoney(ag.unrealized),'浮动盈亏',pctCls(ag.unrealized))
-      +tile(fmtInt(ag.openN||0)+'<span style="font-size:14px;color:var(--color-text-tertiary)"> 仓 / '+fmtInt(nBooks)+' 本</span>','当前持仓')
+    +'<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-6) var(--space-8)">'
+      +'<div>'
+        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">这套系统 · '+nBooks+' 本模拟账合计</div>'
+        +'<div class="num '+pctCls(ret)+'" style="font:600 34px/40px var(--font-sans)">'+(ret===null?'—':fmtPct(ret))+'</div>'
+      +'</div>'
+      +'<div>'
+        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">什么都不做 · 同期买 '+esc(benchName())+'</div>'
+        +'<div class="num" style="font:600 34px/40px var(--font-sans);color:var(--color-text-secondary)">'+(spy===null?'—':fmtPct(spy))+'</div>'
+      +'</div>'
+      +'<div style="font:400 15px/22px var(--font-sans);color:var(--color-text-primary);padding-bottom:6px">'+verdict+'</div>'
     +'</div>'
-    +'<div class="card-note" style="margin-top:var(--space-3)">'
-      +nBooks+' 个选取策略账本合计 · 纸面成交，未计交易费用 · 非实盘组合'
+    +'<div class="card-note" style="margin-top:var(--space-4)">'
+      +'浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
+      +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
+      +' · 在场 '+fmtInt(ag.openN||0)+' 仓'
+      +' · 本金 '+fmtMoney(ag.capital)
+      +' · 纸面成交，未计交易费用，非实盘'
       +'<button type="button" class="exp-btn" data-el="week.headline.trust" onclick="openTrustDrawer()">可信度与局限 ›</button>'
     +'</div>'
   +'</div>';
@@ -3362,10 +3631,10 @@ function renderProcess(){
   if(!S){root.innerHTML='';return}
   var html='';
   html+=procFailBanner();
-  html+=pipeCanvasCard();
-  html+=corpusSourceCard();
-  html+=universeCard();
-  html+=runReceiptStrip();
+  html+=secWrap('process','canvas',pipeCanvasCard());
+  html+=secWrap('process','corpus',corpusSourceCard());
+  html+=secWrap('process','universe',universeCard());
+  html+=secWrap('process','receipt',runReceiptStrip());
   root.innerHTML=html;
 }
 
@@ -4984,6 +5253,18 @@ function statusDrawerBody(){
       +(hb.exit_code?'<div class="meta-kv"><div class="k">上次心跳退出码</div><div class="v num" style="color:var(--color-feedback-warning-text)">'+esc(hb.exit_code)+'（非 0 = 有任务失败）</div></div>':'')
     +'</div>'
     +(weeklyFailed?'<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||'')+'）周跑在心跳里记为 failed。runs 表没有这次尝试的明细；下方数据源健康和「盯市」错误是目前 API 给出的全部线索。</div>':'')
+    /* 没有正常收尾的周跑：首页不该把它当成「在跑」，但也不该当它不存在。
+     * 它是一次中途退出的进程留下的记录，运维要能看到它跑到了哪一步。 */
+    +(function(){
+      var ab=abandonedRun();
+      if(!ab)return '';
+      return '<div style="margin-top:var(--space-3);padding:var(--space-2) var(--space-3);background:var(--color-feedback-warning-subtle);border-left:3px solid var(--color-feedback-warning-default);border-radius:var(--radius-xs);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)">'
+        +'<b>有一次周跑没有正常收尾</b>：run <span class="mono">'+esc(String(ab.run_id||'').slice(0,24))+'</span>（'+esc(ab.as_of||'')+' 期）'
+        +'于 '+esc(hktFmt(ab.started_at,true))+' 启动，至今没有写下结束时间，已过去 '+fmtInt(runAgeMin(ab))+' 分钟；正常一次约 20-45 分钟，所以它多半是进程中途退出、来不及记录结果。'
+        +'这不影响上面展示的结果——那些来自后来跑成功的那一次。'
+        +'<div style="margin-top:4px"><button type="button" class="exp-btn" onclick="openRunLogStacked(\''+esc(ab.run_id||'')+'\')">看它跑到哪一步 ›</button></div>'
+        +'</div>';
+    })()
     +(hb.fatal?'<div style="margin-top:var(--space-2);font:400 12px/18px var(--font-sans);color:var(--color-feedback-error-text)">fatal：'+esc(hb.fatal)+'</div>':'')
     +((hb.errors||[]).length?'<div style="margin-top:var(--space-2);font:400 12px/18px var(--font-sans);color:var(--color-feedback-error-text)">'+hb.errors.map(esc).join('<br>')+'</div>':'')
     +'<div class="port-row" aria-label="平台端口">'+(ports||'<span class="port-pill warn"><span class="dot"></span>自检结果尚未取到</span>')+'</div>'
@@ -5720,18 +6001,288 @@ function tick(){
   });
 }
 
+/* ════════════════════ ③ 准则 — 用一句话教它怎么选 ════════════════════
+   面板上唯一一处「写未来」的入口：追问是问过去（只读、钉在封存材料上），
+   这里是写未来（只写、钉在初心和硬边界上）。
+
+   这一屏刻意不出现 card_id、臂、筛选B、require 这些词。使用它的人不需要
+   知道系统是怎么造的，只需要知道三件事，而且是按人真的会问的顺序：
+   我说的话它听懂成了什么、今后每条想法要多回答什么、点下去之后会发生什么。
+
+   样式由本块自己注入而不是写进 <head>：这个文件同时被多个会话编辑，把新样式
+   和用它的代码放在一起，被覆盖时要么一起在要么一起不在，不会出现「样式没了但
+   界面还在渲染」的半截状态。 */
+(function(){
+  var css='.ph-hero{font:400 14px/22px var(--font-sans);color:var(--color-text-secondary);margin-bottom:var(--space-5);max-width:62ch}'
+   +'.ph-say{width:100%;box-sizing:border-box;min-height:96px;resize:vertical;padding:var(--space-4);'
+   +'border:1px solid var(--color-border-default,#e0e0e0);border-radius:var(--radius-md);'
+   +'font:400 15px/24px var(--font-sans);color:var(--color-text-primary);background:var(--color-surface-default,#fff)}'
+   +'.ph-say:focus{outline:2px solid var(--color-surface-brand);outline-offset:-1px}'
+   +'.ph-eg{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:var(--space-3) 0}'
+   +'.ph-eg button{border:1px dashed var(--color-border-default,#ddd);background:none;border-radius:var(--radius-pill);'
+   +'font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary);padding:5px 12px;cursor:pointer;text-align:left;max-width:100%}'
+   +'.ph-eg button:hover{color:var(--color-text-primary);border-style:solid}'
+   +'.ph-step{margin-top:var(--space-5)}'
+   +'.ph-step-h{font:600 13px/20px var(--font-sans);color:var(--color-text-primary);margin-bottom:var(--space-2);display:flex;gap:8px;align-items:baseline}'
+   +'.ph-step-n{font:600 12px/18px var(--font-mono);color:var(--color-text-on-brand);background:var(--color-surface-brand);'
+   +'border-radius:var(--radius-pill);min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;flex:none}'
+   +'.ph-list{margin:0;padding-left:1.3em;font:400 14px/23px var(--font-sans);color:var(--color-text-secondary)}'
+   +'.ph-list li{margin:4px 0}'
+   +'.ph-field{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--color-border-subtle,#f0f0f0)}'
+   +'.ph-field:first-child{border-top:none}'
+   +'.ph-field code{font:500 12px/18px var(--font-mono);background:var(--color-surface-subtle,#f5f5f5);'
+   +'border-radius:var(--radius-xs);padding:2px 7px;color:var(--color-text-primary);flex:none}'
+   +'.ph-warn{border-left:3px solid #e8a33d;background:#fff8ec;border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:var(--space-3) var(--space-4)}'
+   +'.ph-warn .ph-list{color:#7a5410}'
+   +'.ph-then{background:var(--color-surface-subtle,#f7f7f7);border-radius:var(--radius-md);padding:var(--space-4)}'
+   +'.ph-acts{display:flex;gap:var(--space-3);align-items:center;margin-top:var(--space-5);flex-wrap:wrap}'
+   +'.ph-go{border:none;border-radius:var(--radius-sm);background:var(--color-surface-brand);color:var(--color-text-on-brand);'
+   +'font:600 14px/20px var(--font-sans);padding:11px 22px;cursor:pointer}'
+   +'.ph-go:disabled{opacity:.45;cursor:default}'
+   +'.ph-alt{border:1px solid var(--color-border-default,#ddd);background:none;border-radius:var(--radius-sm);'
+   +'font:400 13px/19px var(--font-sans);color:var(--color-text-secondary);padding:10px 16px;cursor:pointer}'
+   +'.ph-rule{border:1px solid var(--color-border-subtle,#eee);border-radius:var(--radius-md);padding:var(--space-4);margin-top:var(--space-3)}'
+   +'.ph-rule-said{font:500 15px/24px var(--font-sans);color:var(--color-text-primary)}'
+   +'.ph-meta{font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px}'
+   +'.ph-err{color:#b3261e;font:400 13px/20px var(--font-sans)}'
+   +'.ph-check{display:flex;gap:8px;align-items:flex-start;font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);margin-top:var(--space-3);cursor:pointer}';
+  document.head.insertAdjacentHTML('beforeend','<style>'+css+'</style>');
+})();
+
+var PH={data:null,say:'',busy:false,err:'',proposal:null,accepted:false,loaded:false};
+
+var PH_EG=[
+  '我不买已经被讲烂的东西，我要的是被迫的卖家——有人被条款逼着必须动手，那才是价格还没反应的地方',
+  '政策我只信已经拨了钱的，喊话不算——要能指到预算科目和执行日期',
+  '同一个主题里，我要买离受益最近的那一层，不要买沾边的'
+];
+
+function phLoad(force){
+  if(PH.loaded&&!force)return;
+  PH.loaded=true;
+  fetch('/api/philosophy',{cache:'no-store'})
+    .then(function(r){return r.json()})
+    .then(function(b){PH.data=b;
+      /* 待确认的提案在服务端留着：换个浏览器、隔一天回来，那句话还在等你拍板。 */
+      if(!PH.proposal&&b.pending&&b.pending.length)PH.proposal=b.pending[0];
+      renderRules()})
+    .catch(function(e){PH.err='读不到准则列表：'+(e&&e.message||e);renderRules()});
+}
+
+function phPost(op,body,done){
+  PH.busy=true;PH.err='';renderRules();
+  fetch('/api/philosophy/'+op,{method:'POST',cache:'no-store',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})})
+    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
+    .then(function(res){PH.busy=false;done(res.b||{},res.ok)})
+    .catch(function(e){PH.busy=false;PH.err=(e&&e.message)||String(e);renderRules()});
+}
+
+function phSay(){var el=$('phSay');PH.say=el?el.value:PH.say;return PH.say}
+function phFill(i){PH.say=PH_EG[i];renderRules();var el=$('phSay');if(el){el.focus();
+  el.setSelectionRange(el.value.length,el.value.length)}}
+
+function phPropose(){
+  var say=(phSay()||'').trim();
+  if(!say){PH.err='还没写呢。';return renderRules()}
+  PH.problems=null;
+  phPost('propose',{say:say},function(b){
+    if(b.error){PH.err=b.error;return renderRules()}
+    if(b.ok===false){PH.problems=b;return renderRules()}
+    PH.proposal=b;PH.accepted=false;PH.problems=null;
+    renderRules();setTimeout(function(){scrollToEl($('sec_rules_teach'))},0);
+  });
+}
+
+function phActivate(){
+  if(!PH.proposal)return;
+  phPost('activate',{id:PH.proposal.id,accept_rewrites:PH.accepted},function(b){
+    if(b.error){PH.err=b.error;return renderRules()}
+    PH.proposal=null;PH.say='';PH.accepted=false;
+    phLoad(true);
+  });
+}
+
+function phDiscard(){
+  if(!PH.proposal)return;
+  var back=PH.proposal.said;
+  phPost('discard',{id:PH.proposal.id},function(){
+    PH.proposal=null;PH.say=back;PH.accepted=false;renderRules();
+  });
+}
+
+function phRetire(id){
+  if(!window.confirm('停用这条准则？\n\n它今后不再出想法，但它已经写下的持仓和业绩留在账本里。'))return;
+  phPost('retire',{id:id},function(b){
+    if(b.error){PH.err=b.error;return renderRules()}
+    phLoad(true);
+  });
+}
+
+function phToggleAccept(){PH.accepted=!PH.accepted;renderRules()}
+
+/* ── 第一屏：说一句话 ── */
+function phTeachCard(){
+  var d=PH.data||{};
+  if(PH.proposal)return phReviewCard();
+  var blocked=d.can_propose===false;
+  var h='<div class="card section">'
+   +'<h2 class="card-title">用一句话说说，你看一笔交易先看什么</h2>'
+   +'<div class="ph-hero">系统现在按四种固定的路子出想法。你可以再教它一种——'
+   +'你说一句话，它照着这句话单开一条线，和原来那条并排跑，四周后告诉你哪条更好。</div>';
+  if(blocked){
+    h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
+    return h;
+  }
+  h+='<textarea class="ph-say" id="phSay" data-el="rules.say" oninput="PH.say=this.value"'
+   +' placeholder="'+esc('比如：'+PH_EG[0])+'">'+esc(PH.say)+'</textarea>'
+   +'<div class="card-note" style="margin-top:8px">越具体越管用。「要谨慎一点」它没法执行；'
+   +'「必须指名一个被期限逼着动手的人」它能。</div>'
+   +'<div class="ph-eg">'+PH_EG.map(function(t,i){
+        return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
+          +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';
+  if(PH.problems){
+    h+='<div class="ph-warn" style="margin-top:var(--space-4)">'
+     +'<div class="ph-step-h" style="margin-bottom:6px">这句话它没法照做</div>'
+     +'<ul class="ph-list">'+(PH.problems.problems||[]).map(function(x){
+        return '<li>'+esc(x)+'</li>'}).join('')+'</ul>'
+     +'<div class="card-note" style="margin-top:8px;color:#7a5410">'
+     +esc(PH.problems.hint||'')+'</div></div>';
+  }
+  if(PH.err)h+='<div class="ph-err" style="margin-top:var(--space-3)">'+esc(PH.err)+'</div>';
+  h+='<div class="ph-acts"><button type="button" class="ph-go" data-el="rules.try"'
+   +(PH.busy?' disabled':'')+' onclick="phPropose()">'
+   +(PH.busy?'正在琢磨你这句话…':'让它试一遍')+'</button>'
+   +(PH.busy?'<span class="card-note">大概二十秒</span>':'')+'</div>';
+  return h+'</div>';
+}
+
+/* ── 第二屏：它听懂成了什么，以及点下去会发生什么 ── */
+function phReviewCard(){
+  var p=PH.proposal||{};
+  var rw=p.rewrites||[];
+  var h='<div class="card section">'
+   +'<h2 class="card-title">它听懂了，你看对不对</h2>'
+   +'<div class="ph-hero" style="margin-bottom:var(--space-4)">你说的是：'
+   +'<span style="color:var(--color-text-primary)">「'+esc(p.said||'')+'」</span></div>'
+
+   +'<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">1</span>'
+   +'它听懂成了这几件事</div><ul class="ph-list">'
+   +(p.understood||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')
+   +(p.refuses||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')
+   +'</ul></div>'
+
+   +'<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">2</span>'
+   +'今后每条想法都必须回答</div><div>'
+   +(p.must_answer||[]).map(function(f){
+      return '<div class="ph-field"><code>'+esc(f.field)+'</code><span>'+esc(f.desc)+'</span></div>'
+    }).join('')
+   +'</div><div class="card-note" style="margin-top:8px">'
+   +'答不上来的想法会被直接丢掉，不会硬凑。这是它有没有真照你的话做的凭据——'
+   +'一个月后你能查，也能看出被丢掉了多少。</div></div>';
+
+  if(rw.length){
+    h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">3</span>'
+     +'有地方它把你的话改了</div><div class="ph-warn"><ul class="ph-list">'
+     +rw.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>'
+     +'<label class="ph-check" data-el="rules.accept"><input type="checkbox"'
+     +(PH.accepted?' checked':'')+' onchange="phToggleAccept()">'
+     +'<span>我看过了，改成这样就是我的意思。</span></label>'
+     +'<div class="card-note" style="margin-top:6px">改得对不对只有你能判断。'
+     +'不是你的意思，就换个说法重说一遍。</div></div>';
+  }
+
+  var n=rw.length?4:3;
+  h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">'+n+'</span>'
+   +'点下去之后会发生什么</div><div class="ph-then"><ul class="ph-list">'
+   +'<li>从今天起，多一条按你这句话出想法的线。</li>'
+   +'<li>原来那条一个字都不改，继续跑。</li>'
+   +'<li>两条看同一批研报、同一个可买清单、同一天成交——只差你这句话。</li>'
+   +'<li>四周后这里告诉你：哪条更好，好多少。跑不赢的，你随时可以停掉。</li>'
+   +'</ul></div></div>';
+
+  if(PH.err)h+='<div class="ph-err" style="margin-top:var(--space-3)">'+esc(PH.err)+'</div>';
+  var lock=rw.length&&!PH.accepted;
+  h+='<div class="ph-acts">'
+   +'<button type="button" class="ph-go" data-el="rules.go"'
+   +((PH.busy||lock)?' disabled':'')+' onclick="phActivate()">'
+   +(PH.busy?'正在生效…':'就这么办')+'</button>'
+   +'<button type="button" class="ph-alt" data-el="rules.redo"'
+   +(PH.busy?' disabled':'')+' onclick="phDiscard()">不对，我重说</button>'
+   +(lock?'<span class="card-note">先看一眼上面被改的地方，勾了才能生效</span>':'')
+   +'</div>';
+  return h+'</div>';
+}
+
+/* ── 在跑的准则 ── */
+function phRunningCard(){
+  var live=(PH.data||{}).live||[];
+  var h='<div class="card section"><div class="card-title-row">'
+   +'<h2 class="card-title" style="margin-bottom:0">在跑的准则</h2>'
+   +'<span class="card-note">'+live.length+' 条</span></div>';
+  if(!live.length){
+    return h+'<div class="empty">还没教过它。它现在只按内置的四种路子出想法。</div></div>';
+  }
+  h+=live.map(function(c){
+    var when=c.runs>0?('已跑 '+c.runs+' 期')
+      :'还没跑过，下一次周跑（周三）第一次出手';
+    return '<div class="ph-rule">'
+      +'<div class="ph-rule-said">「'+esc(c.said)+'」</div>'
+      +'<div class="ph-meta">'+esc(c.since)+' 起 · '+esc(when)
+      +(c.must_answer&&c.must_answer.length
+        ? ' · 每条想法必答：'+c.must_answer.map(function(f){return esc(f.field)}).join(' / ')
+        : '')+'</div>'
+      +'<div class="ph-acts" style="margin-top:var(--space-3)">'
+      +'<button type="button" class="ph-alt" data-el="rules.retire"'
+      +(PH.busy?' disabled':'')+' onclick="phRetire(\''+esc(c.id)+'\')">停用</button>'
+      +(c.runs>0?'':'<span class="card-note">停用后它已经写下的持仓和业绩留在账本里</span>')
+      +'</div></div>';
+  }).join('');
+  return h+'</div>';
+}
+
+function renderRules(){
+  var el=$('view-rules');if(!el)return;
+  /* 面板每 60 秒整页重渲染一次。这一屏和别处不同：别处是只读的，重画一遍没有
+     代价；这里有一个人正在往框里打字，重画会把他打了一半的话连同光标一起换掉。
+     所以正在输入时整块跳过——PH.say 由 oninput 实时同步，跳过不会丢状态。 */
+  var ta=$('phSay');
+  if(ta&&document.activeElement===ta){PH.say=ta.value;return}
+  /* 公开快照是导出的静态 HTML，没有后端可写。视图在快照里根本不注册（见
+     VIEWS.push 的条件），这里再兜一层，免得别处误调。 */
+  if(isSnapshot())return;
+  phLoad();
+  if(!PH.data&&!PH.err){el.innerHTML='<div class="card section"><div class="empty">正在读…</div></div>';return}
+  /* 不再写一遍标题：页眉的 pageTitle 已经是「准则」，renderProcess 也是这个规矩。 */
+  var html=secWrap('rules','teach',phTeachCard());
+  html+=secWrap('rules','running',phRunningCard());
+  el.innerHTML=html;
+  buildNav();
+}
+
 /* ── boot ────────────────────────────────────────────────────── */
 buildNav();
 var bootDrawer=null;
-var initHash=(location.hash||'').replace('#','');
+var bootSec=null;
+var initHash=(location.hash||'').replace('#','').replace(/^\/?/,'').split('/')[0];
 /* 旧链接：底账/回测已并入抽屉，落到组合页并展开对应抽屉 */
 if(initHash==='audit'){initHash='week';bootDrawer=function(){openCalDrawer()}}
 if(initHash==='backtest'){initHash='week';bootDrawer=function(){openTrustDrawer()}}
-if(VIEWS.some(function(v){return v.id===initHash}))switchView(initHash);else switchView('week');
+var route0=parseRoute(location.hash&&location.hash.indexOf('/')>=0?location.hash:('#/'+initHash));
+switchView(route0.view,route0.sec);
+bootSec=(location.hash&&location.hash.indexOf('/')>=0)?route0.sec:null;
 renderBootState();
 refresh();
 setInterval(refresh,60000);
 setInterval(tick,1000);
+/* 滚动时更新侧栏高亮：rAF 节流，滚动本身不做任何计算。 */
+(function(){
+  var queued=false;
+  window.addEventListener('scroll',function(){
+    if(queued)return;queued=true;
+    requestAnimationFrame(function(){queued=false;markActiveSection()});
+  },{passive:true});
+})();
 </script>
 </body>
 </html>

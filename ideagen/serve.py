@@ -47,6 +47,107 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.log_message('"%s %s %s" %s %s',
                          self.command, path, self.request_version, code, size)
 
+    @staticmethod
+    def _acct():
+        from . import accounts
+        return accounts
+
+    def _session_user(self) -> str | None:
+        """The account this request is signed in as, if any. Cached per request."""
+        if not hasattr(self, "_session_cache"):
+            from . import accounts
+            raw = self.headers.get("Cookie") or ""
+            token = None
+            for part in raw.split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == accounts.SESSION_COOKIE:
+                    token = v
+                    break
+            self._session_cache = accounts.check(token)
+        return self._session_cache
+
+    def _login_redirect(self):
+        """Send a browser to the login page; tell a machine it needs a key.
+
+        Redirecting an API call to HTML is how a fetch ends up reporting
+        `Unexpected token '<'` — the caller asked for JSON and got a page. So
+        the shape of the answer follows the shape of the request.
+        """
+        path = self.path.split("?", 1)[0]
+        wants_html = "text/html" in (self.headers.get("Accept") or "")
+        if path.startswith("/api/") or not wants_html:
+            return self._json(
+                {"error": "未登录", "login": "/login"}, status=401)
+        from urllib.parse import quote
+        return self._redirect(f"/login?next={quote(self.path)}")
+
+    def _session_cookie(self, value: str, *, days: int) -> str:
+        """One cookie, built the same way the key cookie is.
+
+        Secure is set whenever the request arrived through a proxy — a request
+        that carries forwarding headers reached us over the public deployment,
+        where TLS terminates at the proxy. Local direct access has no TLS to
+        demand, and forcing the flag there makes the browser drop the cookie and
+        loop back to the login page forever.
+        """
+        maxage = days * 86400
+        cookie = (f"{self._acct().SESSION_COOKIE}={value}; Path=/; HttpOnly; "
+                  f"SameSite=Strict; Max-Age={maxage}")
+        if (self.headers.get("X-Forwarded-Proto") == "https"
+                or self.headers.get("X-Forwarded-For")
+                or self.headers.get("CF-Connecting-IP")):
+            cookie += "; Secure"
+        return cookie
+
+    def _deploy_state(self, *, json_only: bool):
+        """What code this instance is running, and whether it is current.
+
+        The self-updater is the only thing keeping the cloud level with
+        origin/main, and an updater nobody can see fails silently: the day it
+        stops and the day it works look identical from the outside. This reads
+        the file it writes on every cycle.
+        """
+        import json as _json
+        state = {"deployed": None, "updater": None}
+        try:
+            state["deployed"] = (Path("/app") / ".git" / "HEAD").exists()
+        except Exception:  # noqa: BLE001
+            pass
+        for candidate in (Path("/run/ideagen-health/updater.json"),
+                          Path("/opt/ideagen/health/updater.json")):
+            try:
+                if candidate.exists():
+                    state["updater"] = _json.loads(
+                        candidate.read_text(encoding="utf-8"))
+                    break
+            except Exception as e:  # noqa: BLE001
+                state["updater"] = {"state": "unreadable",
+                                    "detail": f"{type(e).__name__}"}
+        state["image_sha"] = os.environ.get("IMAGE_TAG") or None
+        if json_only:
+            return self._json(state)
+        from . import authpages
+        return self._raw(authpages.deploy_page(state),
+                         "text/html; charset=utf-8")
+
+    def _account_page(self, msg: str | None = None, ok: bool = False):
+        from . import authpages
+        accounts = self._acct()
+        who = self._session_user()
+        if not who:
+            # Reachable with only the machine key, which has no account behind
+            # it. Saying so is better than rendering a page about "your" account
+            # when there is no you.
+            return self._raw(
+                authpages.login_page(
+                    error="这个页面是给账号用的；当前是用钥匙进来的机器身份。"),
+                "text/html; charset=utf-8", status=401)
+        return self._raw(
+            authpages.account_page(who, admin=accounts.is_admin(who),
+                                   users=accounts.list_users(),
+                                   msg=msg, ok=ok),
+            "text/html; charset=utf-8")
+
     def _authorized(self) -> bool:
         """Remote requests need the shared key; localhost stays open.
 
@@ -73,8 +174,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         local = (self.client_address[0] in ("127.0.0.1", "::1")
                  and not forwarded)
         if not key:
-            return local
+            return local or bool(self._session_user())
         if local:
+            return True
+        # A named session beats the shared key: it says *who*, and it is the
+        # only credential a person is ever asked for now. The key stays for
+        # machines — the proxy's probe, scripts, the deploy tooling.
+        if self._session_user():
             return True
         from urllib.parse import parse_qs, urlparse
         q = parse_qs(urlparse(self.path).query)
@@ -114,22 +220,51 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # a readable 500, not a diagnosis of the server being down.
         try:
             return self._route_get()
+        except (BrokenPipeError, ConnectionResetError):
+            # The reader navigated away or the request timed out mid-response.
+            # Nothing went wrong on this side, there is no longer a socket to
+            # answer on, and writing a 500 into a closed one only raises again
+            # — the first version of this handler did exactly that and filled
+            # the log with tracebacks that described a client, not a fault.
+            return
         except Exception as exc:  # noqa: BLE001 — bounded error, no traceback
             traceback.print_exc()
             from . import ask as _ask_mod
-            return self._json(
-                {"error": _ask_mod._scrub_text(
-                    f"{type(exc).__name__}: {exc}"[:300])}, status=500)
+            try:
+                return self._json(
+                    {"error": _ask_mod._scrub_text(
+                        f"{type(exc).__name__}: {exc}"[:300])}, status=500)
+            except (BrokenPipeError, ConnectionResetError):
+                return
 
     def _route_get(self) -> None:
         path = self.path.split("?", 1)[0]
         if path == "/api/olive/oauth/callback":
             return self._olive_callback()
-        if path != "/healthz" and not self._authorized():
-            return self._raw("访问需要钥匙：在链接后加 ?key=<钥匙>（仅首次，之后走 Cookie）"
-                             .encode(), "text/plain; charset=utf-8", status=401)
+        # /login must be reachable without being logged in, or there is no way
+        # to become logged in. It is the only such path besides the health probe.
+        if path not in ("/healthz", "/login") and not self._authorized():
+            return self._login_redirect()
         if getattr(self, "_strip_auth_query", False):
             return self._redirect_without_auth_query()
+        if path == "/login":
+            from . import authpages
+            from urllib.parse import parse_qs, urlparse
+            q = parse_qs(urlparse(self.path).query)
+            if self._session_user():
+                return self._redirect("/review")
+            return self._raw(authpages.login_page(
+                nxt=(q.get("next") or ["/review"])[0]),
+                "text/html; charset=utf-8")
+        if path == "/account":
+            return self._account_page()
+        if path in ("/deploy", "/api/deploy"):
+            return self._deploy_state(json_only=path.startswith("/api/"))
+        if path == "/api/whoami":
+            who = self._session_user()
+            return self._json({"user": who,
+                               "admin": bool(who and self._acct().is_admin(who)),
+                               "via": "session" if who else "key"})
         if path == "/api/olive/oauth/start":
             return self._begin_olive_authorization()
         if path in ("/", "/index.html", "/review", "/review.html", "/dash"):
@@ -247,12 +382,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
-        if not self._authorized():
+        # /login is the one POST that cannot require being logged in. The
+        # same-origin check below still applies to it, and with SameSite=Strict
+        # on the session cookie that is what keeps a third-party page from
+        # driving this form.
+        if path != "/login" and not self._authorized():
             return self._json({"error": "unauthorized"}, status=401)
         request_origin = self._external_origin()
         if not self._same_origin(request_origin):
             return self._json({"error": "cross-origin request rejected"}, status=403)
         length = int(self.headers.get("Content-Length") or 0)
+        if path == "/login" or path.startswith("/account") or path == "/logout":
+            return self._auth_post(path, length)
         if path == "/api/ask":
             # 「问当时的它」— one grounded Q&A over a run's frozen material.
             # The body carries the question plus in-drawer history, so it gets
@@ -302,6 +443,77 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "error": f"{type(exc).__name__}: {exc}"[:300],
                 }, status=502)
             return self._redirect("/olive?sync=" + ("started" if started else "running"))
+        return self._json({"error": "not found"}, status=404)
+
+    def _auth_post(self, path: str, length: int):
+        """Login, logout, and the account form. All of it posts back here."""
+        from urllib.parse import parse_qs
+        from . import authpages
+        accounts = self._acct()
+        body = self.rfile.read(min(length, 8192)).decode("utf-8", "replace")
+        form = {k: (v[0] if v else "")
+                for k, v in parse_qs(body, keep_blank_values=True).items()}
+        client = self.headers.get("X-Forwarded-For", "").split(",")[0].strip() \
+            or self.client_address[0]
+
+        if path == "/login":
+            wait = accounts.throttle_wait(client)
+            if wait > 0:
+                return self._raw(authpages.login_page(
+                    error=f"尝试太频繁，请等 {int(wait) + 1} 秒再试。"),
+                    "text/html; charset=utf-8", status=429)
+            user = (form.get("username") or "").strip()
+            if user and accounts.verify(user, form.get("password") or ""):
+                accounts.throttle_ok(client)
+                accounts.note_login(user)
+                self._set_cookie = self._session_cookie(
+                    accounts.issue(user), days=accounts.SESSION_DAYS)
+                nxt = form.get("next") or "/review"
+                return self._redirect(nxt if nxt.startswith("/") else "/review")
+            accounts.throttle_fail(client)
+            # One message for both "no such user" and "wrong password": telling
+            # them apart turns the form into a way to ask who has an account.
+            return self._raw(authpages.login_page(error="用户名或口令不对。"),
+                             "text/html; charset=utf-8", status=401)
+
+        if path == "/logout":
+            self._set_cookie = self._session_cookie("", days=0) + "; Max-Age=0"
+            return self._redirect("/login")
+
+        who = self._session_user()
+        if not who:
+            return self._redirect("/login")
+        try:
+            if path == "/account/password":
+                if not accounts.verify(who, form.get("current") or ""):
+                    return self._account_page("当前口令不对。")
+                accounts.set_password(who, form.get("password") or "")
+                # The change just invalidated this very session, which is the
+                # point; hand back a fresh one so the person who did it stays in.
+                self._set_cookie = self._session_cookie(
+                    accounts.issue(who), days=accounts.SESSION_DAYS)
+                return self._account_page("口令已改，其他设备上的登录都失效了。", ok=True)
+            if path == "/account/revoke":
+                accounts.revoke_sessions(who)
+                self._set_cookie = self._session_cookie("", days=0) + "; Max-Age=0"
+                return self._redirect("/login")
+            if path == "/account/add":
+                if not accounts.is_admin(who):
+                    return self._account_page("只有管理员能新增账号。")
+                accounts.add_user(form.get("username") or "",
+                                  form.get("password") or "")
+                return self._account_page(
+                    f"已创建 {form.get('username')}。", ok=True)
+            if path == "/account/remove":
+                if not accounts.is_admin(who):
+                    return self._account_page("只有管理员能删除账号。")
+                target = form.get("username") or ""
+                if target == who:
+                    return self._account_page("不能删除自己。")
+                accounts.remove_user(target)
+                return self._account_page(f"已删除 {target}。", ok=True)
+        except ValueError as e:
+            return self._account_page(str(e))
         return self._json({"error": "not found"}, status=404)
 
     def _external_origin(self) -> str:
@@ -433,6 +645,13 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
 
     def _redirect(self, location: str) -> None:
         self.send_response(303)
+        # Logging in ends in a redirect, so a redirect that drops the cookie
+        # loses the session it just created: the browser follows to /review,
+        # arrives with no credential, and is sent back to the login form it just
+        # completed. Every response path that can carry a cookie must emit it.
+        if getattr(self, "_set_cookie", None):
+            self.send_header("Set-Cookie", self._set_cookie)
+            self._set_cookie = None
         self.send_header("Location", location)
         self.send_header("Cache-Control", "no-store")
         self._security_headers()
@@ -474,7 +693,11 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
         "connect-src 'self'; "
         "object-src 'none'; "
         "base-uri 'none'; "
-        "form-action 'none'; "
+        # 'self', not 'none': the login and account pages post back here.
+        # 'none' was right while no page in this app had a form, and it fails
+        # by silently refusing the submit — a console CSP violation that looks
+        # nothing like an authentication problem.
+        "form-action 'self'; "
         "frame-ancestors 'none'"
     )
 
@@ -541,6 +764,18 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     if not dash.exists():
         raise RuntimeError(f"dashboard asset missing: {dash}")
 
+    # A fresh deployment would otherwise show a login page nobody can pass.
+    # runtime.env already carries one operator's credentials; the first start
+    # turns them into a real account and everything after that is managed in the
+    # UI rather than by editing an env file.
+    try:
+        from . import accounts
+        created = accounts.bootstrap()
+        if created:
+            print(f"  已从部署配置创建首个账号：{created}（管理员）")
+    except Exception as e:  # noqa: BLE001 — never block serving on this
+        print(f"  账号初始化跳过：{type(e).__name__}: {e}")
+
     for attempt in range(10):                    # walk forward if the port is busy
         try:
             httpd = Server((HOST, port + attempt), Handler)
@@ -554,6 +789,8 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     url = f"http://{HOST}:{port}/"
     print(f"IdeaGen40 dashboard  →  {url}")
     print(f"  /              运行台（数据来自 /api/state）")
+    print(f"  /login         登录页（公网访问走账号，不再是钥匙）")
+    print(f"  /account       账号管理：改口令、增删用户、踢设备")
     print(f"  /legacy        本地 SQLite 旧版报表")
     print(f"  /api/status    紧凑摘要 JSON")
     print(f"  /api/report    完整归因 JSON")

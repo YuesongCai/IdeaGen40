@@ -1361,7 +1361,7 @@ body.drawer-lock{overflow:hidden}
   <main class="main">
     <div class="nx-container">
       <div class="topbar">
-        <h1 class="page-title" id="pageTitle">本周</h1>
+        <h1 class="page-title" id="pageTitle">组合</h1>
         <div class="topbar-actions">
           <div class="refresh-stamp" id="stamp"><span class="rs-dot"></span><span id="stampText">刷新于 --:--:-- · 每 60 秒自动</span></div>
           <a class="source-link" href="/olive">数据源</a>
@@ -1601,6 +1601,37 @@ function maxDrawdown(eq){
 }
 
 /* ── fetch loop ──────────────────────────────────────────────── */
+/* ── 首帧与失败态 ─────────────────────────────────────────────
+   空白既可能是「还没取到」，也可能是「取不到」，还可能是「确实没有」。
+   页面必须自己说清楚是哪一种：首帧给骨架，失败给原因和重试，
+   并且只有在真有过一次成功快照时才敢说「下方是快照」。 */
+var fetchInFlight=false;
+function injectBootStyle(){
+  if($('bootStyle'))return;
+  var el=document.createElement('style');el.id='bootStyle';
+  el.textContent='@keyframes skShimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}'
+    +'.sk-line{height:12px;border-radius:6px;margin:0 0 10px;'
+    +'background:linear-gradient(90deg,var(--color-border-subtle) 25%,var(--color-surface-subtle) 50%,var(--color-border-subtle) 75%);'
+    +'background-size:200% 100%;animation:skShimmer 1.4s linear infinite}'
+    +'@media (prefers-reduced-motion:reduce){.sk-line{animation:none}}';
+  document.head.appendChild(el);
+}
+function renderBootState(){
+  /* 只在从未成功取过数时接管视图区；一旦有过快照就交回 renderAll()。 */
+  if(S)return;
+  injectBootStyle();
+  var box=$('view-'+current);if(!box)return;
+  box.innerHTML=fetchFailed
+    ? '<div class="card section" role="status"><div class="empty-sm">'
+      +'没取到数据 — 服务没有响应，因此页面暂时没有可显示的内容。'
+      +'这不代表本期没有产出。</div></div>'
+    : '<div class="card section" aria-busy="true" aria-live="polite">'
+      +'<div class="sk-line" style="width:32%"></div>'
+      +'<div class="sk-line" style="width:64%"></div>'
+      +'<div class="sk-line" style="width:46%"></div>'
+      +'<div class="empty-sm" style="margin-top:var(--space-3)">正在读取运行状态…</div>'
+      +'</div>';
+}
 function refresh(){
   /* 静态快照模式：GitHub Pages 没有后端。导出脚本把数据烙进页面
      （window.__STATIC__），此时不发网络请求、不自动刷新，并在页眉
@@ -1639,17 +1670,23 @@ function refresh(){
     return r.json();
   }).then(function(j){J=j;JErr=null}).catch(function(e){J=null;JErr=e&&e.message?e.message:String(e)})
   .then(function(){if(S){renderProcess();renderDrawers()}});
+  /* 重试与 60 秒轮询共用这条路径：在途时不再发第二次，
+     避免连点重试或慢响应时请求堆叠。 */
+  if(fetchInFlight)return;
+  fetchInFlight=true;
   fetch('/api/state',{cache:'no-store'}).then(function(r){
     if(!r.ok)throw new Error('HTTP '+r.status);
     return r.json();
   }).then(function(j){
     S=j;fetchFailed=false;lastFetchOk=new Date();
+    $('deadBanner').innerHTML='';
     renderAll();
   }).catch(function(e){
     fetchFailed=true;
     renderDeadBanner(e&&e.message?e.message:String(e));
+    renderBootState();
     renderStamp();
-  });
+  }).then(function(){fetchInFlight=false;});
 }
 function renderStamp(){
   var t=lastFetchOk?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Hong_Kong',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(lastFetchOk):'--:--:--';
@@ -1668,7 +1705,11 @@ function renderDeadBanner(msg){
     '<div class="banner banner-dead" role="alert">'
     +'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="8.5" stroke="var(--color-feedback-error-default)" stroke-width="1.5"/><path d="M10 6v5" stroke="var(--color-feedback-error-default)" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="13.8" r="1" fill="var(--color-feedback-error-default)"/></svg>'
     +'<div><div class="banner-title">无法连接数据服务（/api/state）</div>'
-    +'<div style="font:400 12px/16px var(--font-sans)">'+esc(msg)+' · 服务可能已停止——可在终端执行 <span class="mono">launchctl list | grep ideagen40</span> 检查；下方是最后一次成功刷新的快照。</div></div>'
+    +'<div style="font:400 12px/16px var(--font-sans)">'+esc(msg)+' · 服务可能已停止——可在终端执行 <span class="mono">launchctl list | grep ideagen40</span> 检查。'
+      +(S
+         ? '下方是最后一次成功刷新的快照（'+(lastFetchOk?hktFmt(lastFetchOk,true):'时间未知')+'）。'
+         : '本次会话还没有成功取到过数据，因此下方没有可显示的内容。')
+      +'</div></div>'
     +'<button type="button" class="banner-retry" onclick="refresh()">重试</button>'
     +'</div>';
 }
@@ -1831,6 +1872,9 @@ function statusStrip(){
   var synthetic=isSynthetic();
   var inf=inFlightRun();
   var badPorts=(a.ports||[]).filter(function(p){return !p.ok});
+  /* ports_pending = 自检还没跑完。空数组不等于「没有异常端口」，
+     把未知渲染成正常，就是把「没取到」谎报成「一切正常」。 */
+  var portsUnknown=!!a.ports_pending;
   var wkOut=hbOutcome('weekly');
   var curPeriod=(S.schedule||{}).current_period;
   var weeklyFailed=wkOut&&wkOut.action==='failed';
@@ -1859,7 +1903,9 @@ function statusStrip(){
     sub=badPorts.map(function(p){return esc(p.name)}).join(' / ')+' 端口异常';
   }else{
     word='运行正常';
-    sub='心跳、端口、数据源均正常，按周频自动运行';
+    sub=portsUnknown
+      ? '心跳与数据源正常，按周频自动运行；端口自检结果尚未取到'
+      : '心跳、端口、数据源均正常，按周频自动运行';
   }
   var p=hktParts();
   var gaps=(S.gaps||[]).length;
@@ -4649,9 +4695,10 @@ function askLogSubject(a){
 function askMatOpen(m){
   var src=String(m.source||''),k=String(m.kind||'');
   if(k==='journal')return "openRunLogStacked()";
+  /* 语料浏览器要按期查库，必须带上这次运行的 as_of——不带就取不到清单。 */
   if(k==='doc'){
-    var mm=src.match(/([A-Za-z-]+:\d+)/);
-    return mm?("openCorpus()"):"openCorpus()";
+    var ao=((S||{}).weekly||{}).as_of||'';
+    return ao?("openCorpus('"+ao+"')"):'';
   }
   if(k==='selector'){
     var sm=src.match(/C_selectors\/([A-Za-z0-9_]+)\.json/);
@@ -4744,6 +4791,15 @@ function statusDrawerBody(){
     var c=pt.ok?(warn?'warn':'ok'):'bad';
     return '<span class="port-pill '+c+'" title="'+esc(pt.detail||'')+'"><span class="dot"></span>'+esc(pt.name)+'</span>';
   }).join('');
+  var portStamp=a.ports_pending
+    ? '端口自检尚未完成 — 这不代表端口异常'
+    : (a.ports_checked_at
+        ? '自检于 '+hktFmt(a.ports_checked_at,true)+' · '+ageWord(a.ports_age_s)
+          +(a.ports_stale?' · 已过期，正在后台刷新':'')
+        : '');
+  var portStampHtml=portStamp
+    ? '<div style="margin-top:var(--space-2);font:400 11px/16px var(--font-sans);color:var(--color-text-tertiary)">'+esc(portStamp)+'</div>'
+    : '';
   return '<div class="meta-row" style="margin-top:0">'
       +'<div class="meta-kv"><div class="k">最近心跳</div><div class="v num">'+hktFmt(hb.at_hkt,true)+' HKT · '+ageWord(a.age_s)+'</div></div>'
       +'<div class="meta-kv"><div class="k">平台 / 交易场</div><div class="v">'+esc(hb.platform||S.platform||'—')+' / '+esc(hb.venue||'—')+'</div></div>'
@@ -4753,7 +4809,8 @@ function statusDrawerBody(){
     +(weeklyFailed?'<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||'')+'）周跑在心跳里记为 failed。runs 表没有这次尝试的明细；下方数据源健康和「盯市」错误是目前 API 给出的全部线索。</div>':'')
     +(hb.fatal?'<div style="margin-top:var(--space-2);font:400 12px/18px var(--font-sans);color:var(--color-feedback-error-text)">fatal：'+esc(hb.fatal)+'</div>':'')
     +((hb.errors||[]).length?'<div style="margin-top:var(--space-2);font:400 12px/18px var(--font-sans);color:var(--color-feedback-error-text)">'+hb.errors.map(esc).join('<br>')+'</div>':'')
-    +'<div class="port-row" aria-label="平台端口">'+ports+'</div>'
+    +'<div class="port-row" aria-label="平台端口">'+(ports||'<span class="port-pill warn"><span class="dot"></span>自检结果尚未取到</span>')+'</div>'
+    +portStampHtml
     +latestMonitorLine()
     +'<div style="margin-top:var(--space-3)">'
     +'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">数据源</div>'
@@ -5382,7 +5439,11 @@ function renderCorpus(){
         +'<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(corpusAsOf)+'\')">再试一次</button></div>';
   }else if(d&&(d.docs||[]).length){
     var counts={1:0,2:0,3:0};(d.docs||[]).forEach(function(x){counts[x.tier]=(counts[x.tier]||0)+1});
-    body='<input type="search" class="corpus-search" placeholder="搜标题或机构……" value="'+esc(corpusQuery)+'" oninput="corpusInput(this)" aria-label="搜索语料">'
+    /* 服务端会把认不出的期次退回到最近一期。退回本身是对的，但不说出来，
+     * 读者会以为自己看的是点进来的那一期。 */
+    body=(d.as_of_invalid?'<div class="card-note" style="color:var(--color-feedback-warning-text);margin-bottom:6px">'
+        +'请求的期次「'+esc(d.as_of_invalid)+'」认不出来，下面显示的是最近一期（'+esc(d.as_of||'')+'）。</div>':'')
+      +'<input type="search" class="corpus-search" placeholder="搜标题或机构……" value="'+esc(corpusQuery)+'" oninput="corpusInput(this)" aria-label="搜索语料">'
       +'<div class="tier-chips">'
       +[[null,'全部 '+fmtInt((d.docs||[]).length)],[1,'T1 一手 '+fmtInt(counts[1]||0)],[2,'T2 投行 '+fmtInt(counts[2]||0)],[3,'T3 资讯 '+fmtInt(counts[3]||0)]]
         .map(function(c){return '<button type="button" class="tier-chip'+(corpusTier===c[0]?' on':'')+'" onclick="setCorpusTier('+(c[0]===null?'null':c[0])+')">'+c[1]+'</button>'}).join('')
@@ -5393,7 +5454,8 @@ function renderCorpus(){
   var win=(d&&d.window&&d.window.length)?('（窗口 '+esc(d.window[d.window.length-1].slice(5))+' ~ '+esc(d.window[0].slice(5))+'）'):'';
   root.innerHTML='<div class="toc-scrim" onclick="closeCorpus()"></div>'
     +'<div class="help-panel corpus-panel" role="dialog" aria-label="语料浏览器">'
-    +'<div class="toc-h"><span>'+esc(corpusAsOf||'')+' 期语料'+(d?' · '+fmtInt(d.n)+' 条'+win:'')+'</span>'
+    /* 标题写服务端实际返回的期次，不是请求的那个——否则退回之后标题还在骗人 */
+    +'<div class="toc-h"><span>'+esc((d&&d.as_of)||corpusAsOf||'')+' 期语料'+(d?' · '+fmtInt(d.n)+' 条'+win:'')+'</span>'
     +'<button type="button" class="copy-btn" onclick="closeCorpus()">关闭</button></div>'
     +body+'</div>';
   if(d&&!corpusLoading&&!corpusError)renderCorpusList();
@@ -5489,6 +5551,7 @@ var initHash=(location.hash||'').replace('#','');
 if(initHash==='audit'){initHash='week';bootDrawer=function(){openCalDrawer()}}
 if(initHash==='backtest'){initHash='week';bootDrawer=function(){openTrustDrawer()}}
 if(VIEWS.some(function(v){return v.id===initHash}))switchView(initHash);else switchView('week');
+renderBootState();
 refresh();
 setInterval(refresh,60000);
 setInterval(tick,1000);

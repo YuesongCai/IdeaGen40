@@ -94,6 +94,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return ok
 
     def do_GET(self) -> None:  # noqa: N802
+        # Any unhandled exception below reaches BaseHTTPRequestHandler, which
+        # closes the socket without a status line — the browser reports
+        # ERR_EMPTY_RESPONSE and the page shows "服务没响应", which points the
+        # reader at the wrong thing. One malformed query parameter should cost
+        # a readable 500, not a diagnosis of the server being down.
+        try:
+            return self._route_get()
+        except Exception as exc:  # noqa: BLE001 — bounded error, no traceback
+            traceback.print_exc()
+            from . import ask as _ask_mod
+            return self._json(
+                {"error": _ask_mod._scrub_text(
+                    f"{type(exc).__name__}: {exc}"[:300])}, status=500)
+
+    def _route_get(self) -> None:
         path = self.path.split("?", 1)[0]
         if path == "/api/olive/oauth/callback":
             return self._olive_callback()

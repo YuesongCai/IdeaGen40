@@ -18,6 +18,8 @@ import html
 import hashlib
 import json
 import os
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -122,8 +124,8 @@ def _alive(p) -> str:
     else:
         tone, head = "bad", "<b>⚠ 没有心跳记录</b> — 调度器从未跑过或缓存被清"
     ports = "".join(
-        f'<span class="pill {"ok" if h.ok else "no"}">{E(h.name)}</span>'
-        for h in p.check())
+        f'<span class="pill {"ok" if q["ok"] else "no"}">{E(q["name"])}</span>'
+        for q in _port_health(p, lambda d: d)["ports"])
     return _card("这套系统现在在不在跑", f"<p>{head}</p><p>{ports}</p>"
                  "<p class=dim>判定标准：launchd 每 15 分钟一次 tick，每次 tick 都写心跳。"
                  "两个周期没有心跳 = 停了，不是安静。</p>", tone)
@@ -275,6 +277,71 @@ def build(con=None, p=None) -> "config.Path":
 
 
 # ---------------------------------------------------------------- state API
+# -- port health ---------------------------------------------------------
+# `Platform.check()` is a doctor probe: it opens a live connection to all six
+# ports, and on the cloud platform that means a TOS `list_objects` round trip —
+# 2.9s of a 3.3s state build, paid again on every 60-second dashboard poll. It
+# was written to run once before a run, not once a minute. So the poll path
+# reads a cached verdict and refreshes it out of band: one slow port can no
+# longer hold up the whole document. A verdict past its TTL is still served,
+# stamped with the time it was taken; a verdict that has never been taken is
+# reported as pending, which is not the same as a port being down.
+_HEALTH_TTL_S = 120.0
+_HEALTH_COLD_WAIT_S = 2.5
+_health_lock = threading.Lock()
+_health_probe: dict[str, Any] | None = None
+_health_running = False
+
+
+def _probe_ports(p) -> None:
+    """Take a fresh verdict off the request path. Never raises."""
+    global _health_probe, _health_running
+    try:
+        ports = [{"name": h.name, "ok": h.ok, "detail": h.detail}
+                 for h in p.check()]
+        with _health_lock:
+            _health_probe = {"ports": ports, "at": time.time(),
+                             "platform": p.name}
+    except Exception:  # noqa: BLE001 — the dashboard degrades, it never 500s
+        pass
+    finally:
+        with _health_lock:
+            _health_running = False
+
+
+def _port_health(p, scrub) -> dict[str, Any]:
+    """The `alive` block's port fields, with their own freshness stamp."""
+    global _health_running
+    with _health_lock:
+        cur = _health_probe
+        fresh = (cur is not None and cur["platform"] == p.name
+                 and time.time() - cur["at"] < _HEALTH_TTL_S)
+        start = not fresh and not _health_running
+        if start:
+            _health_running = True
+    if start:
+        t = threading.Thread(target=_probe_ports, args=(p,),
+                             name="port-health", daemon=True)
+        t.start()
+        if cur is None:
+            # Cold start only: an empty panel on the very first load is worse
+            # than a short wait. Every poll after this one returns instantly.
+            t.join(_HEALTH_COLD_WAIT_S)
+            with _health_lock:
+                cur = _health_probe
+    if cur is None:
+        return {"ports": [], "ports_checked_at": None, "ports_age_s": None,
+                "ports_stale": False, "ports_pending": True}
+    age = time.time() - cur["at"]
+    return {"ports": [{"name": q["name"], "ok": q["ok"],
+                       "detail": scrub(q["detail"])} for q in cur["ports"]],
+            "ports_checked_at": datetime.fromtimestamp(
+                cur["at"], timezone.utc).astimezone(config.TZ).isoformat(),
+            "ports_age_s": round(age, 1),
+            "ports_stale": age >= _HEALTH_TTL_S,
+            "ports_pending": False}
+
+
 def state(con=None, p=None) -> dict[str, Any]:
     """The full system state as one JSON document.
 
@@ -327,9 +394,7 @@ def state(con=None, p=None) -> dict[str, Any]:
         return _re.sub(r"/Users/[\w.-]+", "~", text)
     out["alive"] = {"heartbeat": hb, "age_s": age,
                     "ok": age is not None and age < 1800,
-                    "ports": [{"name": h.name, "ok": h.ok,
-                               "detail": _scrub(h.detail)}
-                              for h in p.check()]}
+                    **_port_health(p, _scrub)}
 
     # -- run history ------------------------------------------------------
     out["runs"] = [dict(r) for r in p.state.q(
@@ -653,7 +718,17 @@ def corpus_list(con=None, as_of: str | None = None, p=None) -> dict[str, Any]:
         r = db.q1(con, "SELECT MAX(published_d) d FROM documents")
         as_of = r["d"] if r else None
     from datetime import date as _date, timedelta as _td
-    aof = _date.fromisoformat(as_of)
+    # A caller can hand over anything; an unparseable date should not take the
+    # request down. Fall back to the latest period and say so, so a wrong
+    # parameter shows up as a labelled answer instead of a dead connection.
+    bad_as_of = None
+    try:
+        aof = _date.fromisoformat(as_of or "")
+    except (TypeError, ValueError):
+        bad_as_of = as_of
+        r = db.q1(con, "SELECT MAX(published_d) d FROM documents")
+        as_of = (r["d"] if r else None) or _date.today().isoformat()
+        aof = _date.fromisoformat(as_of)
     days = [(aof - _td(days=i)).isoformat() for i in range(3)]
     rows = db.q(con,
                 "SELECT doc_id, published_d, title, "
@@ -665,6 +740,7 @@ def corpus_list(con=None, as_of: str | None = None, p=None) -> dict[str, Any]:
                 "ORDER BY published_d DESC, tier, doc_id"
                 % ",".join("?" * len(days)), days)
     return {"as_of": as_of, "window": days, "n": len(rows),
+            **({"as_of_invalid": str(bad_as_of)} if bad_as_of else {}),
             "docs": [dict(r) for r in rows]}
 
 

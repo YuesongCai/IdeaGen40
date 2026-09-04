@@ -1351,6 +1351,19 @@ function methodName(m){
            'chain':'传导链','transmission':'传导链','gap':'共识缺口','consensus_gap':'共识缺口'};
   return map[m]||m;
 }
+function isBackfill(){
+  return String(((S||{}).weekly||{}).data_classification||'')==='backfill';
+}
+/* 期次标签：补跑的一期长得和自动跑的一模一样，不标注就等于默认它是当周跑出来的。 */
+function periodBadge(){
+  if(!isBackfill())return '';
+  return '<span class="gloss" style="margin-left:8px;font:600 11px/16px var(--font-sans);'
+    +'padding:2px 7px;border-radius:10px;background:var(--color-bg-warn,#f6e7c8);'
+    +'color:var(--color-text-primary);vertical-align:middle" '
+    +'title="这一期是事后补跑的：喂给模型的研报卡在当期日期，但模型权重见过之后的世界，'
+    +'货架上还有没有上架日期的标的无法按当期过滤。它可以用来看流程和扩样本，不能当作当周的实盘记录。">'
+    +'事后补跑 ⓘ</span>';
+}
 function isSynthetic(){
   return String(((S||{}).weekly||{}).data_classification||'').indexOf('public-synthetic')===0;
 }
@@ -1552,7 +1565,7 @@ function renderWeek(){
   var period=w.as_of||((S.schedule||{}).current_period)||'—';
 
   var html='';
-  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合</div>'
+  html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合'+periodBadge()+'</div>'
     +'<div class="wk-sub">AI 读完一周宏观研报 → 选主题 → 写想法 → 合并候选 → 多种挑法各记一本模拟账 → 自动建仓、逐日盯市。下面的链条节点直接拉开对应环节的抽屉。</div>';
   html+=statusStrip();
   html+=chainStrip(ag);

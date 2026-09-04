@@ -394,6 +394,11 @@ tbody td{
   vertical-align:top;
 }
 tbody tr:hover>td{background:var(--color-surface-subtle)}
+/* 密集表：12/16 的内边距对三五列的表刚好，对十一列的候选池全表就是
+ * 350px 的纯留白——整张表因此宽出可视区，最右一列被无声裁掉。
+ * 列多到一定程度，留白就不再是从容，而是把内容挤出画面。 */
+table.dense thead th,table.dense tbody td{padding:9px 10px}
+table.dense tbody td{font-size:13px}
 td.primary,th.primary{color:var(--color-text-primary);font-weight:500}
 td.r,th.r{text-align:right}
 td.c,th.c{text-align:center}
@@ -5569,7 +5574,7 @@ function stagePoolBody(d){
     candCard='<div id="candCard" style="margin-top:var(--space-6)">'
       +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">候选池全表</h2><span class="card-note">'+fmtInt(cands.length)+' 条 · 列头排序</span></div>'
       +flt
-      +'<div class="table-wrap scroll-y scroll-thin" style="margin-top:var(--space-3)"><table id="candTable">'
+      +'<div class="table-wrap scroll-y scroll-thin" style="margin-top:var(--space-3)"><table id="candTable" class="dense">'
       +'<thead><tr>'+candTh('instrument_id','标的')+candTh('instrument_name','名称')+candTh('topic_id','主题')
       +candTh('upside_pct','上行','r')+candTh('downside_pct','下行','r')
       +candTh('p_up','P↑','r')+candTh('p_base','P基','r')+candTh('p_down','P↓','r')

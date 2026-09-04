@@ -1368,7 +1368,12 @@ function isSynthetic(){
   return String(((S||{}).weekly||{}).data_classification||'').indexOf('public-synthetic')===0;
 }
 function backtestArmName(name){
-  return {'generated_ai_native':'Pure AI native','generated_carl_constraint':'Carl constraint'}[name]||name;
+  /* 回测表里的挑法名要和面板别处叫法一致——同一本账在两处两个名字，
+     读者会以为是两个东西。SEL_META 是那张唯一的对照表。 */
+  var extra={'generated_ai_native':'只信 AI 端到端','generated_carl_constraint':'只信约束边界'};
+  if(extra[name])return extra[name];
+  var m=(typeof SEL_META!=='undefined')?selMetaOf(name):null;
+  return (m&&m[1])||name;
 }
 function numOr(v){return (v===null||v===undefined)?'—':Number(v).toFixed(1)}
 function topicArm(sc){var t=((S||{}).weekly||{}).topics||[];return t.find(function(x){return x.scorer===sc})||null}
@@ -1835,7 +1840,7 @@ function raceHero(ag){
       +holdingsMatrix(books)
       +'<div class="book-grid" style="margin-top:var(--space-6)">'+books.map(bookCard).join('')+'</div>'
     +'</div>'
-    +epi('纸面成交未计费用 · 净值指数期初 = 100（API 暂无基准，无法画 SPY 对照）· 噪音带内的排名不构成任何结论')
+    +epi('纸面成交未计费用 · 净值指数期初 = 100 · SPY 同期对照见上方合计行 · 噪音带内的排名不构成任何结论')
   +'</div>';
 }
 

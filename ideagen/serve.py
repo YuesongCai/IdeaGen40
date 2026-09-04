@@ -535,7 +535,27 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
         except Exception:  # noqa: BLE001 — warm-up never blocks the server
             pass
 
+    def _warm_proposals() -> None:
+        # The generator artifacts live in object storage and take about nine
+        # seconds to pull; the drawer that needs them is one click deep off the
+        # candidate pool. Building the index here means the first reader who
+        # asks "how did this idea come about" gets an answer instead of a
+        # spinner. Failure is silent on purpose — this is a nicety, and the
+        # request path still builds the index on demand.
+        try:
+            from . import platform as plat_mod, review as review_mod
+            plat_ = plat_mod.load()
+            rows = plat_.state.q(
+                "SELECT run_id, as_of FROM orch_runs "
+                "WHERE kind='weekly' AND ok=1 ORDER BY as_of DESC LIMIT 1")
+            if rows:
+                review_mod._proposal_index(plat_, dict(rows[0]))
+        except Exception:  # noqa: BLE001 — warm-up never blocks the server
+            pass
+
     threading.Thread(target=_warm, name="port-health-warmup",
+                     daemon=True).start()
+    threading.Thread(target=_warm_proposals, name="proposal-index-warmup",
                      daemon=True).start()
     try:
         httpd.serve_forever()

@@ -41,6 +41,11 @@ class _FrozenRun:
     """
 
     def setUp(self):
+        # The proposal index is a process-level cache keyed by run id. Real
+        # runs never reuse an id, but every test here rebuilds the same one on
+        # a fresh platform, so a leftover index would answer from the previous
+        # test's blobs.
+        review._PROPOSAL_INDEX.clear()
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         self.p = Platform(
@@ -269,6 +274,28 @@ class ProposalsCase(_FrozenRun, unittest.TestCase):
     def test_a_blank_code_is_refused(self):
         self.assertIn("error", review.proposals_for(
             "", RUN_ID, p=self.p, con=self.con))
+
+    def test_the_run_is_read_once_however_many_instruments_are_asked_for(self):
+        """Reading four artifacts out of object storage took four seconds; a
+        reader opens this drawer once per instrument they are curious about."""
+        reads = []
+        real_get = self.p.blobs.get
+
+        def counting_get(key):
+            reads.append(key)
+            return real_get(key)
+
+        self.p.blobs.get = counting_get           # type: ignore[method-assign]
+        try:
+            review.proposals_for("AAA", RUN_ID, p=self.p, con=self.con)
+            after_first = len([k for k in reads if "B_generators" in k])
+            self.assertGreater(after_first, 0)
+            for code in ("ZZZ", "AAA", "NOPE"):
+                review.proposals_for(code, RUN_ID, p=self.p, con=self.con)
+            self.assertEqual(after_first,
+                             len([k for k in reads if "B_generators" in k]))
+        finally:
+            self.p.blobs.get = real_get           # type: ignore[method-assign]
 
 
 class AskLogCase(unittest.TestCase):

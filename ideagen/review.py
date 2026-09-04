@@ -780,6 +780,52 @@ def doc_detail(con=None, doc_id: str = "", p=None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # proposals — what each method actually wrote, before the merge
 # ---------------------------------------------------------------------------
+#: Parsed generator artifacts, per completed run. Reading all four out of
+#: object storage costs about four seconds, and the drawer that needs them is
+#: opened once per instrument a reader is curious about — so the whole run is
+#: indexed on the first call and every later instrument is free. A finished
+#: run's artifacts do not change, which is what makes caching them honest
+#: rather than a staleness bug waiting to happen.
+_PROPOSAL_INDEX: dict[str, dict[str, list[dict[str, Any]]]] = {}
+_PROPOSAL_INDEX_MAX = 4
+
+
+def _proposal_index(p, run: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    key = str(run["run_id"])
+    hit = _PROPOSAL_INDEX.get(key)
+    if hit is not None:
+        return hit
+    idx: dict[str, list[dict[str, Any]]] = {}
+    for method in ("ai_native", "carl_constraint", "chain", "gap"):
+        try:
+            art = json.loads(p.blobs.get(
+                f"runs/{run['as_of']}/{run['run_id']}/B_generators/{method}.json"))
+        except Exception:  # noqa: BLE001 — a missing method is skipped, not fatal
+            continue
+        for item in (art.get("produced") or []):
+            iid = str(item.get("instrument_id") or "")
+            if not iid:
+                continue
+            idx.setdefault(iid.split(".")[-1].upper(), []).append({
+                "method": item.get("method") or method,
+                "topic_id": item.get("topic_id"),
+                "thesis": item.get("thesis"),
+                "upside_pct": item.get("upside_pct"),
+                "downside_pct": item.get("downside_pct"),
+                "p_up": item.get("p_up"), "p_base": item.get("p_base"),
+                "p_down": item.get("p_down"),
+                "vehicle": item.get("vehicle"), "exposure": item.get("exposure"),
+                "horizon_days": item.get("horizon_days"),
+                "citations": [str(c) for c in (item.get("citations") or []) if c],
+                "bad_citations": item.get("bad_citations"),
+                "instrument_name": item.get("instrument_name"),
+            })
+    if len(_PROPOSAL_INDEX) >= _PROPOSAL_INDEX_MAX:
+        _PROPOSAL_INDEX.pop(next(iter(_PROPOSAL_INDEX)), None)
+    _PROPOSAL_INDEX[key] = idx
+    return idx
+
+
 def proposals_for(instrument: str, run_id: str | None = None,
                   p=None, con=None) -> dict[str, Any]:
     """Every individual proposal for one instrument, before they were merged.
@@ -808,35 +854,11 @@ def proposals_for(instrument: str, run_id: str | None = None,
         return {"error": "缺少标的代码"}
     bare = want.split(".")[-1].upper()
 
-    found: list[dict[str, Any]] = []
+    index = _proposal_index(p, run)
+    found = list(index.get(bare) or [])
     cite_ids: set[str] = set()
-    for method in ("ai_native", "carl_constraint", "chain", "gap"):
-        try:
-            raw = p.blobs.get(
-                f"runs/{run['as_of']}/{run['run_id']}/B_generators/{method}.json")
-            art = json.loads(raw)
-        except Exception:  # noqa: BLE001 — a missing method is reported, not fatal
-            continue
-        for item in (art.get("produced") or []):
-            iid = str(item.get("instrument_id") or "")
-            if iid.split(".")[-1].upper() != bare:
-                continue
-            cites = [str(c) for c in (item.get("citations") or []) if c]
-            cite_ids.update(cites)
-            found.append({
-                "method": item.get("method") or method,
-                "topic_id": item.get("topic_id"),
-                "thesis": item.get("thesis"),
-                "upside_pct": item.get("upside_pct"),
-                "downside_pct": item.get("downside_pct"),
-                "p_up": item.get("p_up"), "p_base": item.get("p_base"),
-                "p_down": item.get("p_down"),
-                "vehicle": item.get("vehicle"), "exposure": item.get("exposure"),
-                "horizon_days": item.get("horizon_days"),
-                "citations": cites,
-                "bad_citations": item.get("bad_citations"),
-                "instrument_name": item.get("instrument_name"),
-            })
+    for item in found:
+        cite_ids.update(item.get("citations") or [])
 
     # Citations are ids until they carry a title; a bare `ib:103758` is not a
     # link to anything a reader can check.

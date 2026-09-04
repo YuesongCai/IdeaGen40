@@ -264,15 +264,15 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
     directives = [str(d).strip() for d in (card.get("directives") or [])
                   if str(d).strip()]
     if not directives:
-        bad.append("directives 为空——一句话没有被蒸馏成任何可执行的指令")
+        bad.append("这句话没有蒸馏出任何可执行的要求")
     if len(directives) > 6:
-        bad.append(f"directives {len(directives)} 条太多；一次注入一个想法，"
-                   "多条准则请拆成多张卡，否则跑赢跑输归因不到哪一条")
+        bad.append(f"要求有 {len(directives)} 条，太多了；一次只注入一条准则，"
+                   "多条请分开写，否则跑赢跑输归因不到哪一条")
 
     req = card.get("require") or []
     if not req:
-        bad.append("require 为空——准则没有落成想法必须填的字段，"
-                   "事后无法判断模型到底有没有照做")
+        bad.append("这条准则没有落成想法必须回答的字段，"
+                   "事后无法判断它有没有被执行")
     seen: set[str] = set()
     for r in req:
         f = str((r or {}).get("field") or "").strip()
@@ -286,13 +286,12 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
         if not str((r or {}).get("desc") or "").strip():
             bad.append(f"require 字段 {f!r} 没有说明要写什么")
     if len(req) > 3:
-        bad.append(f"require {len(req)} 个字段太多；每多一个必填字段，"
-                   "整条想法被丢弃的概率就高一截，最多 3 个")
+        bad.append(f"必答字段 {len(req)} 个太多；每多一个，想法被丢弃的概率就高一截，最多 3 个")
 
     blob = " ".join(directives + [str((r or {}).get("desc") or "") for r in req])
     for pat, why in _PROSE_BACKSTOP:
         if re.search(pat, blob):
-            bad.append(f"文本触碰了不可注入区：{why}")
+            bad.append(f"越过了硬边界：{why}")
 
     for other in (existing or []):
         if str(other.get("card_id")) == cid:

@@ -44,3 +44,6 @@ web/_site/
 
 # ask 问答审计日志（含问题原文，operator-local）
 data/ask_log.jsonl
+# PM 准则卡账本：他自己的话 + 本机运行状态，跟 ask_log 同一性质。
+# 它是复现一次运行的一部分，所以归审计包带走，不归仓库。
+data/philosophy/

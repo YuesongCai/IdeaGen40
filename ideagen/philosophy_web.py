@@ -95,7 +95,7 @@ def handle_list() -> tuple[dict[str, Any], int]:
         # Only shown when it blocks the button, so it has to say what to do,
         # not just what failed.
         "why_not": "" if can else (
-            "这台机器上没开推理，说不了新准则（看的功能不受影响）。" + (why or "")),
+            "本机未启用推理，无法生成新准则（查看不受影响）。" + (why or "")),
     }, 200
 
 
@@ -111,30 +111,30 @@ def handle_propose(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
 
     say = str(payload.get("say") or "").strip()
     if not say:
-        return {"error": "还没写呢——用一句话说说你怎么看一笔交易。"}, 400
+        return {"error": "还没有内容。用一句话写下你判断一笔交易的准则。"}, 400
     if len(say) > 500:
-        return {"error": "太长了。一句话就好，越具体越管用（上限 500 字）。"}, 400
+        return {"error": "过长。一句话即可，越具体越有效（上限 500 字）。"}, 400
 
     arm = str(payload.get("arm") or DEFAULT_ARM)
     p = plat.load()
     ok, why = ask.inference_state(p)
     if not ok:
-        return {"error": "这台机器上没开推理，说不了新准则。" + (why or ""),
+        return {"error": "本机未启用推理，无法生成新准则。" + (why or ""),
                 "unavailable": True}, 503
     try:
         card, bad = philosophy.distill(
             say, p.inference, arm=arm, as_of=config.now_hkt().date(),
             known_arms={r["name"] for r in available("idea_generator")})
     except Exception as e:  # noqa: BLE001 — bounded operator error, no traceback
-        return {"error": f"没蒸馏出来：{type(e).__name__}: {e}"[:300]}, 502
+        return {"error": f"蒸馏失败：{type(e).__name__}: {e}"[:300]}, 502
 
     if bad:
         # Rejections are the common case for a first attempt and they are the
         # most useful thing this feature says all day, so they come back as
         # advice rather than as a validation dump.
         return {"ok": False, "said": say, "problems": bad,
-                "hint": "换个更具体的说法再试。最管用的一句话通常长这样："
-                        "「看到 X 的时候，我要的是 Y，因为 Z」。"}, 200
+                "hint": "换一个更具体的说法。有效的准则通常是这个形状："
+                        "「看到 X 时，我要的是 Y，因为 Z」。"}, 200
 
     PENDING.mkdir(parents=True, exist_ok=True)
     (PENDING / f"{card['card_id']}.json").write_text(
@@ -148,7 +148,7 @@ def handle_activate(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     cid = str(payload.get("id") or "")
     f = PENDING / f"{cid}.json"
     if not cid or "/" in cid or not f.exists():
-        return {"error": "这条准则已经不在待确认里了（可能已生效或已撤销）。"}, 404
+        return {"error": "待确认列表中已无此准则（可能已生效或已撤销）。"}, 404
     card = json.loads(f.read_text(encoding="utf-8"))
     try:
         philosophy.activate(
@@ -173,7 +173,7 @@ def handle_discard(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     cid = str(payload.get("id") or "")
     f = PENDING / f"{cid}.json"
     if not cid or "/" in cid or not f.exists():
-        return {"error": "已经没有这条待确认了。"}, 404
+        return {"error": "待确认列表中已无此项。"}, 404
     f.unlink()
     return {"ok": True}, 200
 

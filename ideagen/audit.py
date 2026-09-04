@@ -32,6 +32,23 @@ GEN_ZH = {"ai_native": "AI端到端", "carl_constraint": "约束边界",
 
 
 def _sel_name(key: str) -> str:
+    return _arm_name("idea_selector", key)
+
+
+def _gen_name(key: str) -> str:
+    """A generator's readable name, GEN_ZH first for the four founding arms.
+
+    The four keep their hand-written short names because they are what the
+    methodology document and every review deck call them. Anything else — a
+    PM rule grafted onto one of them, say — takes its name from the registry,
+    which is the only table that grows on its own.
+    """
+    if key in GEN_ZH:
+        return GEN_ZH[key]
+    return _arm_name("idea_generator", key)
+
+
+def _arm_name(kind: str, key: str) -> str:
     """`omega_strict` means nothing to a reader; the registry's own label does.
 
     Read from the strategy registry rather than a second hand-kept table — a
@@ -40,7 +57,7 @@ def _sel_name(key: str) -> str:
     """
     try:
         from . import strategy  # noqa: PLC0415
-        for entry in strategy.available("idea_selector"):
+        for entry in strategy.available(kind):
             if entry.get("name") == key:
                 label = (entry.get("label") or "").split(". ", 1)[-1].strip()
                 if label and label != key:
@@ -166,7 +183,7 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "| `01_运行日志.json` | 真实时钟的逐步日志：每步的时间、耗时、产出与端口自检 |",
         "| `02_选主题.json` | 语义打分臂：全部主题的完整打分、入选名单、落选主题与入选线的分差 |",
         "| `02_选主题_纯数数对照.json` | 不做语义判断、仅统计提及次数的对照臂；两臂的分歧是「语义打分是否有增量」的实时读数 |",
-        "| `03_写想法/*.json` | 4 种生成方式各自产出的候选原文，含论点、赔率与引用的研报编号 |",
+        "| `03_写想法/*.json` | 每种生成方式各自产出的候选原文，含论点、赔率与引用的研报编号 |",
         "| `04_候选池.json` | 合并后的候选池，一标一条 |",
         "| `05_挑持仓/*.json` | 每种选取策略自同一候选池选中了什么，及其自身打分 |",
         "| `06_追问记录.jsonl` | 事后对该次运行提出的问题与回答"
@@ -174,6 +191,8 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "| `07_语料清单.jsonl` | 本期封存的每一篇研报：标题、机构、层级、"
         "**取回它的检索调用**（`retrieval`）与内容哈希。"
         "`03_写想法/` 里的 `citations` 编号在这里能查到对应的那一篇 |",
+        "| `08_当时生效的准则.json` | 本期生效的 PM 准则（若有）：原话、它被蒸馏成的"
+        "指令、以及每条想法因此必须回答的字段。派生臂的产出在 `03_写想法/` 里 |",
         "| `manifest.json` | 每个文件的字节数与 SHA-256，用来验证包没被改过 |",
         "",
         "## 这个包不包含什么",
@@ -214,9 +233,21 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
     add("02_选主题.json", ask._artifact(p, run, "A_topics.json"))
     add("02_选主题_纯数数对照.json",
         ask._artifact(p, run, "A_topics_counting.json"))
-    for key, zh in GEN_ZH.items():
-        add(f"03_写想法/{zh}.json",
-            ask._artifact(p, run, f"B_generators/{key}.json"))
+    # Discovered, not listed — same reason as the selectors below. The four
+    # founding arms are no longer the whole set: a PM rule grafted onto one of
+    # them runs as its own arm, and a bundle built from a hand-kept list would
+    # omit exactly the arm someone added on purpose.
+    gen_prefix = f"runs/{run['as_of']}/{run['run_id']}/B_generators/"
+    try:
+        gen_keys = sorted(p.blobs.list(gen_prefix))
+    except Exception:  # noqa: BLE001
+        gen_keys = [gen_prefix + f"{k}.json" for k in GEN_ZH]
+    for k in gen_keys:
+        name = k.rsplit("/", 1)[-1]
+        if not name.endswith(".json"):
+            continue
+        add(f"03_写想法/{_gen_name(name[:-5])}.json",
+            ask._artifact(p, run, f"B_generators/{name}"))
     add("04_候选池.json", ask._artifact(p, run, "B_pool.json"))
     # Selector artifacts are discovered rather than listed: the set of arms is
     # allowed to grow, and a bundle that silently omitted a new arm would be
@@ -236,6 +267,18 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
     manifest_rows = _corpus_manifest(run, con)
     if manifest_rows:
         members.append(("07_语料清单.jsonl", manifest_rows))
+
+    # The rules in force when this run happened. Without them a replay on
+    # another machine rebuilds four arms where the run had five, and the extra
+    # arm's positions have no explanation anywhere in the bundle.
+    try:
+        from . import philosophy  # noqa: PLC0415
+        from datetime import date as _date  # noqa: PLC0415
+        cards = philosophy.cards(as_of=_date.fromisoformat(str(run["as_of"])))
+    except Exception:  # noqa: BLE001
+        cards = []
+    if cards:
+        add("08_当时生效的准则.json", cards)
 
     asks = _ask_entries(run["run_id"])
     if asks:

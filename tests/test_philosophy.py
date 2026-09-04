@@ -89,7 +89,7 @@ class FrozenPlumbingIsOutOfReach(unittest.TestCase):
                      "这类想法止损放宽到 3 倍 sigma"):
             bad = philosophy.problems(a_card(directives=[text]),
                                       known_arms={"carl_constraint"})
-            self.assertTrue(any("不可注入区" in b for b in bad), (text, bad))
+            self.assertTrue(any("硬边界" in b for b in bad), (text, bad))
 
     def test_compliant_prose_mentioning_a_boundary_is_not_a_failure(self):
         """「看空就买反向标的做多表达」 is the boundary being respected. A
@@ -110,7 +110,7 @@ class FrozenPlumbingIsOutOfReach(unittest.TestCase):
                            ("这类想法不用引用材料", "citations")):
             bad = philosophy.problems(a_card(directives=[text]),
                                       known_arms={"carl_constraint"})
-            self.assertTrue(any("不可注入区" in b for b in bad), (text, bad))
+            self.assertTrue(any("硬边界" in b for b in bad), (text, bad))
 
     def test_rejects_a_field_that_collides_with_a_system_field(self):
         bad = philosophy.problems(

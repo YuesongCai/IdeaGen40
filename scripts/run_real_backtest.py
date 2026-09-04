@@ -147,6 +147,104 @@ def _mde_pct(rets: list[float]) -> float | None:
     return (_crit(n - 1) + backtest.Z_POWER) * sd / (n ** 0.5)
 
 
+#: The pair built to answer "which generation method is worth more". Both take
+#: everything their method proposed and rank nothing, so their difference is the
+#: method and only the method.
+SOURCE_ARMS = ("generated_ai_native", "generated_carl_constraint")
+
+
+def _generation_head_to_head(con, days: list, horizon_days: int) -> dict:
+    """The two source arms, split by the ideas they did not share.
+
+    They are not disjoint, by design and with the reason written down:
+    `_proposed_by` returns every method that argued for an instrument, so an idea
+    both generators reached is admitted by both books — "an idea is no less that
+    generator's for having been agreed with". That is the right construction for
+    the question those books ask, which is what a portfolio believing one
+    generator would have held.
+
+    It is the wrong construction for the question the panel puts to them, which
+    is which generation method is worth more. Roughly four fifths of each arm's
+    ideas are also in the other, identical on both sides, contributing nothing to
+    the difference while dominating both averages. Whatever separates the methods
+    lives in the fifth each holds alone.
+
+    Keyed on the idea, not the instrument. Keying on the instrument collapses the
+    several ideas that name one — the pool the backtest replays is stage-B output
+    before the merge — and the first version of this function did exactly that,
+    reporting an overlap that was an artefact of its own key.
+    """
+    a_name, b_name = SOURCE_ARMS
+    shared: list[float] = []
+    only_a: list[float] = []
+    only_b: list[float] = []
+    n_shared_ideas = n_a = n_b = 0
+
+    for period in days:
+        ctx = backtest.context_for(con, period, allow_model=False)
+        try:
+            pick_a = {str(x) for x in strat.run("idea_selector", a_name, ctx).chosen}
+            pick_b = {str(x) for x in strat.run("idea_selector", b_name, ctx).chosen}
+        except Exception:  # noqa: BLE001 — an arm absent this period is not fatal
+            continue
+        cands = backtest._candidates(con, period)
+        outcomes = backtest.outcomes_for(
+            con, cands, period, horizon_days=horizon_days,
+            require_full_horizon=False)
+
+        def ret(idea_id: str) -> float | None:
+            o = outcomes.get(idea_id)
+            return None if o is None or o.ret is None else o.ret * 100.0
+
+        both = pick_a & pick_b
+        n_shared_ideas += len(both)
+        n_a += len(pick_a - pick_b)
+        n_b += len(pick_b - pick_a)
+        shared += [r for r in map(ret, both) if r is not None]
+        only_a += [r for r in map(ret, pick_a - pick_b) if r is not None]
+        only_b += [r for r in map(ret, pick_b - pick_a) if r is not None]
+
+    if not (only_a or only_b):
+        return {"pair": list(SOURCE_ARMS), "available": False,
+                "note": "两个来源限定臂本期没有各自独有的已计价想法"}
+
+    def block(values: list[float]) -> dict:
+        mde = _mde_pct(values)
+        return {"n": len(values),
+                "mean_return_pct": (round(sum(values) / len(values), 4)
+                                    if values else None),
+                "mde_pct": None if mde is None else round(mde, 3)}
+
+    a_block, b_block, shared_block = block(only_a), block(only_b), block(shared)
+    gap = (None if a_block["mean_return_pct"] is None
+           or b_block["mean_return_pct"] is None else
+           round(a_block["mean_return_pct"] - b_block["mean_return_pct"], 4))
+    joint = (None if a_block["mde_pct"] is None or b_block["mde_pct"] is None
+             else round((a_block["mde_pct"] ** 2
+                         + b_block["mde_pct"] ** 2) ** 0.5, 3))
+    total_a = n_shared_ideas + n_a
+    overlap = round(n_shared_ideas / total_a, 3) if total_a else None
+    return {
+        "pair": list(SOURCE_ARMS), "available": True,
+        "keyed_on": "idea_id",
+        "shared": shared_block, "only_first": a_block, "only_second": b_block,
+        "n_shared_ideas": n_shared_ideas,
+        "overlap_frac": overlap,
+        "gap_on_unique_pct": gap,
+        "mde_gap_pct": joint,
+        "verdict": ("underpowered" if joint is None or gap is None
+                    or abs(gap) < joint else "not_ruled_out"),
+        "verdict_applies_to": "gap_on_unique_pct",
+        "note": (
+            f"两个来源限定臂共享 {overlap * 100:.0f}% 的想法——被两种方法共同提出的"
+            "想法按设计同时进入两本账。那部分在两边完全相同，对它们的差贡献为零，"
+            f"却占了各自大部分样本。方法本身的差异只体现在各自独有的 "
+            f"{a_block['n']} 与 {b_block['n']} 笔上，判定按这两组给出。"
+            "头条的 n 看着很大，这个问题的有效样本远小于它。"
+            if overlap is not None else ""),
+    }
+
+
 def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
     """How much of a table labelled "30 天" actually ran 30 days.
 
@@ -591,6 +689,7 @@ def main(argv: list[str]) -> int:
         robustness["depths"])
     attribution = _theme_attribution(con, positions)
     horizon = _horizon_completeness(positions, args.horizon_days)
+    head_to_head = _generation_head_to_head(con, days, args.horizon_days)
     robustness["depth_note"] = (
         "顶层字段即 depths['10']，保留是为了不改已有消费方的形状。"
         "verdict_stable_across_depths 为 false 的臂，其结论取决于剪切多少个"
@@ -642,6 +741,7 @@ def main(argv: list[str]) -> int:
         "robustness_drop_top": robustness,
         "attribution_theme_layer": attribution,
         "horizon_completeness": horizon,
+        "generation_head_to_head": head_to_head,
         # The sweep ran with strict=True, so every period's context passed the
         # as-of audit before any arm scored it — a context carrying a document,
         # a close or a candidate dated after the replayed day raises AsOfLeak

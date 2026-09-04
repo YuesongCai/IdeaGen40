@@ -51,6 +51,22 @@ def _periods(con) -> list[tuple[date, str]]:
     return out
 
 
+def _undated_shelf(con) -> int:
+    """Instruments with no first-seen date.
+
+    `eligible()` can only exclude an instrument from a past period if it knows
+    when the instrument appeared. Undated rows are let through, so a backfilled
+    period may pick something that was not yet on the shelf that week. The
+    count is the honest measure of how much of the replay is not as-of clean.
+    """
+    try:
+        row = db.q1(con, "SELECT COUNT(*) n FROM instruments "
+                         "WHERE first_seen_d IS NULL OR first_seen_d=''")
+        return int(dict(row)["n"]) if row else 0
+    except Exception:  # noqa: BLE001 — a missing column must not kill the run
+        return -1
+
+
 def _arms() -> list[str]:
     return sorted(s["name"] for s in strat.available("idea_selector")
                   if not s.get("needs_model"))
@@ -103,11 +119,15 @@ def main(argv: list[str]) -> int:
         "n_backfill_periods": n_backfill,
         "disclaimer": (
             "候选池与价格都是真实的，as-of 在文档层面严格钳制。"
-            + (f"其中 {n_backfill} 期是事后补跑（backfill）：文档卡在当期，但模型权重"
-               "见过该日期之后的世界，这一点无法用代码消除。结论性判断以 live 期为准。"
+            + (f"其中 {n_backfill} 期是事后补跑（backfill），有两处无法用代码消除的"
+               "前视风险：①模型权重见过该日期之后的世界；②货架上有 "
+               f"{_undated_shelf(con)} 个标的没有上架日期，按当期资格过滤时只能放行，"
+               "所以补跑期的可选标的可能包含当时尚未上架的产品。"
+               "结论性判断以 live 期为准。"
                if n_backfill else "")
             + f"未参与：{'、'.join(excluded)}（需要模型，会让复算不可重复）。"
         ),
+        "undated_shelf_instruments": _undated_shelf(con),
         "horizon_days": rep.horizon_days,
         "model_calls": rep.calls,
         "excluded_arms": excluded,

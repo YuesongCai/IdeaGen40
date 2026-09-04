@@ -1557,6 +1557,7 @@ function renderWeek(){
   html+=statusStrip();
   html+=chainStrip(ag);
   html+=raceHero(ag);
+  html+=backtestCard();
   html+=holdMapCard(ag);
   $('view-week').innerHTML=html;
 }
@@ -2165,6 +2166,60 @@ function shelfCard(){
       +'<th class="r">最新 NAV</th><th>NAV 日期</th></tr></thead><tbody>'
       +rows+'</tbody></table></div>'
     +epi(note+' '+(shelf.artifact_archived?'TOS 不可变归档已完成。':'TOS 归档缺失。'))
+    +'</div>';
+}
+
+/* ── 回测摘要（首屏一张卡：真实池、真实收盘、零模型复算） ──
+   放在首屏而不是抽屉里，因为「回测过吗、赢了没」是任何人打开这个页面
+   的第二个问题；详情仍在抽屉，卡片只回答那两句。 */
+function backtestCard(){
+  var b=(S&&S.backtest)||{};
+  var sum=b.summary||{};
+  if(!b.backtest_id){
+    return '<div class="card section"><div class="card-title-row">'
+      +'<h2 class="card-title">历史回测</h2>'
+      +'<span class="card-note">真实候选池 · 真实收盘 · 零模型复算</span></div>'
+      +'<div class="empty-sm">还没有回测记录。需要至少两期存下来的候选池才能做配对比较——'
+      +'每周三自动跑一期，也可以补跑历史期。</div></div>';
+  }
+  var arms=sum.arms||{};
+  var names=Object.keys(arms);
+  var best=null;
+  names.forEach(function(n){
+    var a=arms[n];
+    if(a&&a.hit_rate!=null&&(best===null||a.hit_rate>arms[best].hit_rate))best=n;
+  });
+  var nBack=sum.n_backfill_periods||0;
+  var mix=nBack
+    ? '<span class="gloss" title="事后补跑的期：文档卡在当期，但模型权重见过之后的世界，货架上还有没有上架日期的标的无法按期过滤。结论以 live 期为准。">'
+      +sum.n_live_periods+' 期实盘记录 + '+nBack+' 期事后补跑 ⓘ</span>'
+    : '<span>'+(sum.n_live_periods||sum.periods)+' 期全部为实盘记录</span>';
+  var rows=names.sort(function(x,y){
+      var ax=arms[x].hit_rate,ay=arms[y].hit_rate;
+      return (ay==null?-1:ay)-(ax==null?-1:ax);
+    }).slice(0,4).map(function(n){
+      var a=arms[n];
+      return '<tr><td class="primary">'+esc(backtestArmName(n))+'</td>'
+        +'<td class="r">'+fmtWinRate(
+            a.hit_rate==null?0:Math.round(a.hit_rate*(a.n_scored||0)),
+            a.n_scored||0)+'</td>'
+        +'<td class="r num '+pctCls(a.mean_return_pct)+'">'+fmtPct(a.mean_return_pct)+'</td>'
+        +'<td class="r num">'+fmtInt(a.n_chosen)+'</td></tr>';
+    }).join('');
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">历史回测</h2>'
+    +'<span class="card-note">真实候选池 · 真实收盘 · 零模型复算（'+fmtInt(sum.model_calls||0)+' 次模型调用）</span></div>'
+    +'<div class="bt-meta">'
+      +'<div class="meta-kv"><div class="k">窗口</div><div class="v num">'+esc(b.window_start||'—')+' → '+esc(b.window_end||'—')+'</div></div>'
+      +'<div class="meta-kv"><div class="k">期数</div><div class="v">'+mix+'</div></div>'
+      +'<div class="meta-kv"><div class="k">持有期</div><div class="v num">'+fmtInt(sum.horizon_days)+' 天</div></div>'
+    +'</div>'
+    +'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
+      +'<thead><tr><th>挑法</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
+      +'<tbody>'+rows+'</tbody></table></div>'
+    +'<div class="card-note" style="margin-top:var(--space-3)">'
+      +esc(sum.disclaimer||'')+'</div>'
+    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">看完整回测（曲线 · 每笔持仓）›</button>'
     +'</div>';
 }
 

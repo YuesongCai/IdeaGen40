@@ -176,7 +176,7 @@ unset DASH_PW
 # is reported before the dashboard can present it as a mystery.
 say "applying database schema"
 if docker compose -f deploy/compose.yaml run --rm --entrypoint python3 \
-     dashboard -m ideagen platform --state-probe 2>&1 | tail -6 >> "$STATUS"; then
+     dashboard -m ideagen.cli platform --state-probe 2>&1 | tail -6 >> "$STATUS"; then
   echo "state-probe done"
 else
   say "state-probe FAILED — dashboard will not have a database to read"

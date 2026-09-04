@@ -11,6 +11,38 @@ bucket names, presigned URLs, image digests, or credentials.
 - A public HTTPS hostname or address.
 - Runtime credentials stored outside the repository.
 
+## Bootstrapping Without A Shell
+
+Use this when neither SSH nor the platform's command agent is available — for
+example when the operator network filters SSH to every destination and the
+instance image fails to register a command agent. cloud-init `UserData` is then
+the only execution path, and it runs on every boot, which makes a reboot the
+deploy.
+
+`deploy/instance_bootstrap.sh` is the source of truth for what the instance does
+at boot: install Docker, fetch `origin/main`, build the image, and start the
+stack. It contains no credentials, because UserData is stored in clear text by
+the cloud API and is readable from the console. Until the runtime configuration
+exists on the instance, the script starts nothing and says so on a status page —
+a stack that came up half-configured would be worse than an honest "waiting".
+
+```bash
+python3 scripts/deploy_userdata.py push     # ship the bootstrap
+python3 scripts/deploy_userdata.py secrets  # + one short-lived config URL
+python3 scripts/deploy_userdata.py reboot   # run it, then watch
+python3 scripts/deploy_userdata.py forget   # delete the temporary object
+```
+
+`secrets` and `reboot` are separate verbs on purpose: shipping a file must not
+restart production as a side effect. The status page on port 80 is what tells
+"still installing" apart from "unreachable" — with no shell those two look
+identical from outside. Once the stack is up the proxy owns that port and
+`/healthz` answers instead, so which of the two replies is itself the state.
+
+The bootstrap also re-attempts the command-agent install on every boot. Once
+that succeeds, `scripts/deploy_cloud.py` takes over and this path is only
+needed again for a cold start.
+
 ## Build
 
 ```bash

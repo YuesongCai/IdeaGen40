@@ -130,6 +130,21 @@ class TosBlobStore(BlobStore):
         except Exception as e:  # noqa: BLE001 — tos raises many concrete types
             raise PlatformError(f"tos get {key} failed: {e}") from e
 
+    def presigned_get(self, key: str, *, expires_s: int = 900) -> str:
+        """A time-boxed GET URL for one object.
+
+        This is how a config file reaches a machine we have no shell on. The URL
+        is itself the credential, so it is short-lived by default and the caller
+        is expected to delete the object once it has been read. It lives here
+        rather than being reconstructed by each deploy script from the adapter's
+        fields — guessing at private attribute names is how presigning silently
+        stopped working the last time.
+        """
+        import tos  # the SDK wants its own enum here, not the string "GET"
+        return self._c().pre_signed_url(
+            tos.HttpMethodType.Http_Method_Get, self.bucket, self._k(key),
+            expires=expires_s).signed_url
+
     def exists(self, key: str) -> bool:
         try:
             self._c().head_object(self.bucket, self._k(key))

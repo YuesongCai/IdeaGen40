@@ -120,16 +120,10 @@ def step_config() -> None:
     key = f"deploy/runtime.env.{int(time.time())}"
     p.blobs.put(key, env_text.encode(), content_type="text/plain")
     try:
-        import tos
-        client = tos.TosClientV2(
-            p.blobs._ak, p.blobs._sk, p.blobs._endpoint, p.blobs._region) \
-            if hasattr(p.blobs, "_ak") else None
-        url = (client.pre_signed_url("GET", p.blobs._bucket, key,
-                                     expires=900).signed_url
-               if client else None)
-        if not url:
-            raise SystemExit(
-                "无法生成预签名链接——请检查 TOS 适配器是否暴露凭证字段")
+        # The adapter owns presigning. This used to reach for `p.blobs._ak` and
+        # friends, which have never existed under those names — so the guard
+        # below it fired every time and the step could not have worked.
+        url = p.blobs.presigned_get(key, expires_s=900)
         run("write-config", f"""set -euo pipefail
 umask 077
 curl -fsSL '{url}' -o {CFG_DIR}/runtime.env

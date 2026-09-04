@@ -212,6 +212,33 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
                 "underpowered" if mde_full is None or mean_full is None
                 or abs(mean_full) < mde_full else "not_ruled_out"),
         }
+    # A reader given nine restated means will rank them — I did it myself and
+    # called the order "nearly inverted". Ranking is a comparison, and it had no
+    # bound of its own, which is the same mistake three other places in this file
+    # made tonight. So the comparison the panel actually makes, against the
+    # control, is stated here with a bound covering both samples.
+    control_full = arms.get(CONTROL, {}).get("full") or []
+    mde_control = _mde_pct(control_full)
+    mean_control = (sum(control_full) / len(control_full)
+                    if control_full else None)
+    for name, e in arms.items():
+        entry = out[name]
+        entry["verdict_applies_to"] = "mean_return_full_horizon_pct 对零"
+        if name == CONTROL or mean_control is None or not e["full"]:
+            continue
+        own_mean = sum(e["full"]) / len(e["full"])
+        mde_own = _mde_pct(e["full"])
+        gap = round(own_mean - mean_control, 4)
+        entry["vs_control_full_horizon_pct"] = gap
+        if mde_own is None or mde_control is None:
+            entry["mde_vs_control_pct"] = None
+            entry["verdict_vs_control"] = "underpowered"
+        else:
+            joint = round((mde_own ** 2 + mde_control ** 2) ** 0.5, 3)
+            entry["mde_vs_control_pct"] = joint
+            entry["verdict_vs_control"] = (
+                "not_ruled_out" if abs(gap) >= joint else "underpowered")
+
     fracs = [v["complete_frac"] for v in out.values()
              if v["complete_frac"] is not None]
     total = sum(v["n"] for v in out.values())
@@ -233,7 +260,10 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
             "mean_return_full_horizon_pct 是只用跑满的那部分重算的结果——"
             "它与表中那一列分歧很大（有的臂从正翻到负、名次几乎倒转），"
             "但它的样本是原本就不大的样本的两成，所以这不是「真正的排名」，"
-            "是这张表按当前样本无法定夺。两个数都给，判定各自带自己的下界。"),
+            "是这张表按当前样本无法定夺。两个数都给，判定各自带自己的下界。"
+            "要排名就是在做比较，所以面板实际会做的那个比较——相对对照臂 "
+            f"{CONTROL}——单独给出 vs_control_full_horizon_pct 及其合并下界；"
+            "顶层 full_horizon_verdict 说的只是该均值与零的关系，不可拿来排名。"),
     }
 
 

@@ -81,10 +81,25 @@ class ControlStaysFrozen(unittest.TestCase):
 
 
 class FrozenPlumbingIsOutOfReach(unittest.TestCase):
-    def test_rejects_a_card_that_declares_it_touched_frozen(self):
-        bad = philosophy.problems(a_card(touches_frozen=["universe"]),
-                                  known_arms={"carl_constraint"})
-        self.assertTrue(any("不可注入区" in b for b in bad), bad)
+    def test_rejects_a_directive_about_sizing(self):
+        """A generator has no channel to the book, so a rule about weight or
+        stops is not dangerous — it is inert, which is worse: the PM believes
+        it is running."""
+        for text in ("确定性高的想法把仓位权重设为其他想法的 2 倍",
+                     "这类想法止损放宽到 3 倍 sigma"):
+            bad = philosophy.problems(a_card(directives=[text]),
+                                      known_arms={"carl_constraint"})
+            self.assertTrue(any("不可注入区" in b for b in bad), (text, bad))
+
+    def test_compliant_prose_mentioning_a_boundary_is_not_a_failure(self):
+        """「看空就买反向标的做多表达」 is the boundary being respected. A
+        backstop that fired on any mention of it would reject every correct
+        translation."""
+        bad = philosophy.problems(
+            a_card(directives=["若原始观点为看空，必须从可买清单里选反向或"
+                               "防御标的做多来表达"]),
+            known_arms={"carl_constraint"})
+        self.assertEqual(bad, [])
 
     def test_rejects_a_card_that_touches_frozen_in_prose(self):
         """The model was told the boundary; this is the check that does not
@@ -185,6 +200,51 @@ class DerivedArmRegisters(unittest.TestCase):
         with self.assertRaises(RuntimeError) as e:
             run(a_ctx(as_of=date(2026, 8, 20)))
         self.assertIn("后见之明", str(e.exception))
+
+
+class RewritesMustBeSeenByTheirAuthor(unittest.TestCase):
+    """The hole this found: the distiller reports boundary contact as prose
+    (`"direction: 他要做空，改为……"`), and the original exact-key check passed
+    every one of them silently — a philosophy reaching a book in a form its
+    author never read."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._real = philosophy.LEDGER
+        philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+        self.card = a_card(touches_frozen=[
+            "direction: 原话要求做空，改为看空时买反向/防御标的做多表达",
+            "horizon: 原话要求三个月，强制保持一个月"])
+
+    def tearDown(self):
+        philosophy.LEDGER = self._real
+        self.tmp.cleanup()
+
+    def test_prose_contact_is_matched_by_substring(self):
+        tr = philosophy.translations(self.card)
+        self.assertEqual(len(tr), 2)
+        self.assertTrue(any("只做多" in t for t in tr), tr)
+        self.assertTrue(any("一个月" in t for t in tr), tr)
+
+    def test_unclassifiable_contact_is_still_surfaced(self):
+        tr = philosophy.translations(a_card(touches_frozen=["某个说不清的地方"]))
+        self.assertEqual(len(tr), 1)
+        self.assertIn("未归类", tr[0])
+
+    def test_activation_refuses_an_unacknowledged_rewrite(self):
+        with self.assertRaises(ValueError) as e:
+            philosophy.activate(self.card, known_arms={"carl_constraint"})
+        self.assertIn("硬边界", str(e.exception))
+        self.assertEqual(philosophy.cards(), [])
+
+    def test_activation_proceeds_once_acknowledged(self):
+        philosophy.activate(self.card, known_arms={"carl_constraint"},
+                            accept_translations=True)
+        self.assertEqual(len(philosophy.cards()), 1)
+
+    def test_a_clean_card_needs_no_acknowledgement(self):
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        self.assertEqual(len(philosophy.cards()), 1)
 
 
 if __name__ == "__main__":

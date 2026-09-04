@@ -99,8 +99,16 @@ def _install() -> None:
     generator, so an old card naming a retired arm must not stop the whole
     registry from loading.
     """
+    from ..strategy import available
+    have = {r["name"] for r in available("idea_generator")}
     for card in philosophy.cards():
         if card["scope"]["arm"] not in BASES:
+            continue
+        if philosophy.arm_name(card) in have:
+            # Already registered — a second pass (a reload, a test, a server
+            # asked to pick up a newly activated card) must be a no-op rather
+            # than an exception, or activating a card can take down a process
+            # that was running perfectly well without it.
             continue
         base_v = spec("idea_generator", card["scope"]["arm"])["version"]
         register("idea_generator", philosophy.arm_name(card),

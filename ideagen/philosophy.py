@@ -96,6 +96,7 @@ FROZEN = {
     "count": "每主题 20 条的目标产量",
     "direction": "只做多（做空通过反向/防御标的表达）",
     "odds": "上下行幅度与三档概率的定义与归一",
+    "sizing": "仓位权重与止盈止损（归筛选C 与建仓，生成臂说了不算）",
 }
 
 #: Which stages accept a card at all. 筛选A is deliberately excluded: injecting
@@ -187,6 +188,48 @@ def _slug(text: str) -> str:
     return t[:40] or "card"
 
 
+#: Textual backstop for the frozen list. The model is told the boundary in the
+#: distillation prompt; these are the checks that do not depend on it having
+#: listened. Each pattern targets a *permissive* phrasing — an instruction to do
+#: the forbidden thing — rather than any mention of it, because a directive that
+#: says 「若观点为看空，改用反向标的做多表达」 is the boundary being respected,
+#: not breached.
+_PROSE_BACKSTOP: tuple[tuple[str, str], ...] = (
+    (r"允许做空|可以做空|直接做空|融券|卖空表达", "只做多是账户层面的硬约束"),
+    (r"清单之外|清单以外|自选标的|不在清单|不受清单", "标的只能来自可买清单"),
+    (r"半年|三个月|6\s*个月|一年|季度持有|放宽到.{0,4}月", "持有期一个月是钉死的"),
+    (r"不用引用|无需引用|不必给 ?doc_id|可以不给引用", "引用契约不可豁免"),
+    # Sizing is the quiet one: a generator has no channel to the book, so a
+    # directive about weight or stops is not dangerous, it is inert — the model
+    # writes a field nobody reads and the PM believes his rule is running.
+    (r"仓位|权重|position_size|重仓|加仓|止损|止盈|倍(?=的?仓)", "仓位与止盈止损归筛选C 与建仓，生成臂改不动"),
+)
+
+
+def translations(card: dict[str, Any]) -> list[str]:
+    """Where the PM's sentence hit a hard boundary and was rewritten to fit.
+
+    Separate from `problems()` on purpose. 「该做空的时候要能做空」 cannot run as
+    stated, and a distiller that turns it into 「看空就买反向标的」 has done the
+    right thing — but it has also quietly replaced the PM's instruction with its
+    own. He has to see that before it steers a book, because the rewrite may not
+    be what he meant, and the moment to find out is now rather than in the
+    November review.
+
+    Matching is by substring rather than exact key: the distiller reports these
+    as prose (`"direction: 原话要求做空，已改为……"`), and an exact-key check
+    silently passes every one of them — which is how this hole was found.
+    """
+    out: list[str] = []
+    for raw in (card.get("touches_frozen") or []):
+        text = str(raw).strip()
+        if not text:
+            continue
+        hit = next((k for k in FROZEN if k in text.lower()), None)
+        out.append(f"{FROZEN[hit]}：{text}" if hit else f"（未归类）{text}")
+    return out
+
+
 def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = None,
              known_arms: set[str] | None = None) -> list[str]:
     """Everything wrong with a card, in Chinese, for a person to read.
@@ -246,18 +289,8 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
         bad.append(f"require {len(req)} 个字段太多；每多一个必填字段，"
                    "整条想法被丢弃的概率就高一截，最多 3 个")
 
-    touched = [k for k in (card.get("touches_frozen") or []) if k in FROZEN]
-    if touched:
-        bad.append("触碰了不可注入区：" + "、".join(f"{k}（{FROZEN[k]}）"
-                                                  for k in touched))
-
     blob = " ".join(directives + [str((r or {}).get("desc") or "") for r in req])
-    # Cheap textual backstop for the frozen list. The model was told; this is
-    # the check that does not depend on it having listened.
-    for pat, why in ((r"做空|卖空|short\b", "只做多是账户层面的硬约束"),
-                     (r"清单之外|自选标的|不在清单", "标的只能来自可买清单"),
-                     (r"半年|三个月|6\s*个月|一年|季度持有", "持有期一个月是钉死的"),
-                     (r"不用引用|无需引用|不必给 ?doc_id", "引用契约不可豁免")):
+    for pat, why in _PROSE_BACKSTOP:
         if re.search(pat, blob):
             bad.append(f"文本触碰了不可注入区：{why}")
 
@@ -294,8 +327,21 @@ DISTILL_SYSTEM = """你是 IdeaGen 的准则蒸馏器。基金经理会给你一
    给 1-2 个想法必须填的新字段（require），字段名小写下划线，desc 写清要填什么。
    没有这一步，这条准则一个月后无法被检验，等于没注入。
 
-硬边界，越过就算失败（在 touches_frozen 里如实报告，不要偷偷绕过）：
+4. 每条 directive 只能要求模型用它当场拿得到的东西去做：那一批研报原文、
+   已排定的日程与当前水平、可买清单。凡是要它去查手上没有的东西——
+   「排除被主流媒体上过头条的主题」「看机构持仓集中度」——都不合格，
+   换成一个能从材料本身读出来的判据，或者干脆不写。
+   一条做不到的准则不会让模型照做，只会让它编一个像样的理由。
+
+硬边界，任何 directive 和 require 都不许越过：
 {frozen}
+
+如果他这句话本身就撞上了其中某一条（比如他说要做空、要拿三个月、要加仓），
+不要假装没看见，也不要沉默地改掉。在 touches_frozen 里逐条写明：
+撞到的是哪一条、他原本要的是什么、你把它改成了什么。
+格式形如 "direction: 他要做空，改为看空时买反向标的做多表达"。
+这不算失败——这是必须由他本人过目的改写，系统会拦下来让他确认。
+真正的失败是你把它改了却不说。
 
 初心（与之冲突的一律不要蒸馏，在 founding_check 里说明冲突在哪）：
 {principles}
@@ -348,12 +394,22 @@ def distill(utterance: str, infer: Any, *, arm: str, as_of: date,
     return card, problems(card, existing=cards(), known_arms=known_arms)
 
 
-def activate(card: dict[str, Any], *, known_arms: set[str] | None = None
-             ) -> dict[str, Any]:
-    """Put a card into force. Refuses anything `problems()` still objects to."""
+def activate(card: dict[str, Any], *, known_arms: set[str] | None = None,
+             accept_translations: bool = False) -> dict[str, Any]:
+    """Put a card into force.
+
+    Refuses anything `problems()` objects to, and refuses a card carrying an
+    unacknowledged rewrite: a philosophy that reached the book in a form its
+    author never read is the failure this whole module is arranged against.
+    """
     bad = problems(card, existing=cards(), known_arms=known_arms)
     if bad:
         raise ValueError("准则卡未通过体检：\n- " + "\n- ".join(bad))
+    tr = translations(card)
+    if tr and not accept_translations:
+        raise ValueError("这句话有地方碰到硬边界，已被改写成边界内的写法。"
+                         "先看一遍改写是不是你的意思，确认后再加 "
+                         "--accept-translation：\n- " + "\n- ".join(tr))
     _append({"event": "activate", "card_id": card["card_id"],
              "as_of": card["as_of"], "card": card})
     return card

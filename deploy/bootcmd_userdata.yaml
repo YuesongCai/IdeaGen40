@@ -12,6 +12,11 @@
 # console. It installs public software, clones public code, and re-attempts the
 # Cloud Assistant install so RunCommand becomes available for the parts that do
 # need credentials. Those arrive afterwards through a short-lived presigned URL.
+# 输出必须可远程读取。第一版把 stdout/stderr 重定向进 /var/log/ideagen-bootstrap.log，
+# 于是脚本失败时外面什么也看不到 —— 实例活着、80/443 超时（说明包到得了、没服务），
+# 但失败原因锁在一台连不上的机器里。cloud-init 的 output 指令让每一行同时进串口，
+# `GetConsoleOutput` 就能读到，这是没有 shell 时唯一的反馈通道。
+output: {all: '| tee -a /var/log/cloud-init-output.log'}
 bootcmd:
   - [ cloud-init-per, always, ideagen-bootstrap, /bin/bash, -c,
       "set -x; exec >>/var/log/ideagen-bootstrap.log 2>&1;

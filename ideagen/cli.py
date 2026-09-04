@@ -234,8 +234,17 @@ def cmd_olive_auth(args) -> int:
     parsed = urlparse(redirect_uri)
     if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
         raise RuntimeError("Olive OAuth callback must use local HTTP loopback")
+    resource = (getattr(args, "url", "") or values.get("OLIVE_MCP_URL")
+                or config.OLIVE_MCP_URL)
+    if not resource:
+        raise RuntimeError(
+            "no Olive endpoint: pass --url https://<host>/mcp, or set "
+            "OLIVE_MCP_URL in the env file")
     issuer = values.get("OLIVE_OAUTH_ISSUER") or config.OLIVE_OAUTH_ISSUER
-    resource = values.get("OLIVE_MCP_URL") or config.OLIVE_MCP_URL
+    if not issuer:
+        # Only the endpoint has to be known; RFC 9728 names its issuer.
+        issuer = olive.discover_issuer(resource)
+        print(f"discovered OAuth issuer: {issuer}")
     client_id = values.get("OLIVE_OAUTH_CLIENT_ID", "")
     if not client_id:
         client_id = olive.register_oauth_client(
@@ -1066,6 +1075,13 @@ def cmd_philosophy(args) -> int:
             print("\n未通过，没有写入待确认区。改一句话再试，或换一个更具体的说法。")
             return 1
         print("  ✓ 未触碰不可注入区，与初心不冲突，准则已落成可判定字段")
+        tr = philosophy.translations(card)
+        if tr:
+            print("\n—— 你这句话有地方碰到硬边界，被改写了，请过目 ——")
+            for t in tr:
+                print(f"  ⚠ {t}")
+            print("  改写不是你说的话。确认这就是你的意思，生效时才加 "
+                  "--accept-translation；不是的话换一种说法重提。")
         pending.mkdir(parents=True, exist_ok=True)
         out = pending / f"{card['card_id']}.json"
         out.write_text(json.dumps(card, ensure_ascii=False, indent=2),
@@ -1082,7 +1098,8 @@ def cmd_philosophy(args) -> int:
             print(f"待确认区里没有 {args.card_id}", file=sys.stderr)
             return 2
         card = json.loads(f.read_text(encoding="utf-8"))
-        philosophy.activate(card, known_arms=arms)
+        philosophy.activate(card, known_arms=arms,
+                            accept_translations=args.accept_translation)
         f.unlink()
         print(f"已生效：{philosophy.arm_name(card)}（{card['as_of']} 起）")
         print("下一次周跑会多出这条臂。原臂保持冻结，作为对照。")
@@ -1143,6 +1160,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="seconds to wait for the localhost OAuth callback")
     s.add_argument("--no-open", action="store_true",
                    help="print the authorization URL without opening a browser")
+    s.add_argument("--url", default="",
+                   help="Olive MCP endpoint; the OAuth issuer is discovered "
+                        "from it when OLIVE_OAUTH_ISSUER is unset")
 
     s = add("prices", cmd_prices, "sync Futu daily bars")
     s.add_argument("--days", type=int, default=400)
@@ -1161,6 +1181,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="注入哪条生成臂（默认 carl_constraint）")
     s.add_argument("--slug", help="卡号后缀，默认从原话生成")
     s.add_argument("--reason", help="retire 的原因")
+    s.add_argument("--accept-translation", action="store_true",
+                   help="确认蒸馏对硬边界处的改写就是你的意思")
 
     s = add("weekly", cmd_weekly, "one weekly run: 筛选A → 筛选B → 筛选C")
     s.add_argument("--trade", action="store_true",

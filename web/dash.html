@@ -1493,6 +1493,7 @@ function epi(text){
     +'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5" stroke="var(--color-fill-tertiary)" stroke-width="1"/><path d="M6 5.2v3" stroke="var(--color-fill-tertiary)" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="3.4" r=".7" fill="var(--color-fill-tertiary)"/></svg>'
     +'<span>'+text+'</span></div>';
 }
+function glossMark(def){return '<span class="gloss" title="'+esc(def)+'">ⓘ</span>'}
 function gloss(term,def){return '<span class="gloss" title="'+esc(def)+'">'+esc(term)+'</span>'}
 function methodName(m){
   var map={'e2e':'AI 端到端','ai_e2e':'AI 端到端','ai_native':'AI 端到端',
@@ -2261,13 +2262,7 @@ function raceHero(ag){
       +'<div class="quiet">'+line+'</div>'
     +'</div>';
   }
-  var minBooked=null;
-  books.forEach(function(b){if(b.booked_as_of&&(minBooked===null||b.booked_as_of<minBooked))minBooked=b.booked_as_of});
-  var weekN=1;
-  if(minBooked){
-    var days=(Date.now()-new Date(minBooked+'T00:00:00+08:00').getTime())/86400000;
-    weekN=Math.max(1,Math.ceil(days/7));
-  }
+  var weekN=weekIndex(books);
   var head='<div class="qhead"><h2 class="qtitle">选取策略对比 · '+books.length+' 个账本 · 第 '+weekN+' 周</h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(4,'筛选C · 选取策略')
     +'<button type="button" class="qlink" onclick="openStageDrawer(4)">筛选C 详情 →</button></span></div>';
@@ -2328,7 +2323,7 @@ function raceHero(ag){
         +table
         +holdingsMatrix(books)
         +'<div class="book-grid" style="margin-top:var(--space-6)">'+books.map(bookCard).join('')+'</div>'
-        +epi('纸面成交，未计交易费用 · 净值指数期初 = 100 · 噪声区间内的排名不构成结论'))
+        +epi('纸面成交，买卖两腿均已计入佣金与滑点 '+glossMark(COST_GLOSS)+' · 净值指数期初 = 100 · 噪声区间内的排名不构成结论'))
   +'</div>';
 }
 
@@ -2892,11 +2887,23 @@ function benchName(){
    这一页叫「组合」，可损益此前只出现在策略对比卡的合计行里，读者要往下
    滚过主链路和整张噪音带图才看得到。第一档信息上提到首屏，口径与合计行
    同源（aggReturnPct / benchReturnPct），不新增一套数字。 */
+/* 已跑到第几周。首屏结论和策略对比卡必须引用同一个周数，各算各的会说出
+   两个不同的「第 N 周」。 */
+function weekIndex(books){
+  var minBooked=null;
+  (books||[]).forEach(function(b){
+    if(b.booked_as_of&&(minBooked===null||b.booked_as_of<minBooked))minBooked=b.booked_as_of;
+  });
+  if(!minBooked)return 1;
+  var days=(Date.now()-new Date(minBooked+'T00:00:00+08:00').getTime())/86400000;
+  return Math.max(1,Math.ceil(days/7));
+}
 function portfolioHeadline(ag){
   if(!ag)return '';
   var ret=aggReturnPct(ag), spy=benchReturnPct();
   var vs=(ret!==null&&spy!==null)?(ret-spy):null;
   var nBooks=currentBooks().length;
+  var wk=weekIndex(currentBooks());
   /* 首屏只回答一个问题：这一个月，组合相对基准是跑赢还是跑输。
      浮动盈亏那种大额金额单独看会骗人——+103,515 在 1 亿本金上是 0.10%，
      而同期 SPY 是 4.63%，所以头条是收益率与基准对照，金额降为附注。
@@ -2915,14 +2922,22 @@ function portfolioHeadline(ag){
         +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">同期 '+esc(benchName())+' · 基准</div>'
         +'<div class="num" style="font:600 34px/40px var(--font-sans);color:var(--color-text-secondary)">'+(spy===null?'—':fmtPct(spy))+'</div>'
       +'</div>'
-      +'<div style="font:400 15px/22px var(--font-sans);color:var(--color-text-primary);padding-bottom:6px">'+verdict+'</div>'
+      +'<div style="padding-bottom:4px">'
+        +'<div style="font:400 15px/22px var(--font-sans);color:var(--color-text-primary)">'+verdict+'</div>'
+        /* 结论式写法有个副作用：读者会把它当成定论，下周反超就以为「翻盘了」。
+           样本量限定必须和结论同框，不能只留在下面那张对比卡里。 */
+        +'<div style="font:400 12px/17px var(--font-sans);color:var(--color-text-tertiary);margin-top:2px">'
+          +'第 '+wk+' 周 · 样本尚不足以判定优劣'
+          +'<span class="gloss" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，约需 '+TARGET_WEEKS+' 周样本；在那之前的排名不构成结论。">ⓘ</span>'
+        +'</div>'
+      +'</div>'
     +'</div>'
     +'<div class="card-note" style="margin-top:var(--space-4)">'
       +'浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
       +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
       +' · 在场 '+fmtInt(ag.openN||0)+' 仓'
       +' · 本金 '+fmtMoney(ag.capital)
-      +' · 纸面成交，未计交易费用，非实盘'
+      +' · 纸面成交（已计佣金与滑点 '+glossMark(COST_GLOSS)+'），非实盘'
       +'<button type="button" class="exp-btn" data-el="week.headline.trust" onclick="openTrustDrawer()">可信度与局限 ›</button>'
     +'</div>'
   +'</div>';
@@ -3634,6 +3649,12 @@ var HGEP_GLOSS={
   P:'P 已定价 = 价格已计入的程度，反向计分 (100 − P)'
 };
 var COUNT_GLOSS='计数对照臂：不作语义判断，仅统计各主题的研报提及数并排序。与 HGEP 语义打分的分歧即语义判断增量价值的持续观测量。';
+/* 交易成本是真的在算的。config.COSTS 的注释把原因写在了那里：v0.3 没有成本模型，
+ * 「是回测虚高的单一最大来源」。页面此前两处都写着「未计交易费用」——既不实，
+ * 也把这套账本比它实际更粗糙地说了出去。 */
+var COST_GLOSS='买卖两条腿都计成本：美股每条腿 4bp（1bp 佣金 + 3bp 滑点），港股 7.5bp（2.5 + 5）。'
+  +'其中一半做进场价上浮、一半作为手续费单独扣。所以「对成本」的收益是扣费后的，'
+  +'比只看价格涨跌低一点——这个差额就是成本。没有成本模型是回测虚高最大的单一来源，所以这里不省。';
 var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。触发后自动执行。';
 var ARM_GLOSS='正式比较臂 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索臂不参与结论判定。';
 var RULER_GLOSS='基准 = 不作判断的对照账本（全量 / 随机）。跑不赢全量基准即选取环节无增量，跑不赢随机基准即排序为噪声。';
@@ -4872,7 +4893,8 @@ function mergedPositions(){
       byCode[k].unrealized+=(p.unrealized||0);
       byCode[k].value+=mv;byCode[k].cost+=cv;
       byCode[k].books.push(b.selector||b.book_id);
-      byCode[k].perBook.push({sel:b.selector||b.book_id,unrealized:p.unrealized,qty:p.qty});
+      byCode[k].perBook.push({sel:b.selector||b.book_id,unrealized:p.unrealized,qty:p.qty,
+                              entry_px:p.entry_px,opened_d:p.opened_d});
     });
   });
   return {byCode:byCode,order:order};
@@ -4891,9 +4913,27 @@ function posDrawerBody(code){
     +'</div>'
     +'<div style="margin:var(--space-2) 0 var(--space-4);display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline">'
     +'<span class="num '+pctCls(p.unrealized)+'" style="font:600 26px/32px var(--font-sans)">'+signedMoney(p.unrealized)+'</span>'
-    +'<span class="num '+pctCls(pnlPct)+'">'+(pnlPct===null?'':fmtPct(pnlPct)+'（对成本）')+'</span>'
-    +'<span class="num '+pctCls(chgPct)+'">'+(chgPct===null?'':'价格 '+fmtPct(chgPct))+'</span>'
-    +'<span class="card-note">'+fmtInt(p.books.length)+' 个账本合计 · 开仓 '+esc(p.opened_d||'—')+'</span>'
+    /* 两个百分比看着几乎一样却不相等，是这一屏最容易被当成 bug 的地方。
+     * 「对成本」是所有持有它的账本按金额加权的真实回报；「价格」只是这只标的
+     * 从某一个进场价到现价的涨跌。多个账本在不同日子、不同价位进场时，两者
+     * 本来就该岔开——把口径写出来，比让人以为算错了强。 */
+    +(function(){
+      var pb=p.perBook||[];
+      var pxs=pb.map(function(x){return x.entry_px}).filter(function(v){return v});
+      var uniq={};pxs.forEach(function(v){uniq[Number(v).toFixed(4)]=1});
+      var nPx=Object.keys(uniq).length;
+      var days={};pb.forEach(function(x){if(x.opened_d)days[x.opened_d]=1});
+      var nDay=Object.keys(days).length;
+      var costTip='对成本 = 浮动盈亏 ÷ 总成本（含手续费），按所有持有它的账本的实际买入金额加权——这是这笔钱扣完成本后的真实回报。'+COST_GLOSS;
+      var pxTip='价格 = 现价相对进场价的涨跌，只反映标的本身走势，不扣成本。'
+        +'它比「对成本」高出的那一点，就是买入时计入的佣金与滑点。'
+        +(nPx>1?'本仓还有 '+nPx+' 个不同的进场价'+(nDay>1?'（分 '+nDay+' 天建仓）':'')+'，这里显示的是其中一个。':'');
+      return '<span class="num '+pctCls(pnlPct)+'">'+(pnlPct===null?'':fmtPct(pnlPct)+'（对成本）<span class="gloss" title="'+esc(costTip)+'">ⓘ</span>')+'</span>'
+        +'<span class="num '+pctCls(chgPct)+'">'+(chgPct===null?'':'价格 '+fmtPct(chgPct)+'<span class="gloss" title="'+esc(pxTip)+'">ⓘ</span>')+'</span>'
+        +'<span class="card-note">'+fmtInt(p.books.length)+' 个账本合计 · 开仓 '+esc(p.opened_d||'—')
+        +(nDay>1?'<span class="gloss" title="各账本建仓日期不完全相同（共 '+nDay+' 个日期），这里显示的是其中一个。逐个账本的持有量见下方表格。">ⓘ</span>':'')
+        +'</span>';
+    })()
     +'</div>';
   html+='<div style="margin-bottom:var(--space-3);color:var(--color-text-secondary)"><b style="font-weight:600;color:var(--color-text-primary)">论点</b>　'+esc(p.thesis||'（这仓没有存论点）')+'</div>';
   if(cand){

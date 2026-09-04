@@ -1553,8 +1553,8 @@ function renderDeadBanner(msg){
 
 /* ── navigation: 结论 / 推导 / 凭据 ──────────────────────────── */
 var VIEWS=[
-  {id:'week',label:'本周',sub:'持有什么？赚了没？',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>'},
-  {id:'process',label:'过程',sub:'这些仓怎么来的？',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>'}
+  {id:'week',label:'组合',sub:'当期持仓与损益',icon:'<path d="M2 8.5 8 3l6 5.5"/><path d="M4 7.5V13h8V7.5"/>'},
+  {id:'process',label:'链路',sub:'生成过程与凭据',icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>'}
 ];
 var current='week';
 function buildNav(){
@@ -1634,7 +1634,7 @@ function chainStrip(ag){
     var inner='<span class="cn-num num">'+val+(unit?'<span class="u"> '+unit+'</span>':'')+'</span>'
       +'<span class="cn-label">'+label+'</span>'
       +(sub?'<span class="cn-sub">'+sub+'</span>':'')
-      +(click?'<span class="cn-go">点开看 ›</span>':'');
+      +(click?'<span class="cn-go">展开 ›</span>':'');
     return click
       ?'<button type="button" class="chain-node'+(hot?' hot':'')+'" onclick="'+click+'">'+inner+'</button>'
       :'<div class="chain-node'+(hot?' hot':'')+'">'+inner+'</div>';
@@ -1710,13 +1710,13 @@ function statusStrip(){
   var p=hktParts();
   var gaps=(S.gaps||[]).length;
   var anchor='今天'+WD[p.wd]+' <span class="num js-now">'+String(p.H).padStart(2,'0')+':'+String(p.M).padStart(2,'0')+'</span>'
-    +' · <button type="button" class="exp-btn" style="padding:1px 4px" onclick="openCalDrawer()" title="拉开周历：过去每周发生了什么">上次成功'
+    +' · <button type="button" class="exp-btn" style="padding:1px 4px" onclick="openCalDrawer()" title="按期查看运行记录">上次成功'
     +'<span class="gloss" title="每周自动运行一次的全流程：读研报 → 选主题 → 写想法 → 挑持仓 → 建仓">周跑</span>'
     +(lw?'：'+esc(lw.as_of)+' 期'+(lw.ended_at?'（'+hktFmt(lw.ended_at,true)+'）':''):'：尚无成功记录')+' ›</button>'
     +' · '+nextRunPhrase();
 
   return '<div class="card status-card section">'
-    +'<button type="button" class="status-line" onclick="openStatusDrawer()" title="拉开系统状态抽屉">'
+    +'<button type="button" class="status-line" onclick="openStatusDrawer()" title="查看系统状态">'
       +'<span class="status-dot '+cls+'"></span>'
       +(gaps?'<span class="tag" style="flex:none;background:var(--color-feedback-error-subtle);color:var(--color-feedback-error-text)" title="有 '+gaps+' 期周跑永久缺失——迟超 48 小时即判死，不补跑。点状态条看周历">'+gaps+' 期缺失</span>':'')
       +'<span class="status-word">'+word+'<span class="sub">　'+sub+'</span></span>'
@@ -1744,12 +1744,12 @@ function miniChain(stage,label){
     svg+='<circle cx="'+x+'" cy="7" r="'+(i===stage?4:2.5)+'" fill="'+(i===stage?'var(--color-surface-brand)':'var(--color-border-strong)')+'"/>';
   }
   svg+='</svg>';
-  return '<button type="button" class="mini-chain" onclick="openStageDrawer('+stage+')" title="'+esc(label||'')+'——对应过程流水线的高亮环节，点击拉开">'+svg+'</button>';
+  return '<button type="button" class="mini-chain" onclick="openStageDrawer('+stage+')" title="'+esc(label||'')+'——链路对应环节">'+svg+'</button>';
 }
 /* ── Hero = 噪音带：第 2 周「还分不出高下」本身就是画面 ── */
 var TARGET_WEEKS=17;
-var VERDICT_GLOSS='为什么要等 ~17 周（≈4 个月）：8 本账吃同一个候选池，账本间净值差只来自挑法；按预注册的配对检验口径（持有期重叠折算 + 配对相关 ρ≈0.8 的先验），要可靠分辨 2 个百分点/月级别的真实差距，大约需要 4 个月的重叠持有样本。在那之前宣布赢家 = 把噪音当成绩。';
-var BAND_GLOSS='±2 个百分点是预注册的「可检出差距」标准：小于这个幅度的领先，在当前样本量下和运气无法区分——所以整条灰带里的排名都不算数。';
+var VERDICT_GLOSS='样本量要求约 17 周（≈4 个月）：各账本使用同一候选池，净值差异仅来自选取策略。按预注册的配对检验口径（持有期重叠折算 + 配对相关 ρ≈0.8 先验），可靠识别 2 个百分点/月的真实差距需约 4 个月重叠持有样本。此前的排名不构成结论。';
+var BAND_GLOSS='±2 个百分点为预注册的可检出差距。当前样本量下，小于该幅度的领先无法与随机波动区分，带内排名不构成结论。';
 function bookColor(name){
   var i=SEL_META.findIndex(function(m){return m[0]===name});
   return 'var(--color-data-'+(((i>=0?i:7)%8)+1)+')';
@@ -1792,7 +1792,7 @@ function noiseBandHTML(books,weekN){
       var ph='<div class="pp-t">'+esc(m[1])+(r.isRef?'（基准）':'')+'</div>'
         +'<div class="pp-n">'+(r.isRef?'它自己就是 0 点——所有账都和它比':'与全买差 '+(r.diff===null?'—':(r.diff>0?'+':'')+r.diff.toFixed(2)+' pp'))+' · 自身收益 '+fmtPct(r.ret)+' · '+fmtInt(nPos)+' 仓</div>'
         +'<div class="pp-s">'+esc(selPlain(r.b.selector))+'</div>'
-        +'<div class="pp-s">点击拉开这本账</div>';
+        +'';
       return '<button type="button" class="nb-row" onclick="openBookDrawer(\''+esc(r.b.selector||'')+'\')"'+popRef(ph)+'>'
         +'<span class="nb-name"><span class="nb-sw" style="background:'+col+'"></span>'+esc(m[1])+'</span>'
         +'<span class="nb-track">'
@@ -1840,7 +1840,7 @@ function raceHero(ag){
     +rows.map(function(r){
       var m=selMetaOf(r.b.selector);
       var cls=m[2]==='对照'?'ctl':(m[2]==='主策略'?'arm':'');
-      return '<button type="button" class="medal '+cls+'" onclick="openBookDrawer(\''+esc(r.b.selector||'')+'\')" title="'+esc(selGlossTitle(m))+' — 点击拉开这本账">'
+      return '<button type="button" class="medal '+cls+'" onclick="openBookDrawer(\''+esc(r.b.selector||'')+'\')" title="'+esc(selGlossTitle(m))+'">'
         +'<span class="nb-sw" style="background:'+bookColor(r.b.selector)+'"></span>'+esc(m[1])
         +'<span style="font:400 10px/14px var(--font-sans);color:var(--color-text-tertiary)">'+esc(m[3]||'')+'</span>'
         +'<b>'+(r.diff===null?'—':(r.isRef?'基准':(r.diff>0?'+':'')+r.diff.toFixed(2)+'pp'))+'</b></button>';
@@ -1948,7 +1948,7 @@ function holdMapCard(ag){
     });
     gOrder.sort(function(a,b){return groups[b].value-groups[a].value});
     var nb=ag.books.length;
-    body='<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向与幅度（红涨绿跌）</span><span>徽标 n/'+nb+' = 几本账'+'<span class="gloss" title="账 = 筛选C 的 '+nb+' 种挑法各记的一本模拟账。同一标的被越多本账独立选中，跨账本共识越高——这不需要先选出冠军就成立">ⓘ</span>共同持有（≥6 本描边加亮）</span><span>分组 = 宏观主题</span><span>悬停看论点 · 点击拉开这一仓</span></div>';
+    body='<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向与幅度（红涨绿跌）</span><span>徽标 n/'+nb+' = 几本账'+'<span class="gloss" title="账 = 筛选C 的 '+nb+' 种挑法各记的一本模拟账。同一标的被越多本账独立选中，跨账本共识越高——这不需要先选出冠军就成立">ⓘ</span>共同持有（≥6 本描边加亮）</span><span>分组 = 宏观主题</span></div>';
     gOrder.forEach(function(t){
       var g=groups[t];
       g.list.sort(function(a,b){return b.value-a.value});
@@ -2052,15 +2052,36 @@ function holdAxisBody(ag,mp,totalV,maxV){
   }
   g+='<text x="'+((pl+W-pr)/2)+'" y="'+(H-4)+'" text-anchor="middle" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">横轴 = 有几本账同时持有这个标的（跨账本共识，共 '+nb+' 本）</text>'
    +'<text x="14" y="'+(pt+10)+'" font-family="var(--font-sans)" font-size="10.5" fill="var(--color-text-metadata)">纵轴 = 这一仓的盈亏</text>';
-  /* 泡：同一档内左右轻微错开，避免完全重叠 */
-  var seen={};
-  pts.sort(function(a,b){return b.p.value-a.p.value}).forEach(function(o){
+  /* 蜂群排布：同一档里的泡沿横轴让开彼此。
+   * 固定步长的抖动在这里不够用——泡的半径随仓位从 7 变到 24，
+   * 一个 6px 的错位会让五个大泡叠成一坨，图上就只剩最上面那一个可读。
+   * 所以按半径找位：从档位中心往两侧试，第一个不压到已放置的泡的位置就是它的位置。 */
+  var placed=[];
+  /* 让开的范围不能超过半个档距，否则泡会飘进隔壁档，横轴上的位置就骗人了。
+   * 检查也必须是全局的：只跟同档比较，隔壁档挤过来的泡照样会压上。 */
+  var halfSpan=(nb>1?(X(2)-X(1)):(W-pl-pr))/2-3;
+  pts.sort(function(a,b){return b.p.value-a.p.value});
+  var radii=pts.map(function(o){return Math.max(7,Math.round(7+Math.sqrt(o.p.value/maxV)*17))});
+  pts.forEach(function(o,pi){
     var p=o.p;
-    seen[o.x]=(seen[o.x]||0)+1;
-    var idx=seen[o.x]-1;
-    var jitter=((idx%7)-3)*6.5;
-    var cx=X(o.x)+jitter,cy=Y(o.y);
-    var r=Math.max(7,Math.round(7+Math.sqrt(p.value/maxV)*17));
+    var r=radii[pi];
+    var base=X(o.x),cy=Y(o.y);
+    var cx=base,bestX=base,bestRoom=-Infinity;
+    for(var step=0;;step++){
+      var off=(step===0)?0:(Math.ceil(step/2)*7*(step%2?1:-1));
+      if(Math.abs(off)>halfSpan){cx=bestX;break}
+      var tryX=Math.max(pl-4,Math.min(W-pr+4,base+off));
+      /* room = 离最近的泡还差多少才算贴上；>=0 表示互不遮挡 */
+      var room=Infinity;
+      for(var q=0;q<placed.length;q++){
+        var o2=placed[q];
+        var dx=tryX-o2.x,dy=cy-o2.y;
+        room=Math.min(room,Math.sqrt(dx*dx+dy*dy)-(r+o2.r)*0.86);
+      }
+      if(room>=0){cx=tryX;break}
+      if(room>bestRoom){bestRoom=room;bestX=tryX}
+    }
+    placed.push({x:cx,y:cy,r:r});
     var up=p.unrealized>0.0001,down=p.unrealized<-0.0001;
     var a=Math.min(0.66,0.16+Math.abs(o.y)*0.10);
     var fill=up?('rgba(191,22,22,'+a.toFixed(2)+')'):(down?('rgba(11,143,74,'+a.toFixed(2)+')'):'var(--color-surface-muted)');
@@ -2089,7 +2110,7 @@ function holdAxisBody(ag,mp,totalV,maxV){
         :(d>0?'高共识的这一端高 '+d.toFixed(2)+' 个百分点。':'高共识的这一端反而低 '+Math.abs(d).toFixed(2)+' 个百分点。'))
       +'第 1 周的样本量下这只是读数，不是结论。';
   }
-  return '<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向（红涨绿跌）</span><span>绿线 = 每个共识档的平均盈亏</span><span>悬停看论点 · 点击拉开这一仓</span></div>'
+  return '<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向（红涨绿跌）</span><span>绿线 = 每个共识档的平均盈亏</span></div>'
     +g
     +(read?'<div class="quiet" style="margin-top:var(--space-3)">'+read+'</div>':'')
     +epi('共识度只记录、不加分——它不参与挑选，所以它和收益的关系才是可以事后检验的');
@@ -2102,7 +2123,7 @@ function holdListTable(ag,mp){
     var name=p.name||p.code;
     var chgPct=(p.entry_px&&p.last_px)?((p.last_px/p.entry_px-1)*100):null;
     var stopDist=(p.last_px&&p.stop_px)?((p.stop_px-p.last_px)/p.last_px*100):null;
-    return '<tr class="expandable" onclick="openPosDrawer(\''+esc(p.code)+'\')" title="点击拉开：为什么持有这一仓">'
+    return '<tr class="expandable" onclick="openPosDrawer(\''+esc(p.code)+'\')" title="查看持仓依据">'
       +'<td class="primary">'+esc(name)+'<span class="mono" style="color:var(--color-text-tertiary);font-size:12px">　'+esc(p.code)+'</span></td>'
       +'<td style="max-width:340px"><span class="clamp1">'+esc(p.thesis||'—')+'</span></td>'
       +'<td class="r num">'+fmtInt(p.books.length)+'</td>'
@@ -2114,7 +2135,7 @@ function holdListTable(ag,mp){
   return '<div class="table-wrap scroll-y scroll-thin hold-wrap"><table>'
     +'<thead><tr><th>标的</th><th>为什么买</th><th class="r" title="被几本账同时持有">几本持有</th><th class="r">涨跌</th><th class="r">合计盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
-    +epi('点任意行拉开这一仓的完整推理链：论点 → 主题 → 提出方式 → 赔率 → 风控');
+    +'';
 }
 /* A→B→C→建仓 stepper（空态用） */
 function stageStates(){
@@ -2413,6 +2434,13 @@ function backtestCard(){
       +'<div class="meta-kv"><div class="k">窗口</div><div class="v num">'+esc(b.window_start||'—')+' → '+esc(b.window_end||'—')+'</div></div>'
       +'<div class="meta-kv"><div class="k">期数</div><div class="v">'+mix+'</div></div>'
       +'<div class="meta-kv"><div class="k">持有期</div><div class="v num">'+fmtInt(sum.horizon_days)+' 天</div></div>'
+      +(sum.asof_audit
+        ?'<div class="meta-kv"><div class="k">时间钳制</div><div class="v" '
+          +'title="'+esc(sum.asof_audit.checks||'')+'。回放是 strict 模式：任一项越界直接中止，'
+          +'不会先出数字再报警。">'+fmtInt(sum.asof_audit.periods_audited)+' 期审计 · '
+          +(sum.asof_audit.leaks===0?'零越界 ✓':fmtInt(sum.asof_audit.leaks)+' 项越界')
+          +'</div></div>'
+        :'')
     +'</div>'
     +'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
       +'<thead><tr><th>挑法</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
@@ -2623,7 +2651,7 @@ var STAGES=[
   {t:'筛选A · 选主题',q:'几百篇研报里，哪几个宏观主题值得下注？'},
   {t:'筛选B · 写想法',q:'每个主题，4 种性格不同的方法各自能写出什么？'},
   {t:'合并候选池',q:'重复提出的想法怎么归一？谁被不约而同选中？'},
-  {t:'筛选C · 八道闸',q:'同一个池子，8 种信念不同的挑法各自放行谁？'},
+  {t:'筛选C · 选取策略',q:'同一候选池，各选取策略分别放行哪些标的'},
   {t:'自动建仓',q:'选出的持仓怎么落地？风控在进场那一刻就已挂好'}
 ];
 
@@ -2646,19 +2674,19 @@ function drawerLabel(d){
   if(d.t==='book')return selMetaOf(d.p)[1]+' 账本';
   if(d.t==='status')return '系统状态';
   if(d.t==='cal')return '周历';
-  if(d.t==='trust')return '能信多少？';
+  if(d.t==='trust')return '可信度与局限';
   return '';
 }
 function drawerQ(d){
   if(d.t==='stage')return STAGES[d.p]?STAGES[d.p].q:'';
-  if(d.t==='topic')return '这个主题的分怎么来的、证据是哪些研报、往下变成了什么';
+  if(d.t==='topic')return '评分构成 · 证据研报 · 下游产出';
   if(d.t==='ask')return '回答只依据当时封存的材料——材料里没有的它会明说没有';
   if(d.t==='runlog')return '真实时钟 · 逐步耗时 · 逐件产物——它真的跑过的凭据';
   if(d.t==='pos')return '论点 → 主题 → 提出方式 → 赔率 → 风控，一条链看完';
   if(d.t==='book')return '这本账信什么、挑了什么、赚亏如何';
   if(d.t==='status')return '心跳、端口、数据源——系统现在的原始体征';
   if(d.t==='cal')return '过去每周发生了什么——每期一行，含失败与永久缺失';
-  if(d.t==='trust')return '未验证的赌注 · 出过的坑 · 历史回测——都摆在明面上';
+  if(d.t==='trust')return '未验证假设 · 已修复缺陷 · 历史回测';
   return '';
 }
 function pushDrawer(d){
@@ -2708,7 +2736,7 @@ function crumbName(d){
   if(d.t==='book')return selMetaOf(d.p)[1];
   if(d.t==='status')return '体征';
   if(d.t==='cal')return '每周';
-  if(d.t==='trust')return '赌注与坑';
+  if(d.t==='trust')return '假设与缺陷';
   return '';
 }
 function renderDrawers(){
@@ -2886,10 +2914,10 @@ function corpusRowsFor(asOf){
 /* ── 生成方式 / 挑法口径 ── */
 /* [key, 名称, tag(功能标签), plain(它到底在干嘛), example(具体例子)] —— 口径为唯一权威，全站引用这里 */
 var GEN_ORDER=[
- ['ai_native','AI 端到端','不设套路的基线','不给任何思考框架，AI 读完研报自己决定怎么想、买什么。它是另外三种的对照——如果加了框架反而更差，这里会暴露。','同样读完通胀研报，它可能直接给出「买 TIP，因为多家投行证据指向再加速」，推理路径完全自选。'],
- ['carl_constraint','约束边界','赌被迫的行动','找出被现实逼到墙角的玩家：什么约束绑着他、压力到哪个水平会绷断、绷断时他必须做什么——下注他「不得不做」的动作，而不是他想做什么。','美债利息负担逼近国防预算 → 财政部被迫缩短发债久期 → 利好短端国债。'],
- ['chain','传导链','赌因果能落地','必须写全从宏观事件到标的价格的因果链条，每一环都要有可观测的数据；缺一环整条想法作废。链上任何一环读数背离，即为证伪信号。','欧洲财政扩张 → 德国基建订单（PMI 可查）→ 工业用电需求 → 电网设备商营收。'],
- ['gap','共识缺口','赌市场定价错了','先看价格已经「相信」了什么，只在研报证据与市场定价互相矛盾的地方下注——赌证据对、价格错。','利率市场定价 2027 年前不加息，但多家投行证据指向通胀再加速 → 买通胀保值债。']];
+ ['ai_native','AI 端到端','无框架基线','不施加推理框架，模型自主决定论证路径与标的。其余三种方法的对照基线。','读入通胀研报后直接输出「买入 TIP，依据多家投行的再加速证据」，推理路径由模型自选。'],
+ ['carl_constraint','约束边界','被迫行为','识别受硬约束的市场参与者：约束条件、压力临界点、临界点触发后的被迫动作，据此下注其必然行为而非意愿行为。','美债利息负担逼近国防预算 → 财政部被迫缩短发债久期 → 利好短端国债。'],
+ ['chain','传导链','因果链可证伪','要求写全宏观事件至标的价格的完整因果链，每一环挂可观测数据；缺环即作废，任一环读数背离即证伪。','欧洲财政扩张 → 德国基建订单（PMI 可查）→ 工业用电需求 → 电网设备商营收。'],
+ ['gap','共识缺口','定价背离','以市场定价反推已被计入的预期，仅在研报证据与市场定价背离处建仓。','利率市场定价 2027 年前不加息，多家投行证据指向通胀再加速 → 买入通胀保值债。']];
 function genGlossTitle(o){return o[2]+'——'+o[3]+'　例：'+o[4]}
 function genByKey(key){
   var gens=((S||{}).weekly||{}).generators||[];
@@ -2897,16 +2925,16 @@ function genByKey(key){
 }
 /* [name, 名称, 分组, tag(功能标签), plain(它到底在干嘛)] —— 口径为唯一权威，全站引用这里 */
 var SEL_META=[
-  ['ai_native','AI 端到端挑','主策略','不给公式的对照','42 条候选全部给 AI，让它自己挑 10 条，不提供任何打分公式——检验下面这些人为公式是否多余。'],
-  ['omega_loose','赚亏比 · 宽','主策略','赔率排名 · 多拿','每条按「概率加权的赚 ÷ 亏」排名（须跑赢现金收益门槛），达标的都要，最多 14 条。宽 = 门槛松、拿得多。'],
-  ['spread','组合去集中','主策略','管组合不管单条','先按赚亏比排，但强制分散：同一主题最多 3 条、同一敞口最多 3 条、同一写想法方式最多 4 条——防止「十个仓其实是同一个赌注押了十遍」。'],
-  ['calib','证据一致性','主策略','给漂亮赔率打折','按赚亏比排，但四种情况扣分：主题证据太薄、信心高过证据、概率算得粗糙、涨幅大得没道理。防的是「赔率看着漂亮但证据撑不住」。'],
-  ['left_tail','只看下行','常驻探索','先求少亏','挑仓时完全不管每条能赚多少，只算它最坏情况下大概会亏多少（亏的概率 × 亏的幅度），从最不容易亏钱的开始拿。它在验证一个猜想：这个组合的成败，可能不取决于选中大涨的，而取决于避开大亏的。'],
-  ['omega_strict','赚亏比 · 严','常驻探索','赔率排名 · 只拿最好','和「赚亏比 · 宽」用完全相同的排名方法（概率加权的赚 ÷ 亏）。唯一区别：宽版门槛低，达标都拿（本期 {n:omega_loose} 条）；严版门槛高，只拿最有把握的（本期 {n:omega_strict} 条），空出的仓位相当于拿着现金。这两本账的业绩差，就是「宁缺毋滥值不值」的直接答案。'],
-  ['buy_all','全买对照','对照','量尺 · 不筛','池子里 42 条全买。它不是策略，是尺子：如果没有任何挑法跑赢它，「挑」这一层就是白费。'],
-  ['random_pick','随机对照','对照','量尺 · 瞎抽','随机抽 10 条。同样是尺子：如果没有挑法跑赢随机，说明排序本身是噪音，价值全在前面的准入门槛。'],
-  ['generated_ai_native','只信 AI 端到端','对照','按出身挑 · 不排名','不做任何排名：本期凡是「AI 端到端」这种写法提出过的标的，全部买入。它和「只信约束边界」构成一对——两本账的差别只有想法的出身，所以它们的业绩差就是「哪种写想法的方式更值钱」的直接答案，不掺任何挑选技巧。'],
-  ['generated_carl_constraint','只信约束边界','对照','按出身挑 · 不排名','同上，只买「先划约束边界再找标的」这种写法提出过的标的。与「只信 AI 端到端」配对比较。']
+  ['ai_native','AI 端到端选取','主策略','无评分公式','候选池全量交由模型选出 10 条，不提供任何评分公式。用于检验人工评分公式是否具有增量价值。'],
+  ['omega_loose','赔率排序 · 宽松','主策略','赔率排序 · 宽阈值','按概率加权赔率（期望收益 ÷ 期望亏损）排序，须高于现金收益门槛，达标全取，上限 14 条。'],
+  ['spread','分散度约束','主策略','组合层约束','按赔率排序后施加分散约束：同一主题至多 3 条、同一敞口至多 3 条、同一生成方法至多 4 条，避免单一敞口重复计入。'],
+  ['calib','证据一致性','主策略','赔率折价','按赔率排序，并对四类情形折价：主题证据不足、置信度高于证据强度、概率估计粗糙、隐含涨幅缺乏依据。'],
+  ['left_tail','下行风险优先','常驻探索','下行优先','不计上行空间，仅按期望亏损（亏损概率 × 亏损幅度）由低至高选取。检验组合结果由规避尾部亏损而非捕捉上行主导的假设。'],
+  ['omega_strict','赔率排序 · 严格','常驻探索','赔率排序 · 高阈值','排序方法与宽松版完全相同，仅阈值不同：宽松版达标全取（本期 {n:omega_loose} 条），严格版仅取高置信部分（本期 {n:omega_strict} 条），空余仓位留存现金。两者业绩差即阈值收紧的净效应。'],
+  ['buy_all','全量基准','对照','基准 · 不筛选','买入候选池全部标的。作为基准而非策略：任一选取策略若不能跑赢它，选取环节不产生价值。'],
+  ['random_pick','随机基准','对照','基准 · 随机抽样','随机抽取 10 条。任一选取策略若不能跑赢它，排序本身即为噪声，价值全部来自前置准入门槛。'],
+  ['generated_ai_native','来源限定 · AI 端到端','对照','按来源全取 · 不排序','不作排序，买入本期由「AI 端到端」方法提出的全部标的。与「来源限定 · 约束边界」配对，两者唯一差异是想法来源，业绩差即生成方法的净效应。'],
+  ['generated_carl_constraint','来源限定 · 约束边界','对照','按来源全取 · 不排序','不作排序，买入本期由「约束边界」方法提出的全部标的。与「来源限定 · AI 端到端」配对比较。']
 ];
 function selMetaOf(name){
   return SEL_META.find(function(m){return m[0]===name})||[name,name,'','',''];
@@ -2921,15 +2949,15 @@ function selPlain(name){
 function selGlossTitle(m){return (m[3]?m[3]+'——':'')+selPlain(m[0])}
 /* HGEP 四字母 & 其他必须挂 ⓘ 的口径 */
 var HGEP_GLOSS={
-  H:'H 热度 = 多少人在说、且在加速',
-  G:'G 分歧 = 多空吵得多凶',
-  E:'E 实据 = 证据落到订单利润，还是停留在叙事',
-  P:'P 已定价 = 价格已经消化了多少——越低越好，计分用的是 (100 − P)'
+  H:'H 热度 = 覆盖广度与提及增速',
+  G:'G 分歧 = 多空观点分歧程度',
+  E:'E 实据 = 证据落到订单与利润的程度，而非停留于叙事',
+  P:'P 已定价 = 价格已计入的程度，反向计分 (100 − P)'
 };
-var COUNT_GLOSS='纯数数对照：不用任何语义判断，只数每个主题被多少篇研报提到，按提及数排名。它和 HGEP 语义打分的分歧点，就是「语义理解值不值钱」这个系统最大赌注的实时读数。';
-var SIGMA_GLOSS='σ = 标的自身近月波动率。止损/止盈按它的倍数定距离（−2σ / +3σ）：波动大的标的止损放得远——这样「止损有多紧」在不同资产之间才是同一个意思。触发即自动执行。';
-var ARM_GLOSS='正式比较臂 = 事先声明只有这几个（绿底主策略）参加统计检验——比较的次数一多必出假赢家，所以对照与探索不参与加冕。';
-var RULER_GLOSS='量尺 = 不做判断的对照账本（全买 / 随机）。它们不是策略，是尺子：跑不赢全买说明「挑」白费，跑不赢随机说明排序是噪音。';
+var COUNT_GLOSS='计数对照臂：不作语义判断，仅统计各主题的研报提及数并排序。与 HGEP 语义打分的分歧即语义判断增量价值的持续观测量。';
+var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。触发后自动执行。';
+var ARM_GLOSS='正式比较臂 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索臂不参与结论判定。';
+var RULER_GLOSS='基准 = 不作判断的对照账本（全量 / 随机）。跑不赢全量基准即选取环节无增量，跑不赢随机基准即排序为噪声。';
 function orderedSelectors(){
   var sels=((S||{}).weekly||{}).selectors||[];
   var order={};SEL_META.forEach(function(m,i){order[m[0]]=i});
@@ -3098,7 +3126,7 @@ function pipeCanvasSVG(){
         s+=link(tX+22,ty,gX1,y,Math.max(1.2,n*0.9),'var(--color-surface-brand-strong)',0.3);
       });
       var k=poolCountBy('method',g.method);
-      var gp=pop(esc(o[1])+' · '+esc(o[2]),esc(o[3]),'例：'+esc(o[4])+'　点击拉开筛选B并聚焦它——看它独有的标的');
+      var gp=pop(esc(o[1])+' · '+esc(o[2]),esc(o[3]),'例：'+esc(o[4]));
       s+='<g class="pc-click" onclick="openStageDrawer(2,\''+o[0]+'\')"'+popRef(gp)+'>'
         +'<rect x="'+gX1+'" y="'+(y-22)+'" width="150" height="44" rx="10" fill="var(--color-surface-brand-subtle)" stroke="var(--color-border-brand-subtle)"/>'
         +txt(gX1+12,y-3,o[1],12,'var(--color-text-brand)','start',600)
@@ -3132,7 +3160,7 @@ function pipeCanvasSVG(){
       +'</g>';
     var legY=278;
     ringKeys.forEach(function(k,i){
-      var lp=pop(convLabel(k)+' · '+conv[k]+' 条',null,CONV_GLOSS+'　点击拉开候选池并只看这一档');
+      var lp=pop(convLabel(k)+' · '+conv[k]+' 条',null,CONV_GLOSS);
       s+='<g class="pc-click" onclick="filterPoolConv(\''+k+'\')"'+popRef(lp)+'>'
         +'<circle cx="'+(pX-52)+'" cy="'+(legY+i*17-4)+'" r="4.5" fill="'+ringCol[k]+'"/>'
         +txt(pX-42,legY+i*17,k+' 种 × '+conv[k]+' 条',9.5,'var(--color-text-tertiary)','start',400,true)
@@ -3154,7 +3182,7 @@ function pipeCanvasSVG(){
       var isCtl=m[2]==='对照';
       var nCh=(sel.chosen||[]).length;
       if(poolN&&nCh)s+=link(pX+56,pY,sX1,y,1.5+(nCh/chMax)*11,isCtl?'var(--color-border-strong)':'var(--color-surface-brand-strong)',0.35);
-      var sp=pop(esc(m[1])+' · '+esc(m[3])+'（'+esc(m[2])+'）',esc(selPlain(sel.name)),'放行 '+nCh+' / '+fmtInt(poolN)+' 条　点击拉开筛选C并聚焦这道闸');
+      var sp=pop(esc(m[1])+' · '+esc(m[3])+'（'+esc(m[2])+'）',esc(selPlain(sel.name)),'放行 '+nCh+' / '+fmtInt(poolN)+' 条');
       s+='<g class="pc-click" onclick="goSelector(\''+esc(sel.name)+'\')"'+popRef(sp)+'>'
         +'<rect x="'+sX1+'" y="'+(y-15)+'" width="'+sW+'" height="30" rx="8" fill="'+(isCtl?'var(--color-feedback-neutral-subtle)':'var(--color-surface-brand-subtle)')+'" stroke="'+(isCtl?'var(--color-border-default)':'var(--color-border-brand-subtle)')+'"/>'
         +txt(sX1+9,y+4,m[1],10.5,isCtl?'var(--color-text-metadata)':'var(--color-text-brand)','start',500)
@@ -3745,7 +3773,7 @@ function topicDrawerBody(tid){
   }else{
     html+='<div class="empty-sm" style="margin-bottom:var(--space-4)">语义臂本期没有给 '+esc(tid)+' 打分的记录</div>';
   }
-  html+='<div style="margin:0 0 var(--space-4)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'topic\',\''+esc(tid)+'\')" title="只依据这次运行当时封存的材料作答——不是现在临时编的">问它当时怎么想 ›</button></div>';
+  html+='<div style="margin:0 0 var(--space-4)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'topic\',\''+esc(tid)+'\')" title="仅依据本次运行封存的材料作答">问它当时怎么想 ›</button></div>';
   if(ev){
     var docs=ev.docs||[];
     html+='<div style="font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin-bottom:4px">词表命中研报 · '+fmtInt(ev.n)+' 条</div>'
@@ -4115,7 +4143,7 @@ function posDrawerBody(code){
       +'<span class="num">下行 '+fmtPct(cand.downside_pct)+'（P '+fmtProb(cand.p_down)+'）</span>'
       +'<span class="num">赚亏比 '+rrText(cand)+'</span>'
       +'<span><button type="button" class="exp-btn" onclick="filterPoolCode(\''+esc(bareCode(p.code))+'\')">在候选池里看这条 ›</button></span>'
-      +'<span><button type="button" class="exp-btn" onclick="openAskDrawer(\'idea\',\''+esc(cand.id||('pool:'+bareCode(p.code)))+'\')" title="只依据这次运行当时封存的材料作答——不是现在临时编的">问它当时怎么想 ›</button></span>'
+      +'<span><button type="button" class="exp-btn" onclick="openAskDrawer(\'idea\',\''+esc(cand.id||('pool:'+bareCode(p.code)))+'\')" title="仅依据本次运行封存的材料作答">问它当时怎么想 ›</button></span>'
       +'</div>';
   }else{
     html+='<div class="derive-kv"><span style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
@@ -4150,7 +4178,7 @@ function bookDrawerBody(sel){
     +'<span class="card-note mono">'+esc(b.book_id||'')+'</span>'
     +'</div>'
     +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>　'+esc(selPlain(b.selector))+'</div>'
-    +'<div style="margin:0 0 var(--space-3)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'selector\',\''+esc(b.selector||'')+'\')" title="只依据这次运行当时封存的材料作答——不是现在临时编的">问它当时怎么想 ›</button></div>'
+    +'<div style="margin:0 0 var(--space-3)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'selector\',\''+esc(b.selector||'')+'\')" title="仅依据本次运行封存的材料作答">问它当时怎么想 ›</button></div>'
     +'<div style="display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline;margin-bottom:var(--space-3)">'
     +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'+fmtPct(ret)+'</span>'
     +'<span class="card-note">本金 '+fmtMoney(b.capital)+' · '+fmtInt(pos.length)+' 仓在场 · 已平 '+fmtInt(b.closed_n||0)+' · 已实现 <span class="num '+pctCls(b.realized)+'">'+signedMoney(b.realized)+'</span></span>'
@@ -4220,7 +4248,7 @@ function askSubjName(pstr){var i=pstr.indexOf(':');return i<0?pstr:pstr.slice(i+
 function askSubjKind(pstr){var i=pstr.indexOf(':');return i<0?'':pstr.slice(0,i)}
 function askRunId(){return ((S||{}).weekly||{}).run_id||''}
 function askKey(pstr){return askRunId()+'|'+pstr}
-var ASK_KIND_ZH={topic:'主题',idea:'想法',selector:'账本挑法'};
+var ASK_KIND_ZH={topic:'主题',idea:'想法',selector:'选取策略'};
 function ensureAskCtx(key,kind,id){
   if(ASKCTX[key])return ASKCTX[key];
   if(!ASKLOAD[key]){
@@ -4283,7 +4311,7 @@ function askDrawerBody(d){
   if(!cached.c){
     return '<div class="ask-scope" style="border-color:var(--color-feedback-error-default)">'
       +'<b>这个对象的当时材料没拿到。</b><br>API 说：'+esc(cached.err||'未知错误')
-      +'<br><span style="color:var(--color-text-tertiary)">没有封存材料就没法诚实作答——这里不会用现在的猜测顶替。</span></div>';
+      +'</div>';
   }
   var ctx=cached.c,run=ctx.run||{},stats=ctx.stats||{},corpus=ctx.corpus||{},prov=ctx.provenance||[];
   var inf=ctx.inference||{};
@@ -4309,7 +4337,7 @@ function askDrawerBody(d){
   else
     shaLine='这一期早于「冻结输入清单」的改动，只能按当时口径重建，无法逐条核对';
   var gloss='「只依据当时封存的材料」= 回答模型只能看到这次运行当时写下的运行日志、打分/生成/挑选产物，以及证据指向的研报原文行；材料没有的它必须回答「当时的记录里没有这一点」。'+(shaLine?'\n'+shaLine:'');
-  var html='<div class="ask-scope">你在追问：<b>'+esc(sid)+(subjLabel&&subjLabel!==sid?'（'+esc(subjLabel)+'）':'')+'</b>'
+  var html='<div class="ask-scope">追问对象：<b>'+esc(sid)+(subjLabel&&subjLabel!==sid?'（'+esc(subjLabel)+'）':'')+'</b>'
     +' · '+esc(run.as_of||'—')+' 期'
     +' · 回答只依据当时封存的材料（'+esc(parts.join(' · '))+'）'
     +' <span class="gloss" title="'+esc(gloss)+'">ⓘ</span>'
@@ -4347,7 +4375,7 @@ function askDrawerBody(d){
   }
   var disabled=(inf.ok===false||st.busy)?' disabled':'';
   html+='<div class="ask-inrow">'
-    +'<input id="askInput" class="ask-input" type="text" maxlength="2000" placeholder="'+(inf.ok===false?'推理不可用——见上方说明':'问它当时怎么想……')+'" value="'+esc(st.draft||'')+'"'+disabled
+    +'<input id="askInput" class="ask-input" type="text" maxlength="2000" placeholder="'+(inf.ok===false?'推理服务不可用':'就当期推理提问')+'" value="'+esc(st.draft||'')+'"'+disabled
     +' oninput="(ASKS[askKey(\''+esc(pstr)+'\')]=ASKS[askKey(\''+esc(pstr)+'\')]||{}).draft=this.value"'
     +' onkeydown="if(event.key===\'Enter\')askSendFromInput(\''+esc(pstr)+'\')">'
     +'<button type="button" class="ask-send" onclick="askSendFromInput(\''+esc(pstr)+'\')"'+disabled+'>发送</button>'
@@ -4458,21 +4486,21 @@ function plainFeedError(e){
   return e;
 }
 var ASSUM_QA=[
-  ['H 的符号',['热度高就会涨？','还没验证过——这是系统最大的赌注。']],
+  ['H 的符号',['热度与后续收益是否同向','尚未验证，为系统核心假设。']],
   ['HGEP 权重',['四个因子的配比合理吗？','拍脑袋定的，大约 7 个月后才够样本逐个检验。']],
-  ['语义打分',['AI 打分比纯数数强？','两边每周并行记录，正在攒证据。']],
+  ['语义打分',['语义打分相对计数打分是否有增量','两臂每周并行记录，样本累积中。']],
   ['σ×2',['止损止盈的距离合适吗？','有一本只改止损的对照账，用两本的差值来检验。']],
-  ['去集中上限',['持仓分散的上限定得对吗？','目前能选满 10 只；上限收紧到 1 时只能选出 5 只。']],
+  ['去集中上限',['分散度上限取值是否合理','当前可选满 10 只；上限收紧至 1 时仅可选出 5 只。']],
   ['ρ≈0.8',['多久能分出胜负？','取决于各本账之间走势有多像——第一个月实测。']],
   ['赚亏比下限',['1.5 的赚亏比门槛严不严？','本周中位数 1.82，门槛没拦住人；行情差的时候才见效。']],
   ['1 个月',['只持有一个月，对吗？','原设计还有 6 个月的版本，现在只跑 1 个月，没正式对比过。']]
 ];
 var FIX_PLAIN=[
-  ['idea_uid','同一条想法被换绑到别的行情上，凭空多出 377% 的假收益'],
+  ['idea_uid','同一条想法被错误绑定至其他行情，产生 377% 的虚假收益'],
   ['凑满 40','以前不管好坏硬凑满 40 条'],
   ['批内同标的','同一个标的一周被写了好几条，重复计价'],
   ['thesis 证伪','论点已经被打脸，仓位却还留着'],
-  ['止损被','该止损的时候，止损被别的规则挡住了'],
+  ['止损被','触发止损条件时被其他规则拦截，未能执行'],
   ['跨周同标的','不同的周买了同一个标的，风险悄悄叠加'],
   ['空语料','没读到研报也敢说这周跑完了'],
   ['表撞名','数据库里的脏数据问题（撞名、孤儿数据、坏 JSON）'],
@@ -4608,7 +4636,7 @@ function calDrawerBody(){
         }).join('　·　')
       +'</div>':'';
     return '<div class="cal-row">'
-      +'<div class="cal-main expandable" onclick="toggleCal('+pi+')" title="点开看这一期的全部记录">'
+      +'<div class="cal-main expandable" onclick="toggleCal('+pi+')" title="展开本期完整记录">'
         +'<span class="cal-date num">'+esc(label)+(isCur?'<span class="tag tag-brand" style="margin-left:6px">本周</span>':'')+'</span>'
         +chip
         +'<span class="cal-text">'+esc(state)+'</span>'
@@ -4632,8 +4660,8 @@ function trustDrawerBody(){
     var ans=qa?qa[1]:(a.status||'—');
     var big=/最大风险|地基/.test(a.nature||'');
     return '<div class="cal-row">'
-      +'<div class="cal-main expandable" onclick="toggleQa('+ai+')" title="点开看原始记录">'
-        +(big?badge('warning','最大的赌注'):badge('neutral','待验证'))
+      +'<div class="cal-main expandable" onclick="toggleQa('+ai+')" title="展开原始记录">'
+        +(big?badge('warning','核心假设'):badge('neutral','待验证'))
         +'<span class="cal-text"><b style="color:var(--color-text-primary);font-weight:500">'+esc(q)+'</b><br>'+esc(ans)+'</span>'
         +'<span class="exp-btn" style="margin-left:auto;flex:none">›</span>'
       +'</div>'
@@ -4649,7 +4677,7 @@ function trustDrawerBody(){
     else if(st.indexOf('❌')>=0)chip=badge('error','还没做');
     else chip=badge('neutral',st||'—');
     return '<div class="cal-row">'
-      +'<div class="cal-main expandable" onclick="toggleFix('+fi+')" title="点开看修法">'
+      +'<div class="cal-main expandable" onclick="toggleFix('+fi+')" title="展开修复方式">'
         +chip
         +'<span class="cal-text">'+esc(plainFix(f.issue||''))+'</span>'
         +'<span class="exp-btn" style="margin-left:auto;flex:none">›</span>'
@@ -4660,10 +4688,10 @@ function trustDrawerBody(){
     +'</div>';
   }).join('');
   var doneN=fixes.filter(function(f){return (f.state||'').indexOf('✅')>=0}).length;
-  return '<div class="quiet" style="margin-bottom:var(--space-4)">有些规则先定后验，有些坑修过——都摆在明面上。</div>'
+  return ''
     +'<div class="trust-grid">'
-      +'<div><h3 class="trust-h">未验证的赌注 · '+assum.length+'</h3>'+(aRows||'<div class="empty-sm">暂无</div>')+'</div>'
-      +'<div><h3 class="trust-h">出过的坑 · '+doneN+' / '+fixes.length+' 已修</h3>'+(fRows||'<div class="empty-sm">暂无</div>')+'</div>'
+      +'<div><h3 class="trust-h">未验证假设 · '+assum.length+'</h3>'+(aRows||'<div class="empty-sm">暂无</div>')+'</div>'
+      +'<div><h3 class="trust-h">已修复缺陷 · '+doneN+' / '+fixes.length+'</h3>'+(fRows||'<div class="empty-sm">暂无</div>')+'</div>'
     +'</div>'
     +'<div style="margin-top:var(--space-6)">'+backtestSection()+'</div>';
 }
@@ -4822,7 +4850,7 @@ function renderCorpusList(){
 /* 共用文档组件:一份渲染,两个入口(语料浏览器 / 主题证据清单) */
 function docRowHTML(d,uid){
   docReg[uid]=d;
-  return '<div class="doc-row" onclick="toggleDoc(\''+uid+'\')" title="点开看摘要与凭据">'
+  return '<div class="doc-row" onclick="toggleDoc(\''+uid+'\')" title="展开摘要与凭据">'
     +'<span class="num" style="font-family:var(--font-mono);color:var(--color-text-tertiary);flex:none">'+esc((d.published_d||'').slice(5))+'</span>'
     +tierTag(d.tier)
     +'<span class="doc-title">'+esc(d.title||'')

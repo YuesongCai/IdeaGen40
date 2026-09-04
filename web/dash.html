@@ -412,6 +412,21 @@ tr.derive-row>td{
   border-top:none;
 }
 .derive-formula{font:500 12px/18px var(--font-mono);color:var(--color-text-brand)}
+/* 已知缺口：一行一条，状态点区分「已通过」与「确有缺口」 */
+.gapl{margin-top:var(--space-3);display:flex;flex-direction:column;gap:3px}
+.gap-h{font:500 12px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:1px}
+.gap-row{display:grid;grid-template-columns:6px 66px 1fr auto;gap:8px;align-items:center;font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)}
+.gap-row .gd{width:6px;height:6px;border-radius:var(--radius-pill);background:var(--color-feedback-warning-text)}
+.gap-row.ok .gd{background:var(--color-fill-brand-green)}
+.gap-row .gk{color:var(--color-text-metadata)}
+.gap-row .gv{color:var(--color-feedback-warning-text)}
+.gap-row.ok .gv{color:var(--color-text-tertiary)}
+/* 检验结论：判定一行，支撑分组各一行 */
+.vd{margin-top:var(--space-3);display:flex;flex-direction:column;gap:2px}
+.vd-t{font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)}
+.vd-t b{font-weight:600;color:var(--color-text-primary)}
+.vd-r{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:baseline;font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)}
+.vd-r .vk{color:var(--color-text-metadata)}
 /* 因子拆解：把「综合分 = 加权和」这道公式画出来，而不是写出来 */
 .fbd{display:grid;grid-template-columns:auto auto auto 1fr auto;gap:2px var(--space-3);align-items:center;margin:var(--space-2) 0 0}
 .fbd .fk{font:400 12px/18px var(--font-sans);color:var(--color-text-secondary);white-space:nowrap}
@@ -1322,7 +1337,7 @@ body.drawer-lock{overflow:hidden}
 .peek-strip:hover{background:var(--color-surface-brand-muted)}
 .drawer .foc{box-shadow:0 0 0 2px var(--color-surface-brand-strong);border-radius:var(--radius-sm)}
 .drawer .dim{opacity:.4}
-/* ── 问当时的它（ask drawer） ── */
+/* ── 问它当时怎么想（ask drawer） ── */
 .ask-scope{background:var(--color-surface-subtle);border:1px solid var(--color-border-default);border-radius:var(--radius-sm);padding:var(--space-3) var(--space-4);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
 .ask-scope b{color:var(--color-text-primary);font-weight:600}
 .ask-mats{margin-top:var(--space-2)}
@@ -2859,8 +2874,18 @@ function holdingsMatrix(books){
   codes.sort(function(a,b){
     return Object.keys(held[b].byBook).length-Object.keys(held[a].byBook).length||a.localeCompare(b);
   });
-  var head='<tr><th>标的</th>'+books.map(function(b){
-    return '<th class="c" title="'+esc(b.selector||b.book_id)+'">'+esc(shortName(b.selector||b.book_id))+'</th>';
+  /* 表头此前直接截断内部键名，读者看到的是 omega_s…、left_ta…。
+   * 同一批策略在页面别处一律是中文名，这里没有理由例外。 */
+  var labels=books.map(function(b){
+    var key=b.selector||b.book_id;
+    var m=(typeof selMetaOf==='function')?selMetaOf(key):null;
+    return (m&&m[1])?m[1]:key;
+  });
+  var shorts=uniqueShorts(labels,8);
+  var head='<tr><th>标的</th>'+books.map(function(b,i){
+    var key=b.selector||b.book_id;
+    var m=(typeof selMetaOf==='function')?selMetaOf(key):null;
+    return '<th class="c" title="'+esc(labels[i]+(m&&m[3]?'——'+m[3]:'')+'（'+key+'）')+'">'+esc(shorts[i])+'</th>';
   }).join('')+'<th class="r">几本持有</th></tr>';
   var rows=codes.map(function(c){
     var n=Object.keys(held[c].byBook).length;
@@ -2875,6 +2900,31 @@ function holdingsMatrix(books){
     +'<div class="overlap-note"><span class="matrix-dot" aria-hidden="true"></span>多本共持&nbsp;&nbsp;<span class="matrix-dot uniq" aria-hidden="true"></span>仅一本独有</div>';
 }
 function shortName(s){s=String(s||'');return s.length>8?s.slice(0,7)+'…':s}
+/* 一组标签的短名，保证互不相同。定长截断在这里会出事：
+ * 「来源限定 · AI 端到端」和「来源限定 · 约束边界」都会截成「来源限定 · A…」，
+ * 两列表头一模一样，而它们恰好是配对比较的两条臂——正是最不能混的一对。
+ * 撞了就逐字加长，加到全名仍撞才退回带序号。 */
+function uniqueShorts(labels,maxLen){
+  var cap=maxLen||8;
+  var lens=labels.map(function(l){return Math.min(String(l||'').length,cap)});
+  var cut=function(l,n){l=String(l||'');return l.length>n?l.slice(0,n)+'…':l};
+  for(var guard=0;guard<40;guard++){
+    var seen={},dup=false;
+    labels.forEach(function(l,i){
+      var k=cut(l,lens[i]);
+      (seen[k]=seen[k]||[]).push(i);
+    });
+    Object.keys(seen).forEach(function(k){
+      if(seen[k].length<2)return;
+      dup=true;
+      seen[k].forEach(function(i){
+        if(lens[i]<String(labels[i]||'').length)lens[i]++;
+      });
+    });
+    if(!dup)break;
+  }
+  return labels.map(function(l,i){return cut(l,lens[i])});
+}
 
 /* ── 策略 × 主题分布：并列各策略的主题权重，差异即策略间 diff ── */
 function themeMixCard(books){
@@ -3211,31 +3261,36 @@ function universeCard(){
         +'<th class="r">最新 NAV</th><th>NAV 日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
-  var caveats=[];
+  /* 这几条状态互相独立，而且不同向：上架日期核对是「已通过」，NAV 与脱敏是
+     「确有缺口」。串成一句话、用同一个警示色写出来，会把通过的那条也读成警告。
+     拆成一行一条、各自带状态点；长句退到 title 里。 */
+  var gaps=[];
   /* 上架日期这条不能由前端自己从「有多少个未定日期」推断风险——服务端已经
-     用实际持有的标的算过这件事，结论在 backtest.summary.shelf_dating 里。
-     前端另起一句「可能含当时尚未上架的产品」，会和同一页回测卡的披露直接
-     打架，而且在数据已经证伪之后仍然固化成一句过期断言。 */
+     用实际持有的标的算过这件事，结论在 backtest.summary.shelf_dating 里。 */
   var sd=(((S||{}).backtest||{}).summary||{}).shelf_dating;
   if(sd&&sd.held_total){
-    caveats.push(sd.held_after_window_start>0
-      ? '回放实际持有的 '+fmtInt(sd.held_total)+' 个标的中，有 '+fmtInt(sd.held_after_window_start)
-        +' 个的上架日期晚于窗口起点——补跑期可能选入当时尚未上架的产品，该项前视风险成立'
-      : '回放实际持有的 '+fmtInt(sd.held_total)+' 个标的中 '+fmtInt(sd.held_dated)+' 个已定上架日期（最新 '
-        +esc(sd.held_latest_first_seen||'—')+'，早于窗口起点），该项前视风险不成立；'
-        +'其余 '+fmtInt(sd.held_total-sd.held_dated)+' 个为无行情代码的基金 / 结构化产品，仍未定日期');
+    gaps.push(sd.held_after_window_start>0
+      ? {ok:false,k:'上架日期',v:fmtInt(sd.held_after_window_start)+' / '+fmtInt(sd.held_total)+' 晚于窗口起点',
+         d:'补跑期可能选入当时尚未上架的产品，该项前视风险成立。'}
+      : {ok:true,k:'上架日期',v:fmtInt(sd.held_dated)+' / '+fmtInt(sd.held_total)+' 已定，早于窗口起点',
+         d:'该项前视风险不成立。最新一个上架日期 '+(sd.held_latest_first_seen||'—')+'。其余 '
+           +fmtInt(sd.held_total-sd.held_dated)+' 个是无行情代码的基金 / 结构化产品，仍未定日期。'});
   }else if(undated){
-    caveats.push(fmtInt(undated)+' 个标的无上架日期，按当期资格过滤时一律放行；服务端尚未给出持有标的的上架日期核对结果');
+    gaps.push({ok:false,k:'上架日期',v:fmtInt(undated)+' 个未定',
+      d:'按当期资格过滤时一律放行；服务端尚未给出持有标的的上架日期核对结果。'});
   }
-  if(shelf.navs===0)caveats.push('已授权货架的 '+fmtInt(shelf.items||0)+' 个产品目前一个 NAV 都没有，这批标的暂时无法计价');
-  if(!shelf.snapshot_id)caveats.push('尚无已持久化的 NAV 快照，货架为静态清单，NAV 未接入');
-  if(shelf.identifiers_redacted)caveats.push('产品标识与名称默认脱敏，完整快照仅存于受控 RDS/TOS');
+  if(shelf.navs===0)gaps.push({ok:false,k:'NAV',v:fmtInt(shelf.items||0)+' 个产品 · 0 个 NAV',d:'这批标的暂时无法计价。'});
+  if(!shelf.snapshot_id)gaps.push({ok:false,k:'NAV 快照',v:'未接入',d:'尚无已持久化的 NAV 快照，货架为静态清单。'});
+  if(shelf.identifiers_redacted)gaps.push({ok:false,k:'产品标识',v:'默认脱敏',d:'完整快照仅存于受控 RDS/TOS。'});
 
   return '<div class="card section">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">可交易货架</h2>'
     +'<span class="card-note">筛选B 与筛选C 的可选标的范围</span></div>'
     +meta+navTable
-    +(caveats.length?'<div class="card-note" style="margin-top:var(--space-3);color:var(--color-feedback-warning-text)">已知缺口：'+caveats.map(esc).join('；')+'</div>':'')
+    +(gaps.length?'<div class="gapl"><div class="gap-h">已知缺口</div>'+gaps.map(function(g){
+        return '<div class="gap-row'+(g.ok?' ok':'')+'"><span class="gd"></span>'
+          +'<span class="gk">'+esc(g.k)+'</span><span class="gv">'+esc(g.v)+'</span>'+glossMark(g.d)+'</div>';
+      }).join('')+'</div>':'')
   +'</div>';
 }
 
@@ -3270,17 +3325,18 @@ function pairedVerdictLine(sum){
       return backtestArmName(k)+'：有效独立样本 n_eff='+(v.n_eff!==undefined?Number(v.n_eff).toFixed(1):'—')
         +'，所需 '+fmtInt(v.required_pairs)+'（门槛低是因为该臂实测标准差极小）';
     }).join('；');
-    return '<div class="card-note" style="margin-top:var(--space-3)">'
-      +'配对检验：<b>无选取策略被判定跑赢全量基准。</b>其中 '
-      +flat.map(function(k){return esc(backtestArmName(k))}).join('、')
-      +' 的样本量已足以检出预注册的差距，但差距未出现，属于未检出优势而非样本不足'
-      +'<span class="gloss" title="'+esc('这个「已足够」的判定本身建立在实测标准差上，而标准差取自 '+fmtInt(n)+' 个互相重叠的持有窗口——重叠会低估标准差，因此所需样本量是下限，达标结论也应按下限理解。'+lim+'。换句话说：这是「在当前口径下没看出优势」，不等于「已经确证这条臂没有优势」。')+'">ⓘ</span>'
-      +'；其余各臂样本量仍不足。</div>';
+    /* 结论一行、分组一行。原来这三件事串成一句 65 字的长句，
+     * 最强的那句「无策略跑赢」被埋在中间。 */
+    return '<div class="vd"><div class="vd-t">配对检验 <b>无选取策略被判定跑赢全量基准</b> '
+      +glossMark('「样本量已足够」这个判定建立在实测标准差上，而标准差取自 '+fmtInt(n)+' 个互相重叠的持有窗口——重叠会低估标准差，因此所需样本量是下限，达标结论也应按下限理解。'+lim+'。换句话说：这是「在当前口径下没看出优势」，不等于「已经确证这条臂没有优势」。')+'</div>'
+      +'<div class="vd-r"><span class="vk">样本已足、无差距</span><span class="vv">'
+      +flat.map(function(k){return '<span class="tag">'+esc(backtestArmName(k))+'</span>'}).join(' ')+'</span></div>'
+      +(names.length>flat.length?'<div class="vd-r"><span class="vk">样本量仍不足</span><span class="vv">其余 '+fmtInt(names.length-flat.length)+' 条臂</span></div>':'')
+      +'</div>';
   }
-  return '<div class="card-note" style="margin-top:var(--space-3)">'
-    +'配对检验：<b>当前无选取策略被判定跑赢全量基准</b>——'
-    +'只有 '+fmtInt(n)+' 对配对样本，远低于预注册门槛。'
-    +'胜率为该窗口的历史描述，不构成预测，亦不足以支持排名。</div>';
+  return '<div class="vd"><div class="vd-t">配对检验 <b>当前无选取策略被判定跑赢全量基准</b> '
+    +glossMark('胜率是该窗口的历史描述，不构成预测，也不足以支持排名。')+'</div>'
+    +'<div class="vd-r"><span class="vk">配对样本</span><span class="vv"><b class="num">'+fmtInt(n)+'</b> 对，远低于预注册门槛</span></div></div>';
 }
 
 function backtestCard(){
@@ -3355,7 +3411,7 @@ function backtestCard(){
         +'<b>本表与策略对比图口径不同。</b>'
         +'本表以单条想法为单位：候选池内每条想法按当时收盘价买入、'
         +fmtInt(sum.horizon_days)+' 天后卖出的损益。策略对比图以账本为单位，受选取条数、仓位、止损与现金约束，两者结论可以不一致。<br>'
-        +esc(sum.disclaimer||'')+'</div>'
+        +esc(humanizeKeys(sum.disclaimer||''))+'</div>'
       +'<button type="button" class="exp-btn" data-el="week.backtest.full" onclick="openTrustDrawer()">完整回测 ›</button>')
     +'</div>';
 }
@@ -3657,7 +3713,7 @@ function openCalDrawer(){pushDrawer({t:'cal',p:''})}
 function openTrustDrawer(){pushDrawer({t:'trust',p:''})}
 function openRunLog(runId){drawerStack=[{t:'runlog',p:runId||((J&&J.run_id)||'')}];renderDrawers()}
 function openRunLogStacked(runId){pushDrawer({t:'runlog',p:runId||''})}
-/* 从会话记录往下钻要「叠」而不是「跳」：openStageDrawer 会清空抽屉栈，
+/* 从追问记录往下钻要「叠」而不是「跳」：openStageDrawer 会清空抽屉栈，
  * 那样面包屑就断了，读者点进候选池后回不到刚才那条追问。 */
 function openStageStacked(i,f){pushDrawer({t:'stage',p:i,f:(f===undefined?null:f)})}
 
@@ -3883,6 +3939,22 @@ var SEL_META=[
   ['generated_ai_native','来源限定 · AI 端到端','对照','按来源全取 · 不排序','不作排序，买入本期由「AI 端到端」方法提出的全部标的。与「来源限定 · 约束边界」配对，两者唯一差异是想法来源，业绩差即生成方法的净效应。'],
   ['generated_carl_constraint','来源限定 · 约束边界','对照','按来源全取 · 不排序','不作排序，买入本期由「约束边界」方法提出的全部标的。与「来源限定 · AI 端到端」配对比较。']
 ];
+/* 后端的说明文字里会直接出现内部键名（例如「未参与：ai_native」）。
+ * 页面其余地方一律用中文名，这里漏出英文键名，读者既不知道它指谁，
+ * 也会以为是没处理干净的字符串。渲染时统一换掉。 */
+function humanizeKeys(text){
+  var t=String(text||'');
+  if(!t)return t;
+  var pairs=[];
+  (typeof SEL_META!=='undefined'?SEL_META:[]).forEach(function(m){pairs.push([m[0],m[1]])});
+  (typeof GEN_ORDER!=='undefined'?GEN_ORDER:[]).forEach(function(o){pairs.push([o[0],o[1]])});
+  pairs.sort(function(a,b){return b[0].length-a[0].length});   /* 长键先替，避免前缀误伤 */
+  pairs.forEach(function(kv){
+    if(kv[0]===kv[1])return;
+    t=t.split(kv[0]).join(kv[1]);
+  });
+  return t;
+}
 function selMetaOf(name){
   return SEL_META.find(function(m){return m[0]===name})||[name,name,'','',''];
 }
@@ -5344,7 +5416,7 @@ function bookDrawerBody(sel){
   html+=epi('各账本使用同一期、同一候选池，净值差异即选取策略差异；结论需待样本量满足要求');
   return html;
 }
-/* ══════════ 会话记录 — 追问的运营视图 ══════════
+/* ══════════ 追问记录 — 历次追问的运营视图 ══════════
  * 追问本身也是底账：一次追问 = 有人问了什么、系统当时把哪些材料交给了模型、
  * 模型引用了其中哪几件、答的是什么。这四样凑齐，事后才有办法判断某个回答
  * 是「有据」还是「听起来有据」——只看答案是判断不出来的。
@@ -5637,7 +5709,7 @@ function statusDrawerBody(){
     +'</div>';
 }
 
-/* ══════════ 问当时的它 — 只依据封存材料的追问抽屉 ══════════ */
+/* ══════════ 问它当时怎么想 — 只依据封存材料的追问抽屉 ══════════ */
 /* 追问必须按当期上下文回答，不得以当前推测替代。
    实现是检索+严格接地：/api/ask/context 只取那次运行封存的材料，
    /api/ask 的回答被限定在这些材料里，材料没有的它必须明说没有。 */

@@ -2206,11 +2206,23 @@ function pairedVerdictLine(sum){
   if(!names.length)return '';
   var any=pr[names[0]]||{};
   var n=any.n_pairs||sum.periods||0;
+  /* 三态，不是两态。「样本够但没看出差异」也是结论，而且是最容易被
+     误报成胜利的那一种：一个几乎照抄对照的臂标准差极小，一个周期就"够"了，
+     但它跟对照根本没差别。 */
   var won=names.filter(function(k){return pr[k]&&pr[k].conclusive});
+  var flat=names.filter(function(k){return pr[k]&&pr[k].powered&&!pr[k].significant});
   if(won.length){
     return '<div class="card-note" style="margin-top:var(--space-3)">'
       +'配对检验：<b>'+won.map(function(k){return esc(backtestArmName(k))}).join('、')
-      +'</b> 已达到预注册的显著性门槛（'+fmtInt(n)+' 对样本）。</div>';
+      +'</b> 相对全买对照的差距已达到预注册门槛（样本量与显著性都过关，'
+      +fmtInt(n)+' 个周期）。</div>';
+  }
+  if(flat.length){
+    return '<div class="card-note" style="margin-top:var(--space-3)">'
+      +'配对检验：<b>没有任何一种挑法被判定赢了全买对照。</b>其中 '
+      +flat.map(function(k){return esc(backtestArmName(k))}).join('、')
+      +' 的样本量已足够检出预注册的差距，但差距没有出现——'
+      +'这是「没看出优势」，不是「还看不出来」；其余各臂样本仍然不足。</div>';
   }
   return '<div class="card-note" style="margin-top:var(--space-3)">'
     +'配对检验：<b>目前没有任何一种挑法能被判定赢了全买对照</b>——'

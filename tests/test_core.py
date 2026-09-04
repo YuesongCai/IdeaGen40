@@ -2742,3 +2742,43 @@ class TestOrderTtlDoesNotCollapse(unittest.TestCase):
             sess = paper.sessions_between(None, days[0], "2026-09-29", "US")
         self.assertEqual(sess[min(config.ORDER_TTL_SESSIONS, len(sess)) - 1],
                          days[config.ORDER_TTL_SESSIONS - 1])
+
+
+class TestPairedVerdictNeedsBothPowerAndSignificance(unittest.TestCase):
+    """样本够 ≠ 赢了。两个条件都要成立才算下了结论。
+
+    An arm that mirrors the control has a tiny paired sd, so the sample-size
+    test declares one period sufficient — while the difference it actually
+    shows is nothing. Seen live on 2026-09-04: generated_ai_native, sd 0.35%,
+    required_pairs=1, t_eff=0.625, which the dashboard rendered as
+    「已达到预注册的显著性门槛」. That is announcing a winner the data never
+    produced.
+    """
+
+    def _paired(self, arm_rets, control_rets, **kw):
+        from ideagen import backtest
+        arm = backtest.ArmScore(name="arm")
+        ctl = backtest.ArmScore(name="buy_all")
+        for d, (a, c) in enumerate(zip(arm_rets, control_rets)):
+            period = f"2026-08-{d + 1:02d}"
+            arm.per_period[period] = {"mean": a, "n_scored": 20}
+            ctl.per_period[period] = {"mean": c, "n_scored": 20}
+        return backtest.paired_difference(arm, ctl, gap_days=7.0,
+                                          horizon_days=30, **kw)
+
+    def test_powered_but_flat_is_not_a_verdict(self):
+        # Arm tracks the control almost exactly: sd tiny, effect tiny.
+        arm = [0.0401, 0.0107, 0.0203, 0.0150, 0.0250]
+        ctl = [0.0378, 0.0115, 0.0198, 0.0148, 0.0243]
+        p = self._paired(arm, ctl)
+        self.assertTrue(p.powered, "sd 极小，样本量检验会说够了")
+        self.assertFalse(p.significant)
+        self.assertFalse(p.conclusive, "样本够但没差异，不能算下了结论")
+        self.assertIn("没看出优势", p.message)
+
+    def test_underpowered_stays_inconclusive(self):
+        arm = [0.05, -0.02, 0.08, -0.01, 0.03]
+        ctl = [0.01, 0.01, 0.01, 0.01, 0.01]
+        p = self._paired(arm, ctl)
+        self.assertFalse(p.conclusive)
+        self.assertFalse(p.powered)

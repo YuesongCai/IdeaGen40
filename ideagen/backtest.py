@@ -789,6 +789,15 @@ class Paired:
     required_pairs: int | None = None
     required_unpaired: int | None = None
     sd_source: str = "reference"
+    #: Enough effective samples to detect the pre-registered edge. Powered is
+    #: not the same as won: an arm that mirrors the control has a tiny sd, so
+    #: one period "powers" it — while the difference it actually shows is
+    #: nothing. Both conditions have to hold before anyone says a method beat
+    #: the control, which is why `significant` exists separately.
+    powered: bool = False
+    #: The observed difference clears ±1.96 on effective (overlap-discounted)
+    #: samples.
+    significant: bool = False
     conclusive: bool = False
     message: str = ""
     pairs: list[dict[str, Any]] = field(default_factory=list)
@@ -862,10 +871,27 @@ def paired_difference(arm: ArmScore, control: ArmScore, *,
             f"有效独立样本 n_eff={p.n_eff}（{p.n_pairs} 个周期，间隔 {gap_days:.0f} 天，"
             f"但持有期 {horizon_days} 天，窗口重叠按 间隔/持有期 折算）"
             f"，低于所需 {p.required_pairs} 个")
-    p.conclusive = not why
+    p.powered = not why
+    p.significant = (p.t_eff is not None and abs(p.t_eff) >= Z_ALPHA)
+    # Both, or it is not a verdict. Power alone says "an edge this large would
+    # have shown up"; on an arm that mirrors the control, sd collapses and a
+    # single period clears the power test while the observed difference is
+    # nothing at all — reporting that as 可以下结论 announces a winner the data
+    # never produced. Seen live: generated_ai_native, required_pairs=1,
+    # t_eff=0.625, rendered on the dashboard as "已达到显著性门槛".
+    p.conclusive = p.powered and p.significant
     if p.conclusive:
         p.message = (f"可以下结论：配对差 {_pct(p.mean_diff)}/周期（sd {_pct(p.sd_diff)}，"
                      f"t={p.t_stat}，t_eff={p.t_eff}，n={p.n_pairs}，n_eff={p.n_eff}）")
+        return p
+    if p.powered and not p.significant:
+        # A real answer, just not the one people hope for: the window carried
+        # enough independent information to surface the declared edge, and no
+        # such edge appeared. Saying "样本不足" here would be false.
+        p.message = (
+            f"样本已够检出 {_pct(edge)}/周期的差距，但没有检出："
+            f"配对差 {_pct(p.mean_diff)}，t_eff={p.t_eff}（未过 ±{Z_ALPHA:.2f}）。"
+            f"这是「没看出优势」，不是「还看不出来」。")
         return p
 
     # Two different failures, and they call for different sentences. Saying "it is

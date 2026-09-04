@@ -327,8 +327,20 @@ def open_batch(con, batch_id: str, book_id: str, verbose: bool = True,
             ttl_sessions = sessions_between(
                 con, fillable,
                 (date.fromisoformat(fillable) + timedelta(days=25)).isoformat(), market)
-            expire = ttl_sessions[min(config.ORDER_TTL_SESSIONS,
-                                      len(ttl_sessions)) - 1] if ttl_sessions else fillable
+            if ttl_sessions:
+                expire = ttl_sessions[min(config.ORDER_TTL_SESSIONS,
+                                          len(ttl_sessions)) - 1]
+            else:
+                # The sessions that would carry this order have not printed yet
+                # — normal for an order placed before today's close, and the
+                # rule for every backfilled period, whose orders are placed now
+                # rather than in the past. Collapsing to `fillable` gave those
+                # orders a single-day life and they expired unfilled before any
+                # bar existed to fill them. Fall back to a calendar estimate
+                # (five sessions ≈ seven days) so the order waits for its bars
+                # instead of dying waiting for them.
+                expire = (date.fromisoformat(fillable)
+                          + timedelta(days=config.ORDER_TTL_SESSIONS + 2)).isoformat()
 
             if spec["entry"] == "market_close" or r["instrument"] != "listed":
                 kind, lo, hi, trig = "market_close", None, None, None

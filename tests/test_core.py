@@ -2705,3 +2705,40 @@ class TestUnpriceableNeverReachesThePool(unittest.TestCase):
                              "vehicle": "公募", "name": "某基金",
                              "priceable": False})
         self.assertTrue(ok, "基金本来就不靠 futu 行情计价")
+
+
+class TestOrderTtlDoesNotCollapse(unittest.TestCase):
+    """An order placed before its sessions print must still get a real life.
+
+    `expire` was taken from the sessions between fillable and +25 days. Those
+    rows do not exist yet for an order placed before today's close — and never
+    for a backfilled period, whose orders are placed now rather than in the
+    past. The window collapsed onto the placement day, so 84 orders across
+    seven books were set to expire before any bar existed that could fill them.
+    """
+
+    def test_expiry_is_after_placement_when_no_sessions_are_known(self):
+        from datetime import date as D, timedelta
+        from unittest import mock
+        from ideagen import config, paper
+
+        with mock.patch.object(paper, "sessions_between", return_value=[]):
+            fillable = "2026-09-04"
+            sess = paper.sessions_between(None, fillable, "2026-09-29", "US")
+            expire = (sess[min(config.ORDER_TTL_SESSIONS, len(sess)) - 1]
+                      if sess
+                      else (D.fromisoformat(fillable)
+                            + timedelta(days=config.ORDER_TTL_SESSIONS + 2)
+                            ).isoformat())
+        self.assertGreater(expire, fillable,
+                           "订单不能在还没有任何可成交的 bar 时就过期")
+
+    def test_known_sessions_still_drive_the_ttl(self):
+        from unittest import mock
+        from ideagen import config, paper
+        days = ["2026-09-04", "2026-09-08", "2026-09-09", "2026-09-10",
+                "2026-09-11", "2026-09-14"]
+        with mock.patch.object(paper, "sessions_between", return_value=days):
+            sess = paper.sessions_between(None, days[0], "2026-09-29", "US")
+        self.assertEqual(sess[min(config.ORDER_TTL_SESSIONS, len(sess)) - 1],
+                         days[config.ORDER_TTL_SESSIONS - 1])

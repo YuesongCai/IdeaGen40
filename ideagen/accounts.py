@@ -44,11 +44,61 @@ def _store_path() -> Path:
     explicit = os.environ.get("IDEAGEN_ACCOUNTS_FILE")
     if explicit:
         return Path(explicit)
+    # The shared host directory is the first choice because it outlives the
+    # container — but it is created 0700 by root in the instance's boot script,
+    # and the container runs as an unprivileged uid, so it is frequently not
+    # writable here. Checking beats assuming: an unwritable path turns every
+    # login into a 500, which looks like the app being broken rather than a
+    # directory mode.
     run_dir = Path("/run/ideagen-oauth")
-    if run_dir.is_dir():
+    if run_dir.is_dir() and os.access(run_dir, os.W_OK):
         return run_dir / "accounts.json"
     from . import config
     return Path(getattr(config, "DATA", "data")) / "accounts.json"
+
+
+#: Where the accounts are mirrored so they survive the container being
+#: replaced. The local file is the working copy — object storage is not a
+#: filesystem and must not be in the path of a login — but a redeploy would
+#: otherwise silently drop every account added since the last image build.
+MIRROR_KEY = "accounts/accounts.json"
+
+
+def _mirror_on() -> bool:
+    """Opt in, never inferred.
+
+    Inferring it from the configured platform was wrong in the way that matters:
+    a laptop is configured for the cloud too, so the first test run reached out
+    and touched the production bucket. A deployment that wants mirroring says so
+    in its compose file; everything else, including every test, stays offline.
+    """
+    return (os.environ.get("IDEAGEN_ACCOUNTS_MIRROR") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _mirror_push(data: dict[str, Any]) -> None:
+    if not _mirror_on():
+        return
+    try:
+        from . import platform as plat
+        p = plat.load()
+        blobs = p.blobs
+        blobs._c().put_object(blobs.bucket, blobs._k(MIRROR_KEY),
+                              content=json.dumps(data, ensure_ascii=False).encode())
+    except Exception:  # noqa: BLE001 — a mirror that fails must not fail a save
+        pass
+
+
+def _mirror_pull() -> dict[str, Any] | None:
+    if not _mirror_on():
+        return None
+    try:
+        from . import platform as plat
+        raw = plat.load().blobs.get(MIRROR_KEY)
+        data = json.loads(raw)
+        return data if isinstance(data, dict) and data.get("users") else None
+    except Exception:  # noqa: BLE001 — no mirror is a normal first-boot state
+        return None
 
 
 SESSION_COOKIE = "ideagen_session"
@@ -94,6 +144,7 @@ def load() -> dict[str, Any]:
 
 
 def save(data: dict[str, Any]) -> None:
+    _mirror_push(data)
     p = _store_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
@@ -270,6 +321,17 @@ def bootstrap() -> str | None:
     """
     data = load()
     if data["users"]:
+        return None
+    # Nothing local. Before minting a fresh admin, look for accounts this
+    # deployment already had: a container replacement must not quietly discard
+    # the colleague you added last week and hand you back the bootstrap user.
+    mirrored = _mirror_pull()
+    if mirrored:
+        p = _store_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(mirrored, ensure_ascii=False, indent=1),
+                     encoding="utf-8")
+        os.chmod(p, 0o600)
         return None
     name = (os.environ.get("IDEAGEN_DASH_USER") or "").strip()
     password = os.environ.get("IDEAGEN_DASH_PASSWORD") or ""

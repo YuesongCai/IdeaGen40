@@ -34,6 +34,10 @@ services:
       # 使用外部 HTTPS origin，token 写入宿主机专用 0700 目录。
       IDEAGEN_PUBLIC_SITE: "${IDEAGEN_PUBLIC_SITE:-https://127.0.0.1}"
       IDEAGEN_OLIVE_TOKEN_FILE: "/run/ideagen-oauth/tokens.json"
+      # 账号存本地文件（登录路径上不该有对象存储），但换容器会丢，
+      # 所以每次写入顺带镜像一份到桶里，新容器起来时先找它再谈初始化。
+      # 显式打开：笔记本同样配了云平台，靠推断会让本机测试去碰生产桶。
+      IDEAGEN_ACCOUNTS_MIRROR: "1"
     volumes:
       - /opt/ideagen/oauth:/run/ideagen-oauth
       # 只读挂进来，好让 /deploy 能说出「云端现在是哪个 commit、跟 origin/main

@@ -1681,11 +1681,26 @@ function topicLabel(tid){
   for(var i=0;i<t.length;i++){var sc=(t[i].scores||{})[tid];if(sc&&sc.label)return sc.label}
   return tid;
 }
-/* 一次周跑正常在 20-45 分钟之间跑完。没写结束时间的运行有两种：真的还在跑，
+/* 一次周跑通常几十分钟跑完（实测范围见 weeklyDurNote，别在这里写死）。
+ * 没写结束时间的运行有两种：真的还在跑，
  * 和进程死了——进程死的时候把结束时间一起带走了，那一行会永远停在「没结束」。
  * 用一个宽松的上限把两者分开：超过上限还没结束的，是没有正常收尾，不是在跑。
  * 之前没有分开，于是一条崩溃的补跑让首页连续几小时显示「AI 正在工作」。 */
 var RUN_STALE_MIN=180;
+/* 「正常跑多久」以前是写死的一句「约 20-45 分钟」。runs 里有历次成功周跑的
+ * 起止时间，实测范围跟手写的两头都对不上，而且手写的值不会随系统变化。
+ * 拿真实记录算，样本不足时就不给范围，而不是编一个。 */
+function weeklyDurNote(){
+  var rs=((S||{}).runs)||[],ds=[];
+  rs.forEach(function(r){
+    if(r.kind!=='weekly'||!r.ok||!r.started_at||!r.ended_at)return;
+    var m=(new Date(r.ended_at)-new Date(r.started_at))/60000;
+    if(m>0&&isFinite(m))ds.push(m);
+  });
+  if(ds.length<3)return '';
+  ds.sort(function(a,b){return a-b});
+  return '过去 '+ds.length+' 次成功周跑用了 '+Math.round(ds[0])+'-'+Math.round(ds[ds.length-1])+' 分钟。';
+}
 function runAgeMin(r){
   if(!r||!r.started_at)return null;
   return Math.max(0,Math.round((Date.now()-new Date(r.started_at).getTime())/60000));
@@ -1919,11 +1934,41 @@ function refresh(){
     renderStamp();
   }).then(function(){fetchInFlight=false;});
 }
+/* 数据有多旧，和页面多久取一次，是两件事。
+ * 静态快照会自己说「已 N 天未更新」，但线上是活服务：generated_at 是请求
+ * 那一刻算出来的，永远是「刚刚」。于是当这台机器读的是一份同步过来的
+ * 快照、而同步断了时，页面每 60 秒忠实地取回同一份旧数据，并把它标成新鲜的
+ * ——最坏的一种坏法：看起来在工作。
+ * 所以刷新戳旁边单独报一次「数据本身有多旧」，取当前时间与心跳时刻之差。
+ * 心跳是这份数据里最频繁更新的东西（5 分钟一次），它停了就说明上游停了，
+ * 或者这份数据不再被送过来——两种情况读者都需要知道。 */
+var DATA_STALE_WARN_S=1800;   /* 30 分钟：心跳 5 分钟一次，超过 6 次没到就不是抖动 */
+function dataAgeSeconds(){
+  var a=(S&&S.alive)||{};
+  var age=Number(a.age_s);
+  return isFinite(age)?age:null;
+}
+function stalenessNote(){
+  var age=dataAgeSeconds();
+  if(age===null||age<DATA_STALE_WARN_S)return '';
+  var mins=Math.round(age/60);
+  var txt=mins>=120?(Math.round(mins/60)+' 小时'):(mins+' 分钟');
+  return '数据已 '+txt+'未更新';
+}
 function renderStamp(){
   var t=lastFetchOk?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Hong_Kong',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(lastFetchOk):'--:--:--';
-  var txt='刷新于 '+t+' · 每 60 秒自动';
+  var stale=stalenessNote();
+  var txt='刷新于 '+t+' · 每 60 秒自动'+(stale?'　⚠ '+stale:'');
   $('stampText').textContent=txt;$('footStamp').textContent=txt;
-  $('stamp').classList.toggle('stale',fetchFailed);
+  var st=$('stamp');
+  if(st){
+    st.title=stale
+      ? stale+'。页面每 60 秒确实取到了新响应，但响应里的数据没有变新——'
+        +'心跳每 5 分钟应更新一次，现在已经停了这么久。要么上游停了，要么这台机器'
+        +'读的是一份不再被更新的数据副本。屏幕上的持仓与盈亏都是那一刻的旧值。'
+      : '「刷新于」说的是页面多久取一次数据（每 60 秒）；数据本身的新鲜度以心跳为准，当前正常。';
+  }
+  $('stamp').classList.toggle('stale',fetchFailed||!!stale);
   if(S&&S.alive){
     var ok=!!S.alive.ok&&!fetchFailed;
     $('footDot').style.background=ok?'var(--color-feedback-success-default)':'var(--color-feedback-error-default)';
@@ -2412,7 +2457,7 @@ function statusStrip(){
     var ab=abandonedRun();
     word='上一次周跑没有正常收尾';
     sub='run '+esc(String(ab.run_id||'').slice(0,24))+' 于 '+esc(hktFmt(ab.started_at,true))+' 启动后再没有写下结束时间'
-      +'（已过去 '+fmtInt(runAgeMin(ab))+' 分钟，正常一次约 20-45 分钟）——进程多半已中途退出。展开可查看它停在哪一步。';
+      +'（已过去 '+fmtInt(runAgeMin(ab))+' 分钟）——进程多半已中途退出。'+weeklyDurNote()+'展开可查看它停在哪一步。';
   }else if(weeklyDelegated){
     word='运行中 · 本机为观察节点';
     sub='本机仅负责盯市与展示，本期周产由云端生产实例执行；下列为本机账本截至最新收盘的计价'+(lw&&lw.as_of?'（本机最近一次完整周产：'+esc(lw.as_of)+' 期）':'');
@@ -3358,6 +3403,17 @@ function overviewCurveSVG(){
       +'<span style="margin-left:auto">'+esc(eq[0].d)+' → '+esc(eq[eq.length-1].d)+' · 期初 = 100</span>'
     +'</div></div>';
 }
+/* 现金利率必须报系统实际在用的那个：货架 7 日收益中位数取到了就用它，
+ * 取不到才落到 config.RISK_FREE_ANNUAL。页面以前直接写死兜底值还标「当前」，
+ * 在货架有报价的那些周，印的是一个系统根本没用的数。 */
+function cashRateNote(){
+  var c=(S||{}).cash_rate;
+  if(!c||c.annual===undefined||c.annual===null)return '未建仓的现金按货币市场利率计息。';
+  var pct=(Number(c.annual)*100).toFixed(2)+'% 年化';
+  return c.source==='shelf_median_7d'
+    ? '未建仓的现金按货币市场利率计息（'+pct+'，取自货架 7 日收益中位数）。'
+    : '未建仓的现金按货币市场利率计息（'+pct+'，货架未报价，用的是配置里的兜底值）。';
+}
 function portfolioHeadline(ag){
   if(!ag)return '';
   var ret=aggReturnPct(ag), spy=benchReturnPct();
@@ -3415,9 +3471,10 @@ function portfolioHeadline(ag){
         +'<span class="hs-h">这 '+fmtPct(pp(gain))+' 从哪来</span>'
         +'<span class="hs-i"><b class="num '+pctCls(pos)+'">'+(pp(pos)>=0?'+':'')+pp(pos).toFixed(2)+' pp</b> 选出来的持仓</span>'
         +'<span class="hs-i"><b class="num">'+(pp(cash)>=0?'+':'')+pp(cash).toFixed(2)+' pp</b> 未投出资金的货币市场利息'
-        +'<span class="gloss" title="未建仓的现金按货币市场利率计息（当前约 3.72% 年化）。这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。">ⓘ</span></span>'
+        +'<span class="gloss" title="'+esc(cashRateNote())+'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。">ⓘ</span></span>'
         +'<span class="hs-d">目前只投出 <b class="num">'+depPct.toFixed(0)+'%</b> 的资金'
-        +'<span class="gloss" title="组合按 4 周滚动建仓：每周投入约四分之一，第五周换掉第一周。现在是第 1 周，所以大部分资金还在现金里。'
+        +'<span class="gloss" title="组合按 4 周滚动建仓：每周投入约四分之一，第五周换掉第一周。'
+        +(wk?'现在是第 '+wk+' 周，':'')+'所以大部分资金还在现金里。'
         +(ag.pending?'另有 '+fmtInt(ag.pending)+' 笔挂单尚未成交。':'')
         +'　对照的 '+esc(benchName())+' 是满仓，两边仓位不同——这也是为什么现在的差距不能直接读成选股能力的差距。">ⓘ</span></span>'
         +'</div>';
@@ -5346,7 +5403,7 @@ function stageSelectorsBody(d){
       focusHead='<div class="focus-head">'
         +'<b>'+esc(fm[1])+'</b><span class="tag tag-brand" style="margin-left:6px">'+esc(fm[3])+'</span><span class="tag" style="margin-left:4px">'+esc(fm[2])+'</span>'
         +'<span style="margin-left:6px">'+pathTag(SEL_PATH[foc])+'</span>'
-        +'<div style="margin-top:4px">'+esc(selPlain(foc))+'</div>'
+        +'<span class="gloss" style="margin-left:6px" title="'+esc(selPlain(foc))+'">ⓘ</span>'
         +'<div style="margin-top:6px"><b>它放行的 '+fmtInt(ids.length)+' / '+fmtInt(cands.length)+' 条</b>：'
         +(ids.length?'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle;margin-left:4px">'
           +ids.map(function(id){return '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="在候选池里看这条" onclick="filterPoolCode(\''+jss(id)+'\')">'+esc(id)+' ›</button>'}).join('')
@@ -5677,7 +5734,10 @@ function bookDrawerBody(sel){
     +'<span class="tag">'+esc(m[2]||'')+'</span>'
     +'<span class="card-note mono">'+esc(b.book_id||'')+'</span>'
     +'</div>'
-    +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>　'+esc(selPlain(b.selector))+'</div>'
+    /* 同一对「短标签 + 完整说明」在策略卡片里是 <b>标签</b> ⓘ，这里却把说明
+       整句铺出来。口径统一到 ⓘ：标签在外，说明在内。 */
+    +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>'
+      +'<span class="gloss" title="'+esc(selPlain(b.selector))+'">ⓘ</span></div>'
     +'<div style="margin:0 0 var(--space-3)">'+askBtn('selector',b.selector)+'</div>'
     +'<div style="display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline;margin-bottom:var(--space-3)">'
     +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'+fmtPct(ret)+'</span>'
@@ -5970,7 +6030,7 @@ function statusDrawerBody(){
       if(!ab)return '';
       return '<div style="margin-top:var(--space-3);padding:var(--space-2) var(--space-3);background:var(--color-feedback-warning-subtle);border-left:3px solid var(--color-feedback-warning-default);border-radius:var(--radius-xs);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)">'
         +'<b>有一次周跑没有正常收尾</b> '
-        +glossMark('正常一次约 20-45 分钟。它启动后再没写下结束时间，多半是进程中途退出、来不及记录结果。不影响上方展示的结果——那些来自后来跑成功的那一次。')
+        +glossMark(weeklyDurNote()+'它启动后再没写下结束时间，多半是进程中途退出、来不及记录结果。不影响上方展示的结果——那些来自后来跑成功的那一次。')
         +'<div class="gap-row" style="grid-template-columns:56px 1fr;margin-top:4px"><span class="gk">run</span><span class="gv mono" style="color:inherit">'+esc(String(ab.run_id||'').slice(0,24))+' · '+esc(ab.as_of||'')+' 期</span></div>'
         +'<div class="gap-row" style="grid-template-columns:56px 1fr"><span class="gk">启动</span><span class="gv" style="color:inherit">'+esc(hktFmt(ab.started_at,true))+' · 已过 <b class="num">'+fmtInt(runAgeMin(ab))+'</b> 分钟，无结束时间</span></div>'
         +'<div style="margin-top:4px"><button type="button" class="exp-btn" onclick="openRunLogStacked(\''+esc(ab.run_id||'')+'\')">看它跑到哪一步 ›</button></div>'
@@ -6363,13 +6423,13 @@ function plainFeedError(e){
   return e;
 }
 var ASSUM_QA=[
-  ['H 的符号',['热度与后续收益是否同向','尚未验证，为系统核心假设。']],
+  ['H 的符号',['热度与后续收益是否同向','系统核心假设；检验结果以实时状态为准。']],
   ['HGEP 权重',['四项因子权重取值是否合理','取自先验，逐因子归因约需 7 个月样本。']],
   ['语义打分',['语义打分相对计数打分是否有增量','两臂每周并行记录，样本累积中。']],
   ['σ×2',['止损止盈幅度是否合适','设有仅改动止损的对照账本，以两者差值检验。']],
   ['去集中上限',['分散度上限取值是否合理','当前可选满 10 只；上限收紧至 1 时仅可选出 5 只。']],
   ['ρ≈0.8',['判定所需样本量','取决于账本间净值相关度，首月实测。']],
-  ['赚亏比下限',['1.5 的赔率门槛是否过松','本期中位数 1.82，未触发；低赔率区间方生效。']],
+  ['赚亏比下限',['1.5 的赔率门槛是否过松','低赔率区间方生效；本期中位数见实时状态。']],
   ['1 个月',['单一 1 个月持有期是否恰当','原设计含 6 个月版本，当前仅运行 1 个月期限，未作正式对比。']]
 ];
 var FIX_PLAIN=[
@@ -6553,7 +6613,7 @@ function trustDrawerBody(){
   var aRows=assum.map(function(a,ai){
     var qa=assumQA(a.claim||'');
     var q=qa?qa[0]:a.claim;
-    var ans=qa?qa[1]:(a.status||'—');
+    var ans=a.status||(qa?qa[1]:'—');
     var big=/最大风险|地基/.test(a.nature||'');
     return '<div class="cal-row">'
       +'<div class="cal-main expandable" onclick="toggleQa('+ai+')" title="展开原始记录">'
@@ -6993,8 +7053,9 @@ function phTeachCard(){
   if(PH.proposal)return phReviewCard();
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
-   +'<h2 class="card-title">用一句话写下你判断一笔交易的准则</h2>'
-   +'<div class="ph-hero">系统会把它蒸馏成可执行的要求，并派生一条臂来执行。</div>';
+   +'<h2 class="card-title">用一句话写下你判断一笔交易的准则'
+     +'<span class="gloss" style="font-size:14px;vertical-align:middle" '
+     +'title="系统会把它蒸馏成可执行的要求，并派生一条臂来执行。">ⓘ</span></h2>';
   if(blocked){
     h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
     return h;
@@ -7011,18 +7072,19 @@ function phTeachCard(){
      名字面板别处已经在用（写想法那一段就是它们），所以问的是他答得上来的问题。 */
   var arms=d.arms||[];
   if(arms.length>1){
-    h+='<div class="ph-pick"><span class="card-note">加到哪种生成方式上</span>'
+    var picked0=arms.filter(function(a){return a.arm===PH.arm})[0];
+    h+='<div class="ph-pick"><span class="card-note">加到哪种生成方式上'
+     +(picked0&&picked0.note?'<span class="gloss" title="'+esc(picked0.note)+'">ⓘ</span>':'')+'</span>'
      +'<span class="ph-seg">'+arms.map(function(a){
         return '<button type="button" class="seg-btn'+(a.arm===PH.arm?' on':'')+'"'
           +' data-ph-arm="'+esc(a.arm)+'" data-el="rules.arm.'+esc(a.arm)+'"'
+          +(a.note?' title="'+esc(a.note)+'"':'')
           +(PH.busy?' disabled':'')+'>'+esc(a.label)+'</button>'}).join('')+'</span></div>';
-    /* 选哪一条不是同一件事的四个说法：加到「约束边界」是给一副已有的骨架
-       补一条，加到「AI 端到端」是给一个刻意不设骨架的方法加上唯一一条——
-       后者问的是另一个问题。不写出来，这个选择看起来就只是四个同义按钮。 */
-    var picked=arms.filter(function(a){return a.arm===PH.arm})[0];
-    if(picked&&picked.note)
-      h+='<div class="card-note" style="margin:-4px 0 var(--space-3)">'
-       +esc(picked.note)+'</div>';
+    /* 释义收进 ⓘ 是对的（页面在做减法），但它挂在标签上、且只显示当前选中的那条，
+       于是「选之前看不到这一项是什么意思」——而最该被看到的正是「AI 端到端」：
+       加到它上面是给一个刻意不设骨架的方法加上唯一一条，问的是另一个问题。
+       所以每个按钮自带 title，标签上那个 ⓘ 留着不动：可见文本一个字没多，
+       但四个选项现在各自解释自己。 */
   }
   if(PH.problems){
     h+='<div class="ph-warn" style="margin-top:var(--space-4)">'

@@ -1142,6 +1142,8 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .al-mat .mt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .al-mat .mc{flex:none;font:600 10px/16px var(--font-sans);color:var(--color-text-on-brand);background:var(--color-fill-brand-green);border-radius:999px;padding:0 7px}
 .al-mat .mg{flex:none;color:var(--color-text-tertiary)}
+.hm-note{margin:-4px 0 var(--space-3);padding:var(--space-2) var(--space-3);background:var(--color-feedback-info-subtle);border-left:3px solid var(--color-feedback-info-default);border-radius:var(--radius-xs);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
+.hm-note b{font-weight:600;color:var(--color-text-primary)}
 .hero-split{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px var(--space-5);margin-top:var(--space-4);padding:var(--space-3) var(--space-4);background:var(--color-surface-subtle);border-radius:var(--radius-md);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
 .hero-split .hs-h{font-weight:600;color:var(--color-text-primary)}
 .hero-split .hs-i b{font-weight:600;color:var(--color-text-primary);margin-right:3px}
@@ -2940,6 +2942,26 @@ function holdMapCard(ag){
   return '<div class="card section" id="holdCard">'+head
     +(lead?'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'+lead+'</div>':'')
     +'<div class="quiet" style="margin-bottom:var(--space-3)">共 '+fmtInt(order.length)+' 个标的，'+fmtInt(ag.books.length)+' 个账本合计持有 '+fmtInt(ag.openN)+' 仓</div>'
+    /* 主链路第 02 步列出本期入选的 5 个主题，这张图列出持仓覆盖的主题——
+     * 当前两套只重合 3 个。原因是持仓建于上一期，按的是上一期的选题；
+     * 本期选出的主题还在挂单、没有仓位。不写出来，读者会以为两处有一处错了。 */
+    +(function(){
+      var chosen=topicChosen('hgep');
+      if(!chosen.length)return '';
+      var held={};order.forEach(function(k){var t=byCode[k].theme_id;if(t)held[t]=1});
+      var stale=Object.keys(held).filter(function(t){return chosen.indexOf(t)<0}).sort();
+      var unfilled=chosen.filter(function(t){return !held[t]});
+      if(!stale.length&&!unfilled.length)return '';
+      var bk=firstBookedDate(ag.books),per=(S.weekly||{}).as_of;
+      var pend=Number(ag.pending)||0;
+      var msg='当前持仓建于 '+esc(bk||'—')+'，按的是那一期选出的主题。';
+      if(stale.length)msg+='其中 <b>'+stale.map(esc).join('、')+'</b> 不在本期（'+esc(per||'—')+'）入选之列。';
+      if(unfilled.length)msg+='本期新选出的 <b>'+unfilled.map(esc).join('、')+'</b> 还没有仓位'
+        +(pend?'——'+fmtInt(pend)+' 笔挂单待成交':'')+'。';
+      return '<div class="hm-note">'+msg
+        +'<span class="gloss" title="组合按 4 周滚动建仓，每周只换掉其中一批；已建的仓按原风控持有到期或触发止损止盈，不会因为主题这一期没入选就被强制平掉。所以「本期选了哪些主题」和「现在持有哪些主题」本来就不该完全一致——两处都对。">ⓘ</span>'
+        +'</div>';
+    })()
     +body
   +'</div>';
 }
@@ -3452,7 +3474,15 @@ function benchName(){
  * 也跟着少算一周，直接影响「还要多久才够判定」那句话。
  * 落回 booked_as_of 只发生在一笔持仓都没有的时候（那时它确实是最好的近似）。 */
 function firstBookedDate(books){
+  /* 服务端的 first_opened_d 覆盖在场与已平两类持仓；state 只带 open_positions，
+     所以只看在场持仓会在最早那批全平掉之后把建仓日算晚。这个日期是
+     「第 N 周 / 约 17 周」的分子，算晚一周就把实验进度说少一周。 */
   var minOpened=null;
+  (books||[]).forEach(function(b){
+    if(b.first_opened_d&&(minOpened===null||b.first_opened_d<minOpened))
+      minOpened=b.first_opened_d;
+  });
+  if(minOpened)return minOpened;
   (books||[]).forEach(function(b){
     (b.open_positions||[]).forEach(function(p){
       if(p.opened_d&&(minOpened===null||p.opened_d<minOpened))minOpened=p.opened_d;
@@ -6582,7 +6612,10 @@ function renderCandBody(){
       +'</td>'
       /* 候选池是「它写了什么」的全表，逐行都会冒出「这条凭什么在这」。
          入口逐行给，读者不必先记住代码再去别处找一个能问的地方。 */
-      +'<td class="r">'+askBtn('idea','pool:'+bareCode(c.instrument_id),{cls:'sm'})+'</td></tr>'
+      /* 列头已经写着「当时的理由」，每一行再把「问它为什么选它」印一遍，就是
+       * 同一句话印 73 遍，还把整张表挤出可视区。用只剩图标那一档——文案退到
+       * title / aria-label，悬停和读屏都还拿得到。持仓行早就是这么处理的。 */
+      +'<td class="r">'+askBtn('idea','pool:'+bareCode(c.instrument_id),{cls:'sm icon'})+'</td></tr>'
       +'<tr class="thesis-row" style="display:none" data-th="'+i+'"><td colspan="11">'
       +(c.thesis?'<div style="margin-bottom:6px;color:var(--color-text-secondary)">'+esc(c.thesis)+'</div>':'')
       +'<div class="derive-kv" style="margin-top:0">'

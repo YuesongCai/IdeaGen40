@@ -213,6 +213,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             obj, status = ask.handle_context(
                 {k: (q.get(k) or [None])[0] for k in ("run_id", "kind", "id")})
             return self._json(obj, status=status)
+        if path == "/api/philosophy":
+            # 「我的打法」— which PM rules are running, which await a decision.
+            from . import philosophy_web
+            obj, status = philosophy_web.handle_list()
+            return self._json(obj, status=status)
         if path == "/api/state":
             from . import review
             return self._json(review.state(db.init()))
@@ -248,6 +253,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json({"error": "请求体不是合法的 JSON 对象"},
                                   status=400)
             obj, status = ask.handle_ask(payload)
+            return self._json(obj, status=status)
+        if path.startswith("/api/philosophy/"):
+            # Propose / activate / discard / retire. Distillation is a model
+            # call, so this shares the ask path's larger bounded read rather
+            # than the 4 KB drain below.
+            from . import philosophy_web
+            try:
+                payload = json.loads(
+                    self.rfile.read(min(length, 16384)) or b"{}")
+                assert isinstance(payload, dict)
+            except Exception:  # noqa: BLE001
+                return self._json({"error": "请求体不是合法的 JSON 对象"},
+                                  status=400)
+            fn = {"propose": philosophy_web.handle_propose,
+                  "activate": philosophy_web.handle_activate,
+                  "discard": philosophy_web.handle_discard,
+                  "retire": philosophy_web.handle_retire,
+                  }.get(path.rsplit("/", 1)[-1])
+            if fn is None:
+                return self._json({"error": "没有这个操作"}, status=404)
+            obj, status = fn(payload)
             return self._json(obj, status=status)
         length = min(length, 4096)
         if length:

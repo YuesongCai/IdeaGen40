@@ -61,23 +61,49 @@ def a_ctx(as_of=date(2026, 9, 4)):
 
 
 class ControlStaysFrozen(unittest.TestCase):
+    """Every arm that can receive a card must be unchanged without one.
+
+    Run across all four rather than on carl alone: the slot was added to the
+    other three later, and a control that drifted by a whitespace when its
+    signature grew would silently end the comparison it exists to anchor.
+    """
+
+    def _arms(self):
+        from ideagen.strategies import gen_pm
+        return sorted(gen_pm.BASES.items())
+
     def test_prompt_without_card_is_byte_identical(self):
-        """The control arm is only a control while its prompt never moves."""
         ctx = a_ctx()
-        p1, _ = gen_carl.build_prompt(ctx, ctx.topics[0])
-        p2, _ = gen_carl.build_prompt(ctx, ctx.topics[0], card=None)
-        self.assertEqual(p1, p2)
-        self.assertNotIn("PM 注入", p1)
+        for name, base in self._arms():
+            build = base["build_prompt"]
+            p1, _ = build(ctx, ctx.topics[0])
+            p2, _ = build(ctx, ctx.topics[0], card=None)
+            self.assertEqual(p1, p2, name)
+            self.assertNotIn("PM 注入", p1, name)
 
     def test_card_adds_only_its_own_block(self):
         ctx = a_ctx()
-        base, _ = gen_carl.build_prompt(ctx, ctx.topics[0])
-        with_card, _ = gen_carl.build_prompt(ctx, ctx.topics[0], card=a_card())
-        self.assertIn(philosophy.render(a_card()), with_card)
-        # Everything the control said, the derived arm still says: the card is
-        # an addition, never a replacement.
-        for block in base.split("\n\n"):
-            self.assertIn(block, with_card)
+        for name, base in self._arms():
+            build = base["build_prompt"]
+            card = a_card(scope={"stage": "idea_generator", "arm": name})
+            plain, _ = build(ctx, ctx.topics[0])
+            with_card, _ = build(ctx, ctx.topics[0], card=card)
+            self.assertIn(philosophy.render(card), with_card, name)
+            # Everything the control said, the derived arm still says: the card
+            # is an addition, never a replacement.
+            for block in plain.split("\n\n"):
+                self.assertIn(block, with_card, name)
+
+    def test_card_sits_before_the_shared_output_contract(self):
+        """The slot's position is the boundary. A card that landed after the
+        citation rule or the JSON shape would be able to talk over the parts
+        held identical across every arm."""
+        ctx = a_ctx()
+        for name, base in self._arms():
+            card = a_card(scope={"stage": "idea_generator", "arm": name})
+            text, _ = base["build_prompt"](ctx, ctx.topics[0], card=card)
+            self.assertLess(text.index(philosophy.render(card)),
+                            text.index(_gen.CITATION_RULE), name)
 
 
 class FrozenPlumbingIsOutOfReach(unittest.TestCase):
@@ -230,6 +256,17 @@ class DerivedArmRegisters(unittest.TestCase):
         card = a_card()
         self.assertEqual(philosophy.arm_name(card),
                          "carl_constraint@pm-2026-09-04-a1b2c3")
+
+    def test_every_registered_base_can_be_derived(self):
+        """`options()` is what the panel offers. An arm it lists but cannot
+        derive would be a picker entry that fails at activation."""
+        from ideagen.strategies import gen_pm
+        for opt in gen_pm.options():
+            self.assertIn(opt["arm"], gen_pm.BASES)
+            self.assertTrue(opt["label"])
+            run = gen_pm._make(a_card(
+                scope={"stage": "idea_generator", "arm": opt["arm"]}))
+            self.assertTrue(callable(run))
 
     def test_derived_arm_refuses_a_run_it_predates(self):
         from ideagen.strategies import gen_pm

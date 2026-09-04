@@ -32,7 +32,7 @@ from __future__ import annotations
 from functools import partial
 from typing import Any
 
-from . import gen_carl
+from . import gen_ai_native, gen_carl, gen_chain, gen_gap
 from .. import philosophy
 from ..strategy import RunContext, Verdict, register, spec
 
@@ -44,9 +44,38 @@ BASES: dict[str, dict[str, Any]] = {
     "carl_constraint": {
         "build_prompt": gen_carl.build_prompt,
         "keys": ("anomaly", "motive", "constraint", "trigger"),
-        "label": "约束边界（Carl 式）",
+        "label": "约束边界",
+    },
+    "ai_native": {
+        "build_prompt": gen_ai_native.build_prompt,
+        # No method-specific fields: this arm's whole point is that it imposes
+        # no skeleton. A card grafted here therefore asks a different question
+        # from the other three — whether one PM rule beats no rule at all,
+        # rather than whether it improves a skeleton that already exists.
+        "keys": (),
+        "label": "AI 端到端",
+    },
+    "chain": {
+        "build_prompt": gen_chain.build_prompt,
+        "keys": ("chain", "watch_variable", "falsifier"),
+        "label": "传导链",
+    },
+    "gap": {
+        "build_prompt": gen_gap.build_prompt,
+        "keys": ("implied_consensus", "contradiction", "unexpressed"),
+        "label": "共识缺口",
     },
 }
+
+
+def options() -> list[dict[str, str]]:
+    """The arms a rule can be grafted onto, for the panel's picker.
+
+    Labels rather than names: 「约束边界」 is what the panel already calls this
+    method everywhere else, and the PM should never have to learn that it is
+    spelled `carl_constraint` underneath.
+    """
+    return [{"arm": k, "label": v["label"]} for k, v in BASES.items()]
 
 
 def _make(card: dict[str, Any]):

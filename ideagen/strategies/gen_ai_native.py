@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import _gen
+from .. import philosophy
 from ..strategy import RunContext, Verdict, register
 
 #: Identical to the shape the other three ask for, minus their method fields. A
@@ -36,9 +37,22 @@ SHAPE = ('[{"instrument_id":"清单里的 id","thesis":"为什么这一个月会
 
 
 def build_prompt(ctx: RunContext,
-                 topic: dict[str, Any]) -> tuple[str, int]:
+                 topic: dict[str, Any],
+                 card: dict[str, Any] | None = None) -> tuple[str, int]:
+    """这一臂本来不规定任何推理步骤——要测的就是模型自己的判断。一张准则卡会给它加上一条，所以派生臂问的是另一个问题：自由发挥加上 PM 的一条准则，比纯自由发挥好还是差。
+
+    The `card` slot sits after this method's own instructions and before the
+    shared output contract — the only position that lets a PM rule add to the
+    reasoning without reaching the plumbing (universe, citations, shape,
+    horizon) that makes the arms comparable.
+
+    With `card=None` the joined string is byte-identical to what this arm has
+    always sent. That is not tidiness: this arm stays the frozen control every
+    derived arm is measured against, and a control whose prompt drifted by even
+    a whitespace would no longer be one.
+    """
     _docs, n_docs = _gen.corpus_block(ctx, topic)
-    return "\n\n".join([
+    blocks = [
         f"今天是 {ctx.as_of.isoformat()}。下面给你一个本周入选的主题、它的入选依据、"
         f"相关原始材料摘录，以及当前可买清单。",
         _gen.topic_block(topic),
@@ -49,9 +63,14 @@ def build_prompt(ctx: RunContext,
         "这里要测的就是你自己的判断。",
         "硬约束只有三条：标的必须原样取自上面的清单；每条要写清理由、一个月内的上行与下行"
         "幅度（百分数）、以及上行/持平/下行三档概率（相加为 1）；同一主题内不要重复标的。",
+    ]
+    if card is not None:
+        blocks.append(philosophy.render(card))
+    blocks += [
         _gen.CITATION_RULE,
         "只输出 JSON 数组，形如：\n" + SHAPE,
-    ]), n_docs
+    ]
+    return "\n\n".join(blocks), n_docs
 
 
 @register("idea_generator", "ai_native", "1.0", role="primary", label="AI 端到端")

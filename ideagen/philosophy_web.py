@@ -30,10 +30,25 @@ from . import config, philosophy
 
 PENDING = config.DATA / "philosophy" / "pending"
 
-#: The panel never asks which arm; there is one place a philosophy goes today
-#: and offering a dropdown of internal strategy names would be asking the user
-#: to know something this layer exists to hide.
+#: Where a rule goes unless the PM picks otherwise. The constraint-boundary
+#: method is the one whose shape a philosophy usually has — a way of deciding
+#: what makes a trade worth doing — so it is the default rather than the only
+#: option.
 DEFAULT_ARM = "carl_constraint"
+
+
+def _arm_options() -> list[dict[str, str]]:
+    """The four methods, by the names the panel already uses for them.
+
+    Not a dropdown of `carl_constraint` / `ai_native`: those are how the code
+    spells them. 「约束边界」「AI 端到端」 are what every other screen calls
+    them, so the picker asks a question the PM can already answer.
+    """
+    try:
+        from .strategies import gen_pm
+        return gen_pm.options()
+    except Exception:  # noqa: BLE001 — a missing picker beats a broken page
+        return [{"arm": DEFAULT_ARM, "label": "约束边界"}]
 
 
 def _runs(p, arm: str) -> int:
@@ -59,6 +74,10 @@ def _view(card: dict[str, Any], p=None, *, pending: bool = False
         "must_answer": [{"field": r["field"], "desc": r["desc"]}
                         for r in (card.get("require") or [])],
         "rewrites": philosophy.translations(card),
+        "arm": (card.get("scope") or {}).get("arm"),
+        "arm_label": next(
+            (o["label"] for o in _arm_options()
+             if o["arm"] == (card.get("scope") or {}).get("arm")), ""),
         "pending": pending,
     }
     if not pending:
@@ -91,6 +110,8 @@ def handle_list() -> tuple[dict[str, Any], int]:
     return {
         "live": live,
         "pending": [_view(c, pending=True) for c in _pending_cards()],
+        "arms": _arm_options(),
+        "default_arm": DEFAULT_ARM,
         "can_propose": bool(can),
         # Only shown when it blocks the button, so it has to say what to do,
         # not just what failed.
@@ -116,6 +137,11 @@ def handle_propose(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
         return {"error": "过长。一句话即可，越具体越有效（上限 500 字）。"}, 400
 
     arm = str(payload.get("arm") or DEFAULT_ARM)
+    # Checked against what can actually be derived, not merely what is
+    # registered: a card scoped to an arm with no `card=` slot would pass
+    # validation, activate, and then quietly never produce anything.
+    if arm not in {o["arm"] for o in _arm_options()}:
+        return {"error": f"没有这种生成方式：{arm}"}, 400
     p = plat.load()
     ok, why = ask.inference_state(p)
     if not ok:

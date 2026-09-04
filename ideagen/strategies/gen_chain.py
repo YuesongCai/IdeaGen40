@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import _gen
+from .. import philosophy
 from ..strategy import RunContext, Verdict, register
 
 SHAPE = ('[{"instrument_id":"清单里的 id",'
@@ -51,9 +52,22 @@ CONTRACT = (
 
 
 def build_prompt(ctx: RunContext,
-                 topic: dict[str, Any]) -> tuple[str, int]:
+                 topic: dict[str, Any],
+                 card: dict[str, Any] | None = None) -> tuple[str, int]:
+    """把主题拆成可观测传导链的提示词。
+
+    The `card` slot sits after this method's own instructions and before the
+    shared output contract — the only position that lets a PM rule add to the
+    reasoning without reaching the plumbing (universe, citations, shape,
+    horizon) that makes the arms comparable.
+
+    With `card=None` the joined string is byte-identical to what this arm has
+    always sent. That is not tidiness: this arm stays the frozen control every
+    derived arm is measured against, and a control whose prompt drifted by even
+    a whitespace would no longer be one.
+    """
     _docs, n_docs = _gen.corpus_block(ctx, topic)
-    return "\n\n".join([
+    blocks = [
         f"今天是 {ctx.as_of.isoformat()}。你的任务是把主题拆成可观测的传导链。",
         _gen.topic_block(topic),
         "相关原始材料（新到旧）：\n" + _docs,
@@ -62,9 +76,14 @@ def build_prompt(ctx: RunContext,
         f"就这个主题给出最多 {_gen.PER_TOPIC} 条持有期一个月的做多想法。标的原样取自上面的"
         "清单；每条要有一个月内的上行与下行幅度（百分数）和上行/持平/下行三档概率"
         "（相加为 1）；同一主题内不要重复标的。",
+    ]
+    if card is not None:
+        blocks.append(philosophy.render(card))
+    blocks += [
         _gen.CITATION_RULE,
         "只输出 JSON 数组，形如：\n" + SHAPE,
-    ]), n_docs
+    ]
+    return "\n\n".join(blocks), n_docs
 
 
 @register("idea_generator", "chain", "1.0", role="exploratory", label="传导链")

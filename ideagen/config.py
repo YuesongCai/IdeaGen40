@@ -124,9 +124,15 @@ def olive_credentials() -> dict[str, str]:
         if value := os.environ.get(env_name, "").strip():
             values[key] = value
     path = olive_token_file()
-    if path and path.is_file():
+    if path:
+        # is_file() is inside the try on purpose: pathlib ignores only ENOENT,
+        # ENOTDIR, EBADF and ELOOP, so an unsearchable parent directory makes
+        # the existence CHECK raise PermissionError, before any read. That
+        # turned an unreadable token file into a 500 on the status endpoint
+        # whose entire job is to report that kind of problem.
         try:
-            stored = json.loads(path.read_text(encoding="utf-8"))
+            stored = (json.loads(path.read_text(encoding="utf-8"))
+                      if path.is_file() else {})
         except (OSError, ValueError, TypeError):
             stored = {}
         if isinstance(stored, dict):

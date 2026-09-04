@@ -231,7 +231,21 @@ def status() -> dict[str, Any]:
             "navs": int(live_snapshot.get("nav_count") or 0),
             "artifact_archived": bool(live_snapshot.get("artifact_uri")),
         }
+    token_file = config.olive_token_file()
+    token_state = "unset"
+    if token_file is not None:
+        try:
+            token_state = "present" if token_file.is_file() else "absent"
+        except OSError as exc:
+            token_state = f"unreadable ({exc.__class__.__name__})"
     return {
+        # Enough to tell "Olive was never configured here" apart from
+        # "configured but the token store is unreachable" without a shell on
+        # the box. Names and counts only; no value ever leaves this function.
+        "endpoint_set": bool(config.OLIVE_MCP_URL),
+        "issuer_set": bool(config.OLIVE_OAUTH_ISSUER),
+        "token_file": token_state,
+        "credential_keys": sorted(credentials),
         "configured": bool(credentials.get("access_token")),
         "refreshable": bool(credentials.get("refresh_token")),
         "expires_at": credentials.get("expires_at") or None,

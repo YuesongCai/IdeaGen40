@@ -1287,7 +1287,10 @@ button.drawer-crumb:not(.cur){color:var(--color-text-metadata);border-bottom:1px
 .drawer .sel-legend{grid-template-columns:minmax(0,1fr)}
 .drawer .topic-cols{grid-template-columns:minmax(0,1fr)}
 .pgrid-wrap{overflow-x:auto}
-.drawer .pgrid{min-width:620px}
+/* 曾写死 min-width:620px，而抽屉里能给它的只有 586px——网格因此永远比
+ * 容器宽 34px，最右的「合计」列一上来就被裁。下限交给各列自己的 minmax
+ * （合计 532px），窄到那以下才滚动。 */
+.drawer .pgrid{min-width:0}
 body.drawer-lock{overflow:hidden}
 
 /* hover 速览 popover */

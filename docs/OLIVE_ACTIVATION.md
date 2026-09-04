@@ -49,38 +49,59 @@ navs 21 行）；周跑的 `_sync_olive_daily` 走 `shelf_store` 写 `shelf_snap
 
 ## 第二步：云端（BytePlus ECS `i-yeu80pr2tc3z47gon4sy` / `101.47.152.106`）
 
+**状态：本地已通，云端配置投递仍在收尾。**
+
 不需要把 Claude 的连接器搬上去。`ideagen/sources/olive.py` 自己就是一个
-streamable-HTTP MCP 客户端，带 refresh_token 自动续期，本来就是为无人值守写的。
+streamable-HTTP MCP 客户端，带 refresh_token 自动续期，为无人值守而写。
 
-**这台机器没有 shell**：本机 Clash 拦 SSH（`kex_exchange_identification: Connection
-closed`，TCP 通了但握手前被切断），Cloud Assistant 在这个镜像上始终 `InstallFailed`。
-唯一可用的执行通道是 **UserData + reboot**——`deploy/instance_bootstrap.sh` 每次开机都跑，
-所以**一次重启就是一次部署**。
+### 这台机器的三个隐形陷阱（2026-09-05 逐个踩过）
 
-配置投递已经打通（2026-09-05 改的）：
+**① 没有 shell。** Clash 拦 SSH（`kex_exchange_identification`，TCP 通但握手前被切），
+Cloud Assistant 在这个镜像上始终 `InstallFailed`。唯一执行通道是 **UserData + reboot**。
 
-- `scripts/build_runtime_env.py` 现在会输出 Olive 的 4 个键 + token 路径，共 32 个键。
-  取值来自本机 `~/.ideagen.env`，**不落地、不进 transcript**。
-- `deploy/instance_bootstrap.sh` 原本「runtime.env 已存在就跳过投递」——在这台没 shell 的
-  机器上等于**跑起来之后永远加不了新键**。已改成**拉取成功才合并**：投递的键覆盖旧值，
-  机器自己有而投递里没有的键（比如它自己刷出来的 token）保留，拉取失败则完全不动。
+**② UserData 有个看不见的 8KB 上限。** 超了之后网关回 HTML 错误页，`ve` 报成
+`Unmarshal err, invalid character '<'`——**完全不提体积**。而且注释会被剥掉，
+所以「我只加了两行注释」的直觉必然是错的。**已根治**：UserData 现在只放一个
+loader（~3.9KB），负责建目录、`chown`、拉取并合并 `runtime.env`、拉仓库、
+exec `deploy/instance_bootstrap.sh`。脚本再长也不进 query string。
 
-送上去的两条命令（`secrets` 和 `reboot` 分开，正是因为它们动生产）：
+**③ 代码会自己更新，配置不会。** compose 里的 `updater` 容器每 120 秒拉 origin/main、
+跑测试、重建容器。所以**新代码持续上线**。而 `runtime.env` 和宿主机 `chown`
+原本只走 bootstrap——于是机器可以「代码是最新的、六个端口全绿、心跳在跑」，
+**同时配置停留在第一次成功引导那一刻**，所有健康信号都分辨不出这两者。
+**已绕开**：配置投递挪进 loader，它没有镜像要构建、不跟 updater 抢 docker daemon。
+
+### 投递与验证
 
 ```bash
 cd ~/IdeaGen40 && python3 scripts/deploy_userdata.py secrets && python3 scripts/deploy_userdata.py reboot
 ```
 
-冷启动要十分钟左右。验证：
+`reboot` 会轮询、可能超过前台超时；用 `ve ecs RebootInstance --InstanceId <id>` 更直接。
+**注意别用 `cmd &` 后台化再让外层退出**——子进程会被带走，重启根本没发生。
+
+判活**不要**用 `deploy_userdata.py status`：它打 `http://IP/healthz`，TLS 改造后 301 跳
+https 撞自签证书 → 报「没有东西在监听」，是**假阴性**。真实判活与验证：
 
 ```bash
-cd ~/IdeaGen40 && python3 scripts/deploy_userdata.py status
+K=$(grep -o '^IDEAGEN_DASH_KEY=.*' ~/.ideagen.env|cut -d= -f2)
+U=$(grep -o '^IDEAGEN_DASH_USER=.*' ~/.ideagen.env|cut -d= -f2)
+P=$(grep -o '^IDEAGEN_DASH_PASSWORD=.*' ~/.ideagen.env|cut -d= -f2)
+curl -sk -u "$U:$P" -H "X-Dash-Key: $K" https://101.47.152.106/api/olive/status
 ```
 
-`say: runtime.env merged (32 keys)` 出现即为配置到位。云端出网直连，不经 Clash。
+面板现在有账号会话层（`accounts.py`，cookie `ideagen_session`）；机器访问走
+`X-Dash-Key` 请求头，**别把钥匙放进 URL**。
 
-⚠️ **同一时间只能有一个人 reboot**。仓库里常有多个会话在动部署，推之前先确认 :80
-已经恢复（401/200），不要在别人引导到一半时重启。
+`/api/olive/status` 会自报 `endpoint_set` / `issuer_set` / `token_file` /
+`runtime_uid` / `token_dir`。**成功的样子**：`endpoint_set: true`、
+`token_dir` 里 `uid=10001`（镜像以 uid 10001 运行，见 `deploy/Dockerfile:71`）。
+
+### 引导日志怎么读
+
+写在 `/opt/ideagen/health/index.html`，只在引导期间由 :80 提供，Caddy 接管后消失。
+要在重启后立刻轮询 `http://<IP>/`（**不要 -L**）。镜像构建约 20 秒，
+轮询间隔超过它就会看起来「停在 code <sha>」——那是漏采样，不是卡死。
 
 ## 代码侧改了什么（2026-09-05）
 

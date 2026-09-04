@@ -1905,7 +1905,7 @@ function buildRoute(view,sec){
   return '#/'+v.id+((sec&&sec!==first)?'/'+sec:'');
 }
 function secDomId(view,sec){return 'sec_'+view+'_'+sec}
-var current='week';
+var current='overview';
 /* 只有内容真的渲染出来了才在地图上标出这一格：一个不存在的目的地
    比没有这一格更糟——点了没反应，用户会以为页面坏了。 */
 function secWrap(view,slug,inner){
@@ -2094,10 +2094,20 @@ function mainLine(ag){
      more:'HGEP 评分与落选理由'},
     {i:2,name:'写想法',
      stat:nIdeas?('<b class="num">'+fmtInt(gens.length)+'</b> 种方法<span class="sep">·</span><b class="num">'+fmtInt(nIdeas)+'</b> 条想法<span class="sep">→</span><b class="num">'+fmtInt(poolN)+'</b> 条候选'):pending,
+     /* 这里的数字数的是「几种方法」。别处它是带 tooltip 的彩色标签，
+      * 到这一行退化成纯文本后就只剩「AI 端到端 1 · 约束边界 3」——
+      * 1 和 3 各是什么，读者无从判断。加上量词，并把解释挂到 title 上。 */
      more:(function(){
        var n={};gens.forEach(function(g){var t=GEN_PATH[g.method];if(t)n[t]=(n[t]||0)+1});
-       var parts=['ai','frame','code'].filter(function(t){return n[t]}).map(function(t){return PATH_META[t][0]+' '+n[t]});
+       var parts=['ai','frame','code'].filter(function(t){return n[t]}).map(function(t){return n[t]+' 种 '+PATH_META[t][0]});
        return parts.length?('执行路径：'+parts.join(' · ')):'生成方法与合并候选池';
+     })(),
+     moreTip:(function(){
+       var n={};gens.forEach(function(g){var t=GEN_PATH[g.method];if(t)n[t]=(n[t]||0)+1});
+       var used=['ai','frame','code'].filter(function(t){return n[t]});
+       if(!used.length)return '';
+       return '本环节共 '+gens.length+' 种生成方法，按自动化程度分成：'
+         +used.map(function(t){return n[t]+' 种「'+PATH_META[t][0]+'」（'+PATH_META[t][1]+'）'}).join('；');
      })()}
   ];
 
@@ -2107,7 +2117,7 @@ function mainLine(ag){
       +'<span class="ml-idx">0'+(o.i+1)+'</span>'
       +'<span class="ml-name">'+esc(o.name)+'</span>'
       +'<span class="ml-stat">'+o.stat+'</span>'
-      +'<span class="ml-more">'+esc(o.more)+'</span>'
+      +'<span class="ml-more"'+(o.moreTip?' title="'+esc(o.moreTip)+'"':'')+'>'+esc(o.more)+'</span>'
       +chev
     +'</button>';
     var body='';
@@ -6216,6 +6226,8 @@ function tick(){
   var css='.ph-hero{font:400 14px/22px var(--font-sans);color:var(--color-text-secondary);margin-bottom:var(--space-5);max-width:62ch}'
    +'.ph-def{font:400 13px/21px var(--font-sans);color:var(--color-text-secondary);background:var(--color-surface-subtle,#f7f7f7);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);max-width:78ch}'
    +'.ph-def b{font-weight:600;color:var(--color-text-primary)}'
+   +'.ph-pick{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin:var(--space-3) 0}'
+   +'.ph-seg{display:inline-flex}'
    +'.ph-say{width:100%;box-sizing:border-box;min-height:96px;resize:vertical;padding:var(--space-4);'
    +'border:1px solid var(--color-border-default,#e0e0e0);border-radius:var(--radius-md);'
    +'font:400 15px/24px var(--font-sans);color:var(--color-text-primary);background:var(--color-surface-default,#fff)}'
@@ -6251,7 +6263,8 @@ function tick(){
   document.head.insertAdjacentHTML('beforeend','<style>'+css+'</style>');
 })();
 
-var PH={data:null,say:'',busy:false,err:'',proposal:null,accepted:false,loaded:false};
+var PH={data:null,say:'',arm:'',busy:false,err:'',proposal:null,accepted:false,
+        loaded:false,bound:false};
 
 var PH_EG=[
   '我不买已经被讲烂的东西，我要的是被迫的卖家——有人被条款逼着必须动手，那才是价格还没反应的地方',
@@ -6265,6 +6278,7 @@ function phLoad(force){
   fetch('/api/philosophy',{cache:'no-store'})
     .then(function(r){return r.json()})
     .then(function(b){PH.data=b;
+      if(!PH.arm)PH.arm=b.default_arm||'';
       /* 待确认的提案在服务端留着：换个浏览器、隔一天回来，那句话还在等你拍板。 */
       if(!PH.proposal&&b.pending&&b.pending.length)PH.proposal=b.pending[0];
       renderRules()})
@@ -6288,7 +6302,7 @@ function phPropose(){
   var say=(phSay()||'').trim();
   if(!say){PH.err='还没有内容。';return renderRules()}
   PH.problems=null;
-  phPost('propose',{say:say},function(b){
+  phPost('propose',{say:say,arm:PH.arm},function(b){
     if(b.error){PH.err=b.error;return renderRules()}
     if(b.ok===false){PH.problems=b;return renderRules()}
     PH.proposal=b;PH.accepted=false;PH.problems=null;
@@ -6343,6 +6357,17 @@ function phTeachCard(){
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
           +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';
+  /* 加到哪一条臂上，是有意义的选择而不是内部细节：加到「约束边界」是改一副已有的
+     推理骨架，加到「AI 端到端」是给一个本来不设骨架的方法加上唯一一条。这四个
+     名字面板别处已经在用（写想法那一段就是它们），所以问的是他答得上来的问题。 */
+  var arms=d.arms||[];
+  if(arms.length>1){
+    h+='<div class="ph-pick"><span class="card-note">加到哪种生成方式上</span>'
+     +'<span class="ph-seg">'+arms.map(function(a){
+        return '<button type="button" class="seg-btn'+(a.arm===PH.arm?' on':'')+'"'
+          +' data-ph-arm="'+esc(a.arm)+'" data-el="rules.arm.'+esc(a.arm)+'"'
+          +(PH.busy?' disabled':'')+'>'+esc(a.label)+'</button>'}).join('')+'</span></div>';
+  }
   if(PH.problems){
     h+='<div class="ph-warn" style="margin-top:var(--space-4)">'
      +'<div class="ph-step-h" style="margin-bottom:6px">这条准则无法执行</div>'
@@ -6366,7 +6391,9 @@ function phReviewCard(){
   var h='<div class="card section">'
    +'<h2 class="card-title">草案已生成，请核对</h2>'
    +'<div class="ph-hero" style="margin-bottom:var(--space-4)">你写的准则：'
-   +'<span style="color:var(--color-text-primary)">「'+esc(p.said||'')+'」</span></div>'
+   +'<span style="color:var(--color-text-primary)">「'+esc(p.said||'')+'」</span>'
+   +(p.arm_label?'<br>加到：<span style="color:var(--color-text-primary)">'
+     +esc(p.arm_label)+'</span>':'')+'</div>'
 
    +'<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">1</span>'
    +'系统据此执行的要求</div><ul class="ph-list">'
@@ -6430,7 +6457,8 @@ function phRunningCard(){
       :'尚未运行，下一次周跑（周三）首次生成';
     return '<div class="ph-rule">'
       +'<div class="ph-rule-said">「'+esc(c.said)+'」</div>'
-      +'<div class="ph-meta">'+esc(c.since)+' 起 · '+esc(when)
+      +'<div class="ph-meta">'+esc(c.since)+' 起 · '
+      +(c.arm_label?esc(c.arm_label)+' · ':'')+esc(when)
       +(c.must_answer&&c.must_answer.length
         ? ' · 每条想法必答：'+c.must_answer.map(function(f){return esc(f.field)}).join(' / ')
         : '')+'</div>'
@@ -6455,8 +6483,12 @@ function phBind(){
   var host=$('view-rules');if(!host)return;
   PH.bound=true;
   host.addEventListener('click',function(e){
-    var t=e.target,b=(t&&t.closest)?t.closest('[data-ph-id]'):null;
-    if(b&&host.contains(b)&&!b.disabled)phRetire(b.getAttribute('data-ph-id'));
+    var t=e.target;if(!t||!t.closest)return;
+    var r=t.closest('[data-ph-id]');
+    if(r&&host.contains(r)&&!r.disabled)return phRetire(r.getAttribute('data-ph-id'));
+    var a=t.closest('[data-ph-arm]');
+    if(a&&host.contains(a)&&!a.disabled){PH.arm=a.getAttribute('data-ph-arm');
+      PH.problems=null;renderRules()}
   });
 }
 
@@ -6491,13 +6523,28 @@ function renderRules(){
 buildNav();
 var bootDrawer=null;
 var bootSec=null;
-var initHash=(location.hash||'').replace('#','').replace(/^\/?/,'').split('/')[0];
-/* 旧链接：底账/回测已并入抽屉，落到组合页并展开对应抽屉 */
-if(initHash==='audit'){initHash='week';bootDrawer=function(){openCalDrawer()}}
-if(initHash==='backtest'){initHash='week';bootDrawer=function(){openTrustDrawer()}}
-var route0=parseRoute(location.hash&&location.hash.indexOf('/')>=0?location.hash:('#/'+initHash));
+var rawHash=(location.hash||'').replace('#','').replace(/^\/?/,'');
+var initHash=rawHash.split('/')[0];
+var initSec=rawHash.split('/')[1]||'';
+/* 旧链接必须继续可用。导航按用户旅程重排后 week/process 不再存在，
+   把它们（以及更早的 audit/backtest 两个别名）映射到新位置，
+   连同子项一起——发出去的链接不该因为我们重排导航而失效。 */
+var LEGACY_VIEW={week:'overview',process:'method'};
+var LEGACY_SEC={
+  'week/overview':['overview','verdict'],  'week/mainline':['method','mainline'],
+  'week/strategies':['evidence','strategies'],'week/holdings':['holdings','exposure'],
+  'week/backtest':['evidence','backtest'], 'process/canvas':['method','canvas'],
+  'process/corpus':['method','corpus'],    'process/universe':['method','universe'],
+  'process/receipt':['evidence','receipt']
+};
+if(initHash==='audit'){initHash='overview';initSec='';bootDrawer=function(){openCalDrawer()}}
+if(initHash==='backtest'){initHash='evidence';initSec='backtest'}
+var mapped=LEGACY_SEC[initHash+'/'+initSec];
+if(mapped){initHash=mapped[0];initSec=mapped[1]}
+else if(LEGACY_VIEW[initHash]){initHash=LEGACY_VIEW[initHash];initSec=''}
+var route0=parseRoute('#/'+initHash+(initSec?'/'+initSec:''));
 switchView(route0.view,route0.sec);
-bootSec=(location.hash&&location.hash.indexOf('/')>=0)?route0.sec:null;
+bootSec=(initSec||(location.hash&&location.hash.indexOf('/')>=0))?route0.sec:null;
 renderBootState();
 refresh();
 setInterval(refresh,60000);

@@ -52,9 +52,19 @@ class CitationProvenance(unittest.TestCase):
         path = _db()
         if not path.exists():
             raise unittest.SkipTest(f"no project database at {path}")
-        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        # Both tables are read inside one transaction. WAL gives a reader a
+        # stable snapshot for the length of a read transaction, but only for its
+        # length: two autocommit SELECTs are two snapshots, and an ingest
+        # committing between them shows this test a candidate whose document it
+        # cannot see — a cross-table tear that looks exactly like the violation
+        # it is meant to catch. That happened, on a concurrent olive-pull. A
+        # check that goes red for a reason unrelated to its invariant is worse
+        # than no check: it teaches everyone to rerun instead of to look.
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
         con.row_factory = sqlite3.Row
+        con.isolation_level = None
         try:
+            con.execute("BEGIN")
             cls.published = {
                 str(r["doc_id"]): str(r["published_d"] or "")[:10]
                 for r in con.execute("SELECT doc_id, published_d FROM documents")}
@@ -68,6 +78,7 @@ class CitationProvenance(unittest.TestCase):
                     "citations": [str(c) for c in (payload.get("citations") or [])],
                     "bad": int(payload.get("bad_citations") or 0),
                 })
+            con.execute("COMMIT")
         finally:
             con.close()
         if not cls.rows:

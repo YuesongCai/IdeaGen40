@@ -22,6 +22,20 @@ echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
 # doctor is informational: it prints what is reachable and exits non-zero only if
 # OpenD is down. A missing price feed means marks would be wrong, so that case
 # stops the run; everything else is recorded per stage by `daily` itself.
+# OpenD is a GUI app that does not come back after a reboot, and a marking run
+# that aborts because nobody launched it is a day of missing marks discovered
+# later. Try to start it first — it restores its saved session — and only give
+# up if the port stays shut.
+if ! "$PYBIN" -m ideagen.cli doctor; then
+  if [ -d /Applications/Futu_OpenD.app ]; then
+    echo "Futu OpenD 未响应，尝试启动…"
+    open -a /Applications/Futu_OpenD.app || true
+    for i in $(seq 1 20); do
+      if nc -z 127.0.0.1 11111 2>/dev/null; then echo "OpenD 端口已开"; break; fi
+      sleep 3
+    done
+  fi
+fi
 if ! "$PYBIN" -m ideagen.cli doctor; then
   echo "ABORT: Futu OpenD unreachable — start Futu_OpenD and log in, then:"
   echo "       launchctl start com.ideagen40.daily"

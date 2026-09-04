@@ -56,8 +56,7 @@ def _undated_shelf(con) -> int:
 
     `eligible()` can only exclude an instrument from a past period if it knows
     when the instrument appeared. Undated rows are let through, so a backfilled
-    period may pick something that was not yet on the shelf that week. The
-    count is the honest measure of how much of the replay is not as-of clean.
+    period may pick something that was not yet on the shelf that week.
     """
     try:
         row = db.q1(con, "SELECT COUNT(*) n FROM instruments "
@@ -65,6 +64,41 @@ def _undated_shelf(con) -> int:
         return int(dict(row)["n"]) if row else 0
     except Exception:  # noqa: BLE001 — a missing column must not kill the run
         return -1
+
+
+def _shelf_dating(con, held: set[str], window_start: str) -> dict:
+    """How much of this replay is actually as-of clean, on the rows it held.
+
+    Counting undated rows across the whole shelf answers a question nobody
+    asked: most of that shelf is Olive funds the replay never touches. What
+    decides whether period P could have picked an instrument that did not exist
+    is the dating of the instruments period P actually held, and whether any of
+    them appeared after the window opened. Both counts are reported, because the
+    narrow one is the live exposure and the broad one is the remaining debt.
+    """
+    out = {"shelf_total": 0, "shelf_dated": 0, "shelf_undated": _undated_shelf(con),
+           "held_total": len(held), "held_dated": 0,
+           "held_latest_first_seen": None, "held_after_window_start": 0}
+    try:
+        row = db.q1(con, "SELECT COUNT(*) n, "
+                         "SUM(CASE WHEN first_seen_d IS NOT NULL AND first_seen_d<>'' "
+                         "THEN 1 ELSE 0 END) d FROM instruments")
+        if row:
+            out["shelf_total"] = int(dict(row)["n"] or 0)
+            out["shelf_dated"] = int(dict(row)["d"] or 0)
+        for key in held:
+            r = db.q1(con, "SELECT first_seen_d FROM instruments WHERE key=?", (key,))
+            d = (dict(r).get("first_seen_d") or "").strip() if r else ""
+            if not d:
+                continue
+            out["held_dated"] += 1
+            if out["held_latest_first_seen"] is None or d > out["held_latest_first_seen"]:
+                out["held_latest_first_seen"] = d
+            if d > window_start:
+                out["held_after_window_start"] += 1
+    except Exception:  # noqa: BLE001 — a missing column must not kill the run
+        pass
+    return out
 
 
 def _arms() -> list[str]:
@@ -108,6 +142,24 @@ def main(argv: list[str]) -> int:
                  for row in _arm_positions(con, days, arm, args.horizon_days)]
 
     n_backfill = sum(1 for c in classes.values() if c != "live")
+    dating = _shelf_dating(
+        con, {str(r.get("instrument_id")) for r in positions if r.get("instrument_id")},
+        days[0].isoformat())
+    if dating["held_dated"] and not dating["held_after_window_start"]:
+        # The gate can only be said to have cleared the risk for the rows it was
+        # able to judge; the undated remainder is reported next to it, not folded
+        # into a single reassuring sentence.
+        asof_note = (
+            f"②货架上架日期：本次回放持有的 {dating['held_total']} 个标的中 "
+            f"{dating['held_dated']} 个已定上架日期，最新一个为 "
+            f"{dating['held_latest_first_seen']}，均早于窗口起点 "
+            f"{days[0].isoformat()}，该项前视风险在这些标的上不成立；"
+            f"其余 {dating['held_total'] - dating['held_dated']} 个（基金 / 结构化"
+            f"产品，无行情代码）仍未定日期，按当期资格过滤时一律放行。")
+    else:
+        asof_note = (
+            f"②货架上有 {dating['shelf_undated']} 个标的缺少上架日期，按当期资格"
+            f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",
@@ -119,15 +171,15 @@ def main(argv: list[str]) -> int:
         "n_backfill_periods": n_backfill,
         "disclaimer": (
             "候选池与价格均为真实数据，as-of 在文档层面严格钳制。"
-            + (f"其中 {n_backfill} 期是事后补跑（backfill），有两处无法用代码消除的"
-               "前视风险：①模型权重已见过该日期之后的信息；②货架上有 "
-               f"{_undated_shelf(con)} 个标的缺少上架日期，按当期资格过滤时一律放行，"
-               "补跑期的可选标的可能包含当时尚未上架的产品。"
-               "结论性判断以 live 期为准。"
+            + (f"其中 {n_backfill} 期是事后补跑（backfill），前视风险两项："
+               "①模型权重已见过该日期之后的信息，无法用代码消除；"
+               + asof_note
+               + "结论性判断以 live 期为准。"
                if n_backfill else "")
             + f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。"
         ),
-        "undated_shelf_instruments": _undated_shelf(con),
+        "undated_shelf_instruments": dating["shelf_undated"],
+        "shelf_dating": dating,
         # The sweep ran with strict=True, so every period's context passed the
         # as-of audit before any arm scored it — a context carrying a document,
         # a close or a candidate dated after the replayed day raises AsOfLeak

@@ -358,3 +358,98 @@ def move_z(con, code: str, d: str, lookback: int = 60) -> float | None:
     mu = sum(hist) / len(hist)
     sd = (sum((r - mu) ** 2 for r in hist) / (len(hist) - 1)) ** 0.5
     return abs(today - mu) / sd if sd else None
+
+
+# ---------------------------------------------------------------- dating
+#: OpenD returns this for every US security whose listing date it does not
+#: carry. It is a sentinel, not a date, and writing it into `first_seen_d`
+#: would assert that SPY listed in 1970.
+_EPOCH_SENTINEL = "1970-01-01"
+
+
+def listing_dates(codes: Sequence[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Vendor listing dates, with the epoch sentinel dropped rather than stored.
+
+    OpenD carries real listing dates for HK securities and for US common stock,
+    and returns `1970-01-01` for US ETFs — which is most of this universe. The
+    sentinel is filtered here so callers get "no answer" instead of a date that
+    would silently pass every as-of gate.
+    """
+    from futu import Market, RET_OK, SecurityType
+
+    out: dict[str, str] = {}
+    fail: dict[str, str] = {}
+    codes = [c for c in dict.fromkeys(codes) if c]
+    by_market: dict[str, list[str]] = {}
+    for c in codes:
+        by_market.setdefault(market_of(c), []).append(c)
+    markets = {"US": Market.US, "HK": Market.HK}
+    with quote_ctx() as ctx:
+        for mkt, lst in by_market.items():
+            m = markets.get(mkt)
+            if m is None:
+                for c in lst:
+                    fail[c] = f"market {mkt} not licensed on this OpenD"
+                continue
+            for sec in (SecurityType.ETF, SecurityType.STOCK):
+                for i in range(0, len(lst), 200):
+                    ret, data = ctx.get_stock_basicinfo(m, sec, lst[i:i + 200])
+                    if ret != RET_OK:
+                        continue
+                    for _, r in data.iterrows():
+                        d = str(r.get("listing_date") or "")[:10]
+                        if d and d != _EPOCH_SENTINEL and d[:4].isdigit():
+                            out.setdefault(str(r["code"]), d)
+                    time.sleep(0.35)
+    return out, fail
+
+
+def earliest_bar(codes: Sequence[str], *, floor: str = "1990-01-01",
+                 verbose: bool = False) -> tuple[dict[str, str], dict[str, str]]:
+    """The earliest daily bar OpenD will serve, per code.
+
+    This is a *bound*, not an inception date, and the direction of the error is
+    what makes it usable. OpenD's US history stops around 2006-08-21 regardless
+    of how old the security is, so SPY and GLD both come back on that day. For
+    anything younger than the cap the first bar is the real thing — KMLM returns
+    2020-12-02, DBMF 2019-05-08, which are their actual launches.
+
+    So the value is never earlier than the true listing date, and an as-of gate
+    fed with it can only exclude an instrument that in fact existed; it can never
+    admit one that did not. Over-exclusion is the safe error for a replay, and
+    the one an undated row makes in the opposite direction.
+    """
+    from futu import AuType, KLType, RET_OK
+
+    out: dict[str, str] = {}
+    fail: dict[str, str] = {}
+    today = config.now_hkt().date().isoformat()
+    codes = [c for c in dict.fromkeys(codes) if c]
+    with quote_ctx() as ctx:
+        for code in codes:
+            if not priceable(code):
+                fail[code] = f"market {market_of(code)} not licensed on this OpenD"
+                continue
+            for attempt in range(3):
+                ret, data, _ = ctx.request_history_kline(
+                    code, start=floor, end=today,
+                    ktype=KLType.K_DAY, autype=AuType.QFQ, max_count=1,
+                )
+                if ret == RET_OK:
+                    if len(data):
+                        out[code] = str(data.iloc[0]["time_key"])[:10]
+                        if verbose:
+                            print(f"    {code:<12} {out[code]}")
+                    else:
+                        fail[code] = "no bars in range"
+                    break
+                msg = str(data)
+                if "frequency" in msg.lower() or "限频" in msg:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                fail[code] = msg[:200]
+                break
+            else:
+                fail[code] = "rate-limited after 3 attempts"
+            time.sleep(0.35)   # OpenD history quota: 60 requests / 30s
+    return out, fail

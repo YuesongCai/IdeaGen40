@@ -2244,6 +2244,11 @@ function backtestCard(){
       +'<thead><tr><th>挑法</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
       +'<tbody>'+rows+'</tbody></table></div>'
     +'<div class="card-note" style="margin-top:var(--space-3)">'
+      +'<b>这张表和上面的赛马图测的不是同一件事。</b>'
+      +'这里算的是「每条想法本身」——当期候选池里每条想法，按当时的收盘价买入、'
+      +fmtInt(sum.horizon_days)+' 天后卖出，赚了还是亏了。上面的赛马图算的是「账本」——'
+      +'挑法只选十条左右，还受仓位、止损、现金约束，两者结论不一致很正常：'
+      +'想法平均是对的，不等于按它建的仓这周赚钱。<br>'
       +esc(sum.disclaimer||'')+'</div>'
     +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">看完整回测（曲线 · 每笔持仓）›</button>'
     +'</div>';

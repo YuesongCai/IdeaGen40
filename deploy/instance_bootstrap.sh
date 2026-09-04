@@ -21,6 +21,11 @@ export DEBIAN_FRONTEND=noninteractive
 
 mkdir -p /opt/ideagen/app /opt/ideagen/config /opt/ideagen/oauth /opt/ideagen/health
 chmod 700 /opt/ideagen/config /opt/ideagen/oauth
+# The dashboard writes refreshed Olive tokens into the oauth mount, and the
+# image runs as uid 10001 (deploy/Dockerfile), so root-owned 0700 leaves it
+# with a PermissionError the moment a token needs renewing. Config stays
+# root-only: nothing in the container reads it, compose passes it by env_file.
+chown 10001:10001 /opt/ideagen/oauth
 STATUS=/opt/ideagen/health/index.html
 : > "$STATUS"
 say(){ echo "$(date -u +%FT%TZ)  $*" >> "$STATUS"; echo "STEP: $*"; }

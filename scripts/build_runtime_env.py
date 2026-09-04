@@ -82,9 +82,10 @@ def main() -> int:
         ("OLIVE_OAUTH_ISSUER", readenv("OLIVE_OAUTH_ISSUER")),
         ("OLIVE_OAUTH_CLIENT_ID", readenv("OLIVE_OAUTH_CLIENT_ID")),
         ("OLIVE_OAUTH_REFRESH_TOKEN", readenv("OLIVE_OAUTH_REFRESH_TOKEN")),
-        # Refreshed tokens must land somewhere writable and persistent, or
-        # every container restart burns the refresh token it was given.
-        ("IDEAGEN_OLIVE_TOKEN_FILE", "/opt/ideagen/config/olive_tokens.json"),
+        # No IDEAGEN_OLIVE_TOKEN_FILE here on purpose: compose.yaml sets it to
+        # the container path /run/ideagen-oauth/tokens.json, which is the
+        # /opt/ideagen/oauth mount, and an env_file value would be shadowed by
+        # that anyway. Putting it here twice only invites the two to disagree.
         # This instance is the one that runs the week. The laptop stays an
         # observer; two runners would race for the same period.
         ("IDEAGEN_WEEKLY_ROLE", "runner"),

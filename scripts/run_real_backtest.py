@@ -102,11 +102,48 @@ def _shelf_dating(con, held: set[str], window_start: str) -> dict:
     return out
 
 
-#: How many priced positions an arm must keep after the exclusion before its
-#: recomputed numbers are worth reading. Below this the swing is sampling noise
-#: with a percent sign on it, and printing it invites exactly the reading the
-#: whole panel refuses to make elsewhere.
-ROBUSTNESS_MIN_N = 20
+#: Two-sided α=0.05 critical values by degrees of freedom. At n=7 the normal
+#: value understates the interval by a quarter, and n=7 is exactly where these
+#: arms land after the exclusion — using z there would manufacture precision
+#: out of the smallest samples in the table.
+_T_CRIT = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447,
+           7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179,
+           13: 2.160, 14: 2.145, 15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101,
+           19: 2.093, 20: 2.086, 21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064,
+           25: 2.060, 26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042}
+
+
+def _crit(df: int) -> float:
+    return _T_CRIT.get(df, backtest.Z_ALPHA)
+
+
+def _mde_pct(rets: list[float]) -> float | None:
+    """The smallest mean this sample could have separated from zero.
+
+    (z_a + z_b)·sd/sqrt(n) at the same α=0.05 / power=0.80 the paired test uses,
+    so "too few" is derived here rather than picked. A flat count would have been
+    another threshold sitting next to the project's own, which is the two-yardsticks
+    problem this codebase keeps having to fix.
+
+    It is a *lower bound* on how blunt the check is, and deliberately so: positions
+    inside an arm share periods, holding windows and names, so the independent
+    sample is smaller than the count and the true detectable effect is larger.
+    `backtest.required_pairs` discounts exactly that for the paired test; doing it
+    properly here needs the same overlap accounting.
+
+    Because it is a lower bound, it can only ever refuse. A move smaller than it
+    is certainly invisible to this sample; a move larger than it is *not thereby
+    established*, because the real bound is higher by an unknown amount. That
+    asymmetry is why nothing here returns a verdict that asserts a shift.
+    """
+    n = len(rets)
+    if n < 2:
+        return None
+    mean = sum(rets) / n
+    sd = (sum((x - mean) ** 2 for x in rets) / (n - 1)) ** 0.5
+    if sd <= 0:
+        return None
+    return (_crit(n - 1) + backtest.Z_POWER) * sd / (n ** 0.5)
 
 
 def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
@@ -138,9 +175,11 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
                 if r.get("return_pct") is not None]
         if not rets:
             return None
+        mde = _mde_pct(rets)
         return {"n": len(rets),
                 "hit_rate": round(sum(1 for x in rets if x > 0) / len(rets), 3),
-                "mean_return_pct": round(sum(rets) / len(rets), 4)}
+                "mean_return_pct": round(sum(rets) / len(rets), 4),
+                "mde_pct": None if mde is None else round(mde, 3)}
 
     arms: dict[str, Any] = {}
     for arm in sorted({str(r["arm"]) for r in positions}):
@@ -153,28 +192,54 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
         entry: dict[str, Any] = {"full": full, "excluded": kept,
                                  "kept_share": (round(kept["n"] / full["n"], 3)
                                                 if kept else 0.0)}
-        if not kept or kept["n"] < ROBUSTNESS_MIN_N:
+        delta = (None if not kept else
+                 round(kept["mean_return_pct"] - full["mean_return_pct"], 4))
+        mde = kept.get("mde_pct") if kept else None
+        # The move has to clear what the remaining sample could have seen. A
+        # swing smaller than the sample's own detectable effect is not a finding
+        # about the strategy, and neither is a swing measured where no effect of
+        # any size could have been detected.
+        entry["delta_mean_pct"] = delta
+        n_kept = kept["n"] if kept else 0
+        held = f"（{n_kept} / {full['n']} 笔持仓保留）"
+        if mde is None or delta is None:
+            entry["verdict"] = "underpowered"
+            entry["why"] = f"剔除后剩 {n_kept} 笔已计价持仓，不足以计算可检出差距{held}"
+        elif abs(delta) < mde:
+            # Not "the arm is stable" — "this sample could not have seen a move
+            # this small". The distinction is the whole point of computing an
+            # MDE instead of counting rows.
             entry["verdict"] = "underpowered"
             entry["why"] = (
-                f"剔除后仅剩 {kept['n'] if kept else 0} 笔已计价持仓"
-                f"（< {ROBUSTNESS_MIN_N}），不足以判断结果是否依赖高频标的")
+                f"剔除后平均收益变动 {delta:+.2f} 个百分点，小于该样本自身的"
+                f"最小可检出差距 {mde:.2f} 个百分点，无法判断{held}")
         else:
-            delta = kept["mean_return_pct"] - full["mean_return_pct"]
-            entry["delta_mean_pct"] = round(delta, 4)
-            entry["verdict"] = "stable" if abs(delta) < 0.5 else "shifted"
+            # Deliberately not "shifted". The threshold it cleared is a lower
+            # bound on this sample's blindness, so clearing it rules the move
+            # in as worth watching and establishes nothing.
+            entry["verdict"] = "not_ruled_out"
             entry["why"] = (
-                f"剔除后平均收益变动 {delta:+.2f} 个百分点"
-                f"（{kept['n']} / {full['n']} 笔持仓保留）")
+                f"剔除后平均收益变动 {delta:+.2f} 个百分点，大于该样本可检出下界 "
+                f"{mde:.2f} 个百分点{held}；该下界忽略了同臂持仓的相关性，"
+                f"因此这是「未被排除」，不是「已确认变动」")
         arms[arm] = entry
 
     answerable = [a for a, e in arms.items() if e["verdict"] != "underpowered"]
+    # Kept separate from the verdict: how much of each arm's sample the
+    # exclusion removed is the plainest statement of why most of them cannot
+    # answer, and it needs no statistics to read.
+    for name, entry in arms.items():
+        entry["dropped_share"] = round(1.0 - entry["kept_share"], 3)
     return {"top_n": top_n, "dropped_instruments": dropped,
-            "min_n": ROBUSTNESS_MIN_N, "arms": arms,
+            "alpha": 0.05, "power": 0.80, "arms": arms,
             "n_answerable": len(answerable), "n_arms": len(arms),
             "note": (
-                "剔除本期最常被持有的标的后重算。样本不足的臂标为 underpowered "
-                "而不给数值：选择性强的臂整个窗口只有十几笔持仓，剔除十个标的会"
-                "拿走其中大半，剩下几笔算出的均值是关于那几笔的证据，不是关于策略的。")}
+                "剔除本期最常被持有的标的后重算。判据不是持仓条数，而是剩余样本"
+                "自己的最小可检出差距（α=0.05 / power=0.80，与配对检验同口径）："
+                "变动小于该门槛、或样本小到算不出门槛的臂，标为 underpowered。"
+                "该门槛忽略了同臂持仓之间的相关性，是真实盲区的下界，所以只能用来"
+                "否定：越过它的臂标为 not_ruled_out（值得盯，未确认），没有任何臂"
+                "会被这项检验判定为「确实依赖高频标的」。")}
 
 
 def _arms() -> list[str]:

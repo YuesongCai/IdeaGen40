@@ -13,6 +13,12 @@ instance: the secret crosses one encrypted channel and never lands on disk
 locally, never enters a command line, and never appears in a log.
 
   python3 scripts/deploy_ssh.py [--host 101.47.152.106] [--only base|config|up|verify]
+
+NOT YET RUN END TO END — 22 has never opened from here, so only the preflight
+has ever executed. Its sibling `deploy_cloud.py` shipped in the same state and
+turned out to reference blob-store attributes that do not exist, which nothing
+caught because the path could not run. Treat the first real invocation as a
+test: read what each step prints before assuming the next one is fine.
 """
 from __future__ import annotations
 

@@ -62,9 +62,18 @@ def main(argv: list[str]) -> int:
     from ideagen import platform as plat
     p = plat.load()
 
+    # Say which namespace this is reading. The instance's environment is
+    # production, so it is right by construction there; run the same script on
+    # the laptop and `plat.load()` hands back the operator's own bucket
+    # instead. Both are "successful" reads of different places, which is
+    # exactly the confusion that cost a deployment — so name the source out
+    # loud rather than leaving it to be inferred.
+    b = p.blobs
+    src = f"{getattr(b, 'bucket', '?')}/{getattr(b, 'prefix', '')}"
+    print(f"PULL_FROM {src}/{args.prefix}", file=sys.stderr)
+
     keys = sorted(k for k in p.blobs.list(args.prefix) if k.endswith(".db"))
     if not keys:
-        b = p.blobs
         print(f"PULL_NONE {getattr(b, 'bucket', '?')}/{getattr(b, 'prefix', '')}"
               f"/{args.prefix} 下没有任何快照——发布端多半写到了别处",
               file=sys.stderr)

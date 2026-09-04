@@ -2198,6 +2198,26 @@ function shelfCard(){
 /* ── 回测摘要（首屏一张卡：真实池、真实收盘、零模型复算） ──
    放在首屏而不是抽屉里，因为「回测过吗、赢了没」是任何人打开这个页面
    的第二个问题；详情仍在抽屉，卡片只回答那两句。 */
+/* 胜率好看不等于赢了。配对检验才是「能不能下结论」的正式判据，
+   把它紧贴表格放，避免一个 69% 被单独读成结论。 */
+function pairedVerdictLine(sum){
+  var pr=(sum&&sum.paired)||{};
+  var names=Object.keys(pr);
+  if(!names.length)return '';
+  var any=pr[names[0]]||{};
+  var n=any.n_pairs||sum.periods||0;
+  var won=names.filter(function(k){return pr[k]&&pr[k].conclusive});
+  if(won.length){
+    return '<div class="card-note" style="margin-top:var(--space-3)">'
+      +'配对检验：<b>'+won.map(function(k){return esc(backtestArmName(k))}).join('、')
+      +'</b> 已达到预注册的显著性门槛（'+fmtInt(n)+' 对样本）。</div>';
+  }
+  return '<div class="card-note" style="margin-top:var(--space-3)">'
+    +'配对检验：<b>目前没有任何一种挑法能被判定赢了全买对照</b>——'
+    +'只有 '+fmtInt(n)+' 对配对样本，远低于预注册门槛。'
+    +'上面的胜率是描述这段窗口发生了什么，不是对未来的预测，也还不足以排名。</div>';
+}
+
 function backtestCard(){
   var b=(S&&S.backtest)||{};
   var sum=b.summary||{};
@@ -2243,6 +2263,7 @@ function backtestCard(){
     +'<div class="table-wrap" style="margin-top:var(--space-4)"><table>'
       +'<thead><tr><th>挑法</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
       +'<tbody>'+rows+'</tbody></table></div>'
+    +pairedVerdictLine(sum)
     +'<div class="card-note" style="margin-top:var(--space-3)">'
       +'<b>这张表和上面的赛马图测的不是同一件事。</b>'
       +'这里算的是「每条想法本身」——当期候选池里每条想法，按当时的收盘价买入、'

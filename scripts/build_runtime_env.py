@@ -64,6 +64,12 @@ def main() -> int:
         ("IDEAGEN_INFERENCE_BASE_URL", ARK_BASE),
         ("IDEAGEN_INFERENCE_MODE", "modelark"),
         ("IDEAGEN_DASH_KEY", readenv("IDEAGEN_DASH_KEY")),
+        # The proxy asks the person for a username and password; the key above is
+        # what the proxy then presents upstream on their behalf. Two secrets, but
+        # only one of them is ever typed by a human, and it never enters a URL,
+        # a browser history, or an intermediate proxy's access log.
+        ("IDEAGEN_DASH_USER", readenv("IDEAGEN_DASH_USER")),
+        ("IDEAGEN_DASH_PASSWORD", readenv("IDEAGEN_DASH_PASSWORD")),
         ("WISBURG_MCP_URL", "https://mcp.wisburg.com/mcp"),
         ("WISBURG_MCP_TOKEN", readenv("WISBURG_MCP_TOKEN_CLOUD")),
         ("IDEAGEN_CLOUD_WISBURG_ENABLED", "true"),

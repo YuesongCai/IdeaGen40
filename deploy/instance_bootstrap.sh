@@ -80,7 +80,39 @@ say "starting dashboard + proxy"
 pkill -f "http.server 80" >/dev/null 2>&1 || true
 sleep 1
 export IMAGE_TAG="$SHA"
-export IDEAGEN_PUBLIC_SITE=":80"
+
+# HTTPS, not because a dashboard is glamorous but because the credential that
+# opens it travels on every single request. Let's Encrypt issues short-lived
+# certificates for bare IPs, which is what this host has instead of a name.
+PUBLIC_IP=$(curl -fsS --max-time 10 http://100.96.0.96/latest/meta-data/public-ipv4 2>/dev/null \
+            || echo "101.47.152.106")
+export IDEAGEN_PUBLIC_HOST="$PUBLIC_IP"
+export IDEAGEN_PUBLIC_SITE="https://$PUBLIC_IP"
+export IDEAGEN_DEFAULT_SNI="$PUBLIC_IP"
+
+# The proxy needs three values and only three: who may log in, the bcrypt of
+# their password, and the key it presents upstream on their behalf. They are
+# read out of runtime.env one at a time rather than by sourcing it, so a
+# database password cannot ride along into a container that only forwards HTTP.
+getenv(){ sed -n "s/^$1=//p" /opt/ideagen/config/runtime.env | tail -1; }
+export IDEAGEN_DASH_KEY="$(getenv IDEAGEN_DASH_KEY)"
+export IDEAGEN_DASH_USER="$(getenv IDEAGEN_DASH_USER)"
+DASH_PW="$(getenv IDEAGEN_DASH_PASSWORD)"
+if [ -n "$DASH_PW" ] && [ -n "$IDEAGEN_DASH_USER" ]; then
+  # caddy hashes its own passwords; nothing else here needs a bcrypt library,
+  # and the plaintext never leaves this shell.
+  export IDEAGEN_DASH_HASH="$(docker run --rm caddy:2-alpine \
+      caddy hash-password --plaintext "$DASH_PW" 2>/dev/null | tr -d '\r\n')"
+fi
+if [ -z "${IDEAGEN_DASH_HASH:-}" ]; then
+  # Refusing here is the point: an empty hash makes Caddy's basic_auth block
+  # unparseable, and a proxy that will not start looks exactly like a dead
+  # instance. Say which value is missing instead.
+  say "缺少 IDEAGEN_DASH_USER / IDEAGEN_DASH_PASSWORD（或 hash 生成失败），代理不会启动"
+  probe_up
+  exit 1
+fi
+unset DASH_PW
 
 # The database the dashboard reads starts out with no tables at all, and the
 # page's first request is what discovers that — as a 500 quoting a MySQL error,
@@ -103,9 +135,15 @@ if docker compose -f deploy/compose.yaml up -d dashboard proxy; then
   # back while Caddy was still starting, so Caddy could never bind it and
   # restart:always turned that into a crash loop. The port stays Caddy's unless
   # the stack has genuinely failed to answer.
+  # A 401 is a healthy proxy: the login prompt is the proxy answering. Only a
+  # refused connection or a timeout means Caddy never came up — checking for
+  # 200 here would report a working stack as broken the moment we added a
+  # password.
   ok=""
-  for i in $(seq 1 24); do
-    if curl -fsS --max-time 5 http://127.0.0.1/healthz >/dev/null 2>&1; then ok=1; break; fi
+  for i in $(seq 1 36); do
+    code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 6 \
+           "https://127.0.0.1/healthz" 2>/dev/null || echo 000)
+    case "$code" in 200|401) ok=1; break;; esac
     sleep 5
   done
   if [ -n "$ok" ]; then

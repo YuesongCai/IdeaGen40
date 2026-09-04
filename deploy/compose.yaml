@@ -66,6 +66,13 @@ services:
       IDEAGEN_PUBLIC_SITE: "${IDEAGEN_PUBLIC_SITE:-:80}"
       # IP 客户端可能不发送 SNI；IP HTTPS 时设置为相同的公网 IP。
       IDEAGEN_DEFAULT_SNI: "${IDEAGEN_DEFAULT_SNI:-localhost}"
+      IDEAGEN_PUBLIC_HOST: "${IDEAGEN_PUBLIC_HOST:-101.47.152.106}"
+      # 代理这一层管人的登录；dashboard 那把 key 由代理代发，不进浏览器。
+      # 这三个是代理需要的**全部**凭证——proxy 不挂 env_file，是为了不让
+      # 数据库口令进到一个只负责转发的容器里。
+      IDEAGEN_DASH_USER: "${IDEAGEN_DASH_USER:-}"
+      IDEAGEN_DASH_HASH: "${IDEAGEN_DASH_HASH:-}"
+      IDEAGEN_DASH_KEY: "${IDEAGEN_DASH_KEY:-}"
     ports:
       - "80:80"
       - "443:443"         # 配好域名与证书后启用；仅 HTTP 联调期可临时只留 80

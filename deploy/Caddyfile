@@ -30,5 +30,24 @@
 }
 
 {$IDEAGEN_PUBLIC_SITE::80} {
-	reverse_proxy dashboard:8765
+	# 用户名 + 密码，浏览器自己弹框、自己记住。
+	# 之前是 `?key=<钥匙>`：第一次访问要把钥匙贴进地址栏，于是钥匙进了 URL、
+	# 浏览器历史和沿途每一段代理日志。密码走 Authorization 头，不进 URL，
+	# 也不需要人把秘密复制来复制去——但它每个请求都在链路上重放一次，
+	# 所以这一段只有在 HTTPS 下才成立，见上面的 IDEAGEN_PUBLIC_SITE。
+	basic_auth {
+		{$IDEAGEN_DASH_USER} {$IDEAGEN_DASH_HASH}
+	}
+
+	# 门禁到此为止。dashboard 自己那道 IDEAGEN_DASH_KEY 由代理代为满足，
+	# 人不该被要求过两道同样的门；钥匙留在服务端，永远不出现在浏览器里。
+	reverse_proxy dashboard:8765 {
+		header_up X-Dash-Key {$IDEAGEN_DASH_KEY}
+	}
+}
+
+# 明文进来的一律送去 HTTPS。留一个 :80 是因为人手输地址时不会打 https://，
+# 而一个「打不开」的首页和一个不安全的首页一样糟。
+http://{$IDEAGEN_PUBLIC_HOST:101.47.152.106} {
+	redir https://{host}{uri} permanent
 }

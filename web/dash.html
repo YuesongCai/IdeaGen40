@@ -3619,7 +3619,10 @@ function universeCard(){
 
   var kv=function(k,v){return '<div class="meta-kv"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>'};
   var meta='<div class="bt-meta">'
-    +kv('标的数',n!==null?'<span class="num">'+fmtInt(n)+'</span>':'—')
+    /* 这个数是本期那次清单抓取的行数，不是货架里一共有多少标的，也不是
+       其中有多少能取到行情。三个数同时存在，标签必须说清自己数的是哪一个，
+       否则读者会把它当成「能买的标的有多少」。 */
+    +kv('本期清单行数',n!==null?'<span class="num" title="本期最近一次标的清单抓取返回的行数。它既不是货架里标的总数，也不是其中能取到行情的数量——这三个数不相等。">'+fmtInt(n)+'</span>':'—')
     +kv('期次',feed&&feed.as_of?'<span class="num">'+esc(feed.as_of)+'</span>':'—')
     +kv('来源',feed?esc(feedMeta(feed.feed)[0]):'—')
     +kv('状态',feed?(feed.ok?badge('success','正常'):badge('error','异常')):'—')

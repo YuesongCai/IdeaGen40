@@ -245,6 +245,43 @@ def _generation_head_to_head(con, days: list, horizon_days: int) -> dict:
     }
 
 
+def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
+                horizon_days: int, excluded: list[str]) -> str:
+    """The caveats, numbered from the list rather than by hand.
+
+    The count used to be a literal. It said "两项" and listed three, because the
+    holding-period note was appended later and the number in front of it was not
+    connected to anything — a count that does not come from the list it counts
+    drifts the first time someone adds to the list, and it drifted here.
+
+    The holding-period caveat also sat under the look-ahead heading, which is
+    backwards: look-ahead is having used information from after the day, and a
+    truncated window is not having enough of it. Filed separately, and the
+    difference stated, because a reader who accepts "前视风险三项" has been told
+    something false about what went wrong.
+    """
+    parts = ["候选池与价格均为真实数据，as-of 在文档层面严格钳制。"]
+    if n_backfill:
+        risks = ["模型权重已见过该日期之后的信息，无法用代码消除", asof_note]
+        marks = "①②③④⑤"
+        parts.append(f"其中 {n_backfill} 期是事后补跑（backfill）。前视风险 "
+                     f"{len(risks)} 项：" + "；".join(
+                         f"{marks[i]}{r.rstrip('；。')}" for i, r in enumerate(risks))
+                     + "。")
+        fracs = [v["complete_frac"] or 0 for v in horizon["arms"].values()] or [0]
+        parts.append(
+            "另有一项口径限制，与前视无关——前视是用了未来的信息，而这一项是未来"
+            f"还不够：持有期表中标注 {horizon_days} 天，但只有 "
+            f"{(horizon['complete_frac'] or 0) * 100:.0f}% 的持仓跑满该窗口"
+            f"（各臂 {min(fracs) * 100:.0f}–{max(fracs) * 100:.0f}%，并不一致），"
+            "未满窗口的收益与满窗口的混在同一列；只用跑满部分重算的结果见 "
+            "horizon_completeness。")
+        parts.append("结论性判断以 live 期为准。")
+    if excluded:
+        parts.append(f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。")
+    return "".join(parts)
+
+
 def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
     """How much of a table labelled "30 天" actually ran 30 days.
 
@@ -715,12 +752,16 @@ def main(argv: list[str]) -> int:
     dating = _shelf_dating(
         con, {str(r.get("instrument_id")) for r in positions if r.get("instrument_id")},
         days[0].isoformat())
+    # Counted, not asserted. The sentence used to announce "两项" and then list
+    # three, because the holding-period note was appended later and the number
+    # in front of it was a literal. A count that does not come from the list it
+    # counts drifts the moment anyone adds to the list.
     if dating["held_dated"] and not dating["held_after_window_start"]:
         # The gate can only be said to have cleared the risk for the rows it was
         # able to judge; the undated remainder is reported next to it, not folded
         # into a single reassuring sentence.
         asof_note = (
-            f"②货架上架日期：本次回放持有的 {dating['held_total']} 个标的中 "
+            f"货架上架日期：本次回放持有的 {dating['held_total']} 个标的中 "
             f"{dating['held_dated']} 个已定上架日期，最新一个为 "
             f"{dating['held_latest_first_seen']}，均早于窗口起点 "
             f"{days[0].isoformat()}，该项前视风险在这些标的上不成立；"
@@ -728,7 +769,7 @@ def main(argv: list[str]) -> int:
             f"产品，无行情代码）仍未定日期，按当期资格过滤时一律放行。")
     else:
         asof_note = (
-            f"②货架上有 {dating['shelf_undated']} 个标的缺少上架日期，按当期资格"
+            f"货架上有 {dating['shelf_undated']} 个标的缺少上架日期，按当期资格"
             f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
@@ -739,21 +780,9 @@ def main(argv: list[str]) -> int:
         "period_classification": classes,
         "n_live_periods": len(days) - n_backfill,
         "n_backfill_periods": n_backfill,
-        "disclaimer": (
-            "候选池与价格均为真实数据，as-of 在文档层面严格钳制。"
-            + (f"其中 {n_backfill} 期是事后补跑（backfill），前视风险两项："
-               "①模型权重已见过该日期之后的信息，无法用代码消除；"
-               + asof_note
-               + (f"③持有期：表中标注 {args.horizon_days} 天，但只有 "
-                  f"{(horizon['complete_frac'] or 0) * 100:.0f}% 的持仓跑满该窗口"
-                  f"（各臂 {min((v['complete_frac'] or 0) for v in horizon['arms'].values()) * 100:.0f}"
-                  f"–{max((v['complete_frac'] or 0) for v in horizon['arms'].values()) * 100:.0f}%"
-                  "，并不一致），未满窗口的收益与满窗口的混在同一列。"
-                  "只用跑满部分重算的结果见 horizon_completeness。")
-               + "结论性判断以 live 期为准。"
-               if n_backfill else "")
-            + f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。"
-        ),
+        "disclaimer": _disclaimer(
+            n_backfill=n_backfill, asof_note=asof_note, horizon=horizon,
+            horizon_days=args.horizon_days, excluded=excluded),
         "undated_shelf_instruments": dating["shelf_undated"],
         "shelf_dating": dating,
         "robustness_drop_top": robustness,

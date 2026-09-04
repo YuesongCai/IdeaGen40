@@ -41,3 +41,6 @@ data/exports/
 # cloud resource inventory (account ids, EIPs, resource ids) — operator-local
 data/cloud_inventory.md
 web/_site/
+
+# ask 问答审计日志（含问题原文，operator-local）
+data/ask_log.jsonl

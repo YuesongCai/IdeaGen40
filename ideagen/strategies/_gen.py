@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from .. import universe as uni
@@ -30,6 +31,10 @@ from ..strategy import RunContext, Verdict
 #: Ideas per topic. The mandate asks for 20; five topics therefore put ~100
 #: candidates in front of 筛选C, which holds 10.
 PER_TOPIC = 20
+
+#: Topics asked for concurrently. Five is the mandate's topic count, so a normal
+#: period issues one wave rather than forming a queue.
+MAX_TOPIC_WORKERS = 5
 
 #: One month, fixed at generation. The horizon is not a model choice — the whole
 #: portfolio is built on a one-month momentum realisation window, and a strategy
@@ -336,28 +341,28 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
     topups: dict[str, int] = {}
     unmatched: list[str] = []
 
-    for t in ctx.topics:
-        tid = str(t.get("topic_id"))
-        try:
-            prompt, n_docs = build_prompt(ctx, t)
-            raw, n = ask_json(ctx, prompt)
-            calls += n
-        except Exception as e:  # noqa: BLE001 — one topic must not lose the rest
-            errors[tid] = f"{type(e).__name__}: {e}"
-            per_topic[tid] = 0
-            continue
-        if not n_docs:
-            unmatched.append(tid)
+    # Topics run concurrently. They are independent by construction — one
+    # prompt, one topic, one answer — and running them in series is five long
+    # waits in a row: with the top-up round a period issues up to 20 model
+    # calls per method, which is the difference between a weekly run that
+    # finishes inside its window and one still going when the market opens.
+    # Workers only call the model and mint; every shared counter is updated on
+    # the main thread below, walking ctx.topics in 筛选A's order, so the output
+    # does not depend on which call happened to return first.
+    def _one_topic(t: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {"calls": 0}
+        prompt, out["n_docs"] = build_prompt(ctx, t)
+        raw, n = ask_json(ctx, prompt)
+        out["calls"] += n
         if isinstance(raw, dict):
             raw = raw.get("ideas") or raw.get("data") or []
-        got, bad = mint(raw, ctx, t, method, extra_keys=extra_keys,
-                        require_keys=require_keys)
+        got, out["bad"] = mint(raw, ctx, t, method, extra_keys=extra_keys,
+                               require_keys=require_keys)
         # Over-production is recorded, not just truncated. Twenty kept out of
-        # thirty-five offered is a different behaviour from twenty out of twenty,
-        # and the truncation is ours — so the arm should not be credited or blamed
-        # for ideas the harness threw away.
-        if len(got) > PER_TOPIC:
-            over[tid] = len(got) - PER_TOPIC
+        # thirty-five offered is a different behaviour from twenty out of
+        # twenty, and the truncation is ours — so the arm should not be
+        # credited or blamed for ideas the harness threw away.
+        out["over"] = max(0, len(got) - PER_TOPIC)
         got = got[:PER_TOPIC]
         # One bounded top-up when the model under-delivers. The mandate says 20
         # per topic; a single call reliably returns 4-11 (observed 08-26 across
@@ -374,19 +379,53 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
                            + "满足同样格式与要求的新想法，标的必须来自可用清单且"
                            + "不得重复已用标的：" + "、".join(used) + "。")
                 raw2, n2 = ask_json(ctx, prompt2)
-                calls += n2
+                out["calls"] += n2
                 if isinstance(raw2, dict):
                     raw2 = raw2.get("ideas") or raw2.get("data") or []
-                got2, bad2 = mint(raw2, ctx, t, method, extra_keys=extra_keys,
-                                  require_keys=require_keys)
+                got2, out["bad2"] = mint(raw2, ctx, t, method,
+                                         extra_keys=extra_keys,
+                                         require_keys=require_keys)
                 have = {i["instrument_id"] for i in got}
                 fresh = [i for i in got2
                          if i["instrument_id"] not in have][:PER_TOPIC - len(got)]
-                topups[tid] = len(fresh)
+                out["topup"] = len(fresh)
                 got.extend(fresh)
-                dropped.update({f"{tid}/补充轮/{k}": v for k, v in bad2.items()})
             except Exception as e:  # noqa: BLE001 — the first batch still stands
-                errors[f"{tid}/补充轮"] = f"{type(e).__name__}: {e}"
+                out["topup_error"] = f"{type(e).__name__}: {e}"
+        out["got"] = got
+        return out
+
+    done: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(
+            max_workers=max(1, min(len(ctx.topics), MAX_TOPIC_WORKERS))) as ex:
+        futures = {ex.submit(_one_topic, t): str(t.get("topic_id"))
+                   for t in ctx.topics}
+        for fut in as_completed(futures):
+            tid = futures[fut]
+            try:
+                done[tid] = fut.result()
+            except Exception as e:  # noqa: BLE001 — one topic must not lose the rest
+                done[tid] = {"error": f"{type(e).__name__}: {e}"}
+
+    for t in ctx.topics:
+        tid = str(t.get("topic_id"))
+        out = done.get(tid) or {"error": "没有返回结果"}
+        if out.get("error"):
+            errors[tid] = out["error"]
+            per_topic[tid] = 0
+            continue
+        calls += int(out.get("calls") or 0)
+        if not out.get("n_docs"):
+            unmatched.append(tid)
+        if out.get("over"):
+            over[tid] = out["over"]
+        if out.get("topup"):
+            topups[tid] = out["topup"]
+        if out.get("topup_error"):
+            errors[f"{tid}/补充轮"] = out["topup_error"]
+        dropped.update({f"{tid}/补充轮/{k}": v
+                        for k, v in (out.get("bad2") or {}).items()})
+        got, bad = out.get("got") or [], out.get("bad") or {}
         ideas.extend(got)
         dropped.update({f"{tid}/{k}": v for k, v in bad.items()})
         per_topic[tid] = len(got)

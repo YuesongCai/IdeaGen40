@@ -1525,7 +1525,7 @@ function hgepBreakdown(r){
   var mx=Math.max.apply(null,comps.concat([1]));
   var rows=comps.map(function(c,i){
     return '<span class="fk" title="'+esc(G[i])+'">'+L[i]+'</span>'
-      +'<span class="fv">'+numOr(raw[i])+(i===3?'<span style="color:var(--color-text-tertiary)"> →'+eff[i].toFixed(1)+'</span>':'')+'</span>'
+      +'<span class="fv">'+numOr(raw[i])+((i===3&&Math.abs(eff[i]-(raw[i]||0))>0.05)?'<span style="color:var(--color-text-tertiary)" title="反向计分：参与加权的是 100−P"> → '+eff[i].toFixed(1)+'</span>':'')+'</span>'
       +'<span class="fw">×'+W[i].toFixed(2)+'</span>'
       +'<span class="fbar"><i style="width:'+(c/mx*100).toFixed(1)+'%;background:'+C[i]+'"></i></span>'
       +'<span class="fc">'+c.toFixed(1)+'</span>';
@@ -3260,10 +3260,22 @@ function pairedVerdictLine(sum){
       +fmtInt(n)+' 个周期）。</div>';
   }
   if(flat.length){
+    /* 「样本量已足够」是这一行里最强的一句话，而它站在很薄的地基上：
+     * 达标的臂之所以达标，是因为它的实测标准差极小，把所需样本压到 1~2 个；
+     * 而这个标准差是从 6 个互相重叠的窗口估出来的，后端自己也写着重叠会
+     * 低估 sd、门槛只是下限。结论不改，但这个限定必须和结论同框——
+     * 否则「已经够了」会被读成一个比它实际更硬的判定。 */
+    var lim=flat.map(function(k){
+      var v=pr[k]||{};
+      return backtestArmName(k)+'：有效独立样本 n_eff='+(v.n_eff!==undefined?Number(v.n_eff).toFixed(1):'—')
+        +'，所需 '+fmtInt(v.required_pairs)+'（门槛低是因为该臂实测标准差极小）';
+    }).join('；');
     return '<div class="card-note" style="margin-top:var(--space-3)">'
       +'配对检验：<b>无选取策略被判定跑赢全量基准。</b>其中 '
       +flat.map(function(k){return esc(backtestArmName(k))}).join('、')
-      +' 的样本量已足以检出预注册的差距，但差距未出现，属于未检出优势而非样本不足；其余各臂样本量仍不足。</div>';
+      +' 的样本量已足以检出预注册的差距，但差距未出现，属于未检出优势而非样本不足'
+      +'<span class="gloss" title="'+esc('这个「已足够」的判定本身建立在实测标准差上，而标准差取自 '+fmtInt(n)+' 个互相重叠的持有窗口——重叠会低估标准差，因此所需样本量是下限，达标结论也应按下限理解。'+lim+'。换句话说：这是「在当前口径下没看出优势」，不等于「已经确证这条臂没有优势」。')+'">ⓘ</span>'
+      +'；其余各臂样本量仍不足。</div>';
   }
   return '<div class="card-note" style="margin-top:var(--space-3)">'
     +'配对检验：<b>当前无选取策略被判定跑赢全量基准</b>——'
@@ -4634,7 +4646,6 @@ function stageTopicsBody(d){
         return '<button type="button" class="ftab'+(t===foc?' on':'')+'" onclick="setDrawerFocus(\''+jss(t)+'\')">'+esc(t)+'</button>';
       }).join('')+'</div>';
   }
-  var dotLegend='<div class="card-note" style="margin-bottom:var(--space-2)">圈内数字 = 计数对照臂对同一主题的排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span>；绿圈 = 计数臂亦选入前 5，灰圈 = 未选入</div>';
   var agree0=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
   var hOnly0=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
   var cOnly0=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
@@ -4703,33 +4714,22 @@ function stageTopicsBody(d){
     +'<button type="button" class="exp-btn" onclick="openAskDrawer(\'selection\',\'topics\')" '
     +'title="把本期全部主题的打分表与计数对照臂交给模型，仅依据这两份当期封存材料作答">'
     +'问它当时凭什么选这 '+nIn+' 个 ›</button></div>';
-  var html=tabs+askStep+dotLegend+disLine
-    +'<div class="race-sec"><div class="race-sec-h"><span class="t">入选 · '+nIn+'</span><span class="s">进入筛选B，各生成方法据此写想法</span></div>'
-    +'<div class="race">'+inHTML+'</div></div>'
-    +(nOut?('<div class="race-sec lost"><div class="race-sec-h"><span class="t">落选 · '+nOut+'</span><span class="s">按综合分排序，每条标注落选理由与分差</span></div>'
-      +'<div class="race">'+outHTML+'</div></div>'):'');
-  var agree=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
-  var hOnly=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
-  var cOnly=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
-  var cmp='';
-  if(ctrl){
-    cmp='<div style="margin-top:var(--space-4);font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)">'
-      +'两臂本期重叠 <b class="num">'+agree.length+'</b> 个'
-      +(hOnly.length?'；仅语义臂选入 '+hOnly.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(' '):'')
-      +(cOnly.length?'；仅计数臂选入 '+cOnly.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join(' '):'')
-      +'。</div>';
-  }
   var legend='<div class="race-legend">'
     +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度 <span class="gloss" title="'+esc(HGEP_GLOSS.H)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 分歧 <span class="gloss" title="'+esc(HGEP_GLOSS.G)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 实据 <span class="gloss" title="'+esc(HGEP_GLOSS.E)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 已定价 <span class="gloss" title="'+esc(HGEP_GLOSS.P)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-1);opacity:.34"></span>落选</span>'
-    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>计数对照臂排名 <span class="gloss" title="'+esc(COUNT_GLOSS)+'">ⓘ</span></span>'
+    +'<span><span class="race-cnt pick" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>计数臂亦选入</span>'
+    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">7</span>计数臂未选入 <span class="gloss" title="'+esc('圈内数字 = 计数对照臂对同一主题的排名。'+COUNT_GLOSS)+'">ⓘ</span></span>'
     +'</div>';
+  var html=tabs+askStep+legend+disLine
+    +'<div class="race-sec"><div class="race-sec-h"><span class="t">入选 · '+nIn+'</span><span class="s">进入筛选B，各生成方法据此写想法</span></div>'
+    +'<div class="race">'+inHTML+'</div></div>'
+    +(nOut?('<div class="race-sec lost"><div class="race-sec-h"><span class="t">落选 · '+nOut+'</span><span class="s">按综合分排序，每条标注落选理由与分差</span></div>'
+      +'<div class="race">'+outHTML+'</div></div>'):'');
   if(foc&&d&&!d.scrolled){drawerScrollSel='#topicrow-'+foc;d.scrolled=true}
-  return html+legend+cmp
-    +epi('语义打分相对计数打分的增量尚未验证，对照臂每周并行记录；条内色块为四项因子对综合分的贡献');
+  return html+epi('语义打分相对计数打分的增量尚未验证，对照臂每周并行记录');
 }
 
 /* ── 主题证据抽屉（第 2/3 层） ── */
@@ -5342,6 +5342,11 @@ function askPickerBody(){
   if(!subs.length)return '<div class="empty-sm">本期还没有可追问的对象——周跑尚未产出主题与持仓。</div>';
   var groups={},order=[];
   subs.forEach(function(x){if(!groups[x.group]){groups[x.group]=[];order.push(x.group)}groups[x.group].push(x)});
+  /* 全局入口要知道读者正站在哪一页：从持仓页点开，先列持仓；从证据页点开，
+     先列选取策略。同一份清单，只是把手边的那组提到前面。 */
+  var PREFER={holdings:'持仓',evidence:'选取策略',method:'这一步',overview:'这一步'};
+  var first=PREFER[current];
+  if(first&&groups[first])order=[first].concat(order.filter(function(g){return g!==first}));
   return '<div class="quiet" style="margin-bottom:var(--space-2)">'
       +'答案只从这次运行当时封存的材料里来：运行日志、当期研报正文、评分与判定记录。'
       +'材料里没有的，它会直说没有，不会补全，也不会用之后发生的事情回答。</div>'
@@ -5688,14 +5693,23 @@ function askSubjects(){
     out.push({kind:'selector',id:b.selector,group:'选取策略',
               label:m[1],sub:m[3]||'为什么这样选'});
   });
-  var seen={};
+  /* 持仓按共识度排：被越多账本独立选中的标的越值得先问一句为什么。
+     字母序不携带信息。 */
+  var held={};
   (aggBooks()||{books:[]}).books.forEach(function(b){
     (b.open_positions||[]).forEach(function(pos){
-      var id='pool:'+bareCode(pos.code);
-      if(seen[id])return;seen[id]=1;
-      out.push({kind:'idea',id:id,group:'持仓',
-                label:bareCode(pos.code),sub:'为什么买它'});
+      var c=bareCode(pos.code);
+      if(!held[c])held[c]={n:0,theme:pos.theme_id||''};
+      held[c].n++;
     });
+  });
+  var nb=currentBooks().length||1;
+  Object.keys(held).sort(function(a,b){
+    return held[b].n-held[a].n || (a<b?-1:1);
+  }).forEach(function(c){
+    out.push({kind:'idea',id:'pool:'+c,group:'持仓',label:c,
+              sub:held[c].n+'/'+nb+' 个账本选中'
+                 +(held[c].theme?' · '+(topicLabel(held[c].theme)||held[c].theme):'')});
   });
   return out;
 }

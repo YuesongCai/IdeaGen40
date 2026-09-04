@@ -45,11 +45,17 @@ def main(argv: list[str]) -> int:
         env.setdefault("IDEAGEN_INFERENCE_BASE_URL",
                        "https://ark.ap-southeast.bytepluses.com/api/v3")
         env["IDEAGEN_INFERENCE_MODE"] = "modelark"
-        # The local proxy hangs on full-size generation responses (a small probe
-        # returns fine, a real prompt does not), so inference goes direct.
-        for var in ("NO_PROXY", "no_proxy"):
-            env[var] = ",".join(filter(None, [
-                env.get(var, ""), "ark.ap-southeast.bytepluses.com"]))
+        # Whether inference should bypass the local proxy is not a constant.
+        # Within one afternoon: the proxy hung on full-size generation
+        # responses while direct worked, then direct started getting reset by
+        # peer while the proxy answered in under three seconds. Hard-coding
+        # either one strands the run on the day the network flips, so the
+        # default follows the system settings and IDEAGEN_INFERENCE_DIRECT=1
+        # switches to direct when the proxy is the broken side.
+        if env.get("IDEAGEN_INFERENCE_DIRECT") == "1":
+            for var in ("NO_PROXY", "no_proxy"):
+                env[var] = ",".join(filter(None, [
+                    env.get(var, ""), "bytepluses.com"]))
     return subprocess.run(
         [PYBIN, "-m", "ideagen.cli", "serve", *argv],
         cwd=ROOT, env=env).returncode

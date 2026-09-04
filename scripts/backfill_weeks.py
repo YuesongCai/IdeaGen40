@@ -61,14 +61,14 @@ def main(argv: list[str]) -> int:
         # The weekly-role guard is about the *scheduler* not inventing failures;
         # an explicit backfill is a deliberate operator action, not a tick.
         "IDEAGEN_WEEKLY_ROLE": "runner",
-        # Inference must not go through the local HTTP proxy. A small probe
-        # returns fine, but a real generation prompt (two dozen documents in,
-        # twenty ideas out) hangs there indefinitely — observed 2026-09-04:
-        # 17 minutes, 1.5s of CPU, one ESTABLISHED socket to 127.0.0.1:7897.
-        "NO_PROXY": ",".join(filter(None, [
-            env.get("NO_PROXY", ""), "ark.ap-southeast.bytepluses.com"])),
-        "no_proxy": ",".join(filter(None, [
-            env.get("no_proxy", ""), "ark.ap-southeast.bytepluses.com"])),
+        # See scripts/tick.py: which side of the proxy works flips, so it is
+        # a switch rather than a constant. IDEAGEN_INFERENCE_DIRECT=1 forces
+        # direct; the default follows the system proxy settings.
+        **({"NO_PROXY": ",".join(filter(None, [env.get("NO_PROXY", ""),
+                                               "bytepluses.com"])),
+            "no_proxy": ",".join(filter(None, [env.get("no_proxy", ""),
+                                               "bytepluses.com"]))}
+           if env.get("IDEAGEN_INFERENCE_DIRECT") == "1" else {}),
         "IDEAGEN_INFERENCE_TIMEOUT_SECONDS": env.get(
             "IDEAGEN_INFERENCE_TIMEOUT_SECONDS", "420"),
     })

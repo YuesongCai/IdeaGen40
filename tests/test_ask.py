@@ -341,7 +341,7 @@ class AuditBundleCase(_FrozenRun, unittest.TestCase):
         import zipfile
 
         from ideagen import audit
-        blob, name = audit.build(self.p, RUN_ID)
+        blob, name = audit.build(self.p, RUN_ID, con=self.con)
         self.assertIsNotNone(blob, name)
         return zipfile.ZipFile(io.BytesIO(blob)), name
 
@@ -375,6 +375,35 @@ class AuditBundleCase(_FrozenRun, unittest.TestCase):
             for secret in ("ideagen-1234567890", "/Users/operator",
                            "operator-macbook.local"):
                 self.assertNotIn(secret, text, f"{secret} leaked in {member}")
+
+    def test_corpus_manifest_carries_receipts_but_not_bodies(self):
+        """What the run fetched and how — the part that makes a citation
+        checkable offline — without the licensed text itself."""
+        import json as _json
+        z, _ = self._bundle()
+        name = next((n for n in z.namelist() if n.startswith("07_")), None)
+        self.assertIsNotNone(name, z.namelist())
+        rows = [_json.loads(l) for l in
+                z.read(name).decode().strip().split("\n") if l]
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertIn("retrieval", r)
+            self.assertIn("content_hash", r)
+            self.assertIn("body_len", r)
+            self.assertNotIn("body", r)
+
+    def test_a_citation_resolves_inside_the_bundle(self):
+        """The point of shipping the manifest: no live system needed to check
+        that an idea's source exists and which call pulled it."""
+        import json as _json
+        z, _ = self._bundle()
+        manifest = {
+            _json.loads(l)["doc_id"]: _json.loads(l)
+            for l in z.read(next(n for n in z.namelist()
+                                 if n.startswith("07_"))).decode().strip().split("\n")
+            if l}
+        self.assertIn("feed:0", manifest)
+        self.assertTrue(manifest["feed:0"]["title"])
 
     def test_port_health_survives_without_its_meta(self):
         """Stripping identity must not cost the reader the health readout."""

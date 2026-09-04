@@ -75,6 +75,46 @@ def _ask_entries(run_id: str) -> list[dict]:
     return out
 
 
+def _corpus_manifest(run: dict, con=None) -> bytes | None:
+    """One row per report the run froze: where it came from, and how.
+
+    The Nexus audit package the team wants to match records what the AI used
+    and what it fetched. For this system that is the retrieval receipt already
+    stored beside every document — the exact call that pulled it — plus the
+    content hash, so a reader can confirm the report behind a citation is the
+    same text the run scored. Titles and receipts only; the licensed body
+    stays with its source, which is why `body_len` is here and `body` is not.
+    """
+    try:
+        from . import db, config  # noqa: PLC0415
+        from datetime import date as _date, timedelta as _td  # noqa: PLC0415
+        # The caller's connection when it has one: reaching for a global here
+        # would read a different database than the rest of the bundle.
+        con = con if con is not None else db.init()
+        as_of = _date.fromisoformat(str(run["as_of"]))
+        days = [(as_of - _td(days=i)).isoformat()
+                for i in range(config.OBSERVATION_WINDOW_DAYS)]
+        rows = db.q(con,
+                    "SELECT doc_id, published_d, tier, "
+                    "COALESCE(institution, line) AS institution, title, "
+                    "retrieval, content_hash, ingested_at, "
+                    "length(COALESCE(body,'')) AS body_len "
+                    "FROM documents WHERE published_d IN (%s) "
+                    "ORDER BY published_d DESC, tier, doc_id"
+                    % ",".join("?" * len(days)), days)
+    except Exception:  # noqa: BLE001 — a missing manifest is reported, not fatal
+        return None
+    started = str(run.get("started_at") or "")
+    out = []
+    for r in rows:
+        d = dict(r)
+        if started and str(d.get("ingested_at") or "") > started:
+            continue          # ingested after the run began: it never saw this
+        out.append(json.dumps(ask.scrub(d), ensure_ascii=False,
+                              default=str).encode() + b"\n")
+    return b"".join(out) if out else None
+
+
 def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
             n_asks: int) -> str:
     """The bundle's own explanation, in the order a person reads it."""
@@ -131,6 +171,9 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "| `05_挑持仓/*.json` | 每种选取策略自同一候选池选中了什么，及其自身打分 |",
         "| `06_追问记录.jsonl` | 事后对该次运行提出的问题与回答"
         f"（本期 {n_asks} 条）；回答仅依据上述封存材料 |",
+        "| `07_语料清单.jsonl` | 本期封存的每一篇研报：标题、机构、层级、"
+        "**取回它的检索调用**（`retrieval`）与内容哈希。"
+        "`03_写想法/` 里的 `citations` 编号在这里能查到对应的那一篇 |",
         "| `manifest.json` | 每个文件的字节数与 SHA-256，用来验证包没被改过 |",
         "",
         "## 这个包不包含什么",
@@ -145,7 +188,8 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "1. 读 `01_运行日志.json` 的 `steps`：时间戳为真实时钟，非事后补写。",
         "2. 选定一个关注的持仓，在 `05_挑持仓/` 中定位它由哪种选取策略选中；",
         "3. 以其 `id` 回到 `04_候选池.json` 与 `03_写想法/`，查阅当时的论点与赔率；",
-        "4. 沿 `citations` 回溯到研报编号，核对论点是否有文献出处；",
+        "4. 沿 `citations` 回溯到研报编号，在 `07_语料清单.jsonl` 里查到那一篇，"
+        "看它由哪个检索调用取回、内容哈希是多少；",
         "5. 用 `manifest.json` 中的 SHA-256 验证文件自导出以来未被修改。",
         "",
         f"导出文件 {len(files)} 个，合计 {sum(n for _, n in files)} 字节。",
@@ -153,7 +197,7 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
     return "\n".join(lines) + "\n"
 
 
-def build(p, run_id: str | None) -> tuple[bytes, str] | tuple[None, str]:
+def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, str]:
     """Return (zip bytes, filename), or (None, error message)."""
     run = ask._run_row(p, run_id)
     if not run:
@@ -188,6 +232,10 @@ def build(p, run_id: str | None) -> tuple[bytes, str] | tuple[None, str]:
             continue
         add(f"05_挑持仓/{_sel_name(name[:-5])}.json", ask._artifact(
             p, run, f"C_selectors/{name}"))
+
+    manifest_rows = _corpus_manifest(run, con)
+    if manifest_rows:
+        members.append(("07_语料清单.jsonl", manifest_rows))
 
     asks = _ask_entries(run["run_id"])
     if asks:

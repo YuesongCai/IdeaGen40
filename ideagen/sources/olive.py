@@ -290,35 +290,113 @@ def exchange_oauth_code(code: str, verifier: str, client_id: str,
     return tokens
 
 
+# The shelf renamed every tool from get_fund_* to shelf_*. Both names are
+# carried so a server on either side of the rename answers, and so snapshots
+# captured before it still merge.
+OLIVE_CATALOG_TOOLS = ("shelf_list", "list_funds")
+
 OLIVE_DETAIL_TOOLS = (
-    "get_fund_detail",
-    "get_fund_summary",
-    "get_fund_performance",
-    "get_fund_portfolio",
+    "shelf_detail",
+    "shelf_summary",
+    "shelf_performance",
+    "shelf_portfolio",
+)
+
+_DETAIL_ALIASES = {
+    "detail": ("shelf_detail", "get_fund_detail"),
+    "summary": ("shelf_summary", "get_fund_summary"),
+    "performance": ("shelf_performance", "get_fund_performance"),
+    "portfolio": ("shelf_portfolio", "get_fund_portfolio"),
+}
+
+
+_CATALOG_FIELDS = (
+    "productCode", "productName", "shortName", "marketType", "strategy",
+    "series", "subscriptionStart", "subscriptionEnd", "channel", "bookingName",
+)
+
+_CATALOG_HEADERS = {
+    "产品id": "productCode",
+    "产品名称": "productName",
+    "产品简称": "shortName",
+    "市场类型": "marketType",
+    "策略": "strategy",
+    "系列": "series",
+    "通道": "channel",
+    "开始": "subscriptionStart",
+    "认购开始": "subscriptionStart",
+    "结束": "subscriptionEnd",
+    "认购结束": "subscriptionEnd",
+    "预约": "bookingName",
+    "记账名称": "bookingName",
+}
+
+# Column order before the shelf inserted 产品简称 between name and market type.
+_CATALOG_LEGACY_ORDER = (
+    "productCode", "productName", "marketType", "strategy", "series",
+    "subscriptionStart", "subscriptionEnd", "channel", "bookingName",
 )
 
 
+def _payload(value: Any) -> Any:
+    """Peel Olive's ``{"result": "<json>"}`` envelope off a tool result.
+
+    ``_unwrap_content`` has already turned the MCP text block into this dict,
+    so what arrives is the envelope, the bare payload, or plain markdown.
+    """
+    for _ in range(3):
+        if isinstance(value, dict) and set(value) == {"result"}:
+            value = value["result"]
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if text[:1] in "{[":
+                try:
+                    value = json.loads(text)
+                    continue
+                except ValueError:
+                    return value
+        break
+    return value
+
+
+def _catalog_markdown(raw: Any) -> str:
+    payload = _payload(raw)
+    if isinstance(payload, dict):
+        payload = payload.get("markdown") or payload.get("content") or ""
+    if not isinstance(payload, str) or "|" not in payload:
+        raise OliveMCPError(
+            "catalog tool returned "
+            f"{type(payload).__name__} with no markdown table")
+    return payload
+
+
 def parse_catalog(markdown: str) -> list[dict]:
-    """Parse the markdown table returned by Olive's ``list_funds`` tool."""
+    """Parse the markdown table returned by Olive's shelf catalog tool.
+
+    Columns are resolved from the header row, not by position: the shelf added
+    a 产品简称 column between 产品名称 and 市场类型, which shifted every field
+    after the name by one when they were read positionally.
+    """
+    columns: list[str | None] | None = None
     rows = []
     for line in (markdown or "").splitlines():
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.split("|")[1:-1]]
-        if len(cells) < 2 or not re.fullmatch(r"[A-Z]\d{4,6}", cells[0]):
+        if len(cells) < 2:
             continue
-        cells += [""] * (9 - len(cells))
-        rows.append({
-            "productCode": cells[0],
-            "productName": cells[1],
-            "marketType": cells[2],
-            "strategy": cells[3],
-            "series": cells[4],
-            "subscriptionStart": cells[5],
-            "subscriptionEnd": cells[6],
-            "channel": cells[7],
-            "bookingName": cells[8],
-        })
+        if not re.fullmatch(r"[A-Z]\d{4,6}", cells[0]):
+            mapped = [_CATALOG_HEADERS.get(cell.replace(" ", "").lower())
+                      for cell in cells]
+            if mapped.count("productCode") == 1 and mapped.count("productName") == 1:
+                columns = mapped
+            continue
+        row = dict.fromkeys(_CATALOG_FIELDS, "")
+        for name, cell in zip(columns or _CATALOG_LEGACY_ORDER, cells):
+            if name:
+                row[name] = cell
+        rows.append(row)
     return rows
 
 
@@ -335,19 +413,49 @@ def _metric_value(metrics: dict, key: str) -> Any:
     return value.get("valueStr") if isinstance(value, dict) else value
 
 
+def _detail_part(details: dict[str, Any], role: str) -> dict:
+    for tool in _DETAIL_ALIASES[role]:
+        if tool in details:
+            payload = _payload(details[tool])
+            return payload if isinstance(payload, dict) else {}
+    return {}
+
+
+def _latest_nav_point(performance: dict) -> dict:
+    """Newest NAV from ``performance.series[].data.navSeries``.
+
+    The shelf dates these points to the month only -- several NAVs share one
+    ``month`` and the day is never given. The point is therefore dated to the
+    first of that month: the true observation is on or after that day, so
+    ``mark`` can only ever overstate how stale the NAV is, never how fresh.
+    A bare "YYYY-MM" is not returned, because ``date.fromisoformat`` rejects it.
+    """
+    best: tuple[str, float] | None = None
+    for entry in (performance.get("performance") or {}).get("series") or []:
+        if not isinstance(entry, dict):
+            continue
+        for point in ((entry.get("data") or {}).get("navSeries") or []):
+            if not isinstance(point, dict):
+                continue
+            month, nav = str(point.get("month") or "").strip(), _num(point.get("nav"))
+            if not re.fullmatch(r"\d{4}-\d{2}", month) or nav is None:
+                continue
+            if best is None or month > best[0]:
+                best = (month, nav)
+    return {"date": f"{best[0]}-01", "value": best[1]} if best else {}
+
+
 def _merge_fund(catalog: dict, details: dict[str, Any]) -> dict:
-    detail = details.get("get_fund_detail") or {}
-    summary = details.get("get_fund_summary") or {}
-    performance = details.get("get_fund_performance") or {}
-    detail = detail if isinstance(detail, dict) else {}
-    summary = summary if isinstance(summary, dict) else {}
-    performance = performance if isinstance(performance, dict) else {}
+    detail = _detail_part(details, "detail")
+    summary = _detail_part(details, "summary")
+    performance = _detail_part(details, "performance")
     overview = detail.get("fundOverview") or {}
     card = summary.get("card") or {}
     perf = performance.get("performance") or {}
     perf_meta = perf.get("meta") or {}
-    point = _latest_chart_point(summary)
-    main = detail.get("mainMetrics") or card.get("mainMetrics") or {}
+    point = _latest_chart_point(summary) or _latest_nav_point(performance)
+    main = (detail.get("mainMetrics") or summary.get("mainMetrics")
+            or card.get("mainMetrics") or {})
     metrics = main.get("metrics") or main
 
     merged = {
@@ -362,7 +470,8 @@ def _merge_fund(catalog: dict, details: dict[str, Any]) -> dict:
         "navDate": point.get("date"),
         "performanceMap": {
             "1month": _metric_value(metrics, "1M_RETURN"),
-            "1year": _metric_value(metrics, "12M_RETURN"),
+            "1year": (_metric_value(metrics, "12M_RETURN")
+                      or _metric_value(metrics, "ANNUALIZED_RETURN")),
             "ytd": _metric_value(metrics, "YTD_RETURN"),
             "sinceLaunch": _metric_value(metrics, "ITD_RETURN"),
         },
@@ -374,7 +483,7 @@ def _merge_fund(catalog: dict, details: dict[str, Any]) -> dict:
 def _catalog_group(item: dict) -> str:
     text = " ".join(str(item.get(key) or "")
                     for key in ("productName", "marketType", "strategy"))
-    if "货币" in text or "cash" in text.lower():
+    if "货币" in text or "现金" in text or "cash" in text.lower():
         return "cash"
     if "结构" in text or "structured" in text.lower():
         return "structured"
@@ -392,11 +501,20 @@ def pull_snapshot(client: OliveMCP, *, product_codes: Iterable[str] | None = Non
     before enabling the full daily snapshot.
     """
     client.initialize()
-    raw = client.call("list_funds")
-    if not isinstance(raw, str):
+    catalog, failures = [], {}
+    for tool in OLIVE_CATALOG_TOOLS:
+        try:
+            catalog = parse_catalog(_catalog_markdown(client.call(tool)))
+        except Exception as exc:  # noqa: BLE001 - try the other tool name
+            failures[tool] = f"{type(exc).__name__}: {exc}"[:240]
+            continue
+        if catalog:
+            break
+    if not catalog:
         raise OliveMCPError(
-            f"list_funds returned {type(raw).__name__}, expected markdown")
-    catalog = parse_catalog(raw)
+            "no catalog tool returned a shelf: "
+            + (json.dumps(failures, ensure_ascii=False)
+               if failures else "table parsed to zero rows"))
     wanted = {str(code) for code in (product_codes or []) if str(code)}
     if wanted:
         targets = [item for item in catalog if item["productCode"] in wanted]
@@ -427,6 +545,8 @@ def pull_snapshot(client: OliveMCP, *, product_codes: Iterable[str] | None = Non
             "catalogCount": len(catalog),
             "detailedCount": len(targets),
             "detailTools": list(OLIVE_DETAIL_TOOLS),
+            "catalogTool": next(
+                (t for t in OLIVE_CATALOG_TOOLS if t not in failures), None),
             "errors": errors,
         },
     }

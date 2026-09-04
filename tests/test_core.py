@@ -485,6 +485,56 @@ class TestOliveMCP(unittest.TestCase):
         self.assertEqual(merged["navDate"], "2026-08-29")
         self.assertEqual(merged["currency"], "USD")
 
+    def test_shelf_payloads_parse_after_the_get_fund_to_shelf_rename(self):
+        """Pins the live shelf contract as captured on 2026-09-04.
+
+        Three things had drifted at once: the tools were renamed shelf_*, every
+        result arrives inside a {"result": "<json>"} envelope, and the catalog
+        grew a 产品简称 column between name and market type.
+        """
+        envelope = lambda obj: {"result": json.dumps(obj, ensure_ascii=False)}
+        catalog = olive.parse_catalog(olive._catalog_markdown(envelope({
+            "markdown":
+                "产品列表：\n\n"
+                "| 产品ID | 产品名称 | 产品简称 | 市场类型 | 策略 | 系列 | 通道 |\n"
+                "| --- | --- | --- | --- | --- | --- | --- |\n"
+                "| L03215 | AQR Apex UCITS Fund | [\"AQR Apex\"] | 海外二级 |"
+                " 多策略 | 对冲波动 | 香港 |\n"
+                "| Q00050 | 摩根大通美元流动性基金C类分配 | - | 海外二级 |"
+                " 现金管理 | - | 香港 |\n"
+        })))
+        self.assertEqual([row["productCode"] for row in catalog],
+                         ["L03215", "Q00050"])
+        # the shifted column is the whole point: strategy must not be a channel
+        self.assertEqual(catalog[0]["marketType"], "海外二级")
+        self.assertEqual(catalog[0]["strategy"], "多策略")
+        self.assertEqual(catalog[0]["channel"], "香港")
+        self.assertEqual(olive._catalog_group(catalog[1]), "cash")
+
+        merged = olive._merge_fund(catalog[0], {
+            "shelf_detail": envelope({
+                "fundOverview": {"fundName": "AQR APEX UCITS"},
+                "mainMetrics": {"metrics": {
+                    "1M_RETURN": {"valueStr": "+3.03%"},
+                    "ANNUALIZED_RETURN": {"valueStr": "+11.04%"},
+                    "RISK_LEVEL": {"valueStr": "中高风险"},
+                }},
+            }),
+            "shelf_performance": envelope({"performance": {
+                "meta": {"currency": "", "dataFrequency": "Monthly"},
+                "series": [{"id": "L03215", "type": "share_class", "data": {
+                    "navSeries": [{"month": "2026-09", "nav": "212.3600"},
+                                  {"month": "2026-08", "nav": "210.2300"}],
+                }}],
+            }}),
+        })
+        self.assertEqual(merged["productEnglishName"], "AQR APEX UCITS")
+        self.assertEqual(merged["latestNav"], 212.36)
+        self.assertEqual(merged["performanceMap"]["1year"], "+11.04%")
+        # month-only NAVs must still yield a date mark() can subtract
+        self.assertEqual(merged["navDate"], "2026-09-01")
+        date.fromisoformat(olive._normalise("funds", merged)["nav_d"])
+
     def test_oauth_authorization_uses_pkce_and_resource_indicator(self):
         url, verifier, state = olive.oauth_authorization(
             "client-id", "http://127.0.0.1:8766/callback")

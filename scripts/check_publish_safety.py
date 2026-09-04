@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse to publish a payload carrying data that is not ours to republish.
+"""Refuse to publish a payload carrying content nobody decided to publish.
 
 The published site is a deliberate choice: the blotter, the equity curve and the
 theses are this project's own output, and publishing them was decided knowingly.
@@ -14,6 +14,12 @@ input while the derived output is unguarded. It runs on what is actually about t
 published, not on the sources, because that is the only place the question can be
 answered honestly.
 
+There is a second way content reaches that URL without a decision, and it is not
+about ownership. The page bakes in the whole state payload, and a passthrough with
+no whitelist will carry anything a dict happens to hold — including an operator's
+own words, typed into the product as input and echoed back out as output. Ours to
+publish, never chosen for publication. `scan_payload` looks for that.
+
 Exit 0 to publish, 1 to refuse. It never edits the payload — deciding what to
 redact is a judgement about someone else's licence terms, and it belongs to a
 person, not to a pre-push hook.
@@ -21,6 +27,7 @@ person, not to a pre-push hook.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -41,6 +48,67 @@ BODY_FIELDS = ("body", "full_text", "raw_text", "正文")
 #: versus pervasive. A single legitimate fund name should not block a publish; a
 #: payload where the partner is everywhere is a different thing.
 BRAND_LIMIT = 20
+
+#: Bookkeeping containers. Everything the project decided to publish — theses,
+#: topic labels, the backtest disclaimer — lives in a named first-class field.
+#: `meta` and its siblings carry counts, ids and dates: machine records of how a
+#: step ran. A sentence of natural language in one of them did not get there by a
+#: publishing decision, it got there because someone had free text in hand and a
+#: dict to put it in.
+#:
+#: This is a different failure from the partner-data one above. That is content
+#: that is not ours; this is content that is ours and was never chosen for a
+#: public, indexable URL — an operator's own words, typed into the product,
+#: echoed back out through a passthrough with no whitelist.
+BOOKKEEPING_KEYS = ("meta", "params", "args", "kwargs", "options")
+
+#: Short enough that a label or an enum never trips it, long enough that a
+#: sentence does. Measured on strings carrying CJK, where character count and
+#: word count are close.
+PROSE_MIN_CHARS = 40
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _payload(text: str) -> object | None:
+    """The state payload `export_pages` bakes into the published page.
+
+    Returns None when the file is not a baked page — the text scan still runs,
+    so a caller loses nothing by this being absent.
+    """
+    marker = "window.__STATIC__="
+    i = text.find(marker)
+    if i < 0:
+        return None
+    j = text.find(";</script>", i)
+    if j < 0:
+        return None
+    raw = text[i + len(marker):j].replace("<\\/", "</")
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+def scan_payload(obj: object, where: str) -> list[str]:
+    """Free text sitting in a bookkeeping container, with the path to find it."""
+    out: list[str] = []
+
+    def walk(node: object, path: str, inside: bool) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                key = str(k)
+                walk(v, f"{path}.{key}" if path else key,
+                     inside or key in BOOKKEEPING_KEYS)
+        elif isinstance(node, list):
+            for i, v in enumerate(node[:200]):
+                walk(v, f"{path}[{i}]", inside)
+        elif inside and isinstance(node, str) and len(node) >= PROSE_MIN_CHARS:
+            if _CJK.search(node) or len(node.split()) >= 8:
+                out.append(f"{where}: {path} 带有 {len(node)} 字符的自由文本"
+                           f"（记账字段不应出现成句内容）—— {node[:60]}…")
+
+    walk(obj, "", False)
+    return out
 
 
 def scan(text: str, where: str) -> list[str]:
@@ -72,7 +140,11 @@ def main(argv: list[str]) -> int:
         if not p.exists():
             continue
         checked += 1
-        problems += scan(p.read_text(encoding="utf-8", errors="replace"), p.as_posix())
+        text = p.read_text(encoding="utf-8", errors="replace")
+        problems += scan(text, p.as_posix())
+        payload = _payload(text)
+        if payload is not None:
+            problems += scan_payload(payload, p.as_posix())
 
     if not checked:
         # Nothing found to inspect is not a pass. A path that silently matches no
@@ -82,15 +154,17 @@ def main(argv: list[str]) -> int:
         return 1
 
     if problems:
-        print(f"\n拒绝发布：{len(problems)} 处内容不属于我们，无权公开转载\n",
+        print(f"\n拒绝发布：{len(problems)} 处内容没有被决定公开\n",
               file=sys.stderr)
         for x in problems:
             print(f"  · {x}", file=sys.stderr)
-        print("\n公开发布自己的持仓与论点是已经做过的决定；合作方货架数据不在其中。"
+        print("\n公开发布自己的持仓与论点是已经做过的决定；合作方货架数据、"
+              "以及运行者输入的原话，都不在其中。"
               "\n处理办法（需人工判断）："
               "\n  1) 在生成报告时把货架代码与合作方名称替换为内部代号；"
-              "\n  2) 或把这些标的的明细从公开产物里剔除，只留聚合数字；"
-              "\n  3) 确认无误后再发布。"
+              "\n  2) 记账字段（meta / params）只留计数与标识，自由文本改存本地不外发；"
+              "\n  3) 或把这些标的的明细从公开产物里剔除，只留聚合数字；"
+              "\n  4) 确认无误后再发布。"
               "\n注意：历史提交里已经发布过，删除当前版本不会移除历史——"
               "需要单独决定是否重写公开分支历史。", file=sys.stderr)
         return 1

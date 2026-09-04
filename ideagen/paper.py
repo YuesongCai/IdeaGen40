@@ -671,15 +671,29 @@ def _accrue_cash(con, book_id: str, d: str, capital: float) -> float:
     if cash <= 0:
         return 0.0
     y = olive.cash_yield(con, "USD")
+    # Which rate this was is recorded, because it is not a detail. Interest on
+    # the uninvested tranche is most of the book's reported return while the
+    # ladder is still filling — currently +0.36 of +0.46 points — so whether it
+    # came from the shelf or from a constant decides how much of that return was
+    # measured at all. `cash_yield` exists precisely to replace the constant, and
+    # it is falling back silently: the right product is on the shelf, JPMorgan
+    # Liquidity Funds USD, but no Olive row carries `yield7d`.
+    #
+    # The scoring layer already does this for the same kind of gap, recording
+    # `p_source: neutral_default` when a factor has no reading. A number that is
+    # a default should say so wherever it lands.
+    source = "shelf"
     if y is None:
-        y = config.RISK_FREE_ANNUAL
+        y, source = config.RISK_FREE_ANNUAL, "fallback_constant"
     days = max((date.fromisoformat(d) - date.fromisoformat(prev_d)).days, 1)
     interest = cash * y * days / 365.0
     db.upsert(con, "trades", {
         "trade_id": tid, "book_id": book_id, "pos_id": None, "idea_uid": None,
         "d": d, "side": "INT", "code": "CASH", "qty": None, "px": None,
         "gross": interest, "fee": 0.0, "cash_delta": interest,
-        "reason": f"MM yield {y*100:.3f}% x {days}/365",
+        "reason": (f"MM yield {y*100:.3f}% x {days}/365"
+                   + ("（兜底常数，货架未提供 7 日年化）"
+                      if source == "fallback_constant" else "（货架中位数）")),
     }, ["trade_id"])
     return interest
 

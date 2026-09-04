@@ -213,6 +213,7 @@ button:focus-visible,a:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var
   min-height:28px;padding:3px 10px;border:1px solid var(--color-border-strong);
   border-radius:var(--radius-sm);color:var(--color-text-secondary);
   font:500 12px/20px var(--font-sans);text-decoration:none;
+  white-space:nowrap;   /* 窄屏下会被挤成竖排的「数/据/源」 */
 }
 .source-link:hover{background:var(--color-surface-subtle);border-color:var(--color-border-brand-subtle);color:var(--color-text-brand)}
 
@@ -577,10 +578,22 @@ tr.expandable{cursor:pointer}
 .sec-h:first-child{margin-top:0}
 
 /* responsive */
+@media (max-width:640px){
+  /* 顶栏三样东西（刷新时间 / 主按钮 / 数据源）在 375px 上挤成竖排。
+   * 让它们换行成两排，比每一样都被压窄可读。 */
+  .topbar{flex-wrap:wrap;row-gap:var(--space-2)}
+  .topbar-actions{flex-wrap:wrap}
+  .refresh-stamp{order:9;flex-basis:100%}
+}
 @media (max-width:1260px){
   .main{padding:var(--space-6) var(--space-5) var(--space-10)}
   .sidebar{width:var(--layout-sidebar-collapsed)}
-  .sidebar .logo-name,.sidebar .logo-sub,.sidebar .nav-label,.sidebar .sidebar-foot,.sidebar .nav-badge{display:none}
+  /* 折叠成图标栏后，二级锚点没有可放文字的宽度：留着就会被压成
+   * 一字一行的竖排（「运/行/状/态」），看着像排版坏了。它们是页内跳转，
+   * 内容本身在主区仍然按顺序排着，隐掉不损失可达性。
+   * 选择器带 .sidebar 前缀是为了压过后面由 JS 注入的 .nav-secs 规则。 */
+  .sidebar .logo-name,.sidebar .logo-sub,.sidebar .nav-label,.sidebar .sidebar-foot,.sidebar .nav-badge,
+  .sidebar .nav-secs{display:none}
   .sidebar-logo{justify-content:center;padding:var(--space-5) 0 var(--space-4)}
   .nav{padding:var(--space-2)}
   .nav-item{justify-content:center;padding:10px}
@@ -1731,12 +1744,20 @@ function injectBootStyle(){
     +'.nav-sec .nav-dot{width:5px;height:5px;border-radius:999px;flex:none;background:var(--color-border-strong)}'
     +'.nav-sec.on .nav-dot{background:var(--color-fill-brand)}'
     +'.nav-sec .nav-sec-n{margin-left:auto;font:400 11px/16px var(--font-mono);color:var(--color-text-disabled)}'
-    /* 追问按钮：全站同一个长相，读者认图标不认文案 */
-    +'.ask-btn{display:inline-flex;align-items:center;gap:5px}'
-    +'.ask-top{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--color-border-brand-subtle);'
-    +'border-radius:var(--radius-pill);padding:4px 12px;background:var(--color-surface-brand-subtle);'
-    +'color:var(--color-text-brand);font:500 12px/16px var(--font-sans);cursor:pointer;white-space:nowrap}'
-    +'.ask-top:hover{background:var(--color-surface-brand-muted)}'
+    /* 追问按钮：全站唯一长相，实心主行动色。这个功能是整套系统里最值得用的
+       一块，文字链读起来像脚注，没人会点。做成一眼就是按钮的样子，并且
+       在任何位置都长得一模一样——读者认的是这个形状，不是文案。 */
+    +'.ask-btn,.ask-top{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;'
+    +'border:none;border-radius:var(--radius-pill);padding:6px 14px;'
+    +'background:var(--color-action-primary-default);color:var(--color-text-on-brand);'
+    +'font:500 12px/16px var(--font-sans);box-shadow:0 1px 2px rgb(32 71 50 / 18%);'
+    +'transition:background-color var(--duration-fast) var(--ease-standard),transform var(--duration-fast) var(--ease-standard)}'
+    +'.ask-btn:hover,.ask-top:hover{background:var(--color-action-primary-hover);color:var(--color-text-on-brand)}'
+    +'.ask-btn:active,.ask-top:active{background:var(--color-action-primary-pressed);transform:translateY(1px)}'
+    +'.ask-btn:focus-visible,.ask-top:focus-visible{outline:2px solid var(--color-focus-ring);outline-offset:2px}'
+    +'.ask-btn svg,.ask-top svg{opacity:.9}'
+    /* 小一号：放在密集列表行里时用，形状与配色不变 */
+    +'.ask-btn.sm{padding:4px 10px;font-size:11px}'
     +'.askpick-g{font:500 11px/16px var(--font-mono);letter-spacing:.06em;color:var(--color-text-tertiary);'
     +'margin:var(--space-4) 0 var(--space-2)}'
     +'.askpick-i{display:flex;align-items:baseline;gap:var(--space-3);width:100%;text-align:left;cursor:pointer;'
@@ -2197,6 +2218,14 @@ function mainLine(ag){
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">主链路</h2>'
     +'<span class="card-note">'+esc(w.as_of||'')+' 期 · 逐段展开可回溯依据与语料来源</span></div>'
     +rows
+    /* 「方法」这一页读者最想问的就是「凭什么这么选」。入口不能只在展开某一段
+       之后才出现——那等于要求他先猜对该展开哪一段。 */
+    +'<div style="margin-top:var(--space-4);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle);'
+      +'display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">'
+      +askBtn('selection','topics')
+      +'<span style="font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)">'
+        +'问它当时凭什么从 '+fmtInt(nTopicsAll)+' 个候选里选出这几个主题</span>'
+    +'</div>'
   +'</div>';
 }
 function mlStageBody(i){
@@ -2582,7 +2611,7 @@ function holdMapCard(ag){
         +'<div class="s num">'+share.toFixed(0)+'% 仓位 · '+g.list.length+' 标的 · <span class="'+pctCls(g.unreal)+'">'+signedMoney(g.unreal)+'</span></div>'
         /* 就地可问：读者正看着这个主题，追问入口应该在这里，而不是要他
            先记住主题名再去别处找。按钮与 hm-k 里的主题链接并列，不嵌套。 */
-        +(isTopic?'<div style="margin-top:4px">'+askBtn('topic',t,{stop:true,label:'问它为什么选它'})+'</div>':'')
+        +(isTopic?'<div style="margin-top:4px">'+askBtn('topic',t,{stop:true})+'</div>':'')
         +'</div>'
         +'<div class="hm-cloud">'
         +g.list.map(function(p){
@@ -2735,8 +2764,10 @@ function holdAxisBody(ag,mp,totalV,maxV){
         :(d>0?'高共识端高出 '+d.toFixed(2)+' 个百分点。':'高共识端低 '+Math.abs(d).toFixed(2)+' 个百分点。'))
       +'当前样本量下仅为读数，不构成结论。';
   }
+  /* .pipe-svg 有 940px 的最小宽度，必须裹在自己的横滚容器里——
+   * 否则窄屏上它会把整页撑出横向滚动条。流水线画布一直是这么包的。 */
   return '<div class="hm-legend"><span>泡的大小 = 仓位市值</span><span>颜色 = 盈亏方向（红涨绿跌）</span><span>绿线 = 各共识档的平均盈亏</span></div>'
-    +g
+    +'<div class="pipe-wrap scroll-thin">'+g+'</div>'
     +(read?'<div class="quiet" style="margin-top:var(--space-3)">'+read+'</div>':'')
     +epi('共识度只记录、不计分——它不参与选取，因此它与收益的关系是可事后检验的');
 }
@@ -2755,10 +2786,12 @@ function holdListTable(ag,mp){
       +'<td class="r num '+pctCls(chgPct)+'">'+(chgPct===null?'—':fmtPct(chgPct))+'</td>'
       +'<td class="r num '+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'</td>'
       +'<td class="r num down">'+(stopDist===null?'—':fmtPct(stopDist))+'</td>'
+      /* 逐行可问：读者正盯着这一仓，问「为什么买它」的入口就该在这一行上。 */
+      +'<td class="r">'+askBtn('idea','pool:'+bareCode(p.code),{stop:true,cls:'sm'})+'</td>'
       +'</tr>';
   }).join('');
   return '<div class="table-wrap scroll-y scroll-thin hold-wrap"><table>'
-    +'<thead><tr><th>标的</th><th>论点</th><th class="r" title="同时持有该标的的账本数">账本数</th><th class="r">涨跌</th><th class="r">合计盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th></tr></thead>'
+    +'<thead><tr><th>标的</th><th>论点</th><th class="r" title="同时持有该标的的账本数">账本数</th><th class="r">涨跌</th><th class="r">合计盈亏</th><th class="r" title="现价再跌多少会触发 σ×2 自动止损">距止损</th><th></th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
     +'';
 }
@@ -3017,7 +3050,7 @@ function bookCard(b,bi){
   }).join('');
   return '<div class="card">'
     +'<div class="book-head"><span class="book-name">'+esc(selMetaOf(b.selector)[1]||b.selector||b.book_id)+'</span>'+sparkline(eq)+'</div>'
-    +'<div style="margin:2px 0 var(--space-2)">'+askBtn('selector',b.selector,{stop:true,label:'问它当时怎么选的'})+'</div>'
+    +'<div style="margin:2px 0 var(--space-2)">'+askBtn('selector',b.selector,{stop:true})+'</div>'
     +'<div class="book-kv">'
       +'<div class="meta-kv"><div class="k">资本</div><div class="v num">'+fmtMoney(b.capital)+'</div></div>'
       +'<div class="meta-kv"><div class="k">净值</div><div class="v num">'+fmtMoney(last)+'</div></div>'
@@ -3111,11 +3144,28 @@ function benchName(){
    同源（aggReturnPct / benchReturnPct），不新增一套数字。 */
 /* 已跑到第几周。首屏结论和策略对比卡必须引用同一个周数，各算各的会说出
    两个不同的「第 N 周」。 */
-function weekIndex(books){
+function firstBookedDate(books){
   var minBooked=null;
   (books||[]).forEach(function(b){
     if(b.booked_as_of&&(minBooked===null||b.booked_as_of<minBooked))minBooked=b.booked_as_of;
   });
+  return minBooked;
+}
+/* 首屏那两个大数的实际区间。组合的净值曲线从 bookWindowStart 起算，基准
+ * 对齐到同一天——但建仓要晚得多，中间那段组合是现金。区间不写出来，
+ * 「第 1 周」旁边挂着一个六周的 SPY 涨幅，读者只会算出 SPY 一周涨 6%。 */
+function heroWindowNote(books){
+  var sr=((S&&S.benchmark)||{}).series||[];
+  var b=benchBase();
+  if(!b||!sr.length)return '';
+  var md=function(d){return String(d||'').slice(5)};
+  var t='区间 '+md(b.start)+' → '+md(sr[sr.length-1].d);
+  var bk=firstBookedDate(books);
+  if(bk&&bk>b.start)t+='（'+md(bk)+' 才建仓，此前是现金）';
+  return t;
+}
+function weekIndex(books){
+  var minBooked=firstBookedDate(books);
   if(!minBooked)return 1;
   var days=(Date.now()-new Date(minBooked+'T00:00:00+08:00').getTime())/86400000;
   return Math.max(1,Math.ceil(days/7));
@@ -3151,7 +3201,8 @@ function portfolioHeadline(ag){
         /* 结论式写法有个副作用：读者会把它当成定论，下周反超就以为「翻盘了」。
            样本量限定必须和结论同框，不能只留在下面那张对比卡里。 */
         +'<div style="font:400 12px/17px var(--font-sans);color:var(--color-text-tertiary);margin-top:2px">'
-          +'第 '+wk+' 周 · 样本尚不足以判定优劣'
+          +(function(){var w=heroWindowNote(currentBooks());return w?esc(w)+' · ':''})()
+          +'建仓后第 '+wk+' 周 · 样本尚不足以判定优劣'
           +'<span class="gloss" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，约需 '+TARGET_WEEKS+' 周样本；在那之前的排名不构成结论。">ⓘ</span>'
         +'</div>'
       +'</div>'
@@ -3180,7 +3231,14 @@ function portfolioHeadline(ag){
         +'　对照的 '+esc(benchName())+' 是满仓，两边仓位不同——这也是为什么现在的差距不能直接读成选股能力的差距。">ⓘ</span></span>'
         +'</div>';
     })()
-    +'<div class="card-note" style="margin-top:var(--space-4)">'
+    /* 一个人看完这个数字，下一句必然是「为什么」。追问入口就该在这里，
+       而不是让他自己去别的页面找。 */
+    +'<div style="margin-top:var(--space-4);display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">'
+      +askBtn('selection','topics')
+      +'<span style="font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)">'
+        +'只依据这次运行当时封存的材料回答，不用事后信息</span>'
+    +'</div>'
+    +'<div class="card-note" style="margin-top:var(--space-3)">'
       +'浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
       +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
       +' · 在场 '+fmtInt(ag.openN||0)+' 仓'
@@ -4799,10 +4857,7 @@ function stageTopicsBody(d){
   /* 整步追问的入口放在这一层最上面：读者看完这张表最先冒出来的问题是
    * 「凭什么是这几个」，而不是某一个主题的细节。整步追问交给模型的是
    * 完整打分表 + 计数对照臂，不附研报正文——这一步的取舍就是在表上做的。 */
-  var askStep='<div style="margin:0 0 var(--space-3)">'
-    +'<button type="button" class="exp-btn" onclick="openAskDrawer(\'selection\',\'topics\')" '
-    +'title="把本期全部主题的打分表与计数对照臂交给模型，仅依据这两份当期封存材料作答">'
-    +'问它当时凭什么选这 '+nIn+' 个 ›</button></div>';
+  var askStep='<div style="margin:0 0 var(--space-3)">'+askBtn('selection','topics')+'</div>';
   var legend='<div class="race-legend">'
     +'<span><span class="sw" style="background:var(--color-data-1)"></span>H 热度 <span class="gloss" title="'+esc(HGEP_GLOSS.H)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-2)"></span>G 分歧 <span class="gloss" title="'+esc(HGEP_GLOSS.G)+'">ⓘ</span></span>'
@@ -4864,7 +4919,7 @@ function topicDrawerBody(tid,embedded){
   }else{
     html+='<div class="empty-sm" style="margin-bottom:var(--space-4)">语义臂本期无 '+esc(tid)+' 的评分记录</div>';
   }
-  html+='<div style="margin:0 0 var(--space-4)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'topic\',\''+jss(tid)+'\')" title="仅依据本次运行封存的材料作答">问它当时怎么想 ›</button></div>';
+  html+='<div style="margin:0 0 var(--space-4)">'+askBtn('topic',tid)+'</div>';
   if(ev){
     var docs=ev.docs||[];
     html+='<div style="font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin:0 0 6px">词表命中研报 · '+fmtInt(ev.n)+' 条 '
@@ -4968,7 +5023,7 @@ function stageGeneratorsBody(d){
   var total=gens.reduce(function(a,g){return a+(g.n||0)},0);
   return tabs+focusHead
     +pathLegend(GEN_PATH,GEN_ORDER.map(function(o){return o[0]}))
-    +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法对同一批 '+chosen.length+' 个主题并行生成 1 个月期限的结构化想法（含概率、上下行情景与论点），彼此独立。色深对应产量。本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条。</div>'
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法 × '+chosen.length+' 个主题并行生成，彼此独立 '+glossMark('每条想法是 1 个月期限的结构化输出，含概率、上下行情景与论点。四种方法互不可见。')+' · 本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条 · 色深 = 产量</div>'
     +html
     +epi('目标为每方法每主题 '+(target||20)+' 条；未写满不补足，缺口本身为观测量');
 }
@@ -5085,7 +5140,7 @@ function stageSelectorsBody(d){
       return '<div class="sel-leg'+fCls+'" id="selleg-'+i+'" style="background:'+(isCtl?'var(--color-feedback-neutral-subtle)':'var(--color-surface-brand-subtle)')+'">'
         +'<span class="nm">'+esc(m[1])+'</span>'
         +'<span class="tag" style="flex:none">'+esc(m[2])+'</span>'
-        +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b> <span class="gloss" title="'+esc(selGlossTitle(m))+'">ⓘ</span>　'+esc(selPlain(s.name))+'　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
+        +'<span class="bel"><b style="color:var(--color-text-brand)">'+esc(m[3])+'</b> <span class="gloss" title="'+esc(selPlain(s.name))+'">ⓘ</span>　<b class="num" style="color:var(--color-text-primary)">'+fmtInt((s.chosen||[]).length)+' 只</b>'
         +((s.chosen||[]).length?'　<button type="button" class="exp-btn" onclick="filterPool(\'selector\',\''+jss(s.name)+'\',\'策略 '+esc(m[1])+'\')">回候选池 ›</button>':'　<span style="color:var(--color-text-tertiary)">空仓：无标的达到门槛，留存现金</span>')
         +(hasBook?'　<button type="button" class="exp-btn" onclick="openBookDrawer(\''+jss(s.name)+'\')">该账本 ›</button>':'')
         +'</span>'
@@ -5188,7 +5243,7 @@ function stageBookingBody(){
     var pos=b.open_positions||[];
     var posHtml;
     if(pos.length){
-      posHtml='<div class="pos-headr"><span>标的</span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS)+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
+      posHtml='<div class="pos-headr"><span>标的</span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈 <span class="gloss" title="'+esc(SIGMA_GLOSS+'读法：左端止损、右端止盈，竖线是进场价，圆点是现价。')+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
         +pos.map(function(p){
           return '<div class="pos-line">'
             +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\')">'+esc(bareCode(p.code))+'</button></span>'
@@ -5205,9 +5260,9 @@ function stageBookingBody(){
       +'<span class="card-note num">'+fmtInt(pos.length)+' 仓 · 本金 '+fmtMoney(b.capital)+(b.booked_as_of?' · '+esc(b.booked_as_of)+' 入账':'')+'</span></div>'
       +posHtml+'</div>';
   }).join('');
-  return '<div class="quiet" style="margin-bottom:var(--space-3)">已入账 '+books.length+' 个账本。等权买入，<b>进场即挂</b> σ×2 止损与 σ×3 止盈（σ = 标的近月波动率）。刻度条：左端止损、右端止盈、竖线为进场价、圆点为现价。逐日盯市。</div>'
+  return '<div class="quiet" style="margin-bottom:var(--space-3)">已入账 <b class="num" style="color:var(--color-text-primary)">'+books.length+'</b> 个账本 · 等权买入，<b>进场即挂</b> σ×2 止损 / σ×3 止盈 '+glossMark(SIGMA_GLOSS)+' · 逐日盯市</div>'
     +'<div class="book-grid">'+blocks+'</div>'
-    +epi('等权买入，自动挂止损止盈；论点被证伪时次日收盘平仓');
+    +epi('论点被证伪时次日收盘平仓——与止损、止盈并列的第三类退出');
 }
 
 /* ══════════ 持仓/账本/状态抽屉（本周页共用） ══════════ */
@@ -5279,7 +5334,7 @@ function posDrawerBody(code){
       +'<span class="num">下行 '+fmtPct(cand.downside_pct)+'（P '+fmtProb(cand.p_down)+'）</span>'
       +'<span class="num">赚亏比 '+rrText(cand)+'</span>'
       +'<span><button type="button" class="exp-btn" onclick="filterPoolCode(\''+jss(bareCode(p.code))+'\')">在候选池里看这条 ›</button></span>'
-      +'<span><button type="button" class="exp-btn" onclick="openAskDrawer(\'idea\',\''+jss(cand.id||('pool:'+bareCode(p.code)))+'\')" title="仅依据本次运行封存的材料作答">问它当时怎么想 ›</button></span>'
+      +'<span>'+askBtn('idea',cand.id||('pool:'+bareCode(p.code)))+'</span>'
       +'</div>';
   }else{
     html+='<div class="derive-kv"><span style="color:var(--color-text-tertiary)">本期候选池里没有这条（可能来自更早批次）</span></div>';
@@ -5391,7 +5446,7 @@ function bookDrawerBody(sel){
     +'<span class="card-note mono">'+esc(b.book_id||'')+'</span>'
     +'</div>'
     +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>　'+esc(selPlain(b.selector))+'</div>'
-    +'<div style="margin:0 0 var(--space-3)"><button type="button" class="exp-btn" onclick="openAskDrawer(\'selector\',\''+jss(b.selector||'')+'\')" title="仅依据本次运行封存的材料作答">问它当时怎么想 ›</button></div>'
+    +'<div style="margin:0 0 var(--space-3)">'+askBtn('selector',b.selector)+'</div>'
     +'<div style="display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline;margin-bottom:var(--space-3)">'
     +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'+fmtPct(ret)+'</span>'
     +'<span class="card-note">本金 '+fmtMoney(b.capital)+' · '+fmtInt(pos.length)+' 仓在场 · 已平 '+fmtInt(b.closed_n||0)+' · 已实现 <span class="num '+pctCls(b.realized)+'">'+signedMoney(b.realized)+'</span></span>'
@@ -5674,16 +5729,17 @@ function statusDrawerBody(){
       +((S.schedule||{}).tick_interval_s?'<div class="meta-kv"><div class="k">自检节奏</div><div class="v">每 '+Math.round(((S.schedule||{}).tick_interval_s)/60)+' 分钟一次</div></div>':'')
       +(hb.exit_code?'<div class="meta-kv"><div class="k">上次心跳退出码</div><div class="v num" style="color:var(--color-feedback-warning-text)">'+esc(hb.exit_code)+'（非 0 = 有任务失败）</div></div>':'')
     +'</div>'
-    +(weeklyFailed?'<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||'')+'）周跑在心跳里记为 failed。runs 表没有这次尝试的明细；下方数据源健康和「盯市」错误是目前 API 给出的全部线索。</div>':'')
+    +(weeklyFailed?'<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-feedback-warning-text)">本期（'+esc(wkOut.period||'')+'）周跑记为 <b>failed</b> '+glossMark('这是心跳里的记录；runs 表没有这次尝试的明细。下方「数据源健康」和「盯市」错误是目前 API 能给出的全部线索。')+'</div>':'')
     /* 没有正常收尾的周跑：首页不该把它当成「在跑」，但也不该当它不存在。
      * 它是一次中途退出的进程留下的记录，运维要能看到它跑到了哪一步。 */
     +(function(){
       var ab=abandonedRun();
       if(!ab)return '';
       return '<div style="margin-top:var(--space-3);padding:var(--space-2) var(--space-3);background:var(--color-feedback-warning-subtle);border-left:3px solid var(--color-feedback-warning-default);border-radius:var(--radius-xs);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)">'
-        +'<b>有一次周跑没有正常收尾</b>：run <span class="mono">'+esc(String(ab.run_id||'').slice(0,24))+'</span>（'+esc(ab.as_of||'')+' 期）'
-        +'于 '+esc(hktFmt(ab.started_at,true))+' 启动，至今没有写下结束时间，已过去 '+fmtInt(runAgeMin(ab))+' 分钟；正常一次约 20-45 分钟，所以它多半是进程中途退出、来不及记录结果。'
-        +'这不影响上面展示的结果——那些来自后来跑成功的那一次。'
+        +'<b>有一次周跑没有正常收尾</b> '
+        +glossMark('正常一次约 20-45 分钟。它启动后再没写下结束时间，多半是进程中途退出、来不及记录结果。不影响上方展示的结果——那些来自后来跑成功的那一次。')
+        +'<div class="gap-row" style="grid-template-columns:56px 1fr;margin-top:4px"><span class="gk">run</span><span class="gv mono" style="color:inherit">'+esc(String(ab.run_id||'').slice(0,24))+' · '+esc(ab.as_of||'')+' 期</span></div>'
+        +'<div class="gap-row" style="grid-template-columns:56px 1fr"><span class="gk">启动</span><span class="gv" style="color:inherit">'+esc(hktFmt(ab.started_at,true))+' · 已过 <b class="num">'+fmtInt(runAgeMin(ab))+'</b> 分钟，无结束时间</span></div>'
         +'<div style="margin-top:4px"><button type="button" class="exp-btn" onclick="openRunLogStacked(\''+esc(ab.run_id||'')+'\')">看它跑到哪一步 ›</button></div>'
         +'</div>';
     })()
@@ -6250,7 +6306,7 @@ function toggleQa(i){var el=document.querySelector('.cal-detail[data-qa="'+i+'"]
 function toggleFix(i){var el=document.querySelector('.cal-detail[data-fix="'+i+'"]');if(el)el.style.display=el.style.display==='none'?'':'none'}
 
 /* ── 全局帮助滑出面板:Routine 手册 / 名词表 ── */
-var helpOpen=false, helpTab='routine';
+var helpOpen=false, helpTab='what';
 function toggleHelp(){helpOpen=!helpOpen;renderHelp()}
 function setHelpTab(t){helpTab=t;renderHelp()}
 function renderHelp(){
@@ -6261,11 +6317,42 @@ function renderHelp(){
     +'<div class="help-panel" role="dialog" aria-label="帮助">'
     +'<div class="toc-h"><span>帮助</span><button type="button" class="copy-btn" onclick="toggleHelp()" aria-label="关闭帮助">关闭</button></div>'
     +'<div class="help-tabs">'
-      +'<button type="button" class="help-tab'+(helpTab==='routine'?' on':'')+'" onclick="setHelpTab(\'routine\')">运维手册</button>'
+      +'<button type="button" class="help-tab'+(helpTab==='what'?' on':'')+'" onclick="setHelpTab(\'what\')">这是什么</button>'
       +'<button type="button" class="help-tab'+(helpTab==='gloss'?' on':'')+'" onclick="setHelpTab(\'gloss\')">名词表</button>'
+      +'<button type="button" class="help-tab'+(helpTab==='routine'?' on':'')+'" onclick="setHelpTab(\'routine\')">运维手册</button>'
     +'</div>'
-    +'<div class="help-body scroll-thin">'+(helpTab==='routine'?routineHTML():glossaryHTML())+'</div>'
+    +'<div class="help-body scroll-thin">'+(helpTab==='what'?whatIsThisHTML():helpTab==='routine'?routineHTML():glossaryHTML())+'</div>'
     +'</div>';
+}
+
+/* ── 「这是什么」：? 的默认页 ──────────────────────────────────
+   ? 此前直接开在运维手册上，第一个零背景的人点开帮助，看到的是
+   launchctl 和 cd ~/IdeaGen40 —— 一屏 shell 命令回答不了「这到底是啥」。
+   运维手册没有错，只是它的读者是已经知道这是什么的人。默认页换成
+   30 秒能读完的产品定位，运维手册退到第三格，找它的人本来就找得到。 */
+function whatIsThisHTML(){
+  function line(k,v){
+    return '<div class="sched-row"><span class="sched-when">'+esc(k)+'</span>'
+      +'<span class="sched-what">'+v+'</span></div>';
+  }
+  return '<div class="card section" id="sec-whatis">'
+    +'<h2 class="card-title">这是什么</h2>'
+    +'<p style="font:400 15px/24px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-5)">'
+      +'每周三，它自己读一批研报，挑出几个宏观主题，写成可交易的想法，'
+      +'再按 <b>10 套不同的选取策略</b>各建一个模拟组合。'
+      +'目的不是荐股，是<b>看清哪一套选法更好</b>。</p>'
+    +'<h3 style="font:600 16px/24px var(--font-sans);color:var(--color-text-primary);margin:0 0 var(--space-2)">先知道这三件事</h3>'
+    +line('钱是纸面的','1 亿本金、纸面成交（已计佣金与滑点），不是实盘。数字可以当参考，不能当账单。')
+    +line('这是一个对照实验','10 个账本吃<b>同一份候选池</b>，唯一的差别是选取策略。净值之差即策略之差——这也是为什么会有「全量基准」「随机基准」这种明显不聪明的账本：它们是对照组。')
+    +line('现在还不能下结论','第 '+weekIndex(currentBooks())+' 周，约需 '+TARGET_WEEKS+' 周样本才够判定。此前的排名都在噪声里。')
+    +'<h3 style="font:600 16px/24px var(--font-sans);color:var(--color-text-primary);margin:var(--space-5) 0 var(--space-2)">左边五格各回答一问</h3>'
+    +VIEWS.map(function(v){
+      return line(v.label,esc(v.sub));
+    }).join('')
+    +'<p style="font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary);margin-top:var(--space-5)">'
+      +'看到不认识的词，翻上面的<b>名词表</b>。想知道它当时为什么这么选，'
+      +'页面各处的<b>「问它当时怎么想」</b>会把那一次的原始判断调出来。</p>'
+  +'</div>';
 }
 
 /* Routine 手册 + 名词表（底账内） */
@@ -6635,6 +6722,13 @@ function phTeachCard(){
         return '<button type="button" class="seg-btn'+(a.arm===PH.arm?' on':'')+'"'
           +' data-ph-arm="'+esc(a.arm)+'" data-el="rules.arm.'+esc(a.arm)+'"'
           +(PH.busy?' disabled':'')+'>'+esc(a.label)+'</button>'}).join('')+'</span></div>';
+    /* 选哪一条不是同一件事的四个说法：加到「约束边界」是给一副已有的骨架
+       补一条，加到「AI 端到端」是给一个刻意不设骨架的方法加上唯一一条——
+       后者问的是另一个问题。不写出来，这个选择看起来就只是四个同义按钮。 */
+    var picked=arms.filter(function(a){return a.arm===PH.arm})[0];
+    if(picked&&picked.note)
+      h+='<div class="card-note" style="margin:-4px 0 var(--space-3)">'
+       +esc(picked.note)+'</div>';
   }
   if(PH.problems){
     h+='<div class="ph-warn" style="margin-top:var(--space-4)">'

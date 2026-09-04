@@ -8,14 +8,16 @@
        unique index, so a crashed or overlapping invocation cannot double-book.
        launchd rather than cron: cron on macOS needs Full Disk Access per binary,
        and a schedule that silently loses permission is a schedule that looks
-       alive while storing nothing. -->
+       alive while storing nothing.
+
+       Entry point is scripts/tick.py rather than the module directly: it
+       resolves inference configuration for the tick process only, and
+       declares this node a runner when a model is actually reachable. -->
   <key>Label</key><string>com.ideagen40.scheduler</string>
   <key>ProgramArguments</key>
   <array>
     <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
-    <string>-m</string>
-    <string>ideagen.scheduler</string>
-    <string>tick</string>
+    <string>/Users/yuesongcai/IdeaGen40/scripts/tick.py</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/yuesongcai/IdeaGen40</string>
   <key>StartInterval</key><integer>900</integer>

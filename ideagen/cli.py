@@ -975,6 +975,12 @@ def cmd_weekly(args) -> int:
         topic_scorer=args.topic_scorer,
         generators=(args.generators.split(",") if args.generators else None),
         selectors=(args.selectors.split(",") if args.selectors else None),
+        # A period generated after the fact is not a period the system called
+        # live, and the difference must survive into every artifact: the model
+        # weights have seen the world after this date even when the documents
+        # have not. `backfill` is how a chart, an export or a PM conversation
+        # can tell the two apart without asking anybody.
+        params={"data_classification": args.classification},
         dry_run=args.dry_run)
     if res.skipped:
         print(f"\n跳过：{res.skipped}")
@@ -1077,6 +1083,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--selectors", help="comma-separated; default every registered one")
     s.add_argument("--dry-run", action="store_true",
                    help="run the strategies, persist nothing")
+    s.add_argument("--classification", default="live",
+                   choices=("live", "backfill"),
+                   help="backfill = 事后补跑的历史期。文档层面卡死了 as-of，但模型"
+                        "权重见过该日期之后的世界，这一点无法用代码消除，只能标注")
 
     s = add("book", cmd_book, "book a completed run into the selector paper books")
     s.add_argument("--run-id", help="default: the latest completed weekly run")

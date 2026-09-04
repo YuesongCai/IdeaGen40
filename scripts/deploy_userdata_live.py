@@ -110,6 +110,10 @@ write_files:
       [Service]
       Type=oneshot
       ExecStart=/opt/ideagen/sync_state.sh
+      # 也送到串口控制台。journal 只有登得上机器的人看得到，而这台正是
+      # 登不上的那台——同步有没有按时跑，必须在 GetConsoleOutput 里看得见。
+      StandardOutput=journal+console
+      StandardError=journal+console
   - path: /etc/systemd/system/ideagen-sync.timer
     content: |
       [Unit]

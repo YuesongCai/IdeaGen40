@@ -21,7 +21,16 @@ old file is still being served, and nothing would ever pull again.
 Exit codes are the interface:
     0  a new snapshot was written to --dest
     3  already current, nothing written
+    4  the prefix is empty — nobody has ever published here
     1  failed
+
+4 is deliberately not 3. On a node whose entire job is to display published
+state, "there is nothing to display" means the sync is misconfigured, and it
+must not leave the same trace as a healthy no-op. It already cost one
+deployment: the publisher was writing to the laptop's bucket and the node was
+listing production's, and because an empty listing reported "already current",
+the timer ran every 15 minutes and announced success while nothing was ever
+going to arrive.
 
   python3 scripts/pull_state.py --dest /data/ideagen.db.new
 """
@@ -55,8 +64,11 @@ def main(argv: list[str]) -> int:
 
     keys = sorted(k for k in p.blobs.list(args.prefix) if k.endswith(".db"))
     if not keys:
-        print("PULL_NONE 云端还没有快照")
-        return 3
+        b = p.blobs
+        print(f"PULL_NONE {getattr(b, 'bucket', '?')}/{getattr(b, 'prefix', '')}"
+              f"/{args.prefix} 下没有任何快照——发布端多半写到了别处",
+              file=sys.stderr)
+        return 4
     key = keys[-1]
     want = digest_of_key(key)
 

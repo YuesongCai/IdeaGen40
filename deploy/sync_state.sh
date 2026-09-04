@@ -24,6 +24,10 @@ rc=$?
 case "$rc" in
   0) ;;
   3) echo "IG_SYNC_CURRENT $(date -u +%FT%TZ)"; exit 0 ;;
+  # An empty prefix is not a quiet no-op. This node exists to display published
+  # state, so nothing published means the publisher is aimed somewhere else —
+  # which is exactly how the first version failed while reporting success.
+  4) echo "IG_SYNC_EMPTY 发布端没有写到本节点读的位置 $(date -u +%FT%TZ)"; exit 1 ;;
   *) echo "IG_SYNC_FAIL rc=$rc $(date -u +%FT%TZ)"; exit 1 ;;
 esac
 

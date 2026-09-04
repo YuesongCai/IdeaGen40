@@ -19,6 +19,12 @@ ENVF = os.path.expanduser("~/.ideagen.env")
 # The instance's own resources, from data/cloud_inventory.md.
 MYSQL_HOST = "mysql1742d36bf5de.rds.ibytepluses.com"
 TOS_BUCKET = "ideagen-prod-4b869b"
+# Where production object storage lives, in one place. The laptop's own bucket
+# is a different one, so anything that publishes *for* the instance has to
+# import these rather than read the ambient environment — see
+# push_state_to_cloud.py, which spent a deployment writing snapshots the
+# instance had no way to find.
+TOS_PREFIX = "prod"
 TOS_ENDPOINT = "tos-ap-southeast-1.bytepluses.com"
 ARK_BASE = "https://ark.ap-southeast.bytepluses.com/api/v3"
 ARK_MODEL = "deepseek-v4-pro-260425"
@@ -50,7 +56,7 @@ def main() -> int:
         ("IDEAGEN_MYSQL_USER", "ideagen"),
         ("IDEAGEN_MYSQL_PASSWORD", readenv("IDEAGEN_MYSQL_PASSWORD")),
         ("IDEAGEN_TOS_BUCKET", TOS_BUCKET),
-        ("IDEAGEN_TOS_PREFIX", "prod"),
+        ("IDEAGEN_TOS_PREFIX", TOS_PREFIX),
         ("IDEAGEN_TOS_ENDPOINT", TOS_ENDPOINT),
         ("VOLCENGINE_ACCESS_KEY", readenv("BYTEPLUS_ACCESS_KEY")),
         ("VOLCENGINE_SECRET_KEY", readenv("BYTEPLUS_SECRET_KEY")),

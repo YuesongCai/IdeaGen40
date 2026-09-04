@@ -5,6 +5,13 @@ this it freezes at whatever was true when the instance was built — and a page
 that looks alive while showing last week's positions is worse than one that
 admits it is stale.
 
+The destination is production's bucket and prefix, imported from
+`build_runtime_env` — not whatever `~/.ideagen.env` points at. The laptop's own
+bucket is a different one, and the first version of this script inherited it:
+snapshots were published successfully, the instance listed successfully, and
+the two were looking at different namespaces. Nothing errored. The node simply
+reported "already current" forever.
+
 Keys are never reused. `BlobStore.put` refuses to overwrite on purpose ("write
 a new run"), so each snapshot is its own object and the newest is found by
 listing rather than by a mutable pointer:
@@ -43,6 +50,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 PREFIX = "deploy/state/"
 
@@ -64,6 +72,16 @@ def snapshot() -> bytes:
     return data
 
 
+def production_blobs():
+    """The store the display node reads, addressed with the laptop's credentials."""
+    from ideagen.platform.byteplus import TosBlobStore
+    import build_runtime_env as bre
+    return TosBlobStore(ak=bre.readenv("BYTEPLUS_ACCESS_KEY"),
+                        sk=bre.readenv("BYTEPLUS_SECRET_KEY"),
+                        bucket=bre.TOS_BUCKET, endpoint=bre.TOS_ENDPOINT,
+                        prefix=bre.TOS_PREFIX)
+
+
 def latest_digest(blobs, prefix: str) -> str | None:
     """The sha carried by the newest published snapshot, if there is one."""
     keys = sorted(k for k in blobs.list(prefix) if k.endswith(".db"))
@@ -79,20 +97,19 @@ def main(argv: list[str]) -> int:
                     help="内容未变也重新发布")
     args = ap.parse_args(argv)
 
-    from ideagen import platform as plat
-    p = plat.load()
-
+    blobs = production_blobs()
     data = snapshot()
     digest = hashlib.sha256(data).hexdigest()[:12]
 
-    if not args.force and latest_digest(p.blobs, args.prefix) == digest:
+    if not args.force and latest_digest(blobs, args.prefix) == digest:
         print(f"状态未变（{digest}），跳过发布")
         return 0
 
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     key = f"{args.prefix}{stamp}-{digest}.db"
-    p.blobs.put(key, data, content_type="application/x-sqlite3")
-    print(f"已发布 {len(data) / 1e6:.1f} MB → {key}")
+    blobs.put(key, data, content_type="application/x-sqlite3")
+    print(f"已发布 {len(data) / 1e6:.1f} MB → "
+          f"tos://{blobs.bucket}/{blobs.prefix}/{key}")
     return 0
 
 

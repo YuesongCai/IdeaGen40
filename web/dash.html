@@ -2385,14 +2385,17 @@ function renderOverview(){
        statusStrip()
        +'<div class="card section">'
          +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">系统自检</h2>'
-         +'<span class="card-note">心跳 · 平台端口 · 数据源</span></div>'
-         +foldBlock('overview.status.detail','自检明细','心跳时刻 · 端口 · 数据源健康',statusDrawerBody())
+         /* 这张卡原本把同一份清单写两遍：标题右侧「心跳 · 平台端口 · 数据源」，
+          * 按钮上「心跳时刻 · 端口 · 数据源健康」。合成一句，放在页面里所有
+          * 卡片放注解的地方；按钮只说它自己要做的事。 */
+         +'<span class="card-note">心跳时刻 · 平台端口 · 数据源健康</span></div>'
+         +foldBlock('overview.status.detail','自检明细','',statusDrawerBody())
        +'</div>')
     +secWrap('overview','runs',
        '<div class="card section">'
          +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">运行记录</h2>'
-         +'<span class="card-note">按期查看，含失败与永久缺失的期次</span></div>'
-         +foldBlock('overview.runs.detail','按期记录','每一期跑成了没有 · 失败原因 · 逐步日志',calDrawerBody())
+         +'<span class="card-note">每一期跑成了没有 · 失败原因 · 逐步日志 · 永久缺失的期次</span></div>'
+         +foldBlock('overview.runs.detail','按期记录','',calDrawerBody())
        +'</div>');
 }
 /* 持仓：PM 的职业本能 —— 现在拿着什么、压在哪几个宏观判断上。 */
@@ -7325,7 +7328,7 @@ function phTeachCard(){
   if(PH.proposal)return phReviewCard();
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
-   +'<h2 class="card-title">用一句话写下你判断一笔交易的准则'
+   +'<h2 class="card-title">用一句话写下你判断一笔交易的准则 '
      +'<span class="gloss" style="font-size:14px;vertical-align:middle" '
      +'title="系统会把它蒸馏成可执行的要求，并派生一条臂来执行。">ⓘ</span></h2>';
   if(blocked){
@@ -7334,7 +7337,7 @@ function phTeachCard(){
   }
   h+='<textarea class="ph-say" id="phSay" data-el="rules.say" oninput="PH.say=this.value"'
    +' placeholder="'+esc('比如：'+PH_EG[0])+'">'+esc(PH.say)+'</textarea>'
-   +'<div class="card-note" style="margin-top:8px">越具体越有效'
+   +'<div class="card-note" style="margin-top:8px">越具体越有效 '
    +'<span class="gloss" title="「要谨慎一点」无法执行；「必须指名一个被期限逼着动手的主体」可以。">ⓘ</span></div>'
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
@@ -7346,7 +7349,7 @@ function phTeachCard(){
   if(arms.length>1){
     var picked0=arms.filter(function(a){return a.arm===PH.arm})[0];
     h+='<div class="ph-pick"><span class="card-note">加到哪种生成方式上'
-     +(picked0&&picked0.note?'<span class="gloss" title="'+esc(picked0.note)+'">ⓘ</span>':'')+'</span>'
+     +(picked0&&picked0.note?' <span class="gloss" title="'+esc(picked0.note)+'">ⓘ</span>':'')+'</span>'
      +'<span class="ph-seg">'+arms.map(function(a){
         return '<button type="button" class="seg-btn'+(a.arm===PH.arm?' on':'')+'"'
           +' data-ph-arm="'+esc(a.arm)+'" data-el="rules.arm.'+esc(a.arm)+'"'

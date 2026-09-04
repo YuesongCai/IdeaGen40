@@ -6566,7 +6566,10 @@ function renderCandBody(){
     });
     return '<tr>'
       +'<td class="primary mono">'+esc(c.instrument_id)+'</td>'
-      +'<td>'+esc(c.instrument_name||'')+'</td>'
+      /* 全名任其换行时，「Invesco S&P 500 Low Volatility」会把那一行撑到三行高，
+       * 73 行的表因此忽高忽低、还比可视区宽出 90px。名称是辅助信息：一行放不下
+       * 就省略，全名挂 title。行高齐了，表也收得进画面。 */
+      +'<td><div class="clamp1" style="max-width:172px" title="'+esc(c.instrument_name||'')+'">'+esc(c.instrument_name||'')+'</div></td>'
       +'<td><span class="tag" title="'+esc(topicLabel(c.topic_id))+'">'+esc(c.topic_id||'')+'</span></td>'
       +'<td class="r num '+pctCls(c.upside_pct)+'">'+fmtPct(c.upside_pct)+'</td>'
       +'<td class="r num '+pctCls(c.downside_pct)+'">'+fmtPct(c.downside_pct)+'</td>'

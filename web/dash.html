@@ -2272,7 +2272,7 @@ function backtestSection(){
     +'<span class="card-note">所选窗口期初 = 100</span></div>'
     +backtestCurveSVG(points)
     +'<div class="bt-legend">'
-      +names.map(function(n,i){return '<span><i class="bt-swatch" style="background:var(--color-data-'+(i+1)+')"></i>'+esc(backtestArmName(n))+'</span>'}).join('')
+      +names.map(function(n,i){return '<span><i class="bt-swatch" style="background:var(--color-data-'+(i%8+1)+')"></i>'+esc(backtestArmName(n))+'</span>'}).join('')
     +'</div></div>';
 
   var armRows=names.map(function(name){
@@ -2386,7 +2386,9 @@ function backtestCurveSVG(points){
     var map={};byArm[name].forEach(function(p){map[p.d]=Number(p.equity)});
     var values=ds.map(function(d){return map[d]===undefined?null:map[d]});
     values.forEach(function(v){if(v!==null){mn=Math.min(mn,v);mx=Math.max(mx,v)}});
-    return {name:name,values:values,color:'var(--color-data-'+(i+1)+')'};
+    // 只定义了 8 个数据色；真实回测现在有 9 条臂，第 9 条会拿到不存在的
+    // 变量而画成透明。循环取用，宁可两条同色也不要一条隐形。
+    return {name:name,values:values,color:'var(--color-data-'+(i%8+1)+')'};
   });
   if(!isFinite(mn)||!isFinite(mx))return '<div class="empty-sm">净值点不可用</div>';
   if(mx-mn<0.5){mn-=0.5;mx+=0.5}

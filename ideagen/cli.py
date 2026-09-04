@@ -36,7 +36,8 @@ from urllib.parse import parse_qs, urlparse
 
 from . import (analytics, backfill, briefing, cloud_corpus, cloud_paper, config,
                db, generator, ideas as ideas_mod, lexicon, monitor, paper,
-               poc_fixture, poc_workflow, replay, report as report_mod, schema,
+               philosophy, poc_fixture, poc_workflow, replay,
+               report as report_mod, schema,
                scoring, seed, serve as serve_mod, shelf_store, themes, universe)
 from . import platform as platform_mod
 from .sources import futu_px, olive, wisburg
@@ -1021,6 +1022,82 @@ def cmd_book(args) -> int:
     return 0
 
 
+def cmd_philosophy(args) -> int:
+    """PM 语义注入的四个动作：看、提、生效、停用。
+
+    `propose` deliberately stops at a file. Distillation is a model call and the
+    result is a proposal, not a decision — a philosophy that started steering a
+    live book because a model parsed a sentence confidently would be exactly the
+    unreviewed knob this whole design exists to avoid.
+    """
+    from .strategy import available
+    as_of = _as_of(args)
+    pending = config.DATA / "philosophy" / "pending"
+    arms = {r["name"] for r in available("idea_generator")}
+
+    if args.action == "list":
+        live = philosophy.cards(include_retired=True)
+        if not live:
+            print("还没有任何 PM 准则卡。")
+        for c in live:
+            mark = f"（{c['retired_on']} 起停用）" if c.get("retired_on") else ""
+            print(f"{c['card_id']}  {c['as_of']}  → {philosophy.arm_name(c)} {mark}")
+            print(f"    原话：{c['source_utterance']}")
+            for d in c.get("directives") or []:
+                print(f"    · {d}")
+            print(f"    必填字段：{'、'.join(philosophy.require_keys(c)) or '（无）'}")
+        for f in sorted(pending.glob("*.json")) if pending.exists() else []:
+            print(f"[待确认] {f.stem}  —  ideagen philosophy activate {f.stem}")
+        return 0
+
+    if args.action == "propose":
+        if not args.say:
+            print("要注入什么？用 --say \"一句话\"", file=sys.stderr)
+            return 2
+        plat = platform_mod.load()
+        card, bad = philosophy.distill(args.say, plat.inference, arm=args.arm,
+                                       as_of=as_of, slug=args.slug,
+                                       known_arms=arms)
+        print(json.dumps(card, ensure_ascii=False, indent=2))
+        print("\n—— 体检 ——")
+        if bad:
+            for b in bad:
+                print(f"  ✗ {b}")
+            print("\n未通过，没有写入待确认区。改一句话再试，或换一个更具体的说法。")
+            return 1
+        print("  ✓ 未触碰不可注入区，与初心不冲突，准则已落成可判定字段")
+        pending.mkdir(parents=True, exist_ok=True)
+        out = pending / f"{card['card_id']}.json"
+        out.write_text(json.dumps(card, ensure_ascii=False, indent=2),
+                       encoding="utf-8")
+        print(f"\n已存为待确认：{out.relative_to(config.ROOT)}")
+        print(f"确认生效：ideagen philosophy activate {card['card_id']}")
+        print(f"生效后会新增一条臂 {philosophy.arm_name(card)}，"
+              f"与 {args.arm} 同批同料并跑；{args.arm} 本身不动。")
+        return 0
+
+    if args.action == "activate":
+        f = pending / f"{args.card_id}.json"
+        if not f.exists():
+            print(f"待确认区里没有 {args.card_id}", file=sys.stderr)
+            return 2
+        card = json.loads(f.read_text(encoding="utf-8"))
+        philosophy.activate(card, known_arms=arms)
+        f.unlink()
+        print(f"已生效：{philosophy.arm_name(card)}（{card['as_of']} 起）")
+        print("下一次周跑会多出这条臂。原臂保持冻结，作为对照。")
+        return 0
+
+    if args.action == "retire":
+        philosophy.retire(args.card_id, as_of, args.reason or "")
+        print(f"{args.card_id} 自 {as_of.isoformat()} 起停用；"
+              "它已经写下的持仓与业绩留在账本里。")
+        return 0
+
+    print(f"未知动作 {args.action!r}", file=sys.stderr)
+    return 2
+
+
 # ---------------------------------------------------------------- parser
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser("ideagen", description="IdeaGen40 daily pipeline")
@@ -1075,6 +1152,16 @@ def main(argv: list[str] | None = None) -> int:
     s = add("score", cmd_score, "compute D/A/B/N/M/C for every theme")
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
+    s = add("philosophy", cmd_philosophy,
+            "PM 一句话注入：蒸馏成准则卡，派生一条与原臂并跑的新臂")
+    s.add_argument("action", choices=["list", "propose", "activate", "retire"])
+    s.add_argument("card_id", nargs="?", help="activate / retire 的卡号")
+    s.add_argument("--say", help="PM 的原话，一句就够")
+    s.add_argument("--arm", default="carl_constraint",
+                   help="注入哪条生成臂（默认 carl_constraint）")
+    s.add_argument("--slug", help="卡号后缀，默认从原话生成")
+    s.add_argument("--reason", help="retire 的原因")
+
     s = add("weekly", cmd_weekly, "one weekly run: 筛选A → 筛选B → 筛选C")
     s.add_argument("--trade", action="store_true",
                    help="book each selector's picks into its paper book after the run")

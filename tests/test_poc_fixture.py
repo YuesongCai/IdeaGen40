@@ -204,7 +204,14 @@ class TestPublicPocFixture(unittest.TestCase):
         self.assertIn("String(key).indexOf('wisburg-mcp')", dashboard)
         self.assertIn("key==='wisburg-mcp'", dashboard)
         self.assertIn("function currentBooks()", dashboard)
-        self.assertIn("b.booked_batch===rid", dashboard)
+        # The race compares ten books over time, so every book stays in the
+        # chart whether or not it added to its position this period. The old
+        # assertion pinned a filter that compared booked_batch (a batch id)
+        # against a run id — never equal, so it silently did nothing and the
+        # fallback carried the page. `bookedThisPeriod` is the honest form of
+        # the question it was trying to ask.
+        self.assertIn("function bookedThisPeriod(", dashboard)
+        self.assertNotIn("b.booked_batch===rid", dashboard)
         self.assertIn("w.as_of===asOf&&w.corpus_total", dashboard)
         for phrase in ("公开合成", "合成演示", "机械回放",
                        "公开 synthetic", "synthetic fixture"):

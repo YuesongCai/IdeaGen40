@@ -1407,9 +1407,17 @@ function hbOutcome(job){
   return os.find(function(o){return o.job===job})||null;
 }
 function currentBooks(){
-  var bs=(S&&S.books)||[],rid=((S&&S.weekly)||{}).run_id;
-  var current=rid?bs.filter(function(b){return b.booked_batch===rid}):[];
-  return current.length?current:bs;
+  /* 十本账是一场持续的赛马，不是某一期的快照——某本账这期没建成仓（标的当天
+     没有价格、或这期它一条也没选中），不代表它退出比较，只代表它这期没加仓。
+     原来这里按 run_id 过滤，而 booked_batch 存的是 batch_id，两者永不相等，
+     过滤静默失效、靠兜底才显示全部。删掉这个从未生效的过滤，比让它"生效"
+     然后把账本从赛马图里抹掉要对：本期是否入账用 booked_as_of 单独标注。 */
+  return (S&&S.books)||[];
+}
+/* 这本账这期加没加仓——供标注用，不用来决定谁出现在图里。 */
+function bookedThisPeriod(b){
+  var asOf=((S&&S.weekly)||{}).as_of;
+  return !!(asOf&&b&&b.booked_as_of===asOf);
 }
 /* 全账本合计（所有账本同一日期轴时逐日求和；否则不出曲线，只出可加总的量） */
 function aggBooks(){

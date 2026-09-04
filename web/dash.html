@@ -1774,6 +1774,39 @@ function robustBadge(name){
   return '<span style="margin-left:6px;white-space:nowrap" title="'+esc(v.why||'')+'">'
     +badge(kind,word)+'</span>';
 }
+/* 持有期完整度：那张表的表头写「持有期 30 天」，而只有约两成的持仓真的
+   跑满了——近几期还没有那么长的后续行情。未满窗口的收益被算进同一列，
+   所以那一列不是一个 30 天收益。而且各臂的满窗口占比并不相同，
+   「两臂被同样截断、截断会抵消」这个前提本次不成立。
+
+   只用跑满的部分重算，名次变化很大——但那正是最容易被误读的地方：
+   读者会拿九个重算均值去排名，而排名是一个比较，那个比较需要自己的下界。
+   所以这里只说「名次的变动不可分辨」，不复述任何一个新名次。 */
+function horizonNote(){
+  var h=(((S||{}).backtest||{}).summary||{}).horizon_completeness;
+  if(!h||!h.arms)return '';
+  var frac=h.complete_frac, arms=h.arms;
+  var ruled=Object.keys(arms).filter(function(k){
+    return arms[k].verdict_vs_control==='not_ruled_out';
+  }).sort(function(x,y){
+    return (arms[x].vs_control_full_horizon_pct||0)-(arms[y].vs_control_full_horizon_pct||0);
+  });
+  var lead='表头写的是 <b>'+fmtInt(h.horizon_days||0)+' 天持有期，实际只有 '
+    +(frac!==undefined&&frac!==null?'<b>'+(frac*100).toFixed(0)+'%</b>':'部分')
+    +' 的持仓跑满了</b>（'+fmtInt(h.n_full_horizon||0)+' / '+fmtInt(h.n_positions||0)+' 笔）。'
+    +'未满窗口的收益被算进同一列，所以上表那一列不是一个 '+fmtInt(h.horizon_days||0)+' 天收益；'
+    +'各臂的满窗口占比还不相同，「两臂被同样截断、截断会抵消」这个前提本次不成立。';
+  var recalc='只用跑满的部分重算，各臂均值变化很大，'
+    +'<b>但没有任何一个臂相对全量基准的差距越过合并下界——名次的变动在当前样本下不可分辨。</b>'
+    +(ruled.length
+       ? '两个臂显著低于基准（'+ruled.map(function(k){
+           return esc(selMetaOf(k)[1]||k)+' '+fmtInt(arms[k].n_full_horizon||0)+' 笔';
+         }).join('、')+'），而它们的满窗口样本就这么多。'
+       : '');
+  return '<div class="card-note" style="margin-top:var(--space-3);color:var(--color-feedback-warning-text)">'
+    +lead+'<span class="gloss" title="'+esc(h.note||'')+'">ⓘ</span></div>'
+    +'<div class="card-note" style="margin-top:var(--space-2)">'+recalc+'</div>';
+}
 function robustNote(){
   var r=(((S||{}).backtest||{}).summary||{}).robustness_drop_top;
   if(!r||!r.arms)return '';
@@ -2921,6 +2954,13 @@ function holdMapCard(ag){
     if(!tg[t]){tg[t]={value:0,unreal:0,n:0};tOrder.push(t)}
     tg[t].value+=pp.value;tg[t].unreal+=pp.unrealized;tg[t].n++;
   });
+  /* 各主题按自身成本的收益率。只看绝对盈亏会把「仓位大」读成「表现差」：
+     通胀 31% 仓位亏 15,836、欧洲 9% 仓位亏 3,493，金额差 4.5 倍，
+     收益率却是 −0.26% 对 −0.19%，几乎一样。排名需要共同的分母。 */
+  tOrder.forEach(function(t){
+    var cost=tg[t].value-tg[t].unreal;
+    tg[t].ret=cost?(tg[t].unreal/cost*100):null;
+  });
   function themeName(t){return t==='（无主题记录）'?t:(topicLabel(t)||t)}
   var byVal=tOrder.slice().sort(function(a,b){return tg[b].value-tg[a].value});
   var byPnl=tOrder.slice().sort(function(a,b){return tg[b].unreal-tg[a].unreal});
@@ -2929,18 +2969,27 @@ function holdMapCard(ag){
     var t0=byVal[0],tb=byPnl[0],tw=byPnl[byPnl.length-1];
     var pctOf=function(t){return totalV?(tg[t].value/totalV*100).toFixed(0):'0'};
     var money=function(t){return '<span class="num '+pctCls(tg[t].unreal)+'">'+signedMoney(tg[t].unreal)+'</span>'};
+    var perf=function(t){return tg[t].ret===null?'—'
+      :'<span class="num '+pctCls(tg[t].ret)+'">'+fmtPct(tg[t].ret)+'</span>'};
+    /* 排名按收益率，不按金额——金额随仓位缩放。 */
+    byPnl=tOrder.slice().sort(function(a,b){
+      return (tg[b].ret===null?-1e9:tg[b].ret)-(tg[a].ret===null?-1e9:tg[a].ret);
+    });
+    tb=byPnl[0];tw=byPnl[byPnl.length-1];
     /* 仓位最重的往往也是赚最多的，分成两句会把同一个主题念两遍。 */
-    if(tb&&tb===t0&&tg[tb].unreal>0){
-      lead='仓位最重、目前也赚最多的是<b>'+esc(themeName(t0))+'</b>（'
-        +pctOf(t0)+'% 仓位 · '+tg[t0].n+' 个标的 · '+money(t0)+'）';
+    /* 仓位最重的往往也是表现最好的，分成两句会把同一个主题念两遍。 */
+    if(tb&&tb===t0&&tg[tb].ret>0){
+      lead='仓位最重、表现也最好的是<b>'+esc(themeName(t0))+'</b>（'
+        +pctOf(t0)+'% 仓位 · '+tg[t0].n+' 个标的 · '+perf(t0)+' · '+money(t0)+'）';
     }else{
       lead='仓位最重的是<b>'+esc(themeName(t0))+'</b>（'+pctOf(t0)+'% 仓位 · '+tg[t0].n+' 个标的）';
-      if(tb&&tg[tb].unreal>0)
-        lead+='；赚最多的是<b>'+esc(themeName(tb))+'</b> '+money(tb);
+      if(tb&&tg[tb].ret>0)
+        lead+='；表现最好的是<b>'+esc(themeName(tb))+'</b> '+perf(tb)+'（'+money(tb)+'）';
     }
-    if(tw&&tw!==t0&&tw!==tb&&tg[tw].unreal<0)
-      lead+='；亏最多的是<b>'+esc(themeName(tw))+'</b> '+money(tw);
-    lead+='。';
+    if(tw&&tw!==tb&&tg[tw].ret<0)
+      lead+='；最差的是<b>'+esc(themeName(tw))+'</b> '+perf(tw)+'（'+money(tw)+'）';
+    lead+='。<span class="card-note">各主题的收益率按自身成本计，金额随仓位大小缩放，'
+      +'直接比金额会把仓位重读成表现差。</span>';
   }
   var body;
   if(holdView==='list'){
@@ -2972,7 +3021,10 @@ function holdMapCard(ag){
            不是 POLICY-PATH。同一主题在别处也照这个次序显示。 */
         +(isTopic?'<button type="button" class="t" style="cursor:pointer;padding:0" onclick="openTopicDrawer(\''+jss(t)+'\')" title="查看该主题的评分与证据"><i class="thm-sw" style="background:'+themeColor(t)+'"></i>'+esc(topicLabel(t)||t)+' ›</button>':'<span class="t"><i class="thm-sw" style="background:'+themeColor(t)+'"></i>'+esc(t)+'</span>')
         +'<div class="l mono" style="font-size:11px;letter-spacing:.04em">'+esc(isTopic?t:'')+'</div>'
-        +'<div class="s num">'+share.toFixed(0)+'% 仓位 · '+g.list.length+' 标的 · <span class="'+pctCls(g.unreal)+'">'+signedMoney(g.unreal)+'</span></div>'
+        +(function(){var cost=g.value-g.unreal,r=cost?(g.unreal/cost*100):null;
+          return '<div class="s num">'+share.toFixed(0)+'% 仓位 · '+g.list.length+' 标的 · '
+            +(r===null?'':'<span class="'+pctCls(r)+'">'+fmtPct(r)+'</span> · ')
+            +'<span class="'+pctCls(g.unreal)+'">'+signedMoney(g.unreal)+'</span></div>';})()
         /* 就地可问：读者正看着这个主题，追问入口应该在这里，而不是要他
            先记住主题名再去别处找。按钮与 hm-k 里的主题链接并列，不嵌套。 */
         /* 用小一号：这里一屏并排五个主题组，整号实心药丸是页面里最重的
@@ -3966,6 +4018,7 @@ function backtestCard(){
       '<div class="table-wrap"><table>'
         +'<thead><tr><th>选取策略</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
         +'<tbody>'+rows+'</tbody></table></div>'
+      +horizonNote()
       +robustNote()
       +(function(){
         /* 口径差异与前视风险原本整段 300+ 字铺在表下，读者未读先跳过。
@@ -4281,7 +4334,7 @@ function setDrawerFocus(f){
   if(top){top.f=f;top.scrolled=false;renderDrawers();return}
   /* 无抽屉时聚焦落在主链路的就地展开区：按取值归属判定属于哪一段 */
   if(f===null||f===undefined){mlFocus[1]=null;mlFocus[2]=null;renderMethod();return}
-  var isGen=GEN_ORDER.some(function(o){return o[0]===f||methodName(o[0])===methodName(f)});
+  var isGen=genOrder().some(function(o){return o[0]===f||methodName(o[0])===methodName(f)});
   if(isGen)mlFocus[2]=f; else mlFocus[1]=f;
   renderMethod();
 }
@@ -4528,6 +4581,33 @@ var GEN_ORDER=[
  ['carl_constraint','约束边界','被迫行为','识别受硬约束的市场参与者：约束条件、压力临界点、临界点触发后的被迫动作，据此下注其必然行为而非意愿行为。','美债利息负担逼近国防预算 → 财政部被迫缩短发债久期 → 利好短端国债。'],
  ['chain','传导链','因果链可证伪','要求写全宏观事件至标的价格的完整因果链，每一环挂可观测数据；缺环即作废，任一环读数背离即证伪。','欧洲财政扩张 → 德国基建订单（PMI 可查）→ 工业用电需求 → 电网设备商营收。'],
  ['gap','共识缺口','定价背离','以市场定价反推已被计入的预期，仅在研报证据与市场定价背离处建仓。','利率市场定价 2027 年前不加息，多家投行证据指向通胀再加速 → 买入通胀保值债。']];
+/* 本期实际跑过的生成方法，按固定四种在前、派生臂在后。
+ * GEN_ORDER 是写死的四条，而 PM 在「准则」页激活一条准则会派生出第五条臂
+ * （`chain@pm-2026-09-05-xxxx`，注册表标签「传导链 · PM 注入」），周跑取的是
+ * 注册表而不是这个常量。八处遍历 GEN_ORDER 的地方在那一刻会一起漏掉它：
+ * 流水线少一条泳道、候选表每行只画四个点、「4 种方法」的计数也不对——
+ * 系统能做的事，页面上看不见，而这恰恰是刚请 PM 去用的那个功能。 */
+function derivedGenLabel(key){
+  var i=String(key).indexOf('@');
+  if(i<0)return methodName(key);
+  return methodName(String(key).slice(0,i))+' · PM 注入';
+}
+function genOrder(){
+  var out=GEN_ORDER.slice();
+  var known={};out.forEach(function(o){known[o[0]]=1});
+  var gens=((S||{}).weekly||{}).generators||[];
+  gens.forEach(function(g){
+    var k=g.method;
+    if(!k||known[k])return;
+    known[k]=1;
+    var cid=String(k).indexOf('@')>=0?String(k).split('@')[1]:'';
+    out.push([k, derivedGenLabel(k), 'PM 注入',
+      '由「准则」页注入的一条准则派生：与原臂同批、同料、同规则并跑，原臂冻结不动，两条臂的净值之差即这条准则的净效应。'
+        +(cid?'　准则编号 '+cid:''),
+      '（这一条的措辞来自 PM 写下的准则，不是内置方法）']);
+  });
+  return out;
+}
 function genGlossTitle(o){return o[2]+'——'+o[3]+'　例：'+o[4]}
 function genByKey(key){
   var gens=((S||{}).weekly||{}).generators||[];
@@ -4554,7 +4634,7 @@ function humanizeKeys(text){
   if(!t)return t;
   var pairs=[];
   (typeof SEL_META!=='undefined'?SEL_META:[]).forEach(function(m){pairs.push([m[0],m[1]])});
-  (typeof GEN_ORDER!=='undefined'?GEN_ORDER:[]).forEach(function(o){pairs.push([o[0],o[1]])});
+  (typeof genOrder==='function'?genOrder():[]).forEach(function(o){pairs.push([o[0],o[1]])});
   pairs.sort(function(a,b){return b[0].length-a[0].length});   /* 长键先替，避免前缀误伤 */
   pairs.forEach(function(kv){
     if(kv[0]===kv[1])return;
@@ -4697,7 +4777,7 @@ function pipeCanvasCard(){
   var ag=aggBooks();
   var lead=(nDocs&&nPool)
     ? '本期读入 <b>'+fmtInt(nDocs)+'</b> 篇研报，收敛出 <b>'+fmtInt(nTopics)+'</b> 个宏观主题，'
-      +'4 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
+      +'<b>'+fmtInt(genOrder().length)+'</b> 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
       +(ag&&ag.openN?('，10 个账本各自从中选出持仓，合计在持 <b>'+fmtInt(ag.openN)+'</b> 仓。'):'。')
     : '';
   var legend='筛选A：语义打分选出主题，灰色分流为落选。'
@@ -4829,8 +4909,15 @@ function pipeCanvasSVG(){
   }
 
   /* ── 生成方式泳道 ── */
-  var gX1=430,gX2=580,gYs=[96,168,240,312];
-  GEN_ORDER.forEach(function(o,gi){
+  /* 泳道坐标按实际条数算。写死四个 Y 值时，第五条臂（PM 准则派生的那条）
+   * 拿到 undefined，整张 SVG 的 path/rect 全变 NaN——画布直接塌掉。 */
+  var gX1=430,gX2=580;
+  var gN=Math.max(1,genOrder().length);
+  var gTop=96,gBot=312;
+  var gYs=[];
+  for(var gq=0;gq<gN;gq++)gYs.push(gN===1?((gTop+gBot)/2):(gTop+gq*(gBot-gTop)/(gN-1)));
+  var gH=Math.max(26,Math.min(44,(gBot-gTop)/Math.max(1,gN-1)-8));
+  genOrder().forEach(function(o,gi){
     var g=genByKey(o[0]);
     var y=gYs[gi];
     if(g){
@@ -4858,7 +4945,7 @@ function pipeCanvasSVG(){
   var poolN=pool.n||0;
   if(poolN){
     var gMax=1;gens.forEach(function(g){gMax=Math.max(gMax,g.n||0)});
-    GEN_ORDER.forEach(function(o,gi){
+    genOrder().forEach(function(o,gi){
       var g=genByKey(o[0]);if(!g||!g.n)return;
       s+=link(gX2,gYs[gi],pX-56,pY,2+(g.n/gMax)*16,'var(--color-surface-brand-strong)',0.45);
     });
@@ -5524,18 +5611,18 @@ function stageGeneratorsBody(d){
   /* 归一 focus 到 GEN_ORDER 的 key */
   var focKey=null;
   if(d&&d.f){
-    var fo=GEN_ORDER.find(function(o){return o[0]===d.f||methodName(o[0])===methodName(d.f)});
+    var fo=genOrder().find(function(o){return o[0]===d.f||methodName(o[0])===methodName(d.f)});
     if(fo)focKey=fo[0];
   }
   /* 药丸列 4 种方法，下面网格的第一列也列同样 4 种方法，只有药丸能点——
    * 读者在网格里点方法名没反应，只好回到上面再点一次。现在反过来：
    * 网格里的方法名就是入口，这里只留状态。 */
-  var focRow=focKey?GEN_ORDER.find(function(o){return o[0]===focKey}):null;
+  var focRow=focKey?genOrder().find(function(o){return o[0]===focKey}):null;
   var tabs=focRow?focusBar((d&&d.p!==undefined)?'':focRow[1],'方法'):'';
   /* 焦点头：它是谁 · 产出 · 独有标的（方法间最真实的 diff）· 重合率 */
   var focusHead='';
   if(focKey){
-    var fo2=GEN_ORDER.find(function(o){return o[0]===focKey});
+    var fo2=genOrder().find(function(o){return o[0]===focKey});
     var fg=genByKey(focKey);
     var mine=cands.filter(function(c){return (c.proposed_by||[]).indexOf(focKey)>=0});
     var uniq=mine.filter(function(c){
@@ -5562,7 +5649,7 @@ function stageGeneratorsBody(d){
       +'</div>';
   }
   var perMax=1,target=null;
-  GEN_ORDER.forEach(function(o){
+  genOrder().forEach(function(o){
     var g=genByKey(o[0]);if(!g)return;
     var per=(g.meta||{}).per_topic||{};
     chosen.forEach(function(t){perMax=Math.max(perMax,per[t]||0)});
@@ -5575,7 +5662,7 @@ function stageGeneratorsBody(d){
   html+='<div class="pg-h" style="justify-content:flex-start;align-items:flex-end;text-align:left">方法 ＼ 主题</div>';
   chosen.forEach(function(t){html+='<div class="pg-h" title="'+esc(topicLabel(t))+'">'+esc(t)+'</div>'});
   html+='<div class="pg-h" style="justify-content:flex-end;text-align:right">合计</div>';
-  GEN_ORDER.forEach(function(o){
+  genOrder().forEach(function(o){
     var g=genByKey(o[0]);
     var isFoc=focKey===o[0];
     var dimS=(focKey&&!isFoc)?';opacity:.35':'';
@@ -5610,7 +5697,7 @@ function stageGeneratorsBody(d){
   html+='</div></div>';
   var total=gens.reduce(function(a,g){return a+(g.n||0)},0);
   return tabs+focusHead
-    +pathLegend(GEN_PATH,GEN_ORDER.map(function(o){return o[0]}))
+    +pathLegend(GEN_PATH,genOrder().map(function(o){return o[0]}))
     +'<div class="quiet" style="margin-bottom:var(--space-3)">4 种方法 × '+chosen.length+' 个主题并行生成，彼此独立 '+glossMark('每条想法是 1 个月期限的结构化输出，含概率、上下行情景与论点。四种方法互不可见。')+' · 本期合计 <b class="num" style="color:var(--color-text-primary)">'+fmtInt(total)+'</b> 条 · 色深 = 产量'
 +'</div>'
     +html
@@ -5674,7 +5761,7 @@ function stagePoolBody(d){
       +'<thead><tr>'+candTh('instrument_id','标的')+candTh('instrument_name','名称')+candTh('topic_id','主题')
       +candTh('upside_pct','上行','r')+candTh('downside_pct','下行','r')
       +candTh('p_up','P↑','r')+candTh('p_base','P基','r')+candTh('p_down','P↓','r')
-      +candTh('n_proposals','提出','r')+'<th>生成方法 '+glossMark('一行四个点，按 '+GEN_ORDER.map(function(o){return o[1]}).join(' · ')+' 排列；亮 = 该方法提出了这条。展开「详情」看方法名与各自的论点。')+'</th><th class="r">当时的理由</th></tr></thead>'
+      +candTh('n_proposals','提出','r')+'<th>生成方法 '+glossMark('一行四个点，按 '+genOrder().map(function(o){return o[1]}).join(' · ')+' 排列；亮 = 该方法提出了这条。展开「详情」看方法名与各自的论点。')+'</th><th class="r">当时的理由</th></tr></thead>'
       +'<tbody id="candBody"></tbody></table></div>'
       +epi('赔率低于 1.5 的想法不进入候选池')
       +'</div>';
@@ -6715,11 +6802,11 @@ function renderCandBody(){
   $('candBody').innerHTML=arr.map(function(c,i){
     var pbSet={};(c.proposed_by||[]).forEach(function(m){pbSet[m]=1});
     var pbN=Object.keys(pbSet).length;
-    var pb='<span class="mdots" title="'+esc('按 '+GEN_ORDER.map(function(o){return o[1]}).join(' · ')+' 的顺序；亮点 = 该方法提出了这条')+'">'
-      +GEN_ORDER.map(function(o){
+    var pb='<span class="mdots" title="'+esc('按 '+genOrder().map(function(o){return o[1]}).join(' · ')+' 的顺序；亮点 = 该方法提出了这条')+'">'
+      +genOrder().map(function(o){
         return '<i class="mdot'+(pbSet[o[0]]?' on':'')+'" title="'+esc(o[1]+(pbSet[o[0]]?'：提出了':'：未提出'))+'"></i>';
       }).join('')
-      +'</span> <span class="num" style="color:var(--color-text-metadata)">'+pbN+'/'+GEN_ORDER.length+'</span>';
+      +'</span> <span class="num" style="color:var(--color-text-metadata)">'+pbN+'/'+genOrder().length+'</span>';
     var pickers=sels.map(function(s,si){return {s:s,si:si}}).filter(function(o){
       return ((o.s.chosen)||[]).some(function(ch){return selChosenId(ch)===c.instrument_id});
     });
@@ -7630,7 +7717,20 @@ function phReviewCard(){
 /* ── 在跑的准则 ── */
 function phRunningCard(){
   var live=(PH.data||{}).live||[];
-  var h='<div class="card section"><div class="card-title-row">'
+  var probs=(PH.data||{}).ledger_problems||[];
+  var h='';
+  /* 账本里有读不了的行时必须说出来。跳过它们是为了不让一行写坏的数据拖垮
+     整个注册表，但跳得无声无息是另一种失败：一条准则停跑了而没人知道。 */
+  if(probs.length){
+    h+='<div class="card section ph-warn" style="margin-bottom:var(--space-4)">'
+     +'<div class="ph-step-h" style="margin-bottom:6px">准则账本里有 '
+     +probs.length+' 行读不了，已跳过</div><ul class="ph-list">'
+     +probs.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>'
+     +'<div class="card-note" style="margin-top:8px;color:#7a5410">'
+     +'其余准则照常运行。这些行不会自己消失——账本只增不改，'
+     +'要处理得由人来看一眼 data/philosophy/ledger.jsonl。</div></div>';
+  }
+  h+='<div class="card section"><div class="card-title-row">'
    +'<h2 class="card-title" style="margin-bottom:0">在跑的准则</h2>'
    +'<span class="card-note">'+live.length+' 条</span></div>';
   if(!live.length){

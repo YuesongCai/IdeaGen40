@@ -12,6 +12,7 @@ the study, so a failure names the damage rather than the assertion:
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -347,6 +348,92 @@ class DerivedArmRegisters(unittest.TestCase):
         with self.assertRaises(RuntimeError) as e:
             run(a_ctx(as_of=date(2026, 8, 20)))
         self.assertIn("后见之明", str(e.exception))
+
+
+class OneBadLineCannotTakeDownTheRegistry(unittest.TestCase):
+    """一行写坏的账本数据，不该让四条原臂一起下线。
+
+    Found by a reviewer on 2026-09-05 while hand-writing a card. A line that is
+    valid JSON, has `event: activate`, and simply lacks `card` used to raise
+    `KeyError` inside `cards()` — and because `gen_pm._install()` runs during
+    the plugin scan, that KeyError came out of an *import*: `available()`
+    raised, every founding arm became unreachable, and the weekly run and the
+    panel went down together.
+
+    The ledger is append-only and outlives any one generator, so a single bad
+    write is permanent. Skipping is right; skipping silently is not — a
+    philosophy that stopped running unnoticed is the other failure, so the
+    lines are counted and shown.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._real = philosophy.LEDGER
+        philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+
+    def tearDown(self):
+        philosophy.LEDGER = self._real
+        self.tmp.cleanup()
+
+    def _write(self, *rows):
+        philosophy.LEDGER.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) if isinstance(r, dict)
+                      else r for r in rows) + "\n", encoding="utf-8")
+
+    def test_activate_without_a_card_is_skipped_not_raised(self):
+        self._write({"event": "activate", "card_id": "pm-2026-09-05-a1b2c3"})
+        self.assertEqual(philosophy.cards(), [])
+        self.assertEqual(len(philosophy.ledger_problems()), 1)
+        self.assertIn("没有 card 内容", philosophy.ledger_problems()[0])
+
+    def test_the_good_cards_around_a_bad_line_still_load(self):
+        """One bad write must cost itself, not the rules written before and
+        after it."""
+        self._write({"event": "activate", "card_id": "pm-2026-09-05-a1b2c3"},
+                    "{ 这不是 JSON",
+                    {"event": "activate", "card_id": a_card()["card_id"],
+                     "as_of": a_card()["as_of"], "card": a_card()})
+        self.assertEqual([c["card_id"] for c in philosophy.cards()],
+                         [a_card()["card_id"]])
+        self.assertEqual(len(philosophy.ledger_problems()), 2)
+
+    def test_every_unusable_shape_is_named(self):
+        for row, want in (
+                ({"event": "activate"}, "没有 card_id"),
+                ({"event": "shrug", "card_id": "x"}, "不认识的事件类型"),
+                ({"event": "activate", "card_id": "x", "card": "不是对象"},
+                 "没有 card 内容"),
+                ("[1, 2, 3]", "不是一个对象"),
+                ("nope", "不是合法 JSON")):
+            self._write(row)
+            probs = philosophy.ledger_problems()
+            self.assertEqual(len(probs), 1, row)
+            self.assertIn(want, probs[0], row)
+
+    def test_problems_carry_the_line_number(self):
+        self._write({"event": "activate", "card_id": "pm-2026-09-05-a1b2c3"},
+                    {"event": "activate", "card_id": "pm-2026-09-05-d4e5f6"})
+        self.assertIn("第 1 行", philosophy.ledger_problems()[0])
+        self.assertIn("第 2 行", philosophy.ledger_problems()[1])
+
+    def test_the_plugin_scan_survives_anything_in_the_ledger(self):
+        """The backstop, tested through the expression the weekly run uses.
+        Cards that cannot be registered cost themselves; the four controls come
+        up regardless."""
+        from ideagen import strategy as strat
+        from ideagen.strategies import gen_pm
+        self._write({"event": "activate", "card_id": "pm-2026-09-05-a1b2c3"},
+                    {"event": "activate", "card_id": "pm-2026-09-05-d4e5f6",
+                     "card": {"card_id": "pm-2026-09-05-d4e5f6"}})
+        before = set(strat._REGISTRY)
+        try:
+            gen_pm._install()
+            names = [r["name"] for r in strat.available("idea_generator")]
+            for base in ("ai_native", "carl_constraint", "chain", "gap"):
+                self.assertIn(base, names)
+        finally:
+            for key in set(strat._REGISTRY) - before:
+                del strat._REGISTRY[key]
 
 
 class ActivationReachesTheWeeklyRun(unittest.TestCase):

@@ -143,8 +143,21 @@ def _install() -> None:
     """
     from ..strategy import available
     have = {r["name"] for r in available("idea_generator")}
-    for card in philosophy.cards():
-        if card["scope"]["arm"] not in BASES:
+    try:
+        live = philosophy.cards()
+    except Exception:  # noqa: BLE001
+        # This function runs during the plugin scan, so anything raised here
+        # comes out of an `import` and takes the whole registry with it — all
+        # four founding arms unreachable, the weekly run and the panel down
+        # together, because of one line in a data file. The ledger is guarded
+        # row by row now; this is the backstop for whatever the guard does not
+        # anticipate. No cards is a smaller failure than no arms.
+        return
+    for card in live:
+        try:
+            if card["scope"]["arm"] not in BASES:
+                continue
+        except Exception:  # noqa: BLE001 — one bad card, not the whole scan
             continue
         if philosophy.arm_name(card) in have:
             # Already registered — a second pass (a reload, a test, a server
@@ -152,12 +165,17 @@ def _install() -> None:
             # than an exception, or activating a card can take down a process
             # that was running perfectly well without it.
             continue
-        base_v = spec("idea_generator", card["scope"]["arm"])["version"]
-        register("idea_generator", philosophy.arm_name(card),
-                 f"{base_v}+{card['card_id']}",
-                 role="exploratory",
-                 label=f"{BASES[card['scope']['arm']]['label']} · PM 注入")(
-            _make(card))
+        try:
+            base_v = spec("idea_generator", card["scope"]["arm"])["version"]
+            register("idea_generator", philosophy.arm_name(card),
+                     f"{base_v}+{card['card_id']}",
+                     role="exploratory",
+                     label=f"{BASES[card['scope']['arm']]['label']} · PM 注入")(
+                _make(card))
+        except Exception:  # noqa: BLE001
+            # A card that cannot be registered costs itself. It must not cost
+            # the cards after it, and it must not cost the four controls.
+            continue
 
 
 _install()

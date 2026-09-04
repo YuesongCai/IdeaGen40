@@ -119,22 +119,65 @@ CARD_ID_RE = re.compile(r"^pm-\d{4}-\d{2}-\d{2}-[0-9a-f]{6}$")
 
 # ---------------------------------------------------------------------------
 # ledger
+def _bad_row(e: Any) -> str:
+    """Why this ledger row cannot be used, or "" if it can.
+
+    Structure is checked here rather than trusted at the point of use. A row
+    that is valid JSON but the wrong shape — `{"event":"activate"}` with no
+    `card` — used to reach `cards()` and raise `KeyError`, and because
+    `gen_pm._install()` runs during the plugin scan that `KeyError` came out of
+    an *import*: `strategy.available()` raised, all four founding arms became
+    unreachable, and the weekly run and the panel went down together. One
+    mistyped line in an append-only file is not allowed to cost that.
+
+    It is the same reason `_install()` skips a card naming an arm it cannot
+    derive. That reasoning was written down in one place and not applied here.
+    """
+    if not isinstance(e, dict):
+        return "不是一个对象"
+    ev = e.get("event")
+    if ev not in ("activate", "retire"):
+        return f"不认识的事件类型 {ev!r}"
+    if not str(e.get("card_id") or "").strip():
+        return "没有 card_id"
+    if ev == "activate" and not isinstance(e.get("card"), dict):
+        return "activate 事件里没有 card 内容"
+    return ""
+
+
 def _read_events() -> list[dict[str, Any]]:
     if not LEDGER.exists():
         return []
     out = []
-    for line in LEDGER.read_text(encoding="utf-8").splitlines():
+    for n, line in enumerate(LEDGER.read_text(encoding="utf-8").splitlines(), 1):
         line = line.strip()
         if not line:
             continue
         try:
-            out.append(json.loads(line))
+            row = json.loads(line)
         except json.JSONDecodeError:
-            # A corrupt line is reported by `problems()`, not silently skipped
-            # into a smaller ledger — a philosophy that vanished without anyone
-            # noticing is worse than one that fails loudly.
-            out.append({"event": "corrupt", "raw": line[:200]})
+            out.append({"event": "unusable", "line_no": n,
+                        "why": "不是合法 JSON", "raw": line[:200]})
+            continue
+        why = _bad_row(row)
+        if why:
+            out.append({"event": "unusable", "line_no": n, "why": why,
+                        "raw": line[:200]})
+        else:
+            out.append(row)
     return out
+
+
+def ledger_problems() -> list[str]:
+    """Ledger lines that cannot be used, in Chinese, for a person to read.
+
+    They are skipped rather than raised on, but skipping silently would be the
+    other failure: a philosophy that stopped running without anyone noticing.
+    So they are counted and surfaced — the panel shows this, which is what the
+    comment above `_read_events` used to claim and nothing actually did.
+    """
+    return [f"第 {e['line_no']} 行无法使用（{e['why']}）：{e['raw'][:60]}"
+            for e in _read_events() if e.get("event") == "unusable"]
 
 
 def _append(event: dict[str, Any]) -> None:

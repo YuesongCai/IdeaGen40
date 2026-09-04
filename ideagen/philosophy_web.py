@@ -109,6 +109,11 @@ def handle_list() -> tuple[dict[str, Any], int]:
     live = [_view(c, p) for c in philosophy.cards()]
     return {
         "live": live,
+        # Unusable ledger lines are skipped so one mistyped row cannot take the
+        # registry down, but skipping silently would be the other failure: a
+        # philosophy that stopped running and nobody noticed. So they travel to
+        # the panel and get shown.
+        "ledger_problems": philosophy.ledger_problems(),
         "pending": [_view(c, pending=True) for c in _pending_cards()],
         "arms": _arm_options(),
         "default_arm": DEFAULT_ARM,

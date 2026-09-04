@@ -535,6 +535,31 @@ class TestOliveMCP(unittest.TestCase):
         self.assertEqual(merged["navDate"], "2026-09-01")
         date.fromisoformat(olive._normalise("funds", merged)["nav_d"])
 
+    def test_issuer_is_discovered_from_the_endpoint_alone(self):
+        """The operator should only have to know the MCP URL (RFC 9728)."""
+        seen = []
+
+        def fake_get(url, **kwargs):
+            seen.append(url)
+            response = mock.Mock(status_code=404)
+            response.json.return_value = {}
+            if url.endswith("/.well-known/oauth-protected-resource/mcp"):
+                response.status_code = 200
+                response.json.return_value = {
+                    "authorization_servers": ["https://sso.olive.example/"],
+                }
+            return response
+
+        with mock.patch("ideagen.sources.olive.requests.get", fake_get):
+            issuer = olive.discover_issuer("https://olive.example/mcp")
+        self.assertEqual(issuer, "https://sso.olive.example")
+        # the path-suffixed document is the one RFC 9728 says to try first
+        self.assertTrue(seen[0].endswith("/oauth-protected-resource/mcp"))
+
+    def test_issuer_discovery_rejects_a_non_https_endpoint(self):
+        with self.assertRaises(olive.OliveMCPError):
+            olive.discover_issuer("http://olive.example/mcp")
+
     def test_oauth_authorization_uses_pkce_and_resource_indicator(self):
         url, verifier, state = olive.oauth_authorization(
             "client-id", "http://127.0.0.1:8766/callback")

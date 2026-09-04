@@ -27,6 +27,7 @@ import json
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -199,6 +200,71 @@ class OliveMCP:
             "arguments": args or {},
         })
         return _unwrap_content(result)
+
+
+def discover_issuer(mcp_url: str | None = None, *, timeout: int = 20) -> str:
+    """Find the authorization server for an MCP endpoint, given only its URL.
+
+    Saves the operator from having to know the issuer separately: RFC 9728
+    publishes it at /.well-known/oauth-protected-resource, and a server that
+    does not serve that document still names it in the WWW-Authenticate header
+    of the 401 it answers an unauthenticated request with.
+    """
+    url = (mcp_url or config.OLIVE_MCP_URL or "").strip()
+    if not url:
+        raise OliveMCPError("OLIVE_MCP_URL is not configured")
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.netloc:
+        raise OliveMCPError(f"OLIVE_MCP_URL must be an https URL, got {url!r}")
+    origin = f"{parts.scheme}://{parts.netloc}"
+
+    # RFC 9728 allows the path-suffixed form as well as the bare well-known.
+    candidates = [f"{origin}/.well-known/oauth-protected-resource"]
+    if parts.path.strip("/"):
+        candidates.insert(
+            0, f"{origin}/.well-known/oauth-protected-resource/"
+               f"{parts.path.strip('/')}")
+    attempts: list[str] = []
+    for candidate in candidates:
+        try:
+            response = requests.get(
+                candidate, headers={"Accept": "application/json"},
+                timeout=timeout)
+        except requests.RequestException as exc:
+            attempts.append(f"{candidate} -> {type(exc).__name__}")
+            continue
+        if response.status_code >= 400:
+            attempts.append(f"{candidate} -> HTTP {response.status_code}")
+            continue
+        try:
+            servers = response.json().get("authorization_servers") or []
+        except ValueError:
+            attempts.append(f"{candidate} -> not JSON")
+            continue
+        if servers and isinstance(servers[0], str):
+            return servers[0].rstrip("/")
+        attempts.append(f"{candidate} -> no authorization_servers")
+
+    try:  # last resort: the challenge on an unauthenticated call
+        challenge = requests.post(
+            url, json={"jsonrpc": "2.0", "id": 0, "method": "tools/list",
+                       "params": {}},
+            headers={"Accept": "application/json, text/event-stream"},
+            timeout=timeout,
+        ).headers.get("WWW-Authenticate", "")
+        found = re.search(r'resource_metadata="([^"]+)"', challenge)
+        if found:
+            meta = requests.get(found.group(1), timeout=timeout).json()
+            servers = meta.get("authorization_servers") or []
+            if servers:
+                return str(servers[0]).rstrip("/")
+        attempts.append(f"WWW-Authenticate -> {challenge[:80] or 'absent'}")
+    except (requests.RequestException, ValueError) as exc:
+        attempts.append(f"WWW-Authenticate -> {type(exc).__name__}")
+
+    raise OliveMCPError(
+        "could not discover the OAuth issuer; set OLIVE_OAUTH_ISSUER by hand. "
+        "Tried: " + "; ".join(attempts))
 
 
 def register_oauth_client(redirect_uri: str, *,

@@ -530,6 +530,7 @@ def _merge_fund(catalog: dict, details: dict[str, Any]) -> dict:
                                or summary.get("fundName")
                                or catalog.get("productName")),
         "currency": perf_meta.get("currency") or "USD",
+        "inceptionDate": (overview.get("timestamps") or {}).get("inceptionDate"),
         "riskLevel": _metric_value(metrics, "RISK_LEVEL")
                      or (card.get("mainMetrics") or {}).get("riskLevel"),
         "latestNav": point.get("value"),
@@ -649,8 +650,10 @@ def ingest(con, payload: dict | list, as_of: date | None = None,
                 "key": rec["key"], "kind": rec["kind"], "futu_code": None,
                 "olive_key": rec["key"], "name": rec["name"],
                 "market": "OLIVE", "currency": rec["currency"], "priceable": 0,
+                "first_seen_d": rec.get("first_seen_d"),
                 "meta": {k: v for k, v in rec.items()
-                         if k not in ("key", "kind", "name", "currency", "nav", "nav_d")},
+                         if k not in ("key", "kind", "name", "currency", "nav",
+                                      "nav_d", "first_seen_d")},
                 "updated_at": now,
             })
             if rec.get("nav") is not None:
@@ -725,6 +728,24 @@ def _as_list(v: Any) -> list[dict]:
 _PCT = re.compile(r"^\s*([+-]?\d+(?:\.\d+)?)\s*%\s*$")
 
 
+def _iso_date(value: Any) -> str | None:
+    """A YYYY-MM-DD date, or nothing. Never a guess.
+
+    Olive dates arrive as "2024-04-25" and sometimes with a time attached. A
+    value that is not a plain calendar date is dropped rather than coerced:
+    a wrong listing date silently widens the eligibility gate, and a missing
+    one is visible in the coverage count.
+    """
+    text = str(value or "").strip()[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        return None
+    return text if text != "1970-01-01" else None   # epoch sentinel, not a date
+
+
 def _pct(v: Any) -> float | None:
     if v in (None, "", "--"):
         return None
@@ -761,6 +782,12 @@ def _normalise(group: str, it: dict) -> dict | None:
         "strategy": it.get("strategy"),
         "nav": _num(it.get("latestNav") if it.get("latestNav") is not None else it.get("nav")),
         "nav_d": (it.get("navDate") or it.get("asOf") or "")[:10] or None,
+        # Inception is a hard lower bound on existence, not on shelf
+        # availability: a fund cannot be picked before it exists, so feeding it
+        # to the eligibility gate can only catch real anachronisms. It never
+        # tightens beyond that, which is why availability stays an open gap to
+        # be reported rather than papered over with a stricter-looking date.
+        "first_seen_d": _iso_date(it.get("inceptionDate")),
         "yield7d": _pct(it.get("hebdomad")),
         "ret1m": _pct(perf.get("1month") or perf.get("ret1m")),
         "ret1y": _pct(perf.get("1year") or perf.get("ret1y")),

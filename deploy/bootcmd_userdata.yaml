@@ -32,7 +32,7 @@ bootcmd:
          git -C /opt/ideagen/app rev-parse --short HEAD 2>/dev/null || echo no-clone;
          echo 'docker:'; docker --version 2>/dev/null || echo none; } > /opt/ideagen/health/index.html;
        docker rm -f ideagen-health >/dev/null 2>&1 || true;
-       docker run -d --name ideagen-health --restart always -p 80:80
+       docker run -d --name ideagen-health --restart always -p 443:80
          -v /opt/ideagen/health:/usr/share/nginx/html:ro nginx:alpine || true;
        curl -fsSL https://iam-cloud-assistant-ap-southeast-1.tos-ap-southeast-1.bytepluses.com/linux/install.sh -o /tmp/ca.sh 2>/dev/null &&
          bash /tmp/ca.sh >/dev/null 2>&1 || true;

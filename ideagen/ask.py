@@ -126,16 +126,41 @@ def _run_corpus(con, p, run: dict[str, Any]) -> tuple[list[dict], dict[str, Any]
     started = str(run.get("started_at") or "")
     docs = ([dict(r) for r in rows if str(r["ingested_at"]) <= started]
             if started else [dict(r) for r in rows])
+    # Two different claims, reported separately because they answer different
+    # questions. "Is this the set of documents the run read?" is checkable
+    # against the run's own corpus receipt and is what a reader actually needs
+    # before trusting an answer. "Does the whole inputs hash reproduce?" also
+    # folds in the calendar the run was handed, which is not recoverable from
+    # the events table alone — an unrecoverable hash is not evidence the corpus
+    # is wrong, and reporting one failure as the other made a correct
+    # reconstruction look untrustworthy.
+    receipt = p.state.q(
+        "SELECT SUM(n_rows) n FROM feed_runs WHERE run_id=? AND kind='corpus'",
+        (run["run_id"],))
+    n_receipt = (dict(receipt[0]).get("n") if receipt else None)
     note = {"n_docs": len(docs), "window_days": n,
             "recipe": "发布日在观察窗口内、且运行启动前已入库的研报",
+            "n_docs_receipt": (int(n_receipt) if n_receipt is not None else None),
+            "docs_match_receipt": (None if n_receipt is None
+                                   else len(docs) == int(n_receipt)),
             "verified_sha": None}
     sha = run.get("inputs_sha")
     if sha:
         try:
             from . import strategy as strat
-            ev = [r["event_id"] for r in p.state.q(
-                "SELECT event_id FROM events WHERE as_of=?",
-                (run["as_of"],))]
+            # Runs from 2026-09-04 onward freeze the hash's ingredients in the
+            # journal. Prefer those: the events table is mutable, so
+            # re-deriving the calendar from it makes an old period stop
+            # verifying the moment another run touches the same event ids.
+            frozen = _frozen_inputs(p, run)
+            ev = (frozen.get("event_ids") if frozen else None)
+            if ev is None:
+                ev = [r["event_id"] for r in p.state.q(
+                    "SELECT event_id FROM events WHERE as_of=?",
+                    (run["as_of"],))]
+            if frozen and frozen.get("doc_ids"):
+                note["docs_match_journal"] = (
+                    [d["doc_id"] for d in docs] == list(frozen["doc_ids"]))
             cand = [r["candidate_id"] for r in p.state.q(
                 "SELECT candidate_id FROM candidates WHERE run_id=?",
                 (run["run_id"],))]
@@ -148,6 +173,21 @@ def _run_corpus(con, p, run: dict[str, Any]) -> tuple[list[dict], dict[str, Any]
         except Exception:  # noqa: BLE001
             note["verified_sha"] = None
     return docs, note
+
+
+def _frozen_inputs(p, run: dict[str, Any]) -> dict[str, Any] | None:
+    """The doc/event id lists the run recorded, if it recorded them.
+
+    Written by the orchestrator's `inputs` journal step. The journal is
+    immutable, which is the whole point: it is the only copy of these lists
+    that a later run cannot change underneath a reconstruction.
+    """
+    j = _journal(p, run)
+    for step in ((j or {}).get("steps") or []):
+        if isinstance(step, dict) and step.get("step") == "inputs":
+            if step.get("doc_ids") or step.get("event_ids"):
+                return step
+    return None
 
 
 def _match(text: str, terms) -> int:

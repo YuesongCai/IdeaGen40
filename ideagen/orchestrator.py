@@ -280,8 +280,19 @@ def weekly(
                 [c.get("id") for c in candidates],
                 sorted(prices.keys()),
                 [e.get("event_id") for e in calendar])
+            # The hash's own ingredients, frozen. `inputs_sha` covers the
+            # documents *and* the calendar this run was handed, but the events
+            # table is mutable: a later run upserting the same event ids
+            # changes what a reconstruction computes, so a period that
+            # verified byte-for-byte last week silently stops verifying (seen
+            # on 2026-08-26 after a backfill touched the calendar). The
+            # journal is immutable, so recording the id lists here is what
+            # keeps "these are the inputs behind this decision" checkable for
+            # as long as the artifact exists.
             j.step("inputs", corpus=len(corpus), candidates=len(candidates),
-                   calendar=len(calendar), prices=len(prices), sha=inputs_sha)
+                   calendar=len(calendar), prices=len(prices), sha=inputs_sha,
+                   doc_ids=[str(d.get("doc_id")) for d in corpus],
+                   event_ids=[str(e.get("event_id")) for e in calendar])
             res.steps.append("inputs")
             log(f"  inputs  corpus={len(corpus)} candidates={len(candidates)} "
                 f"calendar={len(calendar)} sha={inputs_sha}")

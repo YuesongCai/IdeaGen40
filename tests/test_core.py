@@ -2587,3 +2587,37 @@ class TestBacktestKeepsGenerationProvenance(unittest.TestCase):
         self.assertEqual(_methods_of({}), [])
         self.assertEqual(_methods_of({"sources": [{"methods": []}]}), [])
         self.assertEqual(_methods_of({"sources": ["not-a-dict"]}), [])
+
+
+class TestFrozenInputsSurviveMutableTables(unittest.TestCase):
+    """inputs_sha must stay checkable after later runs touch the events table.
+
+    The hash covers documents and the calendar the run was handed. Rebuilding
+    the calendar from `events` makes verification depend on a mutable table:
+    on 2026-09-04 a backfill upserted calendar rows and the 08-26 period,
+    which had verified byte-for-byte, silently stopped verifying. The
+    orchestrator now freezes the id lists in the journal, and ask prefers them.
+    """
+
+    def test_journal_inputs_step_is_preferred(self):
+        from ideagen import ask
+        from unittest import mock
+        journal = {"steps": [
+            {"step": "universe", "eligible": 3},
+            {"step": "inputs", "corpus": 2, "sha": "abc",
+             "doc_ids": ["d1", "d2"], "event_ids": ["e9"]},
+        ]}
+        with mock.patch.object(ask, "_journal", return_value=journal):
+            got = ask._frozen_inputs(None, {"as_of": "2026-09-02",
+                                            "run_id": "r"})
+        self.assertEqual(got["event_ids"], ["e9"])
+        self.assertEqual(got["doc_ids"], ["d1", "d2"])
+
+    def test_a_run_without_frozen_lists_returns_none(self):
+        from ideagen import ask
+        from unittest import mock
+        for journal in ({"steps": [{"step": "inputs", "corpus": 2}]},
+                        {"steps": []}, None):
+            with mock.patch.object(ask, "_journal", return_value=journal):
+                self.assertIsNone(ask._frozen_inputs(
+                    None, {"as_of": "2026-08-26", "run_id": "r"}))

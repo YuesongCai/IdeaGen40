@@ -183,8 +183,11 @@ def cmd_forget(_args) -> int:
 
 def cmd_reboot(_args) -> int:
     ve("ecs", "RebootInstance", "--InstanceId", INSTANCE)
-    print("已下发重启，等待引导脚本……")
-    return cmd_status(argparse.Namespace(wait=600))
+    # A cold boot installs Docker and builds the image from scratch on a 2C/4G
+    # box; ten minutes is normal and being told "timed out" at minute nine would
+    # be the tool lying about the instance.
+    print("已下发重启，等待引导脚本……（首次约 6-12 分钟：装 docker、拉代码、构建镜像）")
+    return cmd_status(argparse.Namespace(wait=1200))
 
 
 def cmd_status(args) -> int:

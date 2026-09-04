@@ -14,12 +14,11 @@ Two halves, deliberately separate:
 
   export  (laptop)   build a small SQLite holding only the platform tables and
                      put it in the bucket.
-  import  (instance) if a table is empty, fill it from that file.
+  import  (instance) insert every row the database does not already have.
 
-Import is guarded per table rather than globally: a partly-seeded database
-should finish, and a table the cloud has since written to must never be
-overwritten by a laptop's older copy. It is safe to run on every boot, which is
-what the dashboard's entrypoint does.
+Import is guarded by primary key rather than by table: rows the cloud already
+holds win, rows it has never seen arrive, and neither side has to go first. It
+is safe to run on every boot, which is what the dashboard's entrypoint does.
 """
 from __future__ import annotations
 
@@ -85,8 +84,11 @@ def cmd_export(args) -> int:
     import os
     ak = os.environ.get("BYTEPLUS_ACCESS_KEY") or os.environ["VOLCENGINE_ACCESS_KEY"]
     sk = os.environ.get("BYTEPLUS_SECRET_KEY") or os.environ["VOLCENGINE_SECRET_KEY"]
+    # The instance reads through a prefixed store (IDEAGEN_TOS_PREFIX=prod), so
+    # an unprefixed upload lands somewhere it will never look — the seed was
+    # sitting in the bucket while the dashboard reported no seed at all.
     store = TosBlobStore(ak=ak, sk=sk, bucket=args.bucket, region=args.region,
-                         endpoint=args.endpoint)
+                         endpoint=args.endpoint, prefix=args.prefix)
     # The blob port refuses to overwrite, because run artifacts are immutable.
     # A seed is not an artifact; it is a copy that should be replaceable.
     store._c().put_object(args.bucket, store._k(SEED_KEY),
@@ -146,6 +148,8 @@ def main() -> int:
     e.add_argument("--bucket", default="ideagen-prod-4b869b")
     e.add_argument("--region", default="ap-southeast-1")
     e.add_argument("--endpoint", default="tos-ap-southeast-1.bytepluses.com")
+    e.add_argument("--prefix", default="prod",
+                   help="must match the instance IDEAGEN_TOS_PREFIX")
 
     i = sub.add_parser("import", help="fill empty tables from the seed (instance)")
     i.set_defaults(fn=cmd_import)

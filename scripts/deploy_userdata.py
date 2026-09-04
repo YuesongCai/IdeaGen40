@@ -203,29 +203,50 @@ def cmd_reboot(_args) -> int:
 def cmd_status(args) -> int:
     """What the instance says about itself, in its own words.
 
-    While bootstrapping, :80 is a plain status page. Once the stack is up Caddy
-    owns :80 and /healthz answers — so which one replies is itself the state.
+    While bootstrapping, :80 is a plain status page. Once the stack is up the
+    proxy owns both ports, redirects :80 to HTTPS and answers 401 until someone
+    logs in — so this probe asks over HTTPS and treats 401 as alive. Checking
+    :80 for a 200 reported a healthy instance as "nothing is listening", and a
+    probe that cries dead over a working box is worse than no probe: the one
+    time it is right, nobody believes it.
     """
+    import ssl
+    from urllib.request import Request, urlopen
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE  # the cert may still be being issued
+
     deadline = time.time() + max(getattr(args, "wait", 0), 1)
     last = ""
     while True:
-        for path, label in (("/healthz", "stack"), ("/", "bootstrap")):
-            try:
-                with urllib.request.urlopen(
-                        f"http://{PUBLIC_IP}{path}", timeout=8) as r:
-                    body = r.read(4000).decode("utf-8", "replace").strip()
-                if label == "stack":
-                    print(f"✅ 栈已就绪：http://{PUBLIC_IP}/review  ({body[:120]})")
-                    return 0
-                if body != last:
-                    print(body)
-                    last = body
-                break
-            except (urllib.error.URLError, OSError, TimeoutError):
-                continue
-        else:
+        try:
+            with urlopen(Request(f"https://{PUBLIC_IP}/healthz"),
+                         timeout=8, context=ctx) as r:
+                body = r.read(400).decode("utf-8", "replace").strip()
+            print(f"✅ 栈已就绪：https://{PUBLIC_IP}/review  ({body[:120]})")
+            return 0
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                print(f"✅ 栈已就绪：https://{PUBLIC_IP}/review "
+                      f"（HTTP {e.code}，代理在要登录——这就是它活着的证据）")
+                return 0
+        except (urllib.error.URLError, OSError, TimeoutError):
+            pass
+
+        # Not up yet: the bootstrap serves a plain status page on :80 until the
+        # proxy takes over, and that page is the only view into a boot with no
+        # shell attached to it.
+        try:
+            with urlopen(f"http://{PUBLIC_IP}/", timeout=8) as r:
+                body = r.read(4000).decode("utf-8", "replace").strip()
+            if body and body != last:
+                print(body)
+                last = body
+        except (urllib.error.URLError, OSError, TimeoutError):
             if not last:
-                print("实例还没有任何东西在监听 :80（引导中或未重启）")
+                print("实例还没有任何东西在监听（引导中或未重启）")
+                last = "-"
         if time.time() >= deadline:
             return 1
         time.sleep(15)

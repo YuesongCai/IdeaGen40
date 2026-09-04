@@ -366,6 +366,17 @@ class EnvSecretStore(SecretStore):
                 f"{', '.join(map(str, self.env_files)) or 'no env file'})")
         return v
 
+    def declared(self, name: str) -> str | None:
+        """The value the env file states, ignoring the process environment.
+
+        `get` exists to answer "what is in effect", so a process variable wins
+        there and should. But that leaves no way to ask what the operator wrote
+        down, and the two can differ without anything noticing — a wrapper that
+        injects a role reads as configuration when it is an override. Telling
+        those apart needs the file's own answer, which is what this returns.
+        """
+        return self._file.get(name)
+
     def source(self, name: str) -> str | None:
         """Where a key came from, without exposing its value."""
         if os.environ.get(name):

@@ -1082,9 +1082,16 @@ def tick(now_utc: datetime, *, p: plat.Platform | None = None,
                     # deliberately-absent model credentials, and the dashboard
                     # reports a failure for a week the production node actually
                     # completed — a lie manufactured by architecture, not data.
-                    role = (os.environ.get("IDEAGEN_WEEKLY_ROLE", "")
-                            or _env_file_get("IDEAGEN_WEEKLY_ROLE") or "runner")
-                    if role.lower() == "observer":
+                    resolved = weekly_role()
+                    role = resolved["effective"]
+                    if resolved["conflict"]:
+                        # Loud, not corrected: which machine produces the
+                        # portfolio is an operator's decision, and a tick is not
+                        # the place to make it. Being unable to see the
+                        # disagreement is the part that was never anyone's
+                        # decision.
+                        log(f"  {job.name:<7} ⚠ 角色冲突：{resolved['why']}")
+                    if role == "observer":
                         why = "本机为观察节点：只盯市与服务面板，周产由生产实例承担"
                         rep.outcomes.append(JobOutcome(
                             job.name, as_of.isoformat(), "delegated", why))
@@ -1116,6 +1123,103 @@ def _env_file_get(key: str) -> str | None:
         return EnvSecretStore(_ENV_FILE).get(key, required=False)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _declared(key: str) -> str | None:
+    """What ~/.ideagen.env says, ignoring the process environment.
+
+    `_env_file_get` cannot answer this despite its name: `EnvSecretStore.get`
+    gives process variables priority, so it returns the override whenever there
+    is one. Reading the declaration is the only way to see that an override
+    happened.
+    """
+    try:
+        from .platform.local import EnvSecretStore
+        from .platform import _ENV_FILE
+        return EnvSecretStore(_ENV_FILE).declared(key)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _tick_sees_model_key() -> bool:
+    """Whether `scripts/tick.py` would find a model key, by its rules not ours.
+
+    It deliberately does not use the secret store. The store skips commented
+    lines; tick's reader is a regex over the whole file whose docstring says so
+    outright — "the key as stored, whether its line is live or commented out".
+    That single difference is the entire mechanism being reported here, so
+    asking the store would answer about a different program and return the
+    opposite. Predicting another process means matching it, including where it
+    disagrees with the rest of the codebase.
+    """
+    import pathlib
+    import re
+
+    try:
+        from .platform import _ENV_FILE
+        text = pathlib.Path(_ENV_FILE).read_text(encoding="utf-8")
+    except OSError:
+        # Only a missing or unreadable file means "no key". A bare
+        # `except Exception` here swallowed a NameError and returned False,
+        # which reads as "no promotion" — the reassuring answer, produced by a
+        # bug rather than by the file.
+        return False
+    return bool(re.search(r"ARK_API_KEY=(\S+)", text))
+
+
+def weekly_role() -> dict[str, Any]:
+    """Who produces the weekly here, and whether anything disagrees about it.
+
+    There are two sources and they can differ without anyone noticing.
+    `~/.ideagen.env` holds the operator's declaration; the process environment
+    holds whatever a wrapper decided. The environment wins, by design — that is
+    how a wrapper injects a role for one run.
+
+    What is not by design is silence. `scripts/tick.py` promotes a node to
+    `runner` whenever an ARK key is readable, and its key reader matches the line
+    even when it is commented out; `setdefault` then writes `runner` into the
+    child environment because the declaration lives in the file rather than in
+    `os.environ`, and the file's `observer` never gets a vote. Each step is
+    reasonable and the sum is a machine acting against its own configuration.
+
+    That matters more than it sounds: two runners do not collide. They write to
+    different stores, so the uniqueness index guarding one period cannot see the
+    other, and the result is two versions of the same week with nothing raising
+    a hand. Resolution lives here so the answer has one definition, and the
+    disagreement is returned rather than resolved away.
+    """
+    declared = (_declared("IDEAGEN_WEEKLY_ROLE") or "").strip().lower()
+    # `scripts/tick.py` promotes to runner whenever the model key is readable,
+    # and its reader matches the line even when it is commented out. `setdefault`
+    # then wins because tick imports nothing from this package before building
+    # the child environment, so the file's declaration is not in `os.environ` to
+    # block it. Checked rather than assumed: no launchd plist sets the variable,
+    # and replaying tick's own steps in a clean environment yields `runner`.
+    #
+    # Deliberately not reported: whether the value "came from the environment".
+    # Importing this package loads the env file into `os.environ`, so any caller
+    # that can ask the question has already destroyed the distinction, and a
+    # field that cannot tell an override from a declaration would answer a
+    # question it is not measuring.
+    promoted = _tick_sees_model_key()
+    override = (os.environ.get("IDEAGEN_WEEKLY_ROLE") or "").strip().lower()
+    effective = ("runner" if promoted else override or declared or "runner")
+    conflict = bool(declared and effective != declared)
+    return {
+        "declared": declared or None,
+        "promoted_by_model_key": promoted,
+        "effective": effective,
+        "conflict": conflict,
+        "why": (
+            f"~/.ideagen.env 写的是 {declared}，但周跑实际以 {effective} 运行"
+            "：tick.py 见到可读的 ARK_API_KEY 便提升为 runner，"
+            "而它的读法连注释掉的那行也算数"
+            if conflict and promoted else
+            f"~/.ideagen.env 写的是 {declared}，实际以 {effective} 运行"
+            if conflict else
+            f"生效角色 {effective}"
+            + ("（来自 ~/.ideagen.env）" if declared else "（无声明，取默认）")),
+    }
 
 
 def _heartbeat(p: plat.Platform, rep: TickReport, *, interval_s: int) -> bool:

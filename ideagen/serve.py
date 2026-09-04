@@ -269,7 +269,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path in ("/", "/index.html", "/review", "/review.html", "/dash"):
             return self._dashboard()
         if path == "/api/status":
-            return self._json(monitor.digest(db.init()))
+            # The weekly role travels with it. Two nodes both believing they
+            # produce the weekly do not collide — they write to different
+            # stores, so the uniqueness index guarding one period never sees the
+            # other — and the only symptom is two versions of the same week.
+            # Nothing surfaced which role this node had actually resolved to,
+            # so a wrapper overriding the declared one was invisible.
+            digest = monitor.digest(db.init())
+            try:
+                from .scheduler import weekly_role
+                digest["weekly_role"] = weekly_role()
+            except Exception as e:  # noqa: BLE001 — status must still answer
+                digest["weekly_role"] = {"error": type(e).__name__}
+            return self._json(digest)
         if path == "/api/report":
             p = config.WEB / "report.json"
             if not p.exists():

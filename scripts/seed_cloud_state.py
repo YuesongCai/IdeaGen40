@@ -53,6 +53,29 @@ def _cols(con: sqlite3.Connection, table: str) -> list[str]:
     return [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
 
 
+def _target_cols(state, table: str) -> set[str] | None:
+    """Which columns the destination actually has, or None if we cannot tell.
+
+    The two schemas are not identical — the laptop's SQLite carries columns the
+    cloud DDL never had (`candidates.topic` is the one that bit), and inserting
+    the source's column list wholesale fails the whole table with `Unknown
+    column`. Copy the intersection instead: a column the destination does not
+    model is a column it was never going to read.
+    """
+    dialect = getattr(state, "dialect", "")
+    if dialect in ("mysql", "postgres"):
+        where = ("table_schema = DATABASE()" if dialect == "mysql"
+                 else "table_schema = current_schema()")
+        try:
+            rows = state.q(
+                "SELECT column_name AS c FROM information_schema.columns "
+                f"WHERE {where} AND table_name = ?", (table,))
+            return {str(r["c"]) for r in rows} or None
+        except Exception:  # noqa: BLE001 — fall back to trying every column
+            return None
+    return None
+
+
 def cmd_export(args) -> int:
     src = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     have = {r[0] for r in src.execute(
@@ -132,6 +155,12 @@ def cmd_import(args) -> int:
         try:
             before = p.state.q(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"]
             cols = _cols(src, t)
+            target = _target_cols(p.state, t)
+            if target:
+                dropped = [c for c in cols if c not in target]
+                cols = [c for c in cols if c in target]
+                if dropped:
+                    print(f"  {t}: 目标表没有 {dropped}，只带其余列")
             rows = src.execute(f"SELECT {','.join(cols)} FROM {t}").fetchall()
             if not rows:
                 report[t] = "seed empty"

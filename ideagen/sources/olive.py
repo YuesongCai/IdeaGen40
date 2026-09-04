@@ -562,9 +562,11 @@ def pull_snapshot(client: OliveMCP, *, product_codes: Iterable[str] | None = Non
                   detail_limit: int = 0) -> dict:
     """Fetch the Olive catalog and an optional bounded detail sample.
 
-    The limit is explicit because a complete shelf pull is hundreds of MCP
-    calls. Monday's authenticated validation can start with one or two products
-    before enabling the full daily snapshot.
+    ``detail_limit`` is explicit because a complete shelf pull is hundreds of
+    MCP calls; pass a negative value for the whole shelf. A positive limit
+    always takes the SAME head of the catalog, so it is a way to sample during
+    bring-up, not a way to build coverage -- everything past the limit stays
+    without a NAV no matter how many times the job runs.
     """
     client.initialize()
     catalog, failures = [], {}
@@ -584,8 +586,10 @@ def pull_snapshot(client: OliveMCP, *, product_codes: Iterable[str] | None = Non
     wanted = {str(code) for code in (product_codes or []) if str(code)}
     if wanted:
         targets = [item for item in catalog if item["productCode"] in wanted]
+    elif int(detail_limit) < 0:
+        targets = list(catalog)          # negative means the whole shelf
     else:
-        targets = catalog[:max(0, int(detail_limit))]
+        targets = catalog[:int(detail_limit)]
 
     details_by_code: dict[str, dict[str, Any]] = {}
     errors: dict[str, dict[str, str]] = {}

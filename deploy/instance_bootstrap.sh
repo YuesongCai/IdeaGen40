@@ -50,16 +50,34 @@ if docker build -q -f deploy/Dockerfile -t "ideagen40:$SHA" . ; then say "image 
 
 # Secrets arrive by one short-lived presigned GET, written by `deploy_cloud.py
 # secrets`. An unsubstituted placeholder means no delivery has been authorised
-# yet — that is a normal state, not an error. A runtime.env already on disk is
-# never overwritten by a URL that may since have expired.
+# yet — that is a normal state, not an error.
+#
+# A successful delivery is MERGED into whatever is already on disk rather than
+# skipped: skipping meant a running instance could never be given a new key
+# (adding Olive to a box that already had a runtime.env was impossible without
+# a shell, and there is no shell on this image). Delivered keys win; keys only
+# the instance has — a token it refreshed for itself — survive. A fetch that
+# fails changes nothing at all, which is what the old skip was protecting.
 RUNTIME_ENV_URL='__RUNTIME_ENV_URL__'
-if [ ! -s /opt/ideagen/config/runtime.env ] && [ "${RUNTIME_ENV_URL#__}" = "$RUNTIME_ENV_URL" ]; then
-  if curl -fsS --max-time 60 "$RUNTIME_ENV_URL" -o /opt/ideagen/config/runtime.env; then
-    chmod 600 /opt/ideagen/config/runtime.env
-    say "runtime.env fetched"
+CONF=/opt/ideagen/config/runtime.env
+if [ "${RUNTIME_ENV_URL#__}" = "$RUNTIME_ENV_URL" ]; then
+  if curl -fsS --max-time 60 "$RUNTIME_ENV_URL" -o "$CONF.new"; then
+    if [ -s "$CONF" ]; then
+      awk -F= 'NR==FNR{ if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/) seen[$1]=1; next }
+               $0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/ && !seen[$1]' \
+          "$CONF.new" "$CONF" > "$CONF.keep"
+      cat "$CONF.new" "$CONF.keep" > "$CONF"
+      rm -f "$CONF.keep"
+      say "runtime.env merged ($(grep -c = "$CONF") keys)"
+    else
+      cp "$CONF.new" "$CONF"
+      say "runtime.env fetched"
+    fi
+    rm -f "$CONF.new"
+    chmod 600 "$CONF"
   else
-    say "runtime.env FETCH FAILED (presigned URL expired?)"
-    rm -f /opt/ideagen/config/runtime.env
+    say "runtime.env FETCH FAILED (presigned URL expired?) — keeping existing"
+    rm -f "$CONF.new"
   fi
 fi
 

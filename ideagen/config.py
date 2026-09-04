@@ -218,6 +218,12 @@ INGEST_LIMITS = {
 FUTU_HOST = os.environ.get("FUTU_HOST", "127.0.0.1")
 FUTU_PORT = int(os.environ.get("FUTU_PORT", "11111"))
 
+# How many shelf products the daily Olive sync deep-fetches. Negative
+# means the whole shelf: 151 products at four calls each measured nine
+# minutes, which a once-a-day job can afford, and anything less leaves
+# most of the shelf without a NAV for months.
+OLIVE_DETAIL_LIMIT = int(os.environ.get("IDEAGEN_OLIVE_DETAIL_LIMIT", "-1"))
+
 # Markets this OpenD subscription can actually price. CN market ETFs are not
 # licensed on this account, so A-share instruments are registry-only and never
 # enter a book.

@@ -74,6 +74,17 @@ def main() -> int:
         ("WISBURG_MCP_TOKEN", readenv("WISBURG_MCP_TOKEN_CLOUD")),
         ("IDEAGEN_CLOUD_WISBURG_ENABLED", "true"),
         ("IDEAGEN_POC_WEEKLY_MODE", "wisburg-auto"),
+        # Olive is the other half of the universe: the private/UCITS shelf.
+        # (ETFs are Futu's leg -- there are none on this shelf.) The instance
+        # gets no access token: it holds the refresh token and mints its own,
+        # so a token that expired on the laptop cannot strand production.
+        ("OLIVE_MCP_URL", readenv("OLIVE_MCP_URL")),
+        ("OLIVE_OAUTH_ISSUER", readenv("OLIVE_OAUTH_ISSUER")),
+        ("OLIVE_OAUTH_CLIENT_ID", readenv("OLIVE_OAUTH_CLIENT_ID")),
+        ("OLIVE_OAUTH_REFRESH_TOKEN", readenv("OLIVE_OAUTH_REFRESH_TOKEN")),
+        # Refreshed tokens must land somewhere writable and persistent, or
+        # every container restart burns the refresh token it was given.
+        ("IDEAGEN_OLIVE_TOKEN_FILE", "/opt/ideagen/config/olive_tokens.json"),
         # This instance is the one that runs the week. The laptop stays an
         # observer; two runners would race for the same period.
         ("IDEAGEN_WEEKLY_ROLE", "runner"),

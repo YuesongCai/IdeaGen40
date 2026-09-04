@@ -761,7 +761,8 @@ def _sync_olive_daily(p: plat.Platform, now_hkt: datetime,
     try:
         from .sources import olive
 
-        snapshot = olive.pull_snapshot(olive.OliveMCP(), detail_limit=1)
+        snapshot = olive.pull_snapshot(
+            olive.OliveMCP(), detail_limit=config.OLIVE_DETAIL_LIMIT)
         result = shelf_store.persist(
             p,
             snapshot,

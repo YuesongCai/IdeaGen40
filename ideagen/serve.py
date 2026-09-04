@@ -380,6 +380,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
+        # Same guard do_GET has, and for the same reason — more so here, because
+        # an exception leaves BaseHTTPRequestHandler closing the socket with no
+        # status line, which a reverse proxy reports as 502. A login form that
+        # answers "502 Bad Gateway" tells the person nothing and the operator
+        # less: it looks like the app is down when the app is running fine and
+        # one handler raised.
+        try:
+            return self._route_post()
+        except Exception as exc:  # noqa: BLE001 — bounded error, no traceback
+            traceback.print_exc()
+            from . import ask as _ask_mod
+            return self._json(
+                {"error": _ask_mod._scrub_text(
+                    f"{type(exc).__name__}: {exc}"[:300])}, status=500)
+
+    def _route_post(self) -> None:
         path = self.path.split("?", 1)[0]
         # /login is the one POST that cannot require being logged in. The
         # same-origin check below still applies to it, and with SameSite=Strict
@@ -753,19 +769,25 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
         self.wfile.write(body)
 
 
-#: The state document is the page's first paint and its 60-second poll. One
-#: build costs about six seconds — roughly three in SQLite across ninety
-#: queries, the rest in the platform probes — and the server is threaded, so
-#: two readers arriving together used to build it twice, three times, in
-#: parallel over the same connection. Measured on this machine: 6s idle, then
-#: 29s, 69s, 22s as concurrency piled up. That is not a slow page, that is a
-#: page that looks broken.
+#: The state document is the page's first paint and its 60-second poll.
 #:
-#: Two changes, no new machinery: callers that arrive while a build is running
-#: wait for that build instead of starting their own, and a finished document
-#: is reused for a few seconds. The staleness is bounded by TTL and visible —
-#: `generated_at` travels in the document and the page prints it as 刷新于 —
-#: so nothing here can show old data while claiming to be current.
+#: This cache was added when a build cost about six seconds and concurrent
+#: readers pushed it to thirty and seventy. That diagnosis was wrong about the
+#: cause: the parallel session found the actual culprit, a missing
+#: `ix_mtm_pos ON mtm(pos_id, d)` — `review.state` joins the latest mark by
+#: pos_id while the primary key leads with book_id, so every book full-scanned
+#: fourteen thousand rows. With the index a build is 0.02-0.04s warm, and the
+#: remaining 2.5s cold cost is the platform port probes, not SQL.
+#:
+#: So this is no longer the thing that makes the page fast. It is kept for
+#: what it still does: many readers opening the page at once share one build
+#: instead of each starting their own, and a cold process pays the port probes
+#: once rather than per request. Both matter on a demo day and neither is
+#: worth much on a quiet one — a modest guard, described as one.
+#:
+#: The staleness it introduces is bounded by TTL and visible: `generated_at`
+#: travels in the document, the page prints it, and the page separately
+#: reports how old the underlying data is.
 _STATE_TTL_S = 20.0
 _state_lock = threading.Lock()
 _state_cache: dict[str, object] = {"at": 0.0, "doc": None}

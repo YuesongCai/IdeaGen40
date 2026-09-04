@@ -1289,5 +1289,34 @@ class TestPortableShelfAndPaper(unittest.TestCase):
             )
 
 
+    def test_selector_metadata_table_has_no_holes(self):
+        """SEL_META must parse into one complete row per registered selector.
+
+        A row appended after one that lacked a trailing comma turns two array
+        elements into an index expression: the array silently loses an entry
+        and gains a hole, `selMetaOf` then reads m[0] off undefined, and the
+        whole page renders as "无法连接或读取服务". A missing comma is not
+        a syntax error, so nothing else catches it.
+        """
+        import re
+        root = Path(__file__).resolve().parent.parent
+        dashboard = (root / "web" / "dash.html").read_text(encoding="utf-8")
+        block = re.search(r"var SEL_META=\[(.*?)\n\];", dashboard, re.S)
+        self.assertIsNotNone(block, "SEL_META 不见了")
+        rows = [ln.strip() for ln in block.group(1).splitlines()
+                if ln.strip().startswith("[")]
+        self.assertGreaterEqual(len(rows), 10)
+        for row in rows[:-1]:
+            self.assertTrue(row.endswith("],"),
+                            f"少了逗号，下一行会被当成索引访问：{row[:40]}…")
+        self.assertTrue(rows[-1].rstrip().endswith("]"), "最后一行不该有多余逗号")
+        # Every selector the dashboard can be asked to name must have a row.
+        for name in ("ai_native", "buy_all", "random_pick", "calib", "spread",
+                     "left_tail", "omega_loose", "omega_strict",
+                     "generated_ai_native", "generated_carl_constraint"):
+            self.assertTrue(any(r.startswith(f"['{name}'") for r in rows),
+                            f"SEL_META 缺 {name}")
+
+
 if __name__ == "__main__":
     unittest.main()

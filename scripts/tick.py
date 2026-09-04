@@ -49,6 +49,13 @@ def main() -> int:
     if key:
         env["IDEAGEN_INFERENCE_MODE"] = "modelark"
         env.setdefault("IDEAGEN_WEEKLY_ROLE", "runner")
+        # Only the inference host bypasses the local proxy. It has to, because
+        # the proxy hangs on full-size generation responses; but exempting all
+        # of bytepluses.com took TOS out with it, and TOS is less reliable
+        # direct — that is what failed the 2026-09-02 backfill.
+        for var in ("NO_PROXY", "no_proxy"):
+            env[var] = ",".join(filter(None, [
+                env.get(var, ""), "ark.ap-southeast.bytepluses.com"]))
     else:
         env["IDEAGEN_INFERENCE_MODE"] = "claude"
         env["IDEAGEN_WEEKLY_ROLE"] = "observer"

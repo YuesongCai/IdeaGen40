@@ -66,11 +66,9 @@ def main(argv: list[str]) -> int:
         # twenty ideas out) hangs there indefinitely — observed 2026-09-04:
         # 17 minutes, 1.5s of CPU, one ESTABLISHED socket to 127.0.0.1:7897.
         "NO_PROXY": ",".join(filter(None, [
-            env.get("NO_PROXY", ""), "bytepluses.com", ".bytepluses.com",
-            "volces.com", ".volces.com"])),
+            env.get("NO_PROXY", ""), "ark.ap-southeast.bytepluses.com"])),
         "no_proxy": ",".join(filter(None, [
-            env.get("no_proxy", ""), "bytepluses.com", ".bytepluses.com",
-            "volces.com", ".volces.com"])),
+            env.get("no_proxy", ""), "ark.ap-southeast.bytepluses.com"])),
         "IDEAGEN_INFERENCE_TIMEOUT_SECONDS": env.get(
             "IDEAGEN_INFERENCE_TIMEOUT_SECONDS", "420"),
     })

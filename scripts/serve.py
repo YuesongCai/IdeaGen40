@@ -49,8 +49,7 @@ def main(argv: list[str]) -> int:
         # returns fine, a real prompt does not), so inference goes direct.
         for var in ("NO_PROXY", "no_proxy"):
             env[var] = ",".join(filter(None, [
-                env.get(var, ""), "bytepluses.com", ".bytepluses.com",
-                "volces.com", ".volces.com"]))
+                env.get(var, ""), "ark.ap-southeast.bytepluses.com"]))
     return subprocess.run(
         [PYBIN, "-m", "ideagen.cli", "serve", *argv],
         cwd=ROOT, env=env).returncode

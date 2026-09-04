@@ -4930,12 +4930,12 @@ function pipeCanvasSVG(){
       var k=poolCountBy('method',g.method);
       var gp=pop(esc(o[1])+' · '+esc(o[2]),esc(o[3]),'例：'+esc(o[4]));
       s+='<g class="pc-click" onclick="openStageDrawer(2,\''+o[0]+'\')"'+popRef(gp)+'>'
-        +'<rect x="'+gX1+'" y="'+(y-22)+'" width="150" height="44" rx="10" fill="var(--color-surface-brand-subtle)" stroke="var(--color-border-brand-subtle)"/>'
+        +'<rect x="'+gX1+'" y="'+(y-gH/2)+'" width="150" height="'+gH+'" rx="10" fill="var(--color-surface-brand-subtle)" stroke="var(--color-border-brand-subtle)"/>'
         +txt(gX1+12,y-3,o[1],12,'var(--color-text-brand)','start',600)
         +txt(gX1+12,y+13,(g.n||0)+' 条'+(g.rejected?' · 拒 '+g.rejected:''),10,'var(--color-text-metadata)','start',400,true)
         +'</g>';
     }else{
-      s+='<g class="pc-click" onclick="openStageDrawer(2)"'+popRef(stagePop[2])+'><rect x="'+gX1+'" y="'+(y-22)+'" width="150" height="44" rx="10" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
+      s+='<g class="pc-click" onclick="openStageDrawer(2)"'+popRef(stagePop[2])+'><rect x="'+gX1+'" y="'+(y-gH/2)+'" width="150" height="'+gH+'" rx="10" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
         +txt(gX1+12,y+4,o[1]+(w.in_flight?' · 写作中':' · 无产出'),10.5,'var(--color-text-tertiary)','start')+'</g>';
     }
   });

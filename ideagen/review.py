@@ -139,8 +139,14 @@ def _runs(p) -> str:
               else ("✓" if r["ok"] else ("✗ " + str(r["error"] or "")[:50])))
         rows.append([r["as_of"], r["kind"], r["platform"],
                      (r["started_at"] or "")[:16], st, r["calls"] or 0])
-    gaps = p.state.q("SELECT as_of FROM orch_runs WHERE run_id LIKE 'gap-%' "
-                     "ORDER BY as_of")
+    # A gap that has since been filled is not a gap. The marker row stays as
+    # history, but a period with a successful weekly run must stop being
+    # counted as missing — otherwise the banner keeps reporting a hole the
+    # record no longer has.
+    gaps = p.state.q(
+        "SELECT as_of FROM orch_runs g WHERE run_id LIKE 'gap-%' "
+        "AND NOT EXISTS (SELECT 1 FROM orch_runs w WHERE w.kind='weekly' "
+        "  AND w.ok=1 AND w.as_of=g.as_of) ORDER BY as_of")
     gap_line = ("<p class=dim>永久错过（不补跑）：" +
                 "、".join(g["as_of"] for g in gaps) + "</p>") if gaps else ""
     return _card("运行史（最近 12 次）",
@@ -329,8 +335,11 @@ def state(con=None, p=None) -> dict[str, Any]:
     out["runs"] = [dict(r) for r in p.state.q(
         "SELECT run_id, as_of, kind, platform, ok, started_at, ended_at, "
         "error, calls FROM orch_runs ORDER BY started_at DESC LIMIT 30")]
+    # Same rule as the run-history card: a filled gap stops being a gap.
     out["gaps"] = [r["as_of"] for r in p.state.q(
-        "SELECT as_of FROM orch_runs WHERE run_id LIKE 'gap-%' ORDER BY as_of")]
+        "SELECT as_of FROM orch_runs g WHERE run_id LIKE 'gap-%' "
+        "AND NOT EXISTS (SELECT 1 FROM orch_runs w WHERE w.kind='weekly' "
+        "  AND w.ok=1 AND w.as_of=g.as_of) ORDER BY as_of")]
 
     # -- latest weekly, all three stages ---------------------------------
     # Newest *period*, not newest execution. Ordering by started_at alone was

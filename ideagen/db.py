@@ -341,20 +341,32 @@ def init(path: Path | str | None = None) -> sqlite3.Connection:
     return con
 
 
-#: Columns added to a table that already existed. `CREATE TABLE IF NOT EXISTS`
-#: is a no-op on a database created before the column was declared, so the
-#: statement above only helps new files; a laptop carrying months of history
-#: would keep a schema no code still expects. Kept to additive column adds on
-#: purpose — this is not a migration framework and should not become one by
-#: accident.
-_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
-    ("instruments", "first_seen_d", "TEXT"),
-)
-
-
 def _ensure_columns(con: sqlite3.Connection) -> None:
-    for table, column, decl in _ADDED_COLUMNS:
+    """Add declared columns that a pre-existing table is missing.
+
+    `CREATE TABLE IF NOT EXISTS` is a no-op against a table of the same name and
+    an older shape, so the DDL above only helps a new file; a machine carrying
+    months of history would keep a schema no code still expects.
+
+    The list is `schema.ADD_COLUMNS` rather than a second one kept here. That is
+    the whole point: `first_seen_d` was declared there, this module never read
+    it, and a fresh database came up without the column the as-of gate reads —
+    the bug was the duplication, so a parallel hand-maintained tuple would have
+    been the same bug waiting on the next person to forget. Reusing the existing
+    declaration also picked up `documents.body_sha256` and `documents.raw_uri`,
+    missing here for the same reason and not noticed because on this platform the
+    state store shares this file and something else had already migrated them.
+
+    Still additive column adds only. This is not a migration framework and should
+    not become one by accident; anything needing a rewrite or a backfill belongs
+    in a script a person runs on purpose.
+    """
+    from . import schema
+
+    for table, column, decl in schema.ADD_COLUMNS:
         have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+        # An empty result means this module does not own the table — those live
+        # in the platform state store and are `schema.evolve`'s to look after.
         if have and column not in have:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 

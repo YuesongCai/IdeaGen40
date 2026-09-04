@@ -459,17 +459,6 @@ tr.expandable{cursor:pointer}
 
 /* glossary term */
 .gloss{border-bottom:1px dotted var(--color-border-strong);cursor:help}
-/* ⓘ 原本只能鼠标碰到：没有 tabindex，键盘完全够不着。 */
-.gloss:focus-visible,[data-gtip]:focus-visible{outline:2px solid var(--color-border-brand-subtle);outline-offset:2px;border-radius:3px}
-/* 原生 title 有三个问题：触屏没有 hover（等于图标失效）、约 1 秒延迟、
-   长文案被系统截断——本页最长的一条 218 字。自己画气泡。 */
-#gtip{position:fixed;z-index:9999;max-width:min(360px,calc(100vw - 24px));
-  padding:9px 11px;border-radius:var(--radius-sm,6px);
-  background:var(--color-surface-inverse,#1d211f);color:var(--color-text-inverse,#f2f5f3);
-  font:400 12.5px/19px var(--font-sans);box-shadow:0 6px 22px rgb(0 0 0 / 24%);
-  opacity:0;visibility:hidden;transition:opacity .12s ease;pointer-events:none;
-  white-space:normal;overflow-wrap:anywhere}
-#gtip.on{opacity:1;visibility:visible}
 @media(hover:none){.gloss{cursor:pointer}}
 .gloss-row{display:flex;gap:var(--space-3);padding:8px 0;align-items:baseline}
 .gloss-row+.gloss-row{border-top:1px solid var(--color-border-subtle)}
@@ -7511,76 +7500,6 @@ renderBootState();
 refresh();
 setInterval(refresh,60000);
 setInterval(tick,1000);
-/* ══ 提示气泡 ══════════════════════════════════════════════
-   这一页有 148 条 title，最长 218 字。交给浏览器原生 tooltip 有三个后果：
-   触屏设备上根本没有 hover（图标等于死的）、约 1 秒延迟、长文被系统截断。
-   姊妹页（日报）早就自己画气泡了，这里对齐它。
-   做法：委托监听，第一次碰到某个元素时把 title 搬进 data-gtip——搬走之后
-   原生 tooltip 就不会再冒出来，两层提示不会打架。元素是 innerHTML 重建的，
-   所以只能惰性搬，不能开局扫一遍。 */
-(function(){
-  var tip=null,cur=null;
-  function el(){
-    if(!tip){tip=document.createElement('div');tip.id='gtip';tip.setAttribute('role','tooltip');document.body.appendChild(tip);}
-    return tip;
-  }
-  /* 把 title 收编：同时给 ⓘ 补上键盘可达性（原本没有 tabindex）。 */
-  function adopt(n){
-    if(n.hasAttribute('title')){
-      var t=n.getAttribute('title');
-      if(t){n.setAttribute('data-gtip',t);n.removeAttribute('title');
-            if(!n.getAttribute('aria-label'))n.setAttribute('aria-label',t);}
-    }
-    if(n.classList.contains('gloss')&&!n.hasAttribute('tabindex')){
-      n.setAttribute('tabindex','0');n.setAttribute('role','button');
-    }
-    return n.getAttribute('data-gtip');
-  }
-  function find(t){
-    for(var n=t;n&&n!==document.body;n=n.parentElement){
-      if(n.nodeType!==1)continue;
-      if(n.hasAttribute('data-gtip')||n.hasAttribute('title'))return n;
-    }
-    return null;
-  }
-  function place(n){
-    var b=el(),r=n.getBoundingClientRect();
-    b.style.left='0px';b.style.top='0px';       /* 先归零再量，否则量到的是上一次的位置 */
-    var s=b.getBoundingClientRect(),M=8;
-    var x=Math.max(M,Math.min(r.left+r.width/2-s.width/2,innerWidth-s.width-M));
-    var y=r.top-s.height-8; if(y<M)y=r.bottom+8;
-    b.style.left=x+'px';b.style.top=y+'px';
-  }
-  function show(n){
-    var txt=adopt(n); if(!txt)return;
-    cur=n;var b=el();b.textContent=txt;b.classList.add('on');place(n);
-  }
-  function hide(){cur=null;if(tip)tip.classList.remove('on');}
-  document.addEventListener('mouseover',function(e){
-    var n=find(e.target); if(!n){if(cur)hide();return;} if(n!==cur)show(n);
-  });
-  document.addEventListener('mouseout',function(e){
-    if(cur&&!cur.contains(e.relatedTarget))hide();
-  });
-  document.addEventListener('focusin',function(e){var n=find(e.target);if(n)show(n);});
-  document.addEventListener('focusout',hide);
-  /* 触屏没有 hover：点一下 ⓘ 也要能看到，且不能顺手触发它所在的按钮。 */
-  document.addEventListener('click',function(e){
-    var n=e.target.closest?e.target.closest('.gloss'):null;
-    if(!n)return; e.preventDefault();e.stopPropagation();
-    if(cur===n)hide();else show(n);
-  },true);
-  document.addEventListener('keydown',function(e){
-    if(e.key==='Escape')hide();
-    else if((e.key==='Enter'||e.key===' ')&&document.activeElement&&
-            document.activeElement.classList&&document.activeElement.classList.contains('gloss')){
-      e.preventDefault();e.stopPropagation();show(document.activeElement);
-    }
-  },true);
-  addEventListener('scroll',hide,{passive:true,capture:true});
-  addEventListener('resize',hide);
-})();
-
 /* 滚动时更新侧栏高亮：rAF 节流，滚动本身不做任何计算。 */
 (function(){
   var queued=false;

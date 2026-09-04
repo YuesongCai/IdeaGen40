@@ -1314,8 +1314,10 @@ body.drawer-lock{overflow:hidden}
 .medal.ctl{background:var(--color-feedback-neutral-subtle);color:var(--color-text-metadata)}
 .medal b{font:600 13px/18px var(--font-mono)}
 /* 迷你链条徽标：本周各段 = 过程流水线的某个环节 */
-.mini-chain{display:inline-flex;align-items:center;border-radius:var(--radius-sm);padding:2px 5px;flex:none}
-.mini-chain:hover{background:var(--color-surface-subtle)}
+/* 链条徽标是「你在第几环」的位置指示，不是控件。它曾经也是个按钮，
+ * 而且每次都紧挨着一个写明去向的文字入口，两者点下去完全一样——
+ * 一个看不出能点、一个看得出，读者只能挨个试。现在它只负责指位置。 */
+.mini-chain{display:inline-flex;align-items:center;padding:2px 5px;flex:none}
 /* 气泡上的共识徽标（n/8 本账共同持有） */
 .hbub{position:relative}
 .hbub .bb{
@@ -2301,7 +2303,7 @@ function mainLine(ag){
     if(open){
       body='<div class="ml-body">'
         +'<div class="ml-body-head">'+miniChain(o.i,STAGES[o.i]?STAGES[o.i].t:o.name)
-        +'<button type="button" class="exp-btn" onclick="event.stopPropagation();openStageDrawer('+o.i+')">在抽屉中打开 ›</button>'
+        +'<button type="button" class="exp-btn" onclick="event.stopPropagation();openStageDrawer('+o.i+')">在右侧面板打开 ›</button>'
         +(o.i===1?askBtn('selection','topics',{stop:true}):'')+'</div>'
         +mlStageBody(o.i)
       +'</div>';
@@ -2424,7 +2426,7 @@ function miniChain(stage,label){
     svg+='<circle cx="'+x+'" cy="7" r="'+(i===stage?4:2.5)+'" fill="'+(i===stage?'var(--color-surface-brand)':'var(--color-border-strong)')+'"/>';
   }
   svg+='</svg>';
-  return '<button type="button" class="mini-chain" onclick="openStageDrawer('+stage+')" title="'+esc(label||'')+'——链路对应环节">'+svg+'</button>';
+  return '<span class="mini-chain" title="'+esc(label||'')+'——它在链路上的位置">'+svg+'</span>';
 }
 /* ── Hero = 噪音带：第 2 周「还分不出高下」本身就是画面 ── */
 var TARGET_WEEKS=17;
@@ -2525,7 +2527,9 @@ function raceHero(ag){
       ?'本期尚未建仓：周跑进行中，筛选完成后各账本自动下单并独立记账。'
       :'尚无账本入账'+(nr?'：下次周跑 '+esc(nr.date)+'（'+nr.wd+' '+nr.hm+'）自动建仓，还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>':'（接口未提供下次时刻）')+'。';
     return '<div class="card section" id="whoWins">'
-      +'<div class="qhead"><h2 class="qtitle">选取策略对比</h2>'+miniChain(4,'筛选C · 选取策略')+'</div>'
+      +'<div class="qhead"><h2 class="qtitle">选取策略对比</h2>'
+      +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(4,'筛选C · 选取策略')
+      +'<button type="button" class="qlink" onclick="openStageDrawer(4)">筛选C 详情 →</button></span></div>'
       +'<div class="quiet">'+line+'</div>'
     +'</div>';
   }
@@ -2627,6 +2631,7 @@ function holdMapCard(ag){
   var nbk=(ag&&ag.books)?ag.books.length:0;
   var head='<div class="qhead"><h2 class="qtitle">主题敞口分布<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">　'+(nbk?(nbk+' 个账本合计'):'尚无账本')+'</span></h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(5,'建仓 · 持仓束')
+    +'<button type="button" class="qlink" onclick="openStageDrawer(5)">建仓详情 →</button>'
     +'<span role="group" aria-label="视图切换">'
       +'<button type="button" class="seg-btn'+(holdView==='map'?' on':'')+'" onclick="setHoldView(\'map\')" title="按宏观主题分组的持仓分布">地图</button>'
       +'<button type="button" class="seg-btn'+(holdView==='axis'?' on':'')+'" onclick="setHoldView(\'axis\')" title="横轴为跨策略共识度，纵轴为当前浮动盈亏">Y 轴</button>'

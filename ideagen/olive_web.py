@@ -197,6 +197,24 @@ def start_sync() -> bool:
     return True
 
 
+def _boot_log(lines: int = 14) -> list[str]:
+    """The tail of the instance's last boot, for a host with no shell.
+
+    The bootstrap serves this log on :80 only until the proxy takes that port,
+    which is to say it disappears the moment the stack is healthy. The copy in
+    the oauth mount is the only view of it that outlives the boot.
+    """
+    token_file = config.olive_token_file()
+    if token_file is None:
+        return []
+    try:
+        text = (token_file.parent / "bootstrap.log").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line for line in text.splitlines() if line.strip()][-lines:]
+
+
 def status() -> dict[str, Any]:
     credentials = config.olive_credentials()
     live_snapshot: dict[str, Any] | None = None
@@ -245,6 +263,7 @@ def status() -> dict[str, Any]:
         "endpoint_set": bool(config.OLIVE_MCP_URL),
         "issuer_set": bool(config.OLIVE_OAUTH_ISSUER),
         "token_file": token_state,
+        "boot_log": _boot_log(),
         "credential_keys": sorted(credentials),
         "configured": bool(credentials.get("access_token")),
         "refreshable": bool(credentials.get("refresh_token")),

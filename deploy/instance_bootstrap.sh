@@ -117,6 +117,14 @@ say "runtime.env present ($(grep -c = /opt/ideagen/config/runtime.env) keys)"
 chown -R 10001:10001 /opt/ideagen/oauth 2>/dev/null || true
 say "oauth $(stat -c '%u %a' /opt/ideagen/oauth) [$(ls -A /opt/ideagen/oauth|tr '\n' ' ')] olive=$(grep -c '^OLIVE_' "$CONF")"
 
+# The boot log lives on :80, which Caddy takes over the moment the stack is up,
+# so on a box with no shell it becomes unreadable exactly when you most want to
+# know why the boot went the way it did. Copy it into the oauth mount, which the
+# dashboard can read, and /api/olive/status hands back the tail. No secret is
+# ever in these lines -- the presigned URL is never echoed.
+cp "$STATUS" /opt/ideagen/oauth/bootstrap.log 2>/dev/null || true
+chown 10001:10001 /opt/ideagen/oauth/bootstrap.log 2>/dev/null || true
+
 say "starting dashboard + proxy"
 pkill -f "http.server 80" >/dev/null 2>&1 || true
 sleep 1
@@ -169,7 +177,10 @@ else
   say "state-probe FAILED — dashboard will not have a database to read"
 fi
 
-if docker compose -f deploy/compose.yaml up -d dashboard proxy; then
+# --force-recreate because a changed env_file is not reliably a reason to
+# recreate: a container keeps the environment it was created with, so a
+# newly delivered key can sit in runtime.env and never reach the process.
+if docker compose -f deploy/compose.yaml up -d --force-recreate dashboard proxy; then
   echo "compose up ok"
   # Give the proxy time to pull and bind before deciding anything. Restarting
   # the status server after fifteen seconds was worse than useless: it took :80

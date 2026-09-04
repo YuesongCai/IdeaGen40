@@ -7121,8 +7121,11 @@ function docRowHTML(d,uid){
   return '<div class="doc-row" onclick="toggleDoc(\''+uid+'\')" title="展开摘要与凭据">'
     +'<span class="num" style="font-family:var(--font-mono);color:var(--color-text-tertiary);flex:none">'+esc((d.published_d||'').slice(5))+'</span>'
     +tierTag(d.tier)
+    /* 机构名前原本是一个全角空格 U+3000。它不是 CSS 眼里的可折叠空白，所以换行时
+       不会被吞掉——标题正好断在它前面时，那一格宽的字符就挂在行外，整行溢出 12px
+       （12px 字号 = 12px 全角空格，数字对得上）。改成真正的间距。 */
     +'<span class="doc-title">'+esc(d.title||'')
-    +(d.institution?'<span style="color:var(--color-text-tertiary)">　'+esc(d.institution)+'</span>':'')+'</span>'
+    +(d.institution?'<span style="color:var(--color-text-tertiary);margin-left:8px">'+esc(d.institution)+'</span>':'')+'</span>'
     +'</div><div class="doc-detail" id="docd-'+uid+'" style="display:none"></div>';
 }
 function toggleDoc(uid){

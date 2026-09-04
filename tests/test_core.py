@@ -2666,3 +2666,42 @@ class TestBookingSkipsUnpricedRatherThanFailingTheBatch(unittest.TestCase):
                                            D(2026, 8, 12))
         self.assertEqual(ok, [])
         self.assertEqual(bad, ["???"])
+
+
+class TestUnpriceableNeverReachesThePool(unittest.TestCase):
+    """A quota-blocked instrument must not be offered to the generator.
+
+    Two independent records say whether an instrument can be marked: the live
+    quota blocklist and the `priceable` column that caches it. They drifted —
+    US.XLF sat on the blocklist with priceable=1, reached the pool, was picked
+    by five books, and failed their whole batches at booking because it has no
+    price rows at all.
+    """
+
+    def test_eligibility_rejects_an_unpriceable_listed_instrument(self):
+        from ideagen.universe import eligibility
+        ok, why = eligibility({"instrument_id": "XLF", "kind": "listed",
+                               "vehicle": "ETF", "name": "Financials",
+                               "priceable": False})
+        self.assertFalse(ok)
+        self.assertIn("配额", why)
+
+    def test_a_priceable_etf_still_passes(self):
+        from ideagen.universe import eligibility
+        ok, _ = eligibility({"instrument_id": "SPY", "kind": "listed",
+                             "vehicle": "ETF", "name": "S&P 500",
+                             "priceable": True})
+        self.assertTrue(ok)
+
+    def test_unknown_priceable_is_admitted_not_silently_dropped(self):
+        from ideagen.universe import eligibility
+        ok, _ = eligibility({"instrument_id": "SPY", "kind": "listed",
+                             "vehicle": "ETF", "name": "S&P 500"})
+        self.assertTrue(ok, "缺字段代表未知，未知不该被当成不可计价")
+
+    def test_a_fund_is_not_judged_on_futu_priceability(self):
+        from ideagen.universe import eligibility
+        ok, _ = eligibility({"instrument_id": "1615-T", "kind": "fund",
+                             "vehicle": "公募", "name": "某基金",
+                             "priceable": False})
+        self.assertTrue(ok, "基金本来就不靠 futu 行情计价")

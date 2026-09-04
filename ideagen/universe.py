@@ -378,6 +378,17 @@ def eligibility(inst: "Instrument | dict") -> tuple[bool, str]:
     v = (inst.get("vehicle") if isinstance(inst, dict) else inst.vehicle) or ""
     name = (inst.get("name") if isinstance(inst, dict) else inst.name) or ""
     blob = f"{v} {name}"
+    # An instrument the quota blocked has no price series, so it has no entry,
+    # no sigma and no stop: offering it to the generator produces ideas that
+    # cannot be booked. `_record_quota` sets priceable=0 precisely so this gate
+    # can drop them, but the gate only ever looked at the vehicle — 61 unpriceable
+    # rows were reaching the pool, and US.XLF then failed whole batches. Missing
+    # field means unknown, and unknown is admitted rather than silently dropped.
+    kind = (inst.get("kind") if isinstance(inst, dict) else inst.kind) or ""
+    priceable = (inst.get("priceable") if isinstance(inst, dict)
+                 else inst.priceable)
+    if kind == "listed" and priceable is not None and not priceable:
+        return False, "行情配额受限，当前拿不到价格，无法计价建仓"
     if "待确认" in v or not v:
         return False, f"载体未确认（{v or '空'}），无法核实申赎条件"
     if v in ELIGIBLE_VEHICLES:

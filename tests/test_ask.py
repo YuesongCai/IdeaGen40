@@ -214,6 +214,61 @@ class SelectionContextCase(_FrozenRun, unittest.TestCase):
         self.assertIn("error", bad)
 
 
+class AskLogCase(unittest.TestCase):
+    """The session record: what was asked, and what the model was handed.
+
+    An answer that cites three of fifty-four materials is a different fact
+    from one where only three existed, so the log keeps the whole material
+    list rather than just the cited subset — that difference is the only way
+    to tell a grounded answer from a lucky one after the fact.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._orig = ask.ASK_LOG
+        ask.ASK_LOG = Path(self.tmp.name) / "ask_log.jsonl"
+
+    def tearDown(self):
+        ask.ASK_LOG = self._orig
+        self.tmp.cleanup()
+
+    def test_missing_log_is_empty_not_an_error(self):
+        self.assertEqual([], ask.recent_asks())
+
+    def test_newest_first_and_filtered_by_run(self):
+        for i, run in enumerate(["r1", "r1", "r2"]):
+            ask.log_ask({"run_id": run, "kind": "topic", "id": f"T{i}",
+                         "question": f"q{i}", "answer": "a",
+                         "cited": ["M1"], "provenance": [
+                             {"id": "M1", "kind": "verdict", "title": "t",
+                              "source": "blob x"}]})
+        allrows = ask.recent_asks()
+        self.assertEqual(["T2", "T1", "T0"], [r["id"] for r in allrows])
+        self.assertEqual(["T1", "T0"],
+                         [r["id"] for r in ask.recent_asks(run_id="r1")])
+
+    def test_provenance_survives_and_is_scrubbed(self):
+        ask.log_ask({"run_id": "r1", "kind": "topic", "id": "T",
+                     "question": "q", "answer": "见 /Users/operator/x",
+                     "cited": [], "provenance": [
+                         {"id": "M1", "kind": "verdict", "title": "t",
+                          "source": "tos://ideagen-1234567890/runs/x"}]})
+        row = ask.recent_asks()[0]
+        self.assertEqual(1, len(row["provenance"]))
+        self.assertNotIn("ideagen-1234567890", row["provenance"][0]["source"])
+        self.assertNotIn("/Users/operator", row["answer"])
+
+    def test_a_corrupt_line_does_not_lose_the_rest(self):
+        ask.log_ask({"run_id": "r1", "id": "good", "question": "q",
+                     "answer": "a"})
+        with ask.ASK_LOG.open("a", encoding="utf-8") as f:
+            f.write("{not json\n\n")
+        ask.log_ask({"run_id": "r1", "id": "later", "question": "q",
+                     "answer": "a"})
+        self.assertEqual(["later", "good"],
+                         [r["id"] for r in ask.recent_asks()])
+
+
 class AuditBundleCase(_FrozenRun, unittest.TestCase):
     """The downloadable audit bundle carries the run, not the machine.
 

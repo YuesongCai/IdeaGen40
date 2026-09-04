@@ -739,6 +739,34 @@ def log_ask(entry: dict[str, Any]) -> None:
         pass
 
 
+def recent_asks(limit: int = 50, run_id: str | None = None) -> list[dict]:
+    """The ask log, newest first — the operator-side session record.
+
+    Every question anyone put to a past run, with the answer given, the model
+    that gave it, and the material list it was handed. Reading it is how you
+    check the thing nobody checks otherwise: whether the answers were grounded
+    in what the run actually froze, or in whatever sounded right afterwards.
+    """
+    rows: list[dict] = []
+    try:
+        with ASK_LOG.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if run_id and row.get("run_id") != run_id:
+                    continue
+                rows.append(row)
+    except OSError:
+        return []
+    rows.reverse()
+    return [scrub(r) for r in rows[:max(1, min(int(limit or 50), 200))]]
+
+
 # ---------------------------------------------------------------------------
 # route handlers — serve.py stays routes-only
 def handle_context(params: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -827,12 +855,18 @@ def handle_ask(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
         return {"error": str(e), "unavailable": True}, 503
     except Exception as e:  # noqa: BLE001 — bounded operator error, no traceback
         return {"error": _scrub_text(f"{type(e).__name__}: {e}"[:300])}, 502
+    # The provenance list goes into the log, not just the cited subset: the
+    # audit question is "what was it allowed to see", and an answer that cites
+    # three of fifty-four materials is a different fact from one where only
+    # three existed. Titles and sources only — the material text itself stays
+    # in the artifacts it came from, which the log points at.
     log_ask({"run_id": (ctx.get("run") or {}).get("run_id"),
              "kind": payload.get("kind"), "id": payload.get("id"),
              "question": question, "answer": out["answer"],
              "cited": [c["id"] for c in out["cited"]],
              "model": out.get("model"),
-             "context_stats": ctx.get("stats")})
+             "context_stats": ctx.get("stats"),
+             "provenance": ctx.get("provenance") or []})
     return {"answer": out["answer"], "cited": out["cited"],
             "model": out.get("model"),
             "context_stats": ctx.get("stats"),

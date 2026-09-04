@@ -1721,7 +1721,17 @@ function refresh(){
   if(fetchInFlight)return;
   fetchInFlight=true;
   fetch('/api/state',{cache:'no-store'}).then(function(r){
-    if(!r.ok)throw new Error('HTTP '+r.status);
+    if(!r.ok){
+      /* 服务器在 5xx 时会把它自己的错误消息放进 body。丢掉它、只留一个
+       * 「HTTP 500」，等于把「库里没有这张表」变成一句什么都没说的话。 */
+      return r.text().then(function(t){
+        var detail='';
+        try{var j=JSON.parse(t);detail=j&&j.error?String(j.error):''}catch(_){detail=String(t||'').slice(0,200)}
+        var err=new Error('HTTP '+r.status+(detail?'：'+detail:''));
+        err.status=r.status;err.detail=detail;
+        throw err;
+      },function(){throw new Error('HTTP '+r.status)});
+    }
     return r.json();
   }).then(function(j){
     S=j;fetchFailed=false;lastFetchOk=new Date();
@@ -1729,7 +1739,7 @@ function refresh(){
     renderAll();
   }).catch(function(e){
     fetchFailed=true;
-    renderDeadBanner(e&&e.message?e.message:String(e));
+    renderDeadBanner(e&&e.message?e.message:String(e),e&&e.status,e&&e.detail);
     renderBootState();
     renderStamp();
   }).then(function(){fetchInFlight=false;});
@@ -1746,12 +1756,21 @@ function renderStamp(){
   }
   if(fetchFailed){$('footDot').style.background='var(--color-feedback-error-default)';$('footHb').textContent='API 不可达'}
 }
-function renderDeadBanner(msg){
+function renderDeadBanner(msg,status,detail){
   $('deadBanner').innerHTML=
     '<div class="banner banner-dead" role="alert">'
     +'<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="8.5" stroke="var(--color-feedback-error-default)" stroke-width="1.5"/><path d="M10 6v5" stroke="var(--color-feedback-error-default)" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="13.8" r="1" fill="var(--color-feedback-error-default)"/></svg>'
-    +'<div><div class="banner-title">无法连接数据服务（/api/state）</div>'
-    +'<div style="font:400 12px/16px var(--font-sans)">'+esc(msg)+' · 服务可能已停止——可在终端执行 <span class="mono">launchctl list | grep ideagen40</span> 检查。'
+    /* 「连不上」和「服务活着但这个请求出错」是两件事，下一步也不一样。
+     * 之前一律建议去查本机 launchctl——服务器返回 500 时那句话是错的，
+     * 在云上部署里更是无从谈起。 */
+    +'<div><div class="banner-title">'+(status?'数据服务报错（/api/state）':'无法连接数据服务（/api/state）')+'</div>'
+    +'<div style="font:400 12px/16px var(--font-sans)">'+esc(msg)
+      +(status
+         ? ' · 服务本身在运行（它回了一个响应），是这个请求在服务端出错了'
+           +(detail&&/does\s*n.t exist|no such table|Table .* doesn/i.test(detail)
+              ? '——数据库连上了，但里面还没有这张表，通常是这套环境的库还没建表（迁移没跑）。'
+              : '——上面括号里是服务端自己给出的原因。')
+         : ' · 请求没有得到响应，服务可能已停止——本机可在终端执行 <span class="mono">launchctl list | grep ideagen40</span> 检查。')
       +(S
          ? '下方是最后一次成功刷新的快照（'+(lastFetchOk?hktFmt(lastFetchOk,true):'时间未知')+'）。'
          : '本次会话还没有成功取到过数据，因此下方没有可显示的内容。')
@@ -1780,7 +1799,7 @@ function viewOf(id){return VIEWS.find(function(v){return v.id===id})||VIEWS[0]}
 /* 「准则」只在活的面板上注册：公开快照是导出的静态 HTML，没有后端，
    注册了就会多一格点进去什么都不会发生的导航——死链比少一格更糟。 */
 if(!window.__STATIC__)VIEWS.push(
-  {id:'rules',label:'准则',sub:'教它你怎么选',
+  {id:'rules',label:'准则',sub:'准则注入与对照',
    icon:'<path d="M8 2 2.5 4.2v4.1c0 3 2.2 4.9 5.5 5.5 3.3-.6 5.5-2.5 5.5-5.5V4.2L8 2Z"/><path d="M5.8 8.1 7.3 9.6l3-3.2"/>',
    secs:[{s:'teach',label:'教一条'},{s:'running',label:'在跑的'}]});
 
@@ -1986,7 +2005,7 @@ function renderWeek(){
   html+='<div class="wk-h1"><span class="num">'+esc(period)+'</span> 期组合'+periodBadge()+'</div>';
   /* 页面此前从不说明自己是什么。首屏三问的第一问，一句话答完。 */
   html+='<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
-    +'每周三自动读研报、选宏观主题、写出想法并建仓；'+currentBooks().length+' 种选法各记一本模拟账，比谁选得好。</div>';
+    +'每周三自动读研报、选宏观主题、写出想法并建仓；'+currentBooks().length+' 个选取策略各记一本账，比较哪种选得更好。</div>';
   html+=statusStrip();
   html+=secWrap('week','overview',portfolioHeadline(ag));
   html+=secWrap('week','mainline',mainLine(ag));
@@ -2106,7 +2125,7 @@ function statusStrip(){
     var ab=abandonedRun();
     word='上一次周跑没有正常收尾';
     sub='run '+esc(String(ab.run_id||'').slice(0,24))+' 于 '+esc(hktFmt(ab.started_at,true))+' 启动后再没有写下结束时间'
-      +'（已过去 '+fmtInt(runAgeMin(ab))+' 分钟，正常一次约 20-45 分钟）——进程多半在中途退出了。点开看它跑到哪一步。';
+      +'（已过去 '+fmtInt(runAgeMin(ab))+' 分钟，正常一次约 20-45 分钟）——进程多半已中途退出。展开可查看它停在哪一步。';
   }else if(weeklyDelegated){
     word='运行中 · 本机为观察节点';
     sub='本机仅负责盯市与展示，本期周产由云端生产实例执行；下列为本机账本截至最新收盘的计价'+(lw&&lw.as_of?'（本机最近一次完整周产：'+esc(lw.as_of)+' 期）':'');
@@ -2187,8 +2206,8 @@ function noiseHeadline(books,weekN){
   var out=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)>2});
   var inBand=rows.filter(function(r){return r.diff!==null&&Math.abs(r.diff)<=2}).length;
   return out.length
-    ?'<b>'+out.map(function(r){return esc(selMetaOf(r.b.selector)[1])}).join('、')+'</b> 已明显跑赢或跑输，其余 '+inBand+' 种选法仍分不出高下'
-    :'目前还看不出哪种选法更好 —— '+books.length+' 种选法的差距都还在误差范围内';
+    ?'<b>'+out.map(function(r){return esc(selMetaOf(r.b.selector)[1])}).join('、')+'</b> 已明显跑赢或跑输，其余 '+inBand+' 个选取策略仍分不出高下'
+    :'尚不能区分哪个选取策略更优 —— '+books.length+' 个选取策略的差距都在误差范围内';
 }
 function noiseBandHTML(books,weekN){
   var rows=pairedDiffs(books).slice().sort(function(a,b){return (b.diff===null?-1e9:b.diff)-(a.diff===null?-1e9:a.diff)});
@@ -2298,9 +2317,9 @@ function raceHero(ag){
     +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
       +noiseHeadline(books,weekN)+'</div>'
     +'<div class="quiet">第 '+weekN+' 周 · 大约要到第 '+TARGET_WEEKS+' 周才够判定'
-      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="openTrustDrawer()">为什么现在不排名 ⓘ</button></div>'
+      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="openTrustDrawer()">尚不排名的依据 ⓘ</button></div>'
     +agg
-    +foldBlock('week.books.compare','对比图与 '+books.length+' 个账本明细','谁跑赢谁 · 净值曲线 · 持仓 · 主题分布',
+    +foldBlock('week.books.compare','对比图与 '+books.length+' 个账本明细','相对基准差距 · 净值曲线 · 持仓 · 主题分布',
         sentence
         +noiseBandHTML(books,weekN)
         +medals
@@ -2410,7 +2429,7 @@ function holdMapCard(ag){
     var nb=ag.books.length;
     body='<div class="hm-legend"><span>按宏观主题分组，每个圆点是一个标的'
       +'<span class="gloss" title="圆点大小 = 该标的的仓位市值；颜色 = 浮动盈亏方向与幅度（红涨绿跌）；'
-      +'徽标 n/'+nb+' = 有几本账同时选中它——'+nb+' 个选取策略各记一本模拟账，被越多账本独立选中，说明跨策略共识度越高，≥6 个会加亮描边">ⓘ 怎么看</span></span></div>';
+      +'徽标 n/'+nb+' = 同时选中该标的的账本数——'+nb+' 个选取策略各记一本账，被越多账本独立选中，跨策略共识度越高，≥6 个加亮描边">ⓘ 图例</span></span></div>';
     gOrder.forEach(function(t){
       var g=groups[t];
       g.list.sort(function(a,b){return b.value-a.value});
@@ -2455,7 +2474,7 @@ function holdMapCard(ag){
   }
   return '<div class="card section" id="holdCard">'+head
     +(lead?'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'+lead+'</div>':'')
-    +'<div class="quiet" style="margin-bottom:var(--space-3)">共 '+fmtInt(order.length)+' 个标的，'+fmtInt(ag.books.length)+' 本模拟账合计持有 '+fmtInt(ag.openN)+' 仓</div>'
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">共 '+fmtInt(order.length)+' 个标的，'+fmtInt(ag.books.length)+' 个账本合计持有 '+fmtInt(ag.openN)+' 仓</div>'
     +body
   +'</div>';
 }
@@ -2869,7 +2888,7 @@ function benchName(){
   return (((S&&S.benchmark)||{}).code||'SPY').replace('US.','');
 }
 
-/* ── 首屏摘要：本期组合赚还是亏，比「什么都不做」好不好 ──────────
+/* ── 首屏摘要：本期组合的收益，以及相对基准是跑赢还是跑输 ──────────
    这一页叫「组合」，可损益此前只出现在策略对比卡的合计行里，读者要往下
    滚过主链路和整张噪音带图才看得到。第一档信息上提到首屏，口径与合计行
    同源（aggReturnPct / benchReturnPct），不新增一套数字。 */
@@ -2878,20 +2897,22 @@ function portfolioHeadline(ag){
   var ret=aggReturnPct(ag), spy=benchReturnPct();
   var vs=(ret!==null&&spy!==null)?(ret-spy):null;
   var nBooks=currentBooks().length;
-  /* 首屏只回答一个问题：这一个月，这套系统比「什么都不做」强还是弱。
+  /* 首屏只回答一个问题：这一个月，组合相对基准是跑赢还是跑输。
      浮动盈亏那种大额金额单独看会骗人——+103,515 在 1 亿本金上是 0.10%，
-     而同期躺着买 SPY 是 4.63%。所以头条是收益率与对照，金额降为附注。 */
-  var verdict = vs===null ? '还没有可比的收益数据'
-    : (vs>=0 ? '<b>比什么都不做多赚 '+vs.toFixed(2)+' 个百分点</b>'
-             : '<b>比什么都不做少赚 '+Math.abs(vs).toFixed(2)+' 个百分点</b>');
+     而同期 SPY 是 4.63%，所以头条是收益率与基准对照，金额降为附注。
+     基准不能叫「什么都不做」：买 SPY 是满仓 beta，不是空仓，把跑输 SPY
+     说成「不如躺着」在给 PM 看的材料里是错的。 */
+  var verdict = vs===null ? '尚无可比的收益数据'
+    : (vs>=0 ? '<b>跑赢 '+esc(benchName())+' '+vs.toFixed(2)+' 个百分点</b>'
+             : '<b>跑输 '+esc(benchName())+' '+Math.abs(vs).toFixed(2)+' 个百分点</b>');
   return '<div class="card section" id="wkHeadline">'
     +'<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-6) var(--space-8)">'
       +'<div>'
-        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">这套系统 · '+nBooks+' 本模拟账合计</div>'
+        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">本期组合 · '+nBooks+' 个账本合计</div>'
         +'<div class="num '+pctCls(ret)+'" style="font:600 34px/40px var(--font-sans)">'+(ret===null?'—':fmtPct(ret))+'</div>'
       +'</div>'
       +'<div>'
-        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">什么都不做 · 同期买 '+esc(benchName())+'</div>'
+        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">同期 '+esc(benchName())+' · 基准</div>'
         +'<div class="num" style="font:600 34px/40px var(--font-sans);color:var(--color-text-secondary)">'+(spy===null?'—':fmtPct(spy))+'</div>'
       +'</div>'
       +'<div style="font:400 15px/22px var(--font-sans);color:var(--color-text-primary);padding-bottom:6px">'+verdict+'</div>'
@@ -2908,15 +2929,15 @@ function portfolioHeadline(ag){
 }
 
 function spyLine(ret){
-  // 同一段日期里「什么都不做、只买 SPY」的收益。合计收益没有这个零点就没有含义：
+  // 同一段日期里持有基准指数的收益。合计收益没有这个零点就没有含义：
   // 组合 +1% 而 SPY +3%，相对收益为负。
   var bm=(S&&S.benchmark)||{},sr=bm.series||[];
   var r=benchReturnPct();
   if(r===null)return '';
-  var t=' · 同期 '+benchName()+' <span class="num '+pctCls(r)+'" title="'+sr[0].d+' 至 '+sr[sr.length-1].d+' 的收盘价涨跌，作为「什么都不做」的参照">'+fmtPct(r)+'</span>';
+  var t=' · 同期 '+benchName()+' <span class="num '+pctCls(r)+'" title="'+sr[0].d+' 至 '+sr[sr.length-1].d+' 的收盘价涨跌，作为满仓基准的参照">'+fmtPct(r)+'</span>';
   if(ret!==null&&isFinite(ret)){
     var d=ret-r;
-    t+=' <span class="num '+pctCls(d)+'" title="合计收益减去同期 SPY：正 = 机器跑赢了什么都不做">（'+(d>=0?'+':'−')+Math.abs(d).toFixed(1)+'pp vs SPY）</span>';
+    t+=' <span class="num '+pctCls(d)+'" title="合计收益减去同期基准收益：正 = 跑赢基准">（'+(d>=0?'+':'−')+Math.abs(d).toFixed(1)+'pp vs SPY）</span>';
   }
   return t;
 }
@@ -5209,7 +5230,7 @@ function proposalsDrawerBody(d){
           +propOdds(x)
           +(cites.length
             ?'<div class="pr-cites"><div class="pr-cites-h">它当时引用的研报 · '+cites.length+' 篇'
-              +'<span class="gloss" title="生成时模型自己标出的出处。点开看这篇研报的摘要、检索凭据和全文长度——想法与它的依据之间没有断点。">ⓘ</span></div>'
+              +'<span class="gloss" title="生成时模型标注的出处。展开可查看该研报的摘要、检索凭据与全文长度——想法与其依据之间没有断点。">ⓘ</span></div>'
               +cites.map(function(cid,ci){
                 var dd=docs[cid];
                 if(dd)return docRowHTML(dd,'pr-'+esc(code)+'-'+esc(m)+'-'+i+'-'+ci);
@@ -6007,7 +6028,7 @@ function tick(){
 
    这一屏刻意不出现 card_id、臂、筛选B、require 这些词。使用它的人不需要
    知道系统是怎么造的，只需要知道三件事，而且是按人真的会问的顺序：
-   我说的话它听懂成了什么、今后每条想法要多回答什么、点下去之后会发生什么。
+   我说的话它听懂成了什么、今后每条想法要多回答什么、生效后会发生什么。
 
    样式由本块自己注入而不是写进 <head>：这个文件同时被多个会话编辑，把新样式
    和用它的代码放在一起，被覆盖时要么一起在要么一起不在，不会出现「样式没了但
@@ -6084,7 +6105,7 @@ function phFill(i){PH.say=PH_EG[i];renderRules();var el=$('phSay');if(el){el.foc
 
 function phPropose(){
   var say=(phSay()||'').trim();
-  if(!say){PH.err='还没写呢。';return renderRules()}
+  if(!say){PH.err='还没有内容。';return renderRules()}
   PH.problems=null;
   phPost('propose',{say:say},function(b){
     if(b.error){PH.err=b.error;return renderRules()}
@@ -6112,7 +6133,7 @@ function phDiscard(){
 }
 
 function phRetire(id){
-  if(!window.confirm('停用这条准则？\n\n它今后不再出想法，但它已经写下的持仓和业绩留在账本里。'))return;
+  if(!window.confirm('停用这条准则？\n\n该臂今后不再生成想法，已写下的持仓与业绩留在账本中。'))return;
   phPost('retire',{id:id},function(b){
     if(b.error){PH.err=b.error;return renderRules()}
     phLoad(true);
@@ -6127,23 +6148,23 @@ function phTeachCard(){
   if(PH.proposal)return phReviewCard();
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
-   +'<h2 class="card-title">用一句话说说，你看一笔交易先看什么</h2>'
-   +'<div class="ph-hero">系统现在按四种固定的路子出想法。你可以再教它一种——'
-   +'你说一句话，它照着这句话单开一条线，和原来那条并排跑，四周后告诉你哪条更好。</div>';
+   +'<h2 class="card-title">用一句话写下你判断一笔交易的准则</h2>'
+   +'<div class="ph-hero">系统现在有四种固定的生成方式。你可以再加一条准则：'
+   +'写下一句话，它据此单独跑一条臂，与原臂同批同料并行，四周后在这里给出两者的对比。</div>';
   if(blocked){
     h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
     return h;
   }
   h+='<textarea class="ph-say" id="phSay" data-el="rules.say" oninput="PH.say=this.value"'
    +' placeholder="'+esc('比如：'+PH_EG[0])+'">'+esc(PH.say)+'</textarea>'
-   +'<div class="card-note" style="margin-top:8px">越具体越管用。「要谨慎一点」它没法执行；'
-   +'「必须指名一个被期限逼着动手的人」它能。</div>'
+   +'<div class="card-note" style="margin-top:8px">越具体越有效。「要谨慎一点」无法执行；'
+   +'「必须指名一个被期限逼着动手的主体」可以。</div>'
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
           +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';
   if(PH.problems){
     h+='<div class="ph-warn" style="margin-top:var(--space-4)">'
-     +'<div class="ph-step-h" style="margin-bottom:6px">这句话它没法照做</div>'
+     +'<div class="ph-step-h" style="margin-bottom:6px">这条准则无法执行</div>'
      +'<ul class="ph-list">'+(PH.problems.problems||[]).map(function(x){
         return '<li>'+esc(x)+'</li>'}).join('')+'</ul>'
      +'<div class="card-note" style="margin-top:8px;color:#7a5410">'
@@ -6152,8 +6173,8 @@ function phTeachCard(){
   if(PH.err)h+='<div class="ph-err" style="margin-top:var(--space-3)">'+esc(PH.err)+'</div>';
   h+='<div class="ph-acts"><button type="button" class="ph-go" data-el="rules.try"'
    +(PH.busy?' disabled':'')+' onclick="phPropose()">'
-   +(PH.busy?'正在琢磨你这句话…':'让它试一遍')+'</button>'
-   +(PH.busy?'<span class="card-note">大概二十秒</span>':'')+'</div>';
+   +(PH.busy?'正在蒸馏…':'生成草案')+'</button>'
+   +(PH.busy?'<span class="card-note">约二十秒</span>':'')+'</div>';
   return h+'</div>';
 }
 
@@ -6162,12 +6183,12 @@ function phReviewCard(){
   var p=PH.proposal||{};
   var rw=p.rewrites||[];
   var h='<div class="card section">'
-   +'<h2 class="card-title">它听懂了，你看对不对</h2>'
-   +'<div class="ph-hero" style="margin-bottom:var(--space-4)">你说的是：'
+   +'<h2 class="card-title">草案已生成，请核对</h2>'
+   +'<div class="ph-hero" style="margin-bottom:var(--space-4)">你写的准则：'
    +'<span style="color:var(--color-text-primary)">「'+esc(p.said||'')+'」</span></div>'
 
    +'<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">1</span>'
-   +'它听懂成了这几件事</div><ul class="ph-list">'
+   +'系统据此执行的要求</div><ul class="ph-list">'
    +(p.understood||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')
    +(p.refuses||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')
    +'</ul></div>'
@@ -6178,27 +6199,27 @@ function phReviewCard(){
       return '<div class="ph-field"><code>'+esc(f.field)+'</code><span>'+esc(f.desc)+'</span></div>'
     }).join('')
    +'</div><div class="card-note" style="margin-top:8px">'
-   +'答不上来的想法会被直接丢掉，不会硬凑。这是它有没有真照你的话做的凭据——'
-   +'一个月后你能查，也能看出被丢掉了多少。</div></div>';
+   +'答不上这些字段的想法会被丢弃，不会凑数。这是准则有没有被执行的凭据：'
+   +'一个月后可逐条核对，丢弃率本身也说明语料撑不撑得起这条准则。</div></div>';
 
   if(rw.length){
     h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">3</span>'
-     +'有地方它把你的话改了</div><div class="ph-warn"><ul class="ph-list">'
+     +'你的准则有部分被改写</div><div class="ph-warn"><ul class="ph-list">'
      +rw.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>'
      +'<label class="ph-check" data-el="rules.accept"><input type="checkbox"'
      +(PH.accepted?' checked':'')+' onchange="phToggleAccept()">'
-     +'<span>我看过了，改成这样就是我的意思。</span></label>'
-     +'<div class="card-note" style="margin-top:6px">改得对不对只有你能判断。'
-     +'不是你的意思，就换个说法重说一遍。</div></div>';
+     +'<span>我已核对，改写符合我的原意。</span></label>'
+     +'<div class="card-note" style="margin-top:6px">改写是否成立只有你能判断。'
+     +'不符合原意就换一个说法重写。</div></div>';
   }
 
   var n=rw.length?4:3;
   h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">'+n+'</span>'
-   +'点下去之后会发生什么</div><div class="ph-then"><ul class="ph-list">'
-   +'<li>从今天起，多一条按你这句话出想法的线。</li>'
-   +'<li>原来那条一个字都不改，继续跑。</li>'
-   +'<li>两条看同一批研报、同一个可买清单、同一天成交——只差你这句话。</li>'
-   +'<li>四周后这里告诉你：哪条更好，好多少。跑不赢的，你随时可以停掉。</li>'
+   +'生效后会发生什么</div><div class="ph-then"><ul class="ph-list">'
+   +'<li>从今天起，新增一条依据该准则生成想法的臂。</li>'
+   +'<li>原臂一字不改，继续运行，作为对照。</li>'
+   +'<li>两条臂读同一批研报、同一份可买清单、同一天成交，差异仅在这条准则。</li>'
+   +'<li>四周后这里给出两条臂的对比；跑不赢的可随时停用。</li>'
    +'</ul></div></div>';
 
   if(PH.err)h+='<div class="ph-err" style="margin-top:var(--space-3)">'+esc(PH.err)+'</div>';
@@ -6206,10 +6227,10 @@ function phReviewCard(){
   h+='<div class="ph-acts">'
    +'<button type="button" class="ph-go" data-el="rules.go"'
    +((PH.busy||lock)?' disabled':'')+' onclick="phActivate()">'
-   +(PH.busy?'正在生效…':'就这么办')+'</button>'
+   +(PH.busy?'正在生效…':'确认生效')+'</button>'
    +'<button type="button" class="ph-alt" data-el="rules.redo"'
-   +(PH.busy?' disabled':'')+' onclick="phDiscard()">不对，我重说</button>'
-   +(lock?'<span class="card-note">先看一眼上面被改的地方，勾了才能生效</span>':'')
+   +(PH.busy?' disabled':'')+' onclick="phDiscard()">重写</button>'
+   +(lock?'<span class="card-note">需先核对上方改写并勾选，方可生效</span>':'')
    +'</div>';
   return h+'</div>';
 }
@@ -6221,11 +6242,11 @@ function phRunningCard(){
    +'<h2 class="card-title" style="margin-bottom:0">在跑的准则</h2>'
    +'<span class="card-note">'+live.length+' 条</span></div>';
   if(!live.length){
-    return h+'<div class="empty">还没教过它。它现在只按内置的四种路子出想法。</div></div>';
+    return h+'<div class="empty">尚未注入任何准则。当前只有四种内置生成方式在运行。</div></div>';
   }
   h+=live.map(function(c){
     var when=c.runs>0?('已跑 '+c.runs+' 期')
-      :'还没跑过，下一次周跑（周三）第一次出手';
+      :'尚未运行，下一次周跑（周三）首次生成';
     return '<div class="ph-rule">'
       +'<div class="ph-rule-said">「'+esc(c.said)+'」</div>'
       +'<div class="ph-meta">'+esc(c.since)+' 起 · '+esc(when)
@@ -6234,8 +6255,8 @@ function phRunningCard(){
         : '')+'</div>'
       +'<div class="ph-acts" style="margin-top:var(--space-3)">'
       +'<button type="button" class="ph-alt" data-el="rules.retire"'
-      +(PH.busy?' disabled':'')+' onclick="phRetire(\''+esc(c.id)+'\')">停用</button>'
-      +(c.runs>0?'':'<span class="card-note">停用后它已经写下的持仓和业绩留在账本里</span>')
+      +(PH.busy?' disabled':'')+' onclick="phRetire(\''+jss(c.id)+'\')">停用</button>'
+      +(c.runs>0?'':'<span class="card-note">停用后，该准则已写下的持仓与业绩留在账本中</span>')
       +'</div></div>';
   }).join('');
   return h+'</div>';

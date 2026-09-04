@@ -45,6 +45,7 @@ BASES: dict[str, dict[str, Any]] = {
         "build_prompt": gen_carl.build_prompt,
         "keys": ("anomaly", "motive", "constraint", "trigger"),
         "label": "约束边界",
+        "note": "给「异常 → 动机 → 约束 → 触发」这副骨架再加一条你的要求。",
     },
     "ai_native": {
         "build_prompt": gen_ai_native.build_prompt,
@@ -54,16 +55,19 @@ BASES: dict[str, dict[str, Any]] = {
         # rather than whether it improves a skeleton that already exists.
         "keys": (),
         "label": "AI 端到端",
+        "note": "这一档本来刻意不设任何推理骨架。加上准则之后它问的是另一个问题：一条准则，比完全没有骨架好还是差。",
     },
     "chain": {
         "build_prompt": gen_chain.build_prompt,
         "keys": ("chain", "watch_variable", "falsifier"),
         "label": "传导链",
+        "note": "给「把主题拆成可观测的传导链」再加一条你的要求。",
     },
     "gap": {
         "build_prompt": gen_gap.build_prompt,
         "keys": ("implied_consensus", "contradiction", "unexpressed"),
         "label": "共识缺口",
+        "note": "给「从价格出发而不是从叙事出发」再加一条你的要求。",
     },
 }
 
@@ -75,7 +79,8 @@ def options() -> list[dict[str, str]]:
     method everywhere else, and the PM should never have to learn that it is
     spelled `carl_constraint` underneath.
     """
-    return [{"arm": k, "label": v["label"]} for k, v in BASES.items()]
+    return [{"arm": k, "label": v["label"], "note": v.get("note", "")}
+            for k, v in BASES.items()]
 
 
 def _make(card: dict[str, Any]):

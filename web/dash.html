@@ -4727,7 +4727,7 @@ function stageCorpusBody(){
       }).join('')+'</tbody></table></div>'
     :'';
   return body+breakdown+topicChips+feedTable
-    +epi('语料为唯一信息来源，各生成方法共用同一份，跨方法共识不构成独立证据');
+    +epi('本期全部判断的唯一信息来源，4 种生成方法共用同一份');
 }
 
 /* ── 2 · 筛选A：主题评分（focus = 主题 id：该行高亮+证据就地展开，其余压暗） ── */
@@ -4976,7 +4976,7 @@ function stageGeneratorsBody(d){
         +uniq.map(function(c){return '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="'+esc(c.instrument_name||'')+' · '+esc(c.topic_id||'')+' — 在候选池里看这条" onclick="filterPoolCode(\''+jss(c.instrument_id)+'\')">'+esc(c.instrument_id)+' ›</button>'}).join('')
         +'</span>':'<span style="color:var(--color-text-tertiary)">本期无独有标的</span>')
       +'</div>'
-      +'<div style="margin-top:4px;color:var(--color-text-metadata)">与其他方法重合 '+fmtInt(overlap)+' / '+fmtInt(mine.length)+' 条（'+pct+'%）；各方法读取同一批研报，重合不构成独立证据</div>'
+      +'<div style="margin-top:4px;color:var(--color-text-metadata)">与其他方法重合 <b class="num">'+fmtInt(overlap)+'</b> / '+fmtInt(mine.length)+' 条（'+pct+'%）'+glossMark('各方法读取同一批研报，重合不构成独立证据。')+'</div>'
       +'</div>';
   }
   var perMax=1,target=null;
@@ -5043,7 +5043,7 @@ function stagePoolBody(d){
       +'<span class="arr">→ 同一标的合并、赔率取中位数 →</span>'
       +'<span class="big">'+fmtInt(pool.n)+'</span><span class="quiet">条候选（一标一条）</span>'
       +'</div>'
-      +'<div class="card-note" style="margin-bottom:var(--space-2)">方法 = 筛选B 的 4 种生成方法：AI 端到端 / 约束边界 / 传导链 / 共识缺口，彼此独立生成 <span class="gloss" title="'+esc(CONV_GLOSS)+'">ⓘ</span></div>';
+      +'<div class="card-note" style="margin-bottom:var(--space-2)">按跨方法共识度分档 '+glossMark(CONV_GLOSS)+'</div>';
     /* 共识度 = 几种不同方式提出（与 API convergence 同口径） */
     var groups={};cands.forEach(function(c){
       var uniq={};(c.proposed_by||[]).forEach(function(m){uniq[m]=1});

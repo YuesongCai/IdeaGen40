@@ -1043,6 +1043,11 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .al-mat .mt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .al-mat .mc{flex:none;font:600 10px/16px var(--font-sans);color:var(--color-text-on-brand);background:var(--color-fill-brand-green);border-radius:999px;padding:0 7px}
 .al-mat .mg{flex:none;color:var(--color-text-tertiary)}
+.hero-split{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px var(--space-5);margin-top:var(--space-4);padding:var(--space-3) var(--space-4);background:var(--color-surface-subtle);border-radius:var(--radius-md);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
+.hero-split .hs-h{font-weight:600;color:var(--color-text-primary)}
+.hero-split .hs-i b{font-weight:600;color:var(--color-text-primary);margin-right:3px}
+.hero-split .hs-d{color:var(--color-text-tertiary)}
+.hero-split .hs-d b{color:var(--color-text-primary)}
 .tx-wrap{margin-top:var(--space-4)}
 .tx-h{font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin-bottom:6px}
 .tx-bar{display:flex;width:100%;height:16px;border-radius:var(--radius-xs);overflow:hidden;background:var(--color-surface-subtle)}
@@ -1595,14 +1600,18 @@ function bookedThisPeriod(b){
 function aggBooks(){
   var bs=currentBooks();
   if(!bs.length)return null;
-  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={},wins=0;
+  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={},wins=0,deployed=0,pending=0;
   bs.forEach(function(b){
     cap+=(b.capital||0);
     openN+=(b.open_positions||[]).length;
     closedN+=(b.closed_n||0);
     wins+=(b.wins||0);
     realized+=(b.realized||0);
-    (b.open_positions||[]).forEach(function(p){unreal+=(p.unrealized||0)});
+    pending+=(Number(b.pending_orders)||0);
+    (b.open_positions||[]).forEach(function(p){
+      unreal+=(p.unrealized||0);
+      deployed+=(Number(p.qty)||0)*(Number(p.entry_px)||0);
+    });
     Object.keys(b.exits||{}).forEach(function(k){exits[k]=(exits[k]||0)+(b.exits[k]||0)});
   });
   var axis=null,sameAxis=true;
@@ -1617,7 +1626,18 @@ function aggBooks(){
       return {d:e.d,equity:s};
     });
   }
-  return {books:bs,capital:cap,openN:openN,closedN:closedN,wins:wins,realized:realized,unrealized:unreal,exits:exits,equity:eq};
+  /* 合计净值不能只在「所有账本日期轴一致」时才有：轴不齐时聚合曲线为空，
+   * 但每本账自己的最后一点仍然存在，把它们相加就是当下的合计净值。
+   * 之前依赖聚合曲线，于是有一本账日期不齐就整块拆解消失。 */
+  var lastEq=null,haveEq=false;
+  bs.forEach(function(b){
+    var e=b.equity||[];
+    if(e.length){haveEq=true;lastEq=(lastEq||0)+(e[e.length-1].equity||0)}
+  });
+  if(!haveEq)lastEq=null;
+  return {books:bs,capital:cap,openN:openN,closedN:closedN,wins:wins,realized:realized,
+          unrealized:unreal,exits:exits,equity:eq,deployed:deployed,pending:pending,
+          lastEquity:lastEq};
 }
 /* 持仓代码 → 候选池条目（US.BTAL → BTAL） */
 function candByCode(code){
@@ -2932,6 +2952,30 @@ function portfolioHeadline(ag){
         +'</div>'
       +'</div>'
     +'</div>'
+    /* 把这个头条数拆开——它是全页最容易被读错的一个数。
+     * 合计 +0.46% 里只有约 0.10pp 来自选股，其余来自没投出去的钱吃的货币
+     * 市场利息。而右边的基准是满仓的。不写出来，「跑输 4 个百分点」会被
+     * 读成「AI 选股很差」，但真实情况是：四分之三的钱还没进场，比较的
+     * 两边根本不是同一个仓位。 */
+    +(function(){
+      var gain=(ag.lastEquity!==null&&ag.capital)?(ag.lastEquity-ag.capital):null;
+      var pos=(ag.unrealized||0)+(ag.realized||0);
+      if(gain===null||!ag.capital)return '';
+      var cash=gain-pos;
+      var pp=function(v){return (v/ag.capital*100)};
+      var depPct=ag.capital?(ag.deployed/ag.capital*100):0;
+      if(Math.abs(cash)/Math.abs(gain||1)<0.05)return '';   /* 现金部分可忽略时不啰嗦 */
+      return '<div class="hero-split">'
+        +'<span class="hs-h">这 '+fmtPct(pp(gain))+' 从哪来</span>'
+        +'<span class="hs-i"><b class="num '+pctCls(pos)+'">'+(pp(pos)>=0?'+':'')+pp(pos).toFixed(2)+' pp</b> 选出来的持仓</span>'
+        +'<span class="hs-i"><b class="num">'+(pp(cash)>=0?'+':'')+pp(cash).toFixed(2)+' pp</b> 未投出资金的货币市场利息'
+        +'<span class="gloss" title="未建仓的现金按货币市场利率计息（当前约 3.72% 年化）。这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。">ⓘ</span></span>'
+        +'<span class="hs-d">目前只投出 <b class="num">'+depPct.toFixed(0)+'%</b> 的资金'
+        +'<span class="gloss" title="组合按 4 周滚动建仓：每周投入约四分之一，第五周换掉第一周。现在是第 1 周，所以大部分资金还在现金里。'
+        +(ag.pending?'另有 '+fmtInt(ag.pending)+' 笔挂单尚未成交。':'')
+        +'　对照的 '+esc(benchName())+' 是满仓，两边仓位不同——这也是为什么现在的差距不能直接读成选股能力的差距。">ⓘ</span></span>'
+        +'</div>';
+    })()
     +'<div class="card-note" style="margin-top:var(--space-4)">'
       +'浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
       +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
@@ -6075,6 +6119,8 @@ function tick(){
    界面还在渲染」的半截状态。 */
 (function(){
   var css='.ph-hero{font:400 14px/22px var(--font-sans);color:var(--color-text-secondary);margin-bottom:var(--space-5);max-width:62ch}'
+   +'.ph-def{font:400 13px/21px var(--font-sans);color:var(--color-text-secondary);background:var(--color-surface-subtle,#f7f7f7);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);max-width:78ch}'
+   +'.ph-def b{font-weight:600;color:var(--color-text-primary)}'
    +'.ph-say{width:100%;box-sizing:border-box;min-height:96px;resize:vertical;padding:var(--space-4);'
    +'border:1px solid var(--color-border-default,#e0e0e0);border-radius:var(--radius-md);'
    +'font:400 15px/24px var(--font-sans);color:var(--color-text-primary);background:var(--color-surface-default,#fff)}'
@@ -6189,8 +6235,8 @@ function phTeachCard(){
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
    +'<h2 class="card-title">用一句话写下你判断一笔交易的准则</h2>'
-   +'<div class="ph-hero">系统现在有四种固定的生成方式。你可以再加一条准则：'
-   +'写下一句话，它据此单独跑一条臂，与原臂同批同料并行，四周后在这里给出两者的对比。</div>';
+   +'<div class="ph-hero">写下一句话，系统把它蒸馏成可执行的要求，'
+   +'并派生一条臂来执行。</div>';
   if(blocked){
     h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
     return h;
@@ -6295,11 +6341,28 @@ function phRunningCard(){
         : '')+'</div>'
       +'<div class="ph-acts" style="margin-top:var(--space-3)">'
       +'<button type="button" class="ph-alt" data-el="rules.retire"'
-      +(PH.busy?' disabled':'')+' onclick="phRetire(\''+jss(c.id)+'\')">停用</button>'
+      +' data-ph-id="'+esc(c.id)+'"'+(PH.busy?' disabled':'')+'>停用</button>'
       +(c.runs>0?'':'<span class="card-note">停用后，该准则已写下的持仓与业绩留在账本中</span>')
       +'</div></div>';
   }).join('');
   return h+'</div>';
+}
+
+/* 停用按钮走事件委托，id 从不进入 JS 字符串字面量。
+   内联 `onclick="phRetire('…')"` 是双层上下文——HTML 属性里套一个 JS 字符串——
+   而 esc() 在那里不够：HTML 解析器会先把 &#39; 解回单引号再交给 JS，引号原样
+   落进字面量。jss() 能修这一层，但更根本的问题是：那样一来「安全」就挂在
+   「id 里没有引号」这条写入时的正则上，而正则和这个渲染点之间隔着数据库、
+   迁移脚本和导入工具。把不变量挂在没人会去维护的地方，迟早会断在这里而不是
+   断在正则上。委托之后这个上下文不存在，id 里是什么字符都无所谓。 */
+function phBind(){
+  if(PH.bound)return;
+  var host=$('view-rules');if(!host)return;
+  PH.bound=true;
+  host.addEventListener('click',function(e){
+    var t=e.target,b=(t&&t.closest)?t.closest('[data-ph-id]'):null;
+    if(b&&host.contains(b)&&!b.disabled)phRetire(b.getAttribute('data-ph-id'));
+  });
 }
 
 function renderRules(){
@@ -6315,9 +6378,17 @@ function renderRules(){
   phLoad();
   if(!PH.data&&!PH.err){el.innerHTML='<div class="card section"><div class="empty">正在读…</div></div>';return}
   /* 不再写一遍标题：页眉的 pageTitle 已经是「准则」，renderProcess 也是这个规矩。 */
-  var html=secWrap('rules','teach',phTeachCard());
+  /* 准则和臂是两个东西——准则是他说的那句话，臂是由它派生、参与统计检验的对照
+     单位——所以不能统一成一个词：那会把「我写了一条准则」和「这条准则的样本量
+     还不够」糊成一句。但两个陌生词交替出现而从不说关系，更糟。所以这里定义一次，
+     常驻在两种状态之上，之后各用各的。 */
+  var html='<div class="ph-def">系统现在有四种固定的生成方式。'
+    +'<b>每条准则派生一条对照臂</b>：与原臂同批、同料、同规则并跑，'
+    +'<b>原臂冻结不动</b>，两条臂的净值之差即这条准则的净效应。</div>';
+  html+=secWrap('rules','teach',phTeachCard());
   html+=secWrap('rules','running',phRunningCard());
   el.innerHTML=html;
+  phBind();
   buildNav();
 }
 

@@ -37,6 +37,31 @@ STOP_SIGMA = 2.0
 TAKE_SIGMA = 3.0
 
 
+def _priced_only(con, cands: list[dict[str, Any]],
+                 as_of: date) -> tuple[list[dict[str, Any]], list[str]]:
+    """Split candidates into those that can be priced on the date and those that cannot.
+
+    A listed instrument with no close at or before `as_of` has no entry price,
+    no sigma, and therefore no stop — there is nothing to book. Returning it
+    alongside the good ones is what let a single unpriced ticker fail an
+    entire batch.
+    """
+    from . import universe as uni
+    from .sources import futu_px
+
+    ok: list[dict[str, Any]] = []
+    bad: list[str] = []
+    for c in cands:
+        token = str(c.get("instrument_id") or "")
+        hit = uni.resolve(token)
+        code = getattr(hit, "futu_code", None) if hit else None
+        if code and futu_px.last_close_on_or_before(con, code, as_of.isoformat()):
+            ok.append(c)
+        else:
+            bad.append(token)
+    return ok, bad
+
+
 def payload_from_candidates(cands: list[dict[str, Any]],
                             run_id: str | None = None) -> dict:
     """Translate stage-B candidates into the shape `ideas.compute` expects.
@@ -146,8 +171,21 @@ def book_run(con, p, run_id: str, *, selectors: list[str] | None = None,
         if selectors is not None and name not in selectors:
             continue
         chosen = [cands[c] for c in json.loads(v["chosen"]) if c in cands]
+        # An instrument with no price series cannot be entered, and the batch
+        # validator rightly refuses it — but it refused the whole batch, so one
+        # unpriced ticker cost a book its entire week (US.XLF did exactly this
+        # to five books across the 2026-08-12 and 08-19 backfills: ten good
+        # picks discarded because an eleventh had no rows in `prices`). Drop
+        # the ones that cannot be priced, name them, and book the rest.
+        chosen, unpriced = _priced_only(con, chosen, as_of)
+        if unpriced:
+            log(f"  ⚠ {name}: {len(unpriced)} 个标的当日无价，无法建仓（其余照常）："
+                + "、".join(unpriced[:6]))
         if not chosen:
-            out["books"][name] = {"skipped": "该挑法没有选中任何想法"}
+            out["books"][name] = {
+                "skipped": ("该挑法选中的标的当日都没有价格" if unpriced
+                            else "该挑法没有选中任何想法"),
+                **({"unpriced": unpriced} if unpriced else {})}
             continue
 
         batch_id = f"W{as_of.isoformat().replace('-','')}-{name}"

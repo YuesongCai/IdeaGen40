@@ -2621,3 +2621,48 @@ class TestFrozenInputsSurviveMutableTables(unittest.TestCase):
             with mock.patch.object(ask, "_journal", return_value=journal):
                 self.assertIsNone(ask._frozen_inputs(
                     None, {"as_of": "2026-08-26", "run_id": "r"}))
+
+
+class TestBookingSkipsUnpricedRatherThanFailingTheBatch(unittest.TestCase):
+    """One unpriced ticker must not cost a book its whole week.
+
+    The batch validator rightly refuses a listed instrument with no reference
+    price — but it refuses the entire batch. US.XLF, which has zero rows in
+    `prices`, did exactly that to five books across the 2026-08-12 and 08-19
+    backfills: ten good picks discarded because an eleventh could not be
+    priced.
+    """
+
+    def test_unpriced_are_split_out_and_named(self):
+        from unittest import mock
+        from datetime import date as D
+        from ideagen import booking
+
+        class Hit:
+            def __init__(self, code):
+                self.futu_code = code
+
+        def fake_resolve(token):
+            return Hit(f"US.{token}")
+
+        def fake_last_close(con, code, d):
+            return None if code == "US.XLF" else (d, 10.0)
+
+        cands = [{"instrument_id": "SPY"}, {"instrument_id": "XLF"},
+                 {"instrument_id": "TLT"}]
+        with mock.patch("ideagen.universe.resolve", side_effect=fake_resolve), \
+             mock.patch("ideagen.sources.futu_px.last_close_on_or_before",
+                        side_effect=fake_last_close):
+            ok, bad = booking._priced_only(None, cands, D(2026, 8, 12))
+        self.assertEqual([c["instrument_id"] for c in ok], ["SPY", "TLT"])
+        self.assertEqual(bad, ["XLF"])
+
+    def test_an_unresolvable_token_counts_as_unpriced(self):
+        from unittest import mock
+        from datetime import date as D
+        from ideagen import booking
+        with mock.patch("ideagen.universe.resolve", return_value=None):
+            ok, bad = booking._priced_only(None, [{"instrument_id": "???"}],
+                                           D(2026, 8, 12))
+        self.assertEqual(ok, [])
+        self.assertEqual(bad, ["???"])

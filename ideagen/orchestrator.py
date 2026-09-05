@@ -37,6 +37,36 @@ class _SkipDiscovery(Exception):
     """Discovery stopped for a reason it already reported. Not an error path."""
 
 
+#: The columns `events` has always had. Anything else a feed reports goes to
+#: `payload` — `feeds.py` promises extras are "allowed and preserved", and until
+#: that column existed the promise held in memory and broke at the last step, so
+#: a replay read a thinner row than the run was handed.
+EVENT_CORE = ("event_id", "date", "label", "kind", "expectation", "actual",
+              "unit", "source", "as_of", "feed")
+
+
+def event_row(e: dict[str, Any]) -> dict[str, Any]:
+    """One calendar row as `events` stores it, extras folded into `payload`.
+
+    Module level rather than inline in `run()` so it can be tested without
+    standing up a platform, a journal and a model. The behaviour worth testing
+    is narrow and easy to get wrong: `actual` is stringified (the column is
+    TEXT, and a float written straight through compares unequal to the same
+    number read back), and a row with nothing extra stores NULL rather than
+    `"{}"` — an empty object would make "this feed reported nothing extra" and
+    "this row predates the column" look different when they are not.
+    """
+    extra = {k: v for k, v in e.items() if k not in EVENT_CORE}
+    return {"event_id": e.get("event_id"), "date": e.get("date"),
+            "label": e.get("label"), "kind": e.get("kind"),
+            "expectation": e.get("expectation"),
+            "actual": None if e.get("actual") is None else str(e["actual"]),
+            "unit": e.get("unit"), "source": e.get("source"),
+            "as_of": e.get("as_of"), "feed": e.get("feed"),
+            "payload": (json.dumps(extra, ensure_ascii=False, default=str)
+                        if extra else None)}
+
+
 @dataclass
 class RunResult:
     run_id: str
@@ -248,27 +278,8 @@ def weekly(
             # Calendar rows are upserted so a threshold can be compared against a
             # level, and a watchpoint can name an event that already exists.
             if calendar and not dry_run:
-                # `_CORE` are the columns `events` has always had. Everything
-                # else a feed chose to report goes to `payload` rather than
-                # being dropped: `feeds.validate` deliberately preserves extra
-                # fields ("a feed with something useful to add should not have
-                # to ask permission"), and dropping them at the last step made
-                # that promise true only in memory. A replay reading this table
-                # would see a row the run never had.
-                _CORE = ("event_id", "date", "label", "kind", "expectation",
-                         "actual", "unit", "source", "as_of", "feed")
                 for e in calendar:
-                    extra = {k: v for k, v in e.items() if k not in _CORE}
-                    schema.upsert(p.state, "events", {
-                        "event_id": e.get("event_id"), "date": e.get("date"),
-                        "label": e.get("label"), "kind": e.get("kind"),
-                        "expectation": e.get("expectation"),
-                        "actual": (None if e.get("actual") is None
-                                   else str(e["actual"])),
-                        "unit": e.get("unit"), "source": e.get("source"),
-                        "as_of": e.get("as_of"), "feed": e.get("feed"),
-                        "payload": (json.dumps(extra, ensure_ascii=False,
-                                               default=str) if extra else None)})
+                    schema.upsert(p.state, "events", event_row(e))
 
             # Theme discovery runs before scoring, every week, in the run itself.
             # The founding requirement is that topics emerge from the corpus

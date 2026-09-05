@@ -402,5 +402,49 @@ class PromptBlocks(unittest.TestCase):
                       gen_gap.price_block(self._ctx([])))
 
 
+class EventRow(unittest.TestCase):
+    """The last step, where the extras used to disappear."""
+
+    def test_extras_are_folded_into_payload_not_dropped(self):
+        from ideagen.orchestrator import event_row
+        import json as _j
+        r = event_row({"event_id": "e1", "date": "2026-09-11", "label": "CPI",
+                       "kind": "macro_release", "expectation": "2.4%",
+                       "actual": 2.5, "unit": "%", "source": "FMP",
+                       "as_of": "2026-09-05", "feed": "fmp_macro_releases",
+                       "impact": "High", "previous": 2.5, "time_utc": "12:30"})
+        self.assertEqual(_j.loads(r["payload"]),
+                         {"impact": "High", "previous": 2.5, "time_utc": "12:30"})
+
+    def test_actual_is_stringified_because_the_column_is_text(self):
+        from ideagen.orchestrator import event_row
+        self.assertEqual(event_row({"actual": 2.5})["actual"], "2.5")
+        self.assertIsNone(event_row({"actual": None})["actual"])
+
+    def test_nothing_extra_stores_null_not_an_empty_object(self):
+        """`"{}"` would make "this feed reported nothing extra" and "this row
+        predates the column" look different when they are the same."""
+        from ideagen.orchestrator import event_row
+        self.assertIsNone(event_row({"event_id": "a", "date": "d",
+                                     "label": "l", "kind": "auction"})["payload"])
+
+    def test_a_real_feed_row_survives_the_round_trip(self):
+        from ideagen.orchestrator import event_row
+        from ideagen.platform.local import SqliteStateStore
+        with mock.patch.object(pos.fmp, "cot",
+                               return_value=[_cot_row("GC", "2026-09-01", cur=88.95)]):
+            row = next(iter(pos.fmp_cot(AS_OF, {"contracts": ["GC"]})))
+        row.setdefault("as_of", AS_OF.isoformat())
+        row.setdefault("feed", "fmp_cot")
+        with tempfile.TemporaryDirectory() as d:
+            st = SqliteStateStore(str(Path(d) / "t.db"))
+            schema.migrate(st)
+            schema.upsert(st, "events", event_row(row))
+            got = sqlite3.connect(Path(d) / "t.db").execute(
+                "SELECT actual, payload FROM events").fetchone()
+        self.assertEqual(got[0], "88.95")
+        self.assertIn("reversal_trend", got[1])
+
+
 if __name__ == "__main__":
     unittest.main()

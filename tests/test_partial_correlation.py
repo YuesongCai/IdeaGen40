@@ -79,3 +79,38 @@ def test_a_thin_period_is_skipped_and_says_why():
     out = backtest.partial_rank_correlation(_rows("p1", 8, skill=1.0))
     assert out["periods_scored"] == 0
     assert "不足" in out["per_period"][0]["skipped"]
+
+
+# ------------------------------------------------------- the interval
+
+def test_the_bootstrap_resamples_periods_not_observations():
+    """Six periods is six draws however many names each holds. If the interval
+    were built from the rows it would shrink with the pool size — which grows
+    when the shelf grows — and a wider shelf would start looking like more
+    evidence about the same six months."""
+    out = backtest.period_bootstrap_ci([0.1, -0.2, 0.3, 0.0, 0.15, -0.05])
+    assert out["n_periods"] == 6
+    assert out["ci"][0] < out["mean"] < out["ci"][1]
+    assert out["covers_zero"] is True
+
+
+def test_a_consistent_effect_gets_an_interval_that_clears_zero():
+    """The check has to be able to say yes, or it only ever says no."""
+    out = backtest.period_bootstrap_ci([0.31, 0.28, 0.35, 0.30, 0.33, 0.29])
+    assert out["covers_zero"] is False
+    assert out["ci"][0] > 0.2
+
+
+def test_two_periods_get_no_interval_rather_than_a_narrow_one():
+    """Two numbers can produce a beautifully tight bootstrap interval that means
+    nothing at all — the resample can only ever return one of two values."""
+    out = backtest.period_bootstrap_ci([0.2, 0.21])
+    assert out["ci"] is None and "不给区间" in out["note"]
+
+
+def test_the_interval_is_reproducible():
+    """A number that changes between two runs of the same data is a number a
+    reader cannot quote, and this one is quoted in the funnel."""
+    a = backtest.period_bootstrap_ci([0.1, -0.2, 0.3, 0.0, 0.15, -0.05])
+    b = backtest.period_bootstrap_ci([0.1, -0.2, 0.3, 0.0, 0.15, -0.05])
+    assert a["ci"] == b["ci"]

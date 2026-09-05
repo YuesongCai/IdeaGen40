@@ -86,6 +86,7 @@ weeks of data is a liability, because someone will act on it.
 from __future__ import annotations
 
 import math
+import random
 import statistics as st
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -1313,6 +1314,7 @@ def rank_within_families(rows: Sequence[tuple[str, str, float, float]], *,
         return {"periods": len(vals),
                 "mean_rho": round(st.mean(vals), 4) if vals else None,
                 "periods_positive": sum(1 for v in vals if v > 0),
+                "bootstrap": period_bootstrap_ci(vals),
                 "per_period_rho": vals}
 
     pooled = [o["rho"] for o in overall]
@@ -1579,6 +1581,56 @@ def trailing_vol_pct(con, code: str, upto: str, lookback: int = 60
                      ) * (252 ** 0.5) * 100.0
 
 
+def period_bootstrap_ci(values: Sequence[float], *, draws: int = 2000,
+                        alpha: float = 0.05, seed: int = 20260906
+                        ) -> dict[str, Any]:
+    """A percentile bootstrap over **periods**, which is the independent unit.
+
+    Every falsification on the evidence page is currently a point estimate: a
+    partial correlation of 0.005, a within-family correlation of 0.076, a long
+    share of 64%. A reader cannot tell 0.076 from 0, and neither can the person
+    writing the verdict — which matters in both directions. Calling a check
+    "failed" on six noisy periods is the same error as calling it passed.
+
+    Resampling is over periods rather than over observations because the
+    observations inside a period are anything but independent: one month of one
+    market moves them together, which is the whole reason correlations are
+    computed inside a period in the first place. Bootstrapping the rows would
+    produce an interval about the wrong thing and a flatteringly narrow one.
+
+    With six periods this interval is wide and honest rather than precise, and
+    the count is returned beside it so nobody reads a six-draw interval as a
+    measurement. Fewer than three periods gets no interval at all.
+    """
+    vals = [float(v) for v in values if v is not None]
+    if len(vals) < 3:
+        return {"n_periods": len(vals), "mean": (round(st.mean(vals), 4)
+                                                 if vals else None),
+                "ci": None,
+                "note": "少于 3 个期次，不给区间。"}
+    rnd = random.Random(seed)
+    n = len(vals)
+    means = []
+    for _ in range(draws):
+        means.append(sum(vals[rnd.randrange(n)] for _ in range(n)) / n)
+    means.sort()
+    lo = means[max(0, int(alpha / 2 * draws) - 1)]
+    hi = means[min(draws - 1, int((1 - alpha / 2) * draws))]
+    mean = st.mean(vals)
+    return {
+        "n_periods": n,
+        "mean": round(mean, 4),
+        "ci": [round(lo, 4), round(hi, 4)],
+        "covers_zero": bool(lo <= 0 <= hi),
+        "draws": draws,
+        "note": (f"按期次重抽 {draws} 次的 95% 百分位区间。重抽的是**期**不是观测"
+                 f"——同一期内的观测被同一个月的行情绑在一起，按观测重抽会得到一个"
+                 f"关于错误对象、而且窄得讨好人的区间。{n} 个期次给出的区间很宽，"
+                 f"那是诚实不是精度；区间盖住 0 的意思是这段样本分不开它和 0，"
+                 f"既不能说它成立，也不能说它被推翻。").replace("**期**", "期"),
+    }
+
+
 def partial_rank_correlation(rows: Sequence[tuple[str, float, float, float]]
                              ) -> dict[str, Any]:
     """The score's ranking power after the risk it was ranking is taken out.
@@ -1653,6 +1705,9 @@ def partial_rank_correlation(rows: Sequence[tuple[str, float, float, float]]
         "periods_scored": len(scored),
         "mean_rho_raw": round(st.mean(raw), 4) if raw else None,
         "mean_rho_partial": None if mean_p is None else round(mean_p, 4),
+        # The interval matters in both directions: a check called "failed" on six
+        # noisy periods is the same mistake as one called passed.
+        "bootstrap": period_bootstrap_ci(partial),
         "t_partial": None if t_stat is None else round(t_stat, 2),
         "periods_partial_positive": sum(1 for v in partial if v > 0),
         "shrinkage": (None if (mean_p is None or not raw)

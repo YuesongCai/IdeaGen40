@@ -4089,7 +4089,7 @@ function learnedCard(){
 
   return '<div class="card section" id="learned">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">目前唯一站得住的发现</h2>'
-      +'<span class="card-note">六期挖出来的，连同它没通过的三关</span></div>'
+      +'<span class="card-note">这条发现本身 · 上面那张漏斗里的其中三关，画出来看</span></div>'
     +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 0">'
       /* 标题放名字，定义挂 gloss：score_label 是一整句定义（「候选自陈情景的概率
        * 加权期望回报」），直接当标题印，一行里会出现两个「候选」，而且读者拿到
@@ -4835,9 +4835,17 @@ function falsificationCard(){
      缺一个数就印一个通过的判定，是本仓最贵的那种缺陷：它不报错、不空白、
      只是把结论说反。所以判定统一走这里：任一输入是 null 就返回「没算」。 */
   function vd(pass){return pass==null?'没算':(pass?'扛住了':'没扛住')}
+  /* 点估计后面必须跟区间。六期的 0.076 和 0 分不开，而一个孤零零的 0.076
+     读起来像一个测量值——两个方向的错误都由它来：既会把噪声读成发现，
+     也会把「样本不够」读成「已经证伪」。 */
+  function ci3(b){
+    if(!b||!b.ci)return '';
+    return ' <span class="dim">['+b.ci[0].toFixed(3)+', '+b.ci[1].toFixed(3)+']</span>';
+  }
   function num(v){return (v==null||isNaN(v))?null:Number(v)}
   function row(label,detail,num,verdict,sec){
-    var cls=verdict==='没扛住'?'fx-no':(verdict==='打折'?'fx-half':(verdict==='扛住了'?'fx-yes':'fx-na'));
+    var cls=verdict==='没扛住'?'fx-no':((verdict==='打折'||verdict==='分不开')?'fx-half'
+      :(verdict==='扛住了'?'fx-yes':'fx-na'));
     return '<tr class="'+cls+'"><td class="primary">'+esc(label)
       +'<div class="fx-d">'+esc(detail)+'</div></td>'
       +'<td class="r num fx-n">'+num+'</td>'
@@ -4850,30 +4858,36 @@ function falsificationCard(){
   var rows=[];
   /* 起点：表面上的那条发现。 */
   var q5=(pooled.Q5||{}).mean_return_pct,q1=(pooled.Q1||{}).mean_return_pct;
+  var tbB=rp.top_minus_bottom_bootstrap||null;
   rows.push(row('表面：这个分数能把候选排出次序',
-    '每期内部切五分位，顶格 Q5 对末位 Q1',
+    '每期内部切五分位，顶格 Q5 对末位 Q1'
+      +(tbB&&tbB.ci?('；两端之差 '+fmtPct(tbB.mean)+'/期，区间 ['
+        +fmtPct(tbB.ci[0])+', '+fmtPct(tbB.ci[1])+']'
+        +(tbB.covers_zero?'，盖住 0':'，不含 0——这条阶梯是真的')):''),
     (q5==null?'—':fmtPct(q5)+' vs '+fmtPct(q1)),
-    (rp.periods_top_beats_bottom===rp.periods_scored&&rp.periods_scored?'看起来成立':'看起来成立'),
-    'ranking'));
+    (tbB&&tbB.ci?(tbB.covers_zero?'分不开':'看起来成立'):'看起来成立'),'finding'));
 
   /* 第一刀：它是不是只是在排风险。 */
   rows.push(pv&&pv.mean_rho_partial!=null
     ? row('减去「它只是在排风险」',
         '按住入场前 60 日波动，再看分数与收益的秩相关（原始 '
-          +(pv.mean_rho_raw==null?'—':pv.mean_rho_raw.toFixed(3))+'）',
-        pv.mean_rho_partial.toFixed(3)+(pv.t_partial==null?'':' <span class="dim">t='+pv.t_partial.toFixed(2)+'</span>'),
+          +(pv.mean_rho_raw==null?'—':pv.mean_rho_raw.toFixed(3))+'）'
+          +((pv.bootstrap||{}).covers_zero?'；区间盖住 0，所以是「没有被证明存在」'
+            +'而不是「已被证明为 0」':''),
+        pv.mean_rho_partial.toFixed(3)+ci3(pv.bootstrap),
         vd(!(Math.abs(pv.mean_rho_partial)<0.05
              ||(num(pv.t_partial)!=null&&Math.abs(pv.t_partial)<2))),'ranking')
     : na('减去「它只是在排风险」','控波动后的偏秩相关','没有 partial_vs_volatility 数据块','ranking'));
 
   /* 第二刀：换一个 universe。 */
   if(wf&&wf.families&&Object.keys(wf.families).length){
-    var fs=Object.keys(wf.families),best=fs.reduce(function(a,f){
-      var v=wf.families[f].mean_rho;return (v!=null&&v>a)?v:a},-9);
+    var fs=Object.keys(wf.families),bestF=null,best=-9;
+    fs.forEach(function(f){var v=wf.families[f].mean_rho;
+      if(v!=null&&v>best){best=v;bestF=f}});
     rows.push(row('减去「它只是把商品排在国库券之上」',
       '同一套规则在四个风险家族内部各排一次（整体 '
         +((wf.overall||{}).mean_rho==null?'—':wf.overall.mean_rho.toFixed(3))+'）',
-      '家族内最高 '+best.toFixed(3),
+      '家族内最高 '+best.toFixed(3)+ci3(bestF?(wf.families[bestF].bootstrap):null),
       vd(!(best<0.15)),'ranking'));
   }else rows.push(na('减去「它只是把商品排在国库券之上」','家族内秩相关','没有 within_family 数据块','ranking'));
 
@@ -4893,7 +4907,9 @@ function falsificationCard(){
     ? row('减去「只做多能拿到的那部分」',
         '顶格减末位是多空统计量；多头超额 '+fmtPct(asym.long_excess_pct)
           +' / 空头超额 '+fmtPct(asym.short_excess_pct),
-        fmtRate(asym.long_share_of_spread*100)+' 可兑现',
+        fmtRate(asym.long_share_of_spread*100)+' 可兑现'
+          +((asym.long_excess_bootstrap||{}).covers_zero
+            ? ' <span class="dim">多头超额区间盖住 0</span>':''),
         asym.long_share_of_spread>0.85?'扛住了':'打折','ranking')
     : na('减去「只做多能拿到的那部分」','多空拆分','没有 asymmetry 数据块','ranking'));
 

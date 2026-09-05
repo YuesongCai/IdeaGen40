@@ -815,6 +815,7 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
     asymmetry = {
         "long_excess_pct": None if long_mean is None else round(long_mean, 4),
         "short_excess_pct": None if short_mean is None else round(short_mean, 4),
+        "long_excess_bootstrap": backtest.period_bootstrap_ci(lx),
         "long_share_of_spread": (None if not span
                                  else round(long_mean / span, 4)),
         "periods_long_side_positive": sum(1 for x in lx if x > 0),
@@ -842,6 +843,11 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
                    for k, v in sorted(pooled.items()) if v},
         "periods_scored": len(scored),
         "periods_top_beats_bottom": sum(1 for x in tb if x > 0),
+        # The starting point gets an interval too. It turns out to clear zero
+        # comfortably ([+1.70, +3.75] on six periods), which is what makes the
+        # rest of the funnel interesting rather than moot: the ladder is real,
+        # and every layer below is about what it is made of.
+        "top_minus_bottom_bootstrap": backtest.period_bootstrap_ci(tb),
         "periods_top_beats_benchmark": sum(1 for x in vb if x > 0),
         "asymmetry": asymmetry,
         # The same rule taken to a different universe, four times over. See

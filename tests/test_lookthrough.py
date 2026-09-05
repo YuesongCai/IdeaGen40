@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest import mock
 from datetime import date
 from pathlib import Path
 
@@ -145,6 +146,44 @@ class Theme(unittest.TestCase):
         self.assertEqual(len(lt.resolve_theme(funds, ["nvda"])), 1)
 
 
+class Discover(unittest.TestCase):
+    """What the shelf is missing is a fact about the shelf, not about the theme.
+
+    `resolve_theme` returning nothing for a gold-miners basket reads as "no
+    vehicle expresses this" and actually means "this shelf carries physical GLD
+    and no miners fund" — a curation gap, and a gap has no label to be found by.
+    """
+
+    EXPOSURE = {
+        "NEM": [{"symbol": "GDX", "weightPercentage": 12.0},
+                {"symbol": "ZWT-T.TO", "weightPercentage": 40.0},
+                {"symbol": "SPY", "weightPercentage": 0.2}],
+        "AEM": [{"symbol": "GDX", "weightPercentage": 11.0},
+                {"symbol": "TINY", "weightPercentage": 1.0}],
+    }
+
+    def _run(self, **kw):
+        with mock.patch.object(lt.fmp, "asset_exposure",
+                               lambda n: self.EXPOSURE.get(n, [])):
+            return lt.discover(["NEM", "AEM"], {"SPY"}, **kw)
+
+    def test_sums_the_basket_across_one_fund(self):
+        hits = self._run()
+        self.assertEqual(hits[0].symbol, "GDX")
+        self.assertAlmostEqual(hits[0].weight, 0.23)
+
+    def test_excludes_what_the_shelf_already_has(self):
+        self.assertNotIn("SPY", [h.symbol for h in self._run(floor=0.0)])
+
+    def test_excludes_listings_this_desk_cannot_trade(self):
+        """The reverse index for a US name opens with Canadian covered-call
+        funds; a shelf proposal leading with ZWT-T.TO is noise."""
+        self.assertNotIn("ZWT-T.TO", [h.symbol for h in self._run(floor=0.0)])
+
+    def test_floor_drops_incidental_holders(self):
+        self.assertEqual([h.symbol for h in self._run()], ["GDX"])
+
+
 class Portfolio(unittest.TestCase):
     def test_overlapping_etfs_are_fewer_bets_than_they_look(self):
         """Three ETFs holding the same name are not three bets."""
@@ -171,6 +210,46 @@ class Portfolio(unittest.TestCase):
         funds = {"A": F("A", {"X": 1.0})}
         with self.assertRaises(ValueError):
             lt.portfolio(funds, ["A", "B"], [1.0])
+
+
+class Differentiator(unittest.TestCase):
+    """The menu line has to differentiate, and it is paid for on every call."""
+
+    def test_concentrated_fund_shows_its_names(self):
+        rest = {f"R{i}": .47 / 117 for i in range(117)}   # as ITA is actually built
+        f = {"ITA": F("ITA", {"GE": .22, "RTX": .17, "BA": .09, "GD": .05}
+                      | rest)}
+        d = lt.differentiator(f, "ITA")
+        self.assertIn("GE 22%", d)
+        self.assertIn("合计 53%", d)
+
+    def test_flat_fund_says_it_is_flat_instead_of_naming_nothing(self):
+        """A 1,300-bond credit fund's four largest are ~1% each. Printing
+        `ANHEUSER-BUSCH 4.90% 02/01/2046 0%` is noise, and it is also the
+        longest line in the menu."""
+        f = {"LQD": F("LQD", {f"B{i}": 1 / 3000 for i in range(3000)})}
+        d = lt.differentiator(f, "LQD")
+        self.assertIn("高度分散", d)
+        self.assertIn("3000", d)
+        self.assertNotIn("前4大 B0", d)
+
+    def test_long_bond_descriptions_are_cut(self):
+        f = {"X": F("X", {"ANHEUSER-BUSCH COMPANIES LLC 4.90% 02/01/2046": .5}
+                    | {f"R{i}": .5 / 50 for i in range(50)})}
+        self.assertNotIn("02/01/2046", lt.differentiator(f, "X"))
+
+    def test_opaque_and_stock_are_named_not_blank(self):
+        f = {"GLD": lt.Fund("GLD", "d", {}, {}, 0.0, 1, "opaque", ""),
+             "VRT": lt.Fund("VRT", "d", {}, {}, 0.0, 0, "not_a_fund", "")}
+        self.assertIn("不可穿透", lt.differentiator(f, "GLD"))
+        self.assertIn("个股", lt.differentiator(f, "VRT"))
+
+    def test_all_cash_holdings_do_not_produce_an_empty_top_list(self):
+        """The bug this replaced printed 前0大（合计 0%）."""
+        f = {"BIL": F("BIL", {"CASH & EQUIVALENTS": 1.0})}
+        d = lt.differentiator(f, "BIL")
+        self.assertNotIn("前0大", d)
+        self.assertIn("不可穿透", d)
 
 
 class Storage(unittest.TestCase):

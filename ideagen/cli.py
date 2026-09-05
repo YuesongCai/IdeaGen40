@@ -958,6 +958,26 @@ def cmd_lookthrough(args) -> int:
                   "是这批标的里没有")
         return 0
 
+    if args.action == "discover":
+        basket = [x.strip() for x in (args.names or "").split(",") if x.strip()]
+        if not basket:
+            print("需要 --names AAA,BBB,CCC（主题的底层名单）", file=sys.stderr)
+            return 2
+        known = {i.key for i in uni.ALL}
+        print(f"反查货架之外持有这批公司的基金（{len(basket)} 个名字，"
+              f"每个一次厂商调用）…\n")
+        hits = lt.discover(basket, known, limit=args.limit)
+        if not hits:
+            print("  没有货架外的候选——这个主题要么本来就没有载体，"
+                  "要么货架上已经有了")
+            return 0
+        print(f"  {'代码':<9}{'真实主题权重':>10}   命中")
+        for h in hits:
+            print(f"  {h.symbol:<9}{h.weight*100:9.1f}%   {'、'.join(h.matched[:6])}")
+        print("\n  这些是候选、不是结论：进 universe 前要确认载体合规、"
+              "日度流动性、以及 Futu 能不能报价——持仓文件都答不了这三件事。")
+        return 0
+
     if args.action == "portfolio":
         ins = [x.strip() for x in (args.symbols or "").split(",") if x.strip()]
         if not ins:
@@ -1014,7 +1034,7 @@ def cmd_daily(args) -> int:
         return st == "ok"
 
     print(f"=== ideagen daily {as_of} run={run_id} ===")
-    print("[1/8] wisburg ingest")
+    print("[1/9] wisburg ingest")
 
     def _ingest():
         try:
@@ -1027,21 +1047,36 @@ def cmd_daily(args) -> int:
                                   fetch_bodies=args.bodies)
 
     stage("ingest", _ingest)
-    print("[2/8] prices")
+    print("[2/9] prices")
     stage("prices", lambda: futu_px.sync(
         con, universe.priceable_codes(lexicon.all_indicators()),
         as_of - timedelta(days=400), as_of))
-    print("[3/8] score themes")
+    print("[3/9] ETF 穿透快照")
+
+    def _lookthrough():
+        # Holdings move on the funds' own rebalance calendar, not daily, so this
+        # is cheap insurance rather than a live feed. It is here because the
+        # generator reads the snapshot and a strategy may not fetch: `RunContext`
+        # gives no network on purpose, so a stale snapshot has to be prevented
+        # upstream instead of repaired inside a run.
+        from . import lookthrough as lt
+        syms = [i.key for i in universe.LISTED if i.market == "US"]
+        funds = lt.refresh(con, syms, as_of)
+        ok = sum(1 for f in funds.values() if f.usable)
+        print(f"      {ok}/{len(funds)} 只可穿透")
+
+    stage("lookthrough", _lookthrough)
+    print("[4/9] score themes")
     stage("score", lambda: scoring.score_day(con, as_of))   # skips a traded date
-    print("[4/8] briefing pack")
+    print("[5/9] briefing pack")
     stage("brief", lambda: briefing.build(con, as_of))
-    print("[5/8] mark books (含每日组合)")
+    print("[6/9] mark books (含每日组合)")
     stage("mark", lambda: cmd_mark(argparse.Namespace(since=None, to=None)))
-    print("[6/8] monitor")
+    print("[7/9] monitor")
     stage("monitor", lambda: monitor.run(con))
-    print("[7/8] verify source assets")
+    print("[8/9] verify source assets")
     stage("verify-assets", lambda: wisburg.verify_assets(con, limit=120))
-    print("[8/8] settle + dashboard")
+    print("[9/9] settle + dashboard")
     stage("settle", lambda: analytics.settle(con, book_id="naive", verbose=False))
     stage("dashboard", lambda: report_mod.build(con))
 
@@ -1262,7 +1297,8 @@ def main(argv: list[str] | None = None) -> int:
     s = add("lookthrough", cmd_lookthrough,
             "ETF 穿透：标签撒谎在哪、主题该买哪只、一组持仓真实押在什么上")
     s.add_argument("action",
-                   choices=["refresh", "collisions", "theme", "portfolio"])
+                   choices=["refresh", "collisions", "theme", "portfolio",
+                            "discover"])
     s.add_argument("--symbols", help="逗号分隔；refresh 时限定范围，"
                                      "portfolio 时是要穿透的那组持仓")
     s.add_argument("--names", help="theme 动作的底层名单，逗号分隔")

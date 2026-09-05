@@ -380,6 +380,54 @@ def resolve_theme(funds: dict[str, Fund], basket: Iterable[str],
     return sorted(out, key=lambda h: -h.weight)
 
 
+# ------------------------------------------------- what the shelf is missing
+#: Listings the reverse index returns that this desk cannot trade. The answer
+#: for NVDA opens with three Canadian covered-call funds, and a shelf proposal
+#: that leads with `ZWT-T.TO` is noise however correct its arithmetic. Plain
+#: US tickers only; the exchange suffix is the vendor's own marker.
+_FOREIGN = re.compile(r"\.[A-Z]{1,3}$|-")
+
+
+def discover(basket: Iterable[str], known: Iterable[str],
+             *, floor: float = 0.05, limit: int = 12
+             ) -> list[ThemeHit]:
+    """Funds outside the shelf that hold this theme, ranked by through-weight.
+
+    `resolve_theme` answers "which of our 95 instruments expresses this"; when
+    the answer is none, that is a fact about the shelf rather than about the
+    theme, and the two are easy to confuse. A gold-miners thesis scores nothing
+    here not because no vehicle exists but because the shelf carries physical
+    GLD and no miners fund — a curation gap the label menu could never surface,
+    because a gap has no label.
+
+    Built from the reverse index rather than the local matrix on purpose: the
+    local matrix only knows the shelf, so it can never name what is missing from
+    it. The cost is one vendor call per basket name, which is why this is a
+    deliberate command and not part of the weekly run.
+
+    Returns candidates, not decisions. Adding an instrument to the universe
+    means confirming liquidity, dealing and pricing through Futu — none of which
+    a holdings file knows — so this ends at "worth looking at".
+    """
+    seen = {str(k).strip().upper() for k in known}
+    want = [n.strip().upper() for n in basket if n and n.strip()]
+    agg: dict[str, dict[str, float]] = {}
+    for name in want:
+        for row in fmp.asset_exposure(name):
+            sym = str(row.get("symbol") or "").strip().upper()
+            w = row.get("weightPercentage")
+            if not sym or sym in seen or _FOREIGN.search(sym):
+                continue
+            if not isinstance(w, (int, float)) or w <= 0:
+                continue
+            agg.setdefault(sym, {})[name] = float(w) / 100.0
+    out = [ThemeHit(sym, sum(hits.values()),
+                    tuple(sorted(hits, key=lambda k: -hits[k])))
+           for sym, hits in agg.items()]
+    return sorted((h for h in out if h.weight >= floor),
+                  key=lambda h: -h.weight)[:limit]
+
+
 # ------------------------------------------------------------- portfolio
 @dataclass(frozen=True)
 class Exposure:
@@ -441,15 +489,34 @@ def portfolio(funds: dict[str, Fund], instruments: Sequence[str],
 
 
 # ------------------------------------------- what the generator gets to see
+#: Below this share in the top names, listing them says nothing. A 1,300-bond
+#: credit fund's four largest positions are ~1% each; printing
+#: `ANHEUSER-BUSCH 4.90% 02/01/2046 0%` is noise that also happens to be the
+#: longest line in the menu. What actually distinguishes such a fund is that it
+#: is flat, so that is what gets said.
+FLAT_BELOW = 0.10
+
+#: Holdings descriptions run to 40 characters for bonds and 4 for equities. The
+#: menu is model input for every arm, so a line's length is a real cost paid on
+#: every call; a bond's coupon and maturity do not differentiate one credit fund
+#: from another and are cut.
+_LABEL_CHARS = 22
+
+
 def differentiator(funds: dict[str, Fund], symbol: str,
                    *, n: int = 4) -> str:
     """One line saying what this fund actually holds, for the universe menu.
 
-    Deliberately the top names and nothing else. A sector breakdown reads as
-    more information and is worse for this job: SPY and QUAL have similar sector
-    splits and 43.8% common weight, while USMV and SPLV have similar sector
-    splits and 27.2%. Names separate what sectors blur, and they are also what a
-    thesis is written about.
+    Names rather than a sector breakdown. A sector split reads as more
+    information and is worse for this job: SPY and QUAL have similar splits and
+    43.8% common weight, while USMV and SPLV have similar splits and 27.2%.
+    Names separate what sectors blur, and they are what a thesis is written
+    about.
+
+    But names only differentiate a concentrated fund. Below `FLAT_BELOW` the
+    fund's own flatness is the distinguishing fact — ITA is two positions and
+    XAR is a hundred equal ones, and saying so separates them where four tickers
+    at 3% would not.
     """
     f = funds.get(symbol)
     if f is None:
@@ -458,9 +525,15 @@ def differentiator(funds: dict[str, Fund], symbol: str,
         return "个股，无穿透"
     if not f.usable:
         return f"不可穿透（{f.status}，认出 {f.coverage*100:.0f}%）"
-    top = [(f.name(a), w)
-           for a, w in sorted(f.weights.items(), key=lambda kv: -kv[1])
-           if not excluded(f.name(a), a)][:n]
-    body = "、".join(f"{a} {w*100:.0f}%" for a, w in top)
+    ranked = [(f.name(a), w)
+              for a, w in sorted(f.weights.items(), key=lambda kv: -kv[1])
+              if not excluded(f.name(a), a)]
+    if not ranked:
+        return "不可穿透（持仓全部是现金或衍生品）"
+    top = ranked[:n]
     head = sum(w for _, w in top)
+    if head < FLAT_BELOW:
+        return (f"{len(ranked)} 只成分高度分散，前{len(top)}大合计仅 "
+                f"{head*100:.1f}%")
+    body = "、".join(f"{a[:_LABEL_CHARS]} {w*100:.0f}%" for a, w in top)
     return f"前{len(top)}大 {body}（合计 {head*100:.0f}%）"

@@ -100,7 +100,7 @@ class TosBlobStore(BlobStore):
 
     def __init__(self, *, ak: str, sk: str, bucket: str,
                  region: str = "ap-southeast-1", endpoint: str | None = None,
-                 prefix: str = ""):
+                 prefix: str = "", timeout_s: int | None = None):
         if not (ak and sk and bucket):
             raise NotConfigured("TOS needs BYTEPLUS_ACCESS_KEY, "
                                 "BYTEPLUS_SECRET_KEY and IDEAGEN_TOS_BUCKET")
@@ -113,6 +113,14 @@ class TosBlobStore(BlobStore):
                 f"no TOS endpoint mapping for region {region}; set "
                 "IDEAGEN_TOS_ENDPOINT explicitly")
         self.prefix = prefix.strip("/")
+        # The SDK defaults to a 30s socket timeout, which is sized for the
+        # artifacts this store was built for — a run pack, a journal entry.
+        # A 48MB state snapshot over a slow link does not finish in 30s, and
+        # the failure looks like a network fault rather than a timeout that was
+        # never going to be long enough. Callers moving something large pass a
+        # longer one; nothing else changes behaviour, since a longer timeout
+        # only delays a failure that would have happened anyway.
+        self.timeout_s = timeout_s
         self._client = None
 
     # No lock here, and that is deliberate — the SQL stores need one and this
@@ -134,7 +142,12 @@ class TosBlobStore(BlobStore):
                 import tos
             except ImportError as e:
                 raise NotConfigured("TOS SDK missing; pip install tos") from e
-            self._client = tos.TosClientV2(self.ak, self.sk, self.endpoint, self.region)
+            kw = {}
+            if self.timeout_s:
+                kw = {"request_timeout": self.timeout_s,
+                      "socket_timeout": self.timeout_s}
+            self._client = tos.TosClientV2(self.ak, self.sk, self.endpoint,
+                                           self.region, **kw)
         return self._client
 
     def _k(self, key: str) -> str:

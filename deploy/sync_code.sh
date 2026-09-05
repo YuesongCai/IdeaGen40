@@ -61,8 +61,14 @@ if [ "$REQUIRE_TESTS" = "1" ]; then
        -m pytest -q -x >/tmp/sync_code_tests.log 2>&1; then
     echo "IG_CODE_TESTS_OK $want"
   else
-    tail=$(tail -3 /tmp/sync_code_tests.log | tr '\n' ' ' | cut -c1-240)
-    echo "IG_CODE_TESTS_FAIL $want $tail"
+    # 把真实的报错打出来，一行一行。上一版只印一段挤成 240 字的尾巴，
+    # 结果是「测试没过」这个事实到了，为什么没过的信息没到 —— 而这台机器
+    # 登不上去，控制台是唯一的通道。查一次这样的失败花了一晚上，最后还是
+    # 因为本机拉不到基础镜像而没查出来。
+    echo "IG_CODE_TESTS_FAIL $want"
+    grep -E '^(E |FAILED|ERROR|tests/.*(FAILED|ERROR))' /tmp/sync_code_tests.log \
+      | head -25 | sed 's/^/IG_CODE_ERR /'
+    tail -6 /tmp/sync_code_tests.log | sed 's/^/IG_CODE_TAIL /'
     docker rmi -f "ideagen40:cand-$want" >/dev/null 2>&1
     exit 1
   fi

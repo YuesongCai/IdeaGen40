@@ -30,11 +30,18 @@ copying the file alone would publish a database missing the newest runs while
 appearing perfectly intact. `backup()` reads through a connection, so it sees
 the WAL, and it takes a consistent view rather than a possibly torn page.
 
-That open dashboard is also why the unchanged-content check below almost never
-fires: serving a page writes to the database, so two snapshots taken minutes
-apart differ even with no new runs. The check is kept for the case it does
-cover — the same snapshot published twice on an idle machine — and is not a
-meaningful bandwidth saving.
+Deduplication of *what is worth publishing* is not done here. `sync_to_cloud.py`
+owns that decision — it fingerprints the tables a reader would notice and calls
+this script only when they move. A second gate here looked like belt and braces
+and was actually a trap: this script returning 0 without uploading would let
+that caller record a publish that never happened. What is kept is the narrow
+check that the identical database is already in the bucket.
+
+The upload timeout is raised well above the SDK's 30s default. A 66MB snapshot
+over the operator link does not finish in 30s, and the failure arrives as
+`http request timeout` — which reads like a network fault rather than a limit
+that was never going to be enough. That single default was behind most of the
+sync's failed runs.
 
   python3 scripts/push_state_to_cloud.py [--prefix deploy/state/]
 """
@@ -43,6 +50,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import json
 import pathlib
 import sqlite3
 import sys
@@ -53,6 +61,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 PREFIX = "deploy/state/"
+
+
+# 48MB over the operator link does not finish in the SDK default 30s.
+UPLOAD_TIMEOUT_S = 600
 
 
 def snapshot() -> bytes:
@@ -79,7 +91,7 @@ def production_blobs():
     return TosBlobStore(ak=bre.readenv("BYTEPLUS_ACCESS_KEY"),
                         sk=bre.readenv("BYTEPLUS_SECRET_KEY"),
                         bucket=bre.TOS_BUCKET, endpoint=bre.TOS_ENDPOINT,
-                        prefix=bre.TOS_PREFIX)
+                        prefix=bre.TOS_PREFIX, timeout_s=UPLOAD_TIMEOUT_S)
 
 
 def latest_digest(blobs, prefix: str) -> str | None:
@@ -101,13 +113,18 @@ def main(argv: list[str]) -> int:
     data = snapshot()
     digest = hashlib.sha256(data).hexdigest()[:12]
 
+    # Whether this exact database is already up there. Cheap, and it also
+    # covers the case where a previous run uploaded successfully but the
+    # caller never learned it did.
     if not args.force and latest_digest(blobs, args.prefix) == digest:
-        print(f"状态未变（{digest}），跳过发布")
+        print(f"云端已是同一份（{digest}），跳过上传")
         return 0
 
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     key = f"{args.prefix}{stamp}-{digest}.db"
     blobs.put(key, data, content_type="application/x-sqlite3")
+    # Only after the upload lands. A marker written first would make the next
+    # run skip a snapshot that never arrived.
     print(f"已发布 {len(data) / 1e6:.1f} MB → "
           f"tos://{blobs.bucket}/{blobs.prefix}/{key}")
     return 0

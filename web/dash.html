@@ -4733,7 +4733,7 @@ function holdMapCard(ag){
         }).join('')
         +'</div></div>';
     });
-    body+=epi('等权买入 · '+gloss('σ×2 止损 / σ×3 止盈',SIGMA_GLOSS)+'自动执行 · 盈亏为全部组合合计');
+    body+=epi('等权买入 · '+gloss('σ×2 止损 / σ×3 止盈',SIGMA_GLOSS)+'自动执行'+riskLevelGap()+' · 盈亏为全部组合合计');
   }
   return '<div class="card section" id="holdCard">'+head
     +(lead?'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'+lead+'</div>':'')
@@ -6839,6 +6839,34 @@ var COUNT_GLOSS='计数对照打分：不作语义判断，仅统计各主题的
 var COST_GLOSS='买卖两条腿都计成本：美股每条腿 4bp（1bp 佣金 + 3bp 滑点），港股 7.5bp（2.5 + 5）。'
   +'其中一半做进场价上浮、一半作为手续费单独扣。所以「对成本」的收益是扣费后的，'
   +'比只看价格涨跌低一点——这个差额就是成本。没有成本模型是回测虚高最大的单一来源，所以这里不省。';
+/* 面板在几处无条件写着「进场即挂 σ×2 止损 / σ×3 止盈 · 自动执行」。对一笔多头，
+ * 这句话只有在 止损 < 进场 < 止盈、而且两个价位和进场价在同一个数量级时才成立。
+ * 2026-09-05 实测：在持的 610 仓里有 5 仓不成立（US.EWY 的 σ×2 达 53%，反推
+ * σ≈26%，一只国家 ETF 的月波动不到 10%——方向对，但那么宽的带 30 天里碰不到，
+ * 效果等于没有止损）；已平仓里还有 16 笔止盈线本来就在进场价下方，注定以亏损
+ * 「止盈」离场，面板头条那个「胜率 0%」有一部分是这么来的。
+ *
+ * 这个仓在别处都会主动说出缺口（「1 期永久缺失」「没有留运行日志快照」），
+ * 承诺自己的风控时不该例外。这里不改执行层，只是不让页面替它把话说满。 */
+function riskLevelGap(){
+  var bad={},n=0;
+  ((typeof currentBooks==='function'?currentBooks():[])||[]).forEach(function(b){
+    (b.open_positions||[]).forEach(function(p){
+      var e=p.entry_px,t=p.take_px,st=p.stop_px;
+      if(!e)return;
+      var off=(t!=null&&(t/e<0.5||t/e>2))||(st!=null&&(st/e<0.5||st/e>2))
+             ||(t!=null&&t<=e)||(st!=null&&st>=e);
+      if(off){n++;bad[bareCode(p.code)]=1}
+    });
+  });
+  var codes=Object.keys(bad);
+  if(!n)return '';
+  return ' · <span class="gloss gm" style="color:var(--color-feedback-warning-text)" title="'
+    +esc('这 '+n+' 仓的止损止盈价位与进场价不在一个合理关系上——要么落在进场价的'
+        +'错误一侧，要么带宽到 30 天内几乎不可能触发，两种都等于没有风控。'
+        +'标的：'+codes.join('、')+'。逐笔见 scripts/check_risk_levels.py。')
+    +'">其中 '+n+' 仓的风控价位不可信 ⚠</span>';
+}
 var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。触发后自动执行。';
 var ARM_GLOSS='正式比较组合 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索组合不参与结论判定。';
 var RULER_GLOSS='基准 = 不作判断的对照组合（全量 / 随机）。跑不赢全量基准即选取环节无增量，跑不赢随机基准即排序为噪声。';
@@ -8308,7 +8336,7 @@ function stageBookingBody(){
       +'<span class="card-note num">'+fmtInt(pos.length)+' 仓 · 本金 '+fmtMoney(b.capital)+(b.booked_as_of?' · '+esc(b.booked_as_of)+' 建仓':'')+'</span></div>'
       +posHtml+'</div>';
   }).join('');
-  return '<div class="quiet" style="margin-bottom:var(--space-3)">已建仓 <b class="num" style="color:var(--color-text-primary)">'+books.length+'</b> 个组合 · 等权买入，<b>进场即挂</b> σ×2 止损 / σ×3 止盈 '+glossMark(SIGMA_GLOSS)+' · 逐日盯市</div>'
+  return '<div class="quiet" style="margin-bottom:var(--space-3)">已建仓 <b class="num" style="color:var(--color-text-primary)">'+books.length+'</b> 个组合 · 等权买入，<b>进场即挂</b> σ×2 止损 / σ×3 止盈 '+glossMark(SIGMA_GLOSS)+riskLevelGap()+' · 逐日盯市</div>'
     +'<div class="book-grid">'+blocks+'</div>'
     +epi('论点被证伪时次日收盘平仓——与止损、止盈并列的第三类退出');
 }

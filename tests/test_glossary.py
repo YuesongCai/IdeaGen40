@@ -164,6 +164,36 @@ def _allowed(text: str) -> bool:
     return any(a in text for a in ALLOW)
 
 
+#: 「实盘」= 真钱。这套系统的实盘通道是**故意没有接**的（execution.py 里那段
+#: 拒绝下单的话写得很清楚），所以这个词在界面上只允许出现在否定里：
+#: 「纸面成交，非实盘」「不是实盘」。
+#:
+#: 2026-09-05 抓到面板同时在用它的第二个意思——拿来指「当期向前跑」，于是
+#: 出现了「**实盘**模拟组合」这种自相矛盾的抬头，以及「①**实盘**上，哪个选取
+#: 策略更好？」。同一页另一处还写着「纸面成交，非实盘」。老板看到「实盘」
+#: 会以为真投了钱，而这一页正是拿去见老板的。
+#: 「当期向前跑」这个意思，面板自己有词：**当期实跑**。
+#: 「否定」也包括「说明这条通道怎样才会被接上」——execution.py 那段写着
+#: 「要真正接实盘，必须由人另做一次显式授权」，那是在讲它现在没接，不是在
+#: 声称接了。
+_NEGATED = ("非实盘", "不是实盘", "不能当作", "禁用", "未接", "没有接",
+            "故意没有接", "拒绝下单", "无法下单", "未发送", "没有发出",
+            "要真正接", "显式授权", "没有任何开关", "本该发出")
+
+
+def _live_money_claims(text: str) -> list[str]:
+    """没有被否定的「实盘」。
+
+    否定词可能在前也可能在后——`execution.py` 那句拒绝下单的话是
+    「实盘通道是**故意没有接**的」，只看前面会把它误报。所以两边都看。
+    """
+    for m in re.finditer("实盘", text):
+        around = text[max(0, m.start() - 14):m.start() + 20]
+        if not any(w in around for w in _NEGATED):
+            return ["实盘"]
+    return []
+
+
 def _re_leaks(text: str) -> list[str]:
     """被别的字劈开的旧比喻。"""
     return [pat for pat in BANNED_RE if re.search(pat, text)]
@@ -191,7 +221,11 @@ class GlossaryGate(unittest.TestCase):
                     continue
                 for word, instead in (list(BANNED.items())
                                       + [(w, BANNED_EN[w]) for w in _en_leaks(chunk)]
-                                      + [(p, BANNED_RE[p]) for p in _re_leaks(chunk)]):
+                                      + [(p, BANNED_RE[p]) for p in _re_leaks(chunk)]
+                                      + [(w, "只能出现在否定里（「纸面成交，非实盘」）"
+                                             "——这套系统的实盘通道是故意没有接的；"
+                                             "要说「当期向前跑」，写「当期实跑」")
+                                         for w in _live_money_claims(chunk)]):
                     if word in chunk or word in BANNED_RE:
                         bad.append(f"  {rel}\n"
                                    f"    「{word}」→ {instead}\n"
@@ -254,6 +288,23 @@ class GlossaryGate(unittest.TestCase):
         self.assertEqual(got, ["第 ", " 期 as_of 之前"])
         self.assertTrue(any("as_of" in g for g in got),
                         "中文句子里的 as_of 必须被看见")
+
+    def test_the_word_for_real_money_only_appears_when_denied(self):
+        """实盘通道故意没接，所以这个词只允许出现在否定里。"""
+        self.assertEqual(_live_money_claims("纸面成交，非实盘"), [])
+        self.assertEqual(_live_money_claims("1 亿本金，不是实盘。"), [])
+        self.assertEqual(_live_money_claims("实盘通道是故意没有接的"), [])
+        self.assertEqual(_live_money_claims("拒绝下单：实盘通道是故意没有接的。"), [],
+                         "否定词在后面也算否定")
+        self.assertEqual(_live_money_claims("实盘委托已记录、未发送"), [])
+        self.assertEqual(
+            _live_money_claims("要真正接实盘，必须由人另做一次显式授权"), [],
+            "讲「怎样才会被接上」也是在讲它现在没接")
+        self.assertEqual(
+            _live_money_claims("会把每一笔本该发出的实盘委托记录下来"), [],
+            "「本该发出的」本身就是在说它没被发出")
+        self.assertEqual(_live_money_claims("第一套证据 · 实盘模拟组合"), ["实盘"])
+        self.assertEqual(_live_money_claims("实盘上，哪个选取策略更好？"), ["实盘"])
 
     def test_a_metaphor_split_by_other_words_is_still_the_metaphor(self):
         """「各记一本模拟账」躲过了逐字匹配的「本账」，正则规则要抓住它。"""

@@ -1556,7 +1556,7 @@ def build(con, out: Path | None = None, artifact: bool = False,
   <aside>
     <div class="brand">
       <b>IdeaGen40</b>
-      <span>战术交易想法实盘模拟</span>
+      <span>战术交易想法 · 纸面模拟</span>
     </div>
 
     <nav class="nav">
@@ -1607,7 +1607,7 @@ def build(con, out: Path | None = None, artifact: bool = False,
   </main>
 </div>"""
 
-    title = "IdeaGen40 · 战术交易想法实盘模拟"
+    title = "IdeaGen40 · 战术交易想法 · 纸面模拟"
     script = f'<script>window.__IG40__={data};</script>\n<script>{JS}</script>'
     if artifact:
         doc = f"<title>{title}</title>\n<style>{CSS}</style>\n{body}\n{script}"

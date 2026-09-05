@@ -2203,7 +2203,7 @@ function periodBadge(){
     +'padding:2px 7px;border-radius:10px;background:var(--color-feedback-warning-subtle);'
     +'color:var(--color-text-primary);vertical-align:middle" '
     +'title="这一期是事后补跑的：喂给模型的研报卡在当期日期，但模型权重见过之后的世界，'
-    +'货架上还有没有上架日期的标的无法按当期过滤。它可以用来看流程和扩样本，不能当作当周的实盘记录。">'
+    +'货架上还有没有上架日期的标的无法按当期过滤。它可以用来看流程和扩样本，不能当作当周实跑的记录。">'
     +'事后补跑 ⓘ</span>';
 }
 function isSynthetic(){
@@ -3910,7 +3910,7 @@ function renderHoldings(){
 
    ① 这一页在验证哪个命题。七张卡都在回答同一个问题的不同问法，没写。
    ② 这七张卡不是七个平级话题。②–⑤ 是同一次回测的四个切面，① 是另一套
-      数据（实盘模拟组合），⑥⑦ 是脚注。摆成七个兄弟，这个层次就消失了。
+      数据（向前下单的纸面组合），⑥⑦ 是脚注。摆成七个兄弟，这个层次就消失了。
    ③ 合起来的判定是什么。五张卡各说一遍「还分不出来」，五种措辞，读者要
       跨过 4000px 自己合成——读起来像五个发现，其实是一个。
 
@@ -3934,8 +3934,8 @@ function evLedgerRows(){
     var wk=weekIndex(books);
     var dif=pairedDiffs(books);
     var apart=dif.filter(function(r){return r.diff!==null&&Math.abs(r.diff)>2}).length;
-    out.push({sec:'strategies',n:'①',short:'实盘还分不出',
-      q:'实盘上，哪个选取策略更好？',
+    out.push({sec:'strategies',n:'①',short:'实跑还分不出',
+      q:'向前下单的组合里，哪个选取策略更好？',
       state:apart?'sig':'open',
       a:apart?('<b>'+fmtInt(apart)+' 个已明显分开</b>，其余仍在误差带内')
              :('<b>分不出</b>——'+fmtInt(books.length)+' 个组合的差距都在误差带内'),
@@ -4021,7 +4021,7 @@ function evidenceLede(rows){
       +'这一页检验一个命题：<b style="color:var(--color-text-secondary);font-weight:500">让模型读研报、'
       +'选宏观主题、写出想法，再按某种规矩挑出来，会不会比不挑更好。</b>'
       +'下面是这个命题的五种问法，各配它自己的判定和还差多少。证据有两套：'
-      +'① 来自实盘模拟组合，②–⑤ 来自同一次历史回测（'
+      +'① 来自向前下单的纸面组合，②–⑤ 来自同一次历史回测（'
       +fmtInt((lvb.n_live_periods||0)+(lvb.n_backfill_periods||0))+' 期，其中 <b>'
       +fmtInt(lvb.n_live_periods||0)+' 期</b>是当期实跑）。'
     +'</div>'
@@ -4087,7 +4087,7 @@ function renderEvidence(){
   var books=(typeof currentBooks==='function')?currentBooks():[];
   root.innerHTML=
      evidenceLede(evLedgerRows())
-    +grpH('第一套证据 · 实盘模拟组合',
+    +grpH('第一套证据 · 向前下单的纸面组合',
        books.length?(books.length+' 个组合各自真的下了单，第 '+weekIndex(books)+' 周'):'尚未建仓')
     +secWrap('evidence','strategies',raceHero(aggBooks()))
     +grpH('第二套证据 · 同一次历史回测的四个切面',
@@ -4099,7 +4099,7 @@ function renderEvidence(){
     +secWrap('evidence','attribution',attributionCard())
     +grpH('这些结论的边界','哪些前提还没验过 · 这两套数字各自是哪一次跑出来的')
     +secWrap('evidence','limits',limitsCard())
-    +secWrap('evidence','receipt',receiptWhich('第一套证据 · 实盘模拟组合')+runReceiptStrip()
+    +secWrap('evidence','receipt',receiptWhich('第一套证据 · 向前下单的纸面组合')+runReceiptStrip()
              +backtestReceiptLine());
   if($('candTable')){bindCandSort();renderCandBody()}
 }
@@ -5868,8 +5868,8 @@ function backtestCard(){
   var nBack=sum.n_backfill_periods||0;
   var mix=nBack
     ? '<span class="gloss" title="事后补跑的期：文档卡在当期，但模型权重见过之后的世界，货架上还有没有上架日期的标的无法按期过滤。结论以实跑的那几期为准。">'
-      +sum.n_live_periods+' 期实盘记录 + '+nBack+' 期事后补跑 ⓘ</span>'
-    : '<span>'+(sum.n_live_periods||sum.periods)+' 期全部为实盘记录</span>';
+      +sum.n_live_periods+' 期当期实跑 + '+nBack+' 期事后补跑 ⓘ</span>'
+    : '<span>'+(sum.n_live_periods||sum.periods)+' 期全部为当期实跑</span>';
   var rows=names.sort(function(x,y){
       var ax=arms[x].hit_rate,ay=arms[y].hit_rate;
       return (ay==null?-1:ay)-(ax==null?-1:ax);

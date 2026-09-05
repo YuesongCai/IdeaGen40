@@ -25,6 +25,7 @@ import hashlib
 import json
 import math
 import sys
+from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -246,7 +247,8 @@ def _generation_head_to_head(con, days: list, horizon_days: int) -> dict:
 
 
 def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
-                horizon_days: int, excluded: list[str]) -> str:
+                horizon_days: int, excluded: list[str],
+                provenance: dict | None = None) -> str:
     """The caveats, numbered from the list rather than by hand.
 
     The count used to be a literal. It said "两项" and listed three, because the
@@ -277,9 +279,48 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
             "未满窗口的收益与满窗口的混在同一列；只用跑满部分重算的结果见 "
             "horizon_completeness。")
         parts.append("结论性判断以 live 期为准。")
+    regimes = (provenance or {}).get("periods_by_regime") or {}
+    if len({r for r in regimes if r != "none"}) > 1:
+        shown = "、".join(f"{k} {v} 期" for k, v in sorted(regimes.items()))
+        parts.append(
+            f"主题来源并不同质（{shown}）：seed 期打的是人工在 2026-07 撰写的主题"
+            f"词典，discovered 期的主题是该期自己从当周语料里发现并命名的。后者没有"
+            f"任何人工事后选题，前者有；两类不要合成一个胜率读，分列见 "
+            f"theme_provenance。")
     if excluded:
         parts.append(f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。")
     return "".join(parts)
+
+
+def _theme_provenance(days: list) -> dict:
+    """Where each period's themes came from: hand-authored, or found that week.
+
+    Not a detail. The sixteen seed themes were written by a person in July 2026
+    after looking at 2026 markets, and they carry `registered_d` 2026-07-26 —
+    so a period replayed before that date sees none of them and has to discover
+    and name its own from the corpus it had. That is the stronger evidence, and
+    it is also a *different experiment* from the live period, which scored a
+    dictionary a human had already chosen. Averaging the two into one hit rate
+    would quietly answer "does the system find tradeable debates" with a number
+    partly earned by "does a person". Reported per period so the two cohorts can
+    be read apart, which is the first question anyone worried about hindsight
+    will ask.
+    """
+    from ideagen import lexicon
+    out, by_regime = {}, {}
+    for d in days:
+        visible = lexicon.all_themes(d)
+        origins = Counter(getattr(t, "origin", "seed") for t in visible)
+        regime = ("none" if not visible
+                  else "discovered" if not origins.get("seed")
+                  else "seed" if not origins.get("discovered") else "mixed")
+        out[d.isoformat()] = {"n_themes": len(visible), "regime": regime,
+                              "by_origin": dict(origins)}
+        by_regime[regime] = by_regime.get(regime, 0) + 1
+    return {"per_period": out, "periods_by_regime": by_regime,
+            "seed_registered_d": lexicon.SEED_REGISTERED_D,
+            "note": "seed = 人工撰写的主题词典（2026-07-26 注册）；"
+                    "discovered = 该期自己从当周语料里发现并命名的主题"}
 
 
 def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
@@ -794,6 +835,7 @@ def main(argv: list[str]) -> int:
         asof_note = (
             f"货架上有 {dating['shelf_undated']} 个标的缺少上架日期，按当期资格"
             f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
+    provenance = _theme_provenance(days)
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",
@@ -805,11 +847,13 @@ def main(argv: list[str]) -> int:
         "n_backfill_periods": n_backfill,
         "disclaimer": _disclaimer(
             n_backfill=n_backfill, asof_note=asof_note, horizon=horizon,
-            horizon_days=args.horizon_days, excluded=excluded),
+            horizon_days=args.horizon_days, excluded=excluded,
+            provenance=provenance),
         "undated_shelf_instruments": dating["shelf_undated"],
         "shelf_dating": dating,
         "robustness_drop_top": robustness,
         "attribution_theme_layer": attribution,
+        "theme_provenance": provenance,
         "horizon_completeness": horizon,
         "generation_head_to_head": head_to_head,
         # The sweep ran with strict=True, so every period's context passed the

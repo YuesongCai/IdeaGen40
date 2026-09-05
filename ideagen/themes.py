@@ -455,6 +455,184 @@ def validate(con, row: dict, as_of: date) -> dict:
     }
 
 
+MINT_SYSTEM = """你在给一个宏观交易系统命名它自己刚发现的主题。
+
+输入是一簇当周研报里反复出现、且现有主题词典一个都盖不住的短语，外加它们出现的
+标题证据。你的唯一任务是把这簇短语写成一张主题卡。
+
+铁律，逐条服从：
+1. 只依据给出的短语和标题证据。不得使用你对这个日期之后的世界的任何了解——
+   这张卡会被用来给当周打分，掺进后来的事就是泄露。
+2. 主题必须是一个**能用做多标的表达的宏观争论**，不是一家公司、一条新闻、
+   一个板块名词。写不成争论的，返回 {"skip": "原因"}。
+3. price_indicator 和 related 只能从下面给出的可交易清单里选，原样照抄代码。
+4. terms 至少 6 个中文同义说法，覆盖这个争论在研报里会被叫的各种名字，
+   不要只是把给定短语切碎重排。
+5. key_question 必须写成一句 1–6 个月内能被证实或证伪的问题，且句中含「个月」。
+6. id 用大写英文加连字符，看得出主题内容，如 FED-HAWKISH-TURN。
+
+只输出一个 JSON 对象：
+{"id": "...", "label": "中文标题", "key_question": "未来1–6个月，……？",
+ "terms": ["...", ...], "price_indicator": "US.XXX", "related": ["US.YYY"],
+ "default_direction": "↑ 或 ↓"}"""
+
+
+def _priceable_menu(con, as_of: date, limit: int = 200) -> list[dict]:
+    """Instruments a theme born on `as_of` is allowed to point at.
+
+    Listed on or before `as_of`: an indicator that did not exist yet would let
+    a replayed week name a theme after an instrument the week could not have
+    traded, which is the same look-ahead the universe filter removes downstream.
+    """
+    return [dict(r) for r in db.q(
+        con, "SELECT futu_code, name FROM instruments "
+             "WHERE COALESCE(priceable,0)=1 AND futu_code IS NOT NULL "
+             "AND (first_seen_d IS NULL OR first_seen_d <= ?) "
+             "ORDER BY futu_code LIMIT ?", [as_of.isoformat(), limit])]
+
+
+def _mint_prompt(con, cluster: dict, as_of: date, note: str = "",
+                 minted: list[dict] | None = None) -> str:
+    menu = "\n".join(f"  {i['futu_code']}  {i['name'] or ''}".rstrip()
+                      for i in _priceable_menu(con, as_of))
+    ev = "\n".join(
+        f"  [{e['d']}] {e.get('institution') or '未署名'}: {e['title']}"
+        for e in (cluster.get("evidence") or [])[:14])
+    head = f"当周为 {as_of.isoformat()}。\n\n" + (f"上一次尝试被拒：{note}\n\n" if note else "")
+    if minted:
+        head += ("本周已经命名过的主题（说的是同一个争论就返回 "
+                 '{"skip": "与 X 重复"}）：\n'
+                 + "\n".join(f"  {m.get('id')} {m.get('label') or ''}："
+                              f"{'、'.join((m.get('terms') or [])[:6])}"
+                              for m in minted) + "\n\n")
+    return (f"{head}反复出现的短语（{cluster['n_docs']} 篇 / "
+            f"{cluster['n_institutions']} 家机构 / {cluster['n_days']} 天 / "
+            f"lift {cluster['max_lift']}）：\n"
+            f"  {'、'.join(cluster['terms'])}\n\n"
+            f"标题证据：\n{ev}\n\n可交易清单（只能从这里选）：\n{menu}")
+
+
+class MintSkipped(RegistrationError):
+    """The cluster is real corpus noise, not a macro debate. Not a failure."""
+
+
+def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
+         minted: list[dict] | None = None) -> dict:
+    """Write a registrable theme card for a discovered phrase cluster.
+
+    `candidates` returns evidence, not a theme: terms, counts and doc ids, with
+    no id, label, key question or price indicator. `validate` requires all four.
+    So every candidate the weekly run proposed was rejected on arrival — the
+    auto-registration wired on 2026-08-26 could not register anything, and the
+    registry sat at its two hand-curated rows while `theme_register_failed`
+    absorbed the evidence. Naming is the missing step, and it is a semantic job:
+    deciding that 「美联储鹰派转向」 is a debate expressible as US.TLT, and what
+    else the same debate gets called, is exactly what the dictionary cannot do.
+
+    The model may only choose an instrument from the as-of menu, and a rejected
+    card is retried once with the rejection quoted back, so a fixable slip
+    (three synonyms instead of six) does not cost the theme. A cluster the model
+    declines to call a macro debate raises `MintSkipped`, which is a finding —
+    「这簇短语不是主题」 — and not the same event as a failed registration.
+
+    `minted` carries the cards this same week already produced. `validate`
+    rejects synonyms owned by a *registered* theme, which nothing in this week
+    is yet: on 2026-06-24 the clusters 「日本股票」 and 「日经」 were two names
+    for one debate and both minted cleanly, as JAPAN-EQUITY-STRUCTURAL-BULL and
+    JAPAN-EQUITY-BULL. Two registry rows for one argument double-count the same
+    reports in D forever, and the registry is append-only.
+
+    The guard has two halves, and they are not equally strong. `_overlaps` is
+    mechanical and certain, and catches only what `validate` would catch: a
+    synonym one card shares with another. Two cards can argue the same thing
+    with no phrase in common — 「日经225上行」 against 「日经225目标价上调」 —
+    and that half is the model's, which is why the week's earlier cards go into
+    the prompt with an instruction to decline. It did decline, on the case
+    above. Stating the split rather than implying the check is complete: a
+    near-duplicate whose wording does not overlap will get through.
+    """
+    if infer is None:
+        raise RegistrationError("命名主题需要模型推理，本次运行没有可用的 inference 端口")
+    note = ""
+    last: Exception | None = None
+    for _ in range(max(1, attempts)):
+        c = infer.complete(_mint_prompt(con, cluster, as_of, note, minted),
+                           system=MINT_SYSTEM, temperature=0.2, max_tokens=2000)
+        try:
+            row = _parse_card(c.text)
+        except ValueError as e:
+            note, last = str(e), e
+            continue
+        if row.get("skip"):
+            raise MintSkipped(str(row["skip"])[:200])
+        row["provenance"] = [
+            f"以{as_of.isoformat()}当周 {cluster['n_docs']}篇/"
+            f"{cluster['n_institutions']}家机构/{cluster['n_days']}天 "
+            f"lift{cluster['max_lift']} 的零匹配语料簇为依据"]
+        try:
+            card = validate(con, row, as_of)
+        except RegistrationError as e:
+            note, last = str(e), e
+            continue
+        clash = _overlaps(card, minted or [])
+        if clash:
+            note = (f"与本周已命名的 {clash} 说的是同一个争论；"
+                    f"要么换一个真正不同的争论，要么返回 skip")
+            last = RegistrationError(note)
+            continue
+        return card
+    raise RegistrationError(f"命名两次都没通过校验：{last}")
+
+
+def _overlaps(card: dict, minted: list[dict]) -> str | None:
+    """The id of an already-minted card that claims the same debate, if any.
+
+    Same test `validate` applies against registered themes: a synonym shared in
+    either direction, because 「日经225」 and 「日经」 are one name written two
+    ways. This is the mechanical half of the guard only — it does not detect
+    two cards that argue one debate in non-overlapping words; see `mint`.
+
+    Sharing a price indicator is deliberately *not* a duplicate. 95 listed
+    instruments have to carry every macro debate, so a carry-trade theme and a
+    Fed-hawkishness theme both reach for US.UUP while arguing about different
+    things. That rule was tried on 2026-09-05 and rejected
+    GLOBAL-CARRY-TRADE-RESURGENCE against FED-HAWKISH-TURN on its first outing.
+    """
+    terms = {t.lower() for t in card["terms"]}
+    for m in minted:
+        prior = {t.lower() for t in m["terms"]}
+        if any(a in b or b in a for a in terms for b in prior):
+            return m["id"]
+    return None
+
+
+def _parse_card(text: str) -> dict:
+    """Parse the model's card, tolerating fences and reasoning preambles.
+
+    Shares the shape of `strategies._gen.parse_json` rather than importing it:
+    themes must not depend on the generator package, which imports this module.
+    """
+    t = re.sub(r"(?s)<think>.*?</think>", "", (text or "").strip())
+    if "</think>" in t:
+        t = re.sub(r"(?s)^.*?</think>", "", t).strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\s*", "", t)
+        t = re.sub(r"\s*```$", "", t).strip()
+    try:
+        row = json.loads(t)
+    except json.JSONDecodeError:
+        i, j = t.find("{"), t.rfind("}")
+        if i < 0 or j <= i:
+            raise ValueError("回复里找不到 JSON 对象") from None
+        try:
+            row = json.loads(t[i:j + 1])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"JSON 解析失败：{e}") from None
+    if not isinstance(row, dict):
+        raise ValueError(f"期望一个 JSON 对象，得到 {type(row).__name__}")
+    return row
+
+
 def register(con, row: dict, as_of: date,
              path: Path | None = None) -> lexicon.Theme:
     """Validate and append one theme to the registry, then reload the lexicon."""

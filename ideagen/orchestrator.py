@@ -240,18 +240,41 @@ def weekly(
                     from . import db as _db, themes as _themes
                     _con = _db.init()
                     disc = _themes.candidates(_con, as_of)
-                    newly = []
+                    newly, skipped, cards = [], [], []
                     for c in (disc.get("candidates") or []):
+                        # `candidates` returns evidence — terms, counts, doc
+                        # ids — and `validate` requires an id, a label, a key
+                        # question and a price indicator, none of which a
+                        # phrase cluster carries. Every candidate proposed
+                        # since this was wired on 2026-08-26 was therefore
+                        # rejected on arrival, and the registry stood still at
+                        # its two hand-curated rows while `theme_register_failed`
+                        # absorbed the evidence. `mint` is the naming step that
+                        # was missing: it is a semantic judgement (is this a
+                        # macro debate, what else is it called, which listed
+                        # instrument expresses it) and so it needs the model.
                         try:
-                            t = _themes.register(_con, c, as_of)
+                            card = _themes.mint(_con, c, as_of, p.inference,
+                                                minted=cards)
+                            t = _themes.register(_con, card, as_of)
+                            cards.append(card)
                             newly.append(t.id)
+                        except _themes.MintSkipped as e:
+                            # Corpus noise the model declined to call a debate.
+                            # A finding, not a failure — 「预览」 recurring in
+                            # forty titles is not a theme, and recording it as
+                            # a failed registration would bury the ones that are.
+                            skipped.append({"terms": (c.get("terms") or [])[:3],
+                                            "why": str(e)[:120]})
                         except Exception as e:  # noqa: BLE001 — one bad candidate
                             j.step("theme_register_failed",
-                                   candidate=c.get("id"), error=str(e)[:200])
+                                   candidate=(c.get("terms") or [None])[0],
+                                   error=str(e)[:200])
                     j.step("theme_discovery",
                            coverage_pct=disc.get("coverage_pct"),
                            unmatched=disc.get("unmatched"),
                            candidates=len(disc.get("candidates") or []),
+                           skipped=skipped,
                            registered=newly)
                     if newly:
                         log(f"  主题发现  新注册 {len(newly)} 个: {', '.join(newly)}")

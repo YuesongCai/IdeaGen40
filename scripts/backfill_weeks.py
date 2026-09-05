@@ -11,6 +11,20 @@ env file and passed to the child process environment; nothing is written back,
 and no value is ever printed.
 
   python3 scripts/backfill_weeks.py 2026-07-29 2026-08-05 ...
+  python3 scripts/backfill_weeks.py --no-trade 2025-07-09 2025-07-16 ...
+
+`--no-trade` is the right mode for a long historical walk. Booking a backfilled
+period does not reconstruct a historical position: `first_fillable` dates an
+order by the batch's `generated_at`, so every backfilled period fills *today*.
+Six such periods already crowd one day's cash; fifty would bury the live paper
+book — the one number a PM actually reads — under fifty weeks of same-day
+orders. The candidate pools the backtest needs are stored by the run itself,
+not by booking.
+
+Periods run oldest-first so a walk that is interrupted leaves a contiguous span
+of history rather than a scatter. Correctness does not depend on it —
+`all_themes(as_of)` filters by `registered_d`, so a theme discovered in a later
+period can never be seen by an earlier one whichever order they ran in.
 """
 from __future__ import annotations
 
@@ -50,9 +64,14 @@ def _ark_host(env: dict) -> str:
 
 
 def main(argv: list[str]) -> int:
+    trade = True
+    if "--no-trade" in argv:
+        trade = False
+        argv = [a for a in argv if a != "--no-trade"]
     if not argv:
-        raise SystemExit("用法: backfill_weeks.py YYYY-MM-DD [YYYY-MM-DD ...]")
-    days = [date.fromisoformat(a) for a in argv]
+        raise SystemExit(
+            "用法: backfill_weeks.py [--no-trade] YYYY-MM-DD [YYYY-MM-DD ...]")
+    days = sorted({date.fromisoformat(a) for a in argv})
 
     env = dict(os.environ)
     env.update({
@@ -84,11 +103,13 @@ def main(argv: list[str]) -> int:
 
     failed: list[str] = []
     for d in days:
-        print(f"\n{'=' * 60}\n== 补跑 {d} (backfill)\n{'=' * 60}", flush=True)
-        r = subprocess.run(
-            [PYBIN, "-u", "-m", "ideagen.cli", "weekly", "--as-of",
-             d.isoformat(), "--classification", "backfill", "--trade"],
-            cwd=ROOT, env=env)
+        print(f"\n{'=' * 60}\n== 补跑 {d} (backfill"
+              f"{'' if trade else ', 不建仓'})\n{'=' * 60}", flush=True)
+        cmd = [PYBIN, "-u", "-m", "ideagen.cli", "weekly", "--as-of",
+               d.isoformat(), "--classification", "backfill"]
+        if trade:
+            cmd.append("--trade")
+        r = subprocess.run(cmd, cwd=ROOT, env=env)
         if r.returncode != 0:
             failed.append(d.isoformat())
             print(f"!! {d} 失败（继续下一期）", flush=True)

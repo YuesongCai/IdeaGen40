@@ -44,7 +44,9 @@ class LocalBlobStore(BlobStore):
     def put(self, key: str, data: bytes, *, content_type: str | None = None,
             metadata: dict[str, str] | None = None) -> str:
         p = self._p(key)
-        if p.exists():
+        # Through `self.exists`, not `p.exists()`: the guard has to raise on an
+        # unreadable path rather than read it as "free to write".
+        if self.exists(key):
             raise PlatformError(
                 f"{key} already exists; artifacts are immutable — write a new run")
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +65,15 @@ class LocalBlobStore(BlobStore):
         return p.read_bytes()
 
     def exists(self, key: str) -> bool:
-        return self._p(key).exists()
+        # `Path.exists()` answers False for a permission error too, and this is
+        # `put`'s immutability guard — see the TOS adapter for why that matters.
+        p = self._p(key)
+        try:
+            return p.stat() is not None
+        except FileNotFoundError:
+            return False
+        except OSError as e:
+            raise PlatformError(f"cannot stat {key}: {e}") from e
 
     def list(self, prefix: str) -> Iterator[str]:
         base = self._p(prefix)

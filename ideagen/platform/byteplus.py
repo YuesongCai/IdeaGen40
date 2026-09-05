@@ -198,11 +198,27 @@ class TosBlobStore(BlobStore):
             expires=expires_s).signed_url
 
     def exists(self, key: str) -> bool:
+        """True, False, or an exception — never False for "I could not ask".
+
+        A miss is an exception in this SDK, so the obvious `except: return
+        False` reads every failure as absence. That is not a display problem
+        here: `put` uses this as the immutability guard, and a TOS PUT
+        overwrites by default. One HEAD that fails for any other reason — a
+        403, a DNS blip, a timeout — turns the append-only store into a
+        last-writer-wins one for that call, and the artifact a decision was
+        made from is gone with nothing raised anywhere.
+
+        So only a genuine "not found" answers False; everything else is this
+        node's problem and is raised as one.
+        """
         try:
             self._c().head_object(self.bucket, self._k(key))
             return True
-        except Exception:  # noqa: BLE001 — a miss is an exception in this SDK
-            return False
+        except Exception as e:  # noqa: BLE001 — tos raises many concrete types
+            if _is_not_found(e):
+                return False
+            raise PlatformError(
+                f"tos head {key} failed: {e}") from e
 
     def list(self, prefix: str) -> Iterator[str]:
         token, base = None, self._k(prefix)

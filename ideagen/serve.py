@@ -961,12 +961,17 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     # runtime.env already carries one operator's credentials; the first start
     # turns them into a real account and everything after that is managed in the
     # UI rather than by editing an env file.
+    from . import accounts
     try:
-        from . import accounts
         created = accounts.bootstrap()
         if created:
             print(f"  已从部署配置创建首个账号：{created}（管理员）")
+    except accounts.MirrorUnreadable as e:  # noqa: BLE001
+        print(f"  ⚠ 账号初始化中止：{e}")
     except Exception as e:  # noqa: BLE001 — never block serving on this
+        # The message, not just the class: "skipped" covers both "there was
+        # nothing to do" and "we refused because we could not check", and an
+        # operator needs to tell those apart from the log alone.
         print(f"  账号初始化跳过：{type(e).__name__}: {e}")
 
     for attempt in range(10):                    # walk forward if the port is busy

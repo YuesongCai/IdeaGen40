@@ -943,19 +943,27 @@ def handle_context(params: dict[str, Any]) -> tuple[dict[str, Any], int]:
     return ctx, 200
 
 
-def _forward_upstream(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None:
+def _forward_upstream(
+        payload: dict[str, Any]
+) -> tuple[tuple[dict[str, Any], int] | None, str | None]:
     """Relay /api/ask to the production instance, when one is configured.
 
     IDEAGEN_ASK_UPSTREAM names the base URL (e.g. https://<prod-host>);
-    IDEAGEN_ASK_UPSTREAM_KEY, if set, is sent as the dash key. Returns None
-    when no upstream is configured or the relay itself fails, so the caller
-    falls back to the honest 503.
+    IDEAGEN_ASK_UPSTREAM_KEY, if set, is sent as the dash key.
+
+    Returns the upstream's answer, or `(None, why)` — where `why` is None when
+    no upstream is configured and a sentence when one is and the relay failed.
+    Those are different situations and the reader was shown one message for
+    both: 「本机为观察节点，追问需在生产实例上进行」, true in either case and
+    the reason in neither. A configured upstream that is down, unreachable or
+    rejecting the key is a fault someone can go fix, and it stays invisible if
+    the page only ever explains the node's role.
     """
     import os
     import urllib.request
     base = (os.environ.get("IDEAGEN_ASK_UPSTREAM") or "").strip().rstrip("/")
     if not base:
-        return None
+        return None, None
     req = urllib.request.Request(
         base + "/api/ask",
         data=json.dumps(payload, ensure_ascii=False).encode(),
@@ -974,14 +982,14 @@ def _forward_upstream(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | N
         try:
             obj = json.loads(e.read().decode())
         except Exception:  # noqa: BLE001
-            return None
+            return None, f"上游返回 HTTP {e.code}，响应不是 JSON"
         status = e.code
-    except Exception:  # noqa: BLE001 — relay failure, keep the local 503
-        return None
+    except Exception as e:  # noqa: BLE001 — relay failure, keep the local 503
+        return None, f"转发到上游失败：{_scrub_text(f'{type(e).__name__}: {e}')}"
     if isinstance(obj, dict):
         obj["answered_by"] = "upstream"
-        return obj, status
-    return None
+        return (obj, status), None
+    return None, "上游回了一个不是对象的 JSON"
 
 
 def handle_ask(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -1008,10 +1016,14 @@ def handle_ask(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
         # upstream is configured, the question travels there instead of dying
         # here — the upstream assembles its own frozen context from the same
         # durable stores, so the answer is grounded the same way.
-        fwd = _forward_upstream(payload)
+        fwd, why = _forward_upstream(payload)
         if fwd is not None:
             return fwd
-        return {"error": str(e), "unavailable": True}, 503
+        # `why` is None only when no upstream is configured; then the node's
+        # role really is the whole story.
+        return ({"error": str(e) + (f"——{why}" if why else ""),
+                 "unavailable": True,
+                 **({"upstream_error": why} if why else {})}, 503)
     except Exception as e:  # noqa: BLE001 — bounded operator error, no traceback
         return {"error": _scrub_text(f"{type(e).__name__}: {e}"[:300])}, 502
     # The provenance list goes into the log, not just the cited subset: the

@@ -92,6 +92,10 @@ def _ask_entries(run_id: str) -> list[dict]:
     return out
 
 
+class ManifestUnavailable(RuntimeError):
+    """The corpus manifest could not be built, and the reader must be told."""
+
+
 def _corpus_manifest(run: dict, con=None) -> bytes | None:
     """One row per report the run froze: where it came from, and how.
 
@@ -119,8 +123,8 @@ def _corpus_manifest(run: dict, con=None) -> bytes | None:
                     "FROM documents WHERE published_d IN (%s) "
                     "ORDER BY published_d DESC, tier, doc_id"
                     % ",".join("?" * len(days)), days)
-    except Exception:  # noqa: BLE001 — a missing manifest is reported, not fatal
-        return None
+    except Exception as e:  # noqa: BLE001 — a missing manifest is reported, not fatal
+        raise ManifestUnavailable(f"{type(e).__name__}: {e}") from e
     started = str(run.get("started_at") or "")
     out = []
     for r in rows:
@@ -133,7 +137,7 @@ def _corpus_manifest(run: dict, con=None) -> bytes | None:
 
 
 def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
-            n_asks: int) -> str:
+            n_asks: int, gaps: list[tuple[str, str]] | None = None) -> str:
     """The bundle's own explanation, in the order a person reads it."""
     steps = {s.get("step"): s for s in ((journal or {}).get("steps") or [])}
     topics = (steps.get("topics") or {}).get("chosen") or []
@@ -195,6 +199,19 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "指令、以及每条想法因此必须回答的字段。派生生成方式的产出在 `03_写想法/` 里 |",
         "| `manifest.json` | 每个文件的字节数与 SHA-256，用来验证包没被改过 |",
         "",
+    ]
+    # The table above lists what a complete bundle holds. When this one is not
+    # complete, that has to be said here rather than left for the reader to
+    # discover by opening the zip and counting — a shorter file list reads as
+    # "the run produced less", which is a claim about the run and may be false.
+    if gaps:
+        lines += [
+            f"> ⚠ **这个包少了上表里的 {len(gaps)} 项**，逐项原因见 "
+            "`00_读取缺口.txt`。「没写过」是记录的空缺；「读不到」是打包这台"
+            "机器的故障，产物可能仍然存在于别处。",
+            "",
+        ]
+    lines += [
         "## 这个包不包含什么",
         "",
         "- **研报正文**。属数据源版权内容。包内保留引用编号"
@@ -221,18 +238,27 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
     run = ask._run_row(p, run_id)
     if not run:
         return None, "没有找到这次运行的记录"
-    journal = ask._journal(p, run)
+    journal, journal_why = ask.journal_or_reason(p, run)
     members: list[tuple[str, bytes]] = []
+    #: Files the README promises that are not in this zip, each with the reason.
+    #: Without this, a bundle built where the artifact store is unreachable is a
+    #: README listing eight files and a zip containing one — and it reads as
+    #: "this run produced nothing", which is the opposite of what happened.
+    gaps: list[tuple[str, str]] = []
 
-    def add(name: str, payload: Any) -> None:
+    def add(name: str, payload: Any, why: str | None = None) -> None:
         if payload is None:
+            gaps.append((name, why or "产物不在包里，原因未记录"))
             return
         members.append((name, _dumps(payload)))
 
-    add("01_运行日志.json", journal)
-    add("02_选主题.json", ask._artifact(p, run, "A_topics.json"))
-    add("02_选主题_纯数数对照.json",
-        ask._artifact(p, run, "A_topics_counting.json"))
+    def add_artifact(name: str, key: str) -> None:
+        obj, why = ask.artifact_or_reason(p, run, key)
+        add(name, obj, why)
+
+    add("01_运行日志.json", journal, journal_why)
+    add_artifact("02_选主题.json", "A_topics.json")
+    add_artifact("02_选主题_纯数数对照.json", "A_topics_counting.json")
     # Discovered, not listed — same reason as the selectors below. The four
     # founding arms are no longer the whole set: a PM rule grafted onto one of
     # them runs as its own arm, and a bundle built from a hand-kept list would
@@ -240,31 +266,42 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
     gen_prefix = f"runs/{run['as_of']}/{run['run_id']}/B_generators/"
     try:
         gen_keys = sorted(p.blobs.list(gen_prefix))
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        # Falling back to the four founding generators is a guess, and one that
+        # silently drops a fifth somebody added on purpose. Say it is a guess.
         gen_keys = [gen_prefix + f"{k}.json" for k in GEN_ZH]
+        gaps.append(("03_写想法/（目录）",
+                     f"列不出产物目录，只能按四种初始生成方式猜，"
+                     f"后来新增的会漏掉：{type(e).__name__}: {e}"))
     for k in gen_keys:
         name = k.rsplit("/", 1)[-1]
         if not name.endswith(".json"):
             continue
-        add(f"03_写想法/{_gen_name(name[:-5])}.json",
-            ask._artifact(p, run, f"B_generators/{name}"))
-    add("04_候选池.json", ask._artifact(p, run, "B_pool.json"))
+        add_artifact(f"03_写想法/{_gen_name(name[:-5])}.json",
+                     f"B_generators/{name}")
+    add_artifact("04_候选池.json", "B_pool.json")
     # Selector artifacts are discovered rather than listed: the set of arms is
     # allowed to grow, and a bundle that silently omitted a new arm would be
     # the one place the growth is invisible.
     prefix = f"runs/{run['as_of']}/{run['run_id']}/C_selectors/"
     try:
         keys = sorted(p.blobs.list(prefix))
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         keys = []
+        gaps.append(("05_挑持仓/（目录）",
+                     f"列不出产物目录，本包没有任何选取策略产物："
+                     f"{type(e).__name__}: {e}"))
     for k in keys:
         name = k.rsplit("/", 1)[-1]
         if not name.endswith(".json"):
             continue
-        add(f"05_挑持仓/{_sel_name(name[:-5])}.json", ask._artifact(
-            p, run, f"C_selectors/{name}"))
+        add_artifact(f"05_挑持仓/{_sel_name(name[:-5])}.json",
+                     f"C_selectors/{name}")
 
-    manifest_rows = _corpus_manifest(run, con)
+    try:
+        manifest_rows = _corpus_manifest(run, con)
+    except ManifestUnavailable as e:
+        manifest_rows, gaps = None, gaps + [("07_研报清单.jsonl", str(e))]
     if manifest_rows:
         members.append(("07_研报清单.jsonl", manifest_rows))
 
@@ -286,6 +323,14 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
             json.dumps(ask.scrub(a), ensure_ascii=False).encode() + b"\n"
             for a in asks)))
 
+    if gaps:
+        members.insert(0, ("00_读取缺口.txt", (
+            "这个包少了下面这些文件。少的原因写在每一行后面——\n"
+            "「没写过」是记录本身的空缺，「读不到」是打包这台机器的故障，\n"
+            "后者意味着产物可能仍然存在，只是这台机器够不着。\n\n"
+            + "\n".join(f"- {n}\n  {why}" for n, why in gaps)
+            + "\n").encode()))
+
     manifest = {
         "run_id": run["run_id"],
         "as_of": run["as_of"],
@@ -298,8 +343,12 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
             for n, b in members],
         "excluded": ["研报正文（数据源版权内容，包内只保留引用编号）",
                      "机器身份（桶名 / 主机路径 / 云账号编号）"],
+        # Distinct from `excluded`: those are left out on purpose, these could
+        # not be got. Collapsing them would let a read failure pass for policy.
+        "gaps": [{"name": n, "reason": ask._scrub_text(w)} for n, w in gaps],
     }
-    readme = _readme(run, journal, [(n, len(b)) for n, b in members], len(asks))
+    readme = _readme(run, journal, [(n, len(b)) for n, b in members],
+                     len(asks), gaps)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

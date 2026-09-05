@@ -85,20 +85,45 @@ def _mirror_push(data: dict[str, Any]) -> None:
         blobs = p.blobs
         blobs._c().put_object(blobs.bucket, blobs._k(MIRROR_KEY),
                               content=json.dumps(data, ensure_ascii=False).encode())
-    except Exception:  # noqa: BLE001 — a mirror that fails must not fail a save
-        pass
+    except Exception as e:  # noqa: BLE001 — a mirror that fails must not fail a save
+        # Silence here is how a colleague added today is missing tomorrow: the
+        # save succeeded locally, the mirror never got it, and the next
+        # container starts from a mirror that predates them. The save still
+        # stands — but somebody has to be told.
+        import sys
+        print(f"WARN: 账号镜像未写入（{type(e).__name__}: {e}）——"
+              f"本地已保存，但容器重建后会丢", file=sys.stderr)
+
+
+class MirrorUnreadable(RuntimeError):
+    """The mirror may exist; this process could not find out."""
 
 
 def _mirror_pull() -> dict[str, Any] | None:
+    """The mirrored account list, or None if there genuinely is not one.
+
+    Raises `MirrorUnreadable` when the store could not be asked. That
+    distinction is the whole point of the mirror: `bootstrap` treats None as
+    "first boot, mint the operator account", and a store outage answering None
+    means a container replacement silently discards every colleague added since
+    — which is the exact outcome the mirror was written to prevent, arriving
+    under the exact conditions (a fresh container) that make the store most
+    likely to be flaky.
+    """
     if not _mirror_on():
         return None
+    from . import platform as plat
     try:
-        from . import platform as plat
         raw = plat.load().blobs.get(MIRROR_KEY)
+    except plat.BlobMissing:
+        return None                      # never mirrored: a real first boot
+    except Exception as e:  # noqa: BLE001
+        raise MirrorUnreadable(f"{type(e).__name__}: {e}") from e
+    try:
         data = json.loads(raw)
-        return data if isinstance(data, dict) and data.get("users") else None
-    except Exception:  # noqa: BLE001 — no mirror is a normal first-boot state
-        return None
+    except Exception as e:  # noqa: BLE001 — a corrupt mirror is not an absent one
+        raise MirrorUnreadable(f"镜像解不开：{type(e).__name__}: {e}") from e
+    return data if isinstance(data, dict) and data.get("users") else None
 
 
 SESSION_COOKIE = "ideagen_session"
@@ -325,7 +350,15 @@ def bootstrap() -> str | None:
     # Nothing local. Before minting a fresh admin, look for accounts this
     # deployment already had: a container replacement must not quietly discard
     # the colleague you added last week and hand you back the bootstrap user.
-    mirrored = _mirror_pull()
+    try:
+        mirrored = _mirror_pull()
+    except MirrorUnreadable as e:
+        # Refuse rather than mint. A fresh admin here would look like a working
+        # instance while the accounts it was supposed to restore are still in
+        # the store, unread — and the next mirror push would overwrite them
+        # with the single bootstrap user.
+        raise RuntimeError(
+            f"账号镜像读不到，拒绝新建管理员（可能会覆盖已有账号）：{e}") from e
     if mirrored:
         p = _store_path()
         p.parent.mkdir(parents=True, exist_ok=True)

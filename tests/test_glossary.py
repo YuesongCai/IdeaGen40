@@ -39,6 +39,14 @@ BANNED = {
     "挑法": "选取策略（用户 2026-09-04 拍板：术语化优于口语化）",
 }
 
+#: 正则规则：有些旧比喻会被别的字劈开，逐字匹配抓不到。
+#: 「各记一本模拟账」里那个「一本…账」就整整躲过了 BANNED 的「本账」——
+#: 面板上挂了一天，我自己盯着渲染文本才看见。
+BANNED_RE = {
+    r"[一二三四五六七八九十两几每这那0-9]\s*本[一-鿿]{0,2}账":
+        "个组合（「各记一本模拟账」→「各管一个模拟组合」）",
+}
+
 #: 裸英文：后端字段名漏进中文句子。同一个毛病的另一半——「账本」是内部比喻，
 #: 这些是内部标识符，读者两样都不认识。
 #:
@@ -151,6 +159,11 @@ def _allowed(text: str) -> bool:
     return any(a in text for a in ALLOW)
 
 
+def _re_leaks(text: str) -> list[str]:
+    """被别的字劈开的旧比喻。"""
+    return [pat for pat in BANNED_RE if re.search(pat, text)]
+
+
 def _en_leaks(text: str) -> list[str]:
     """紧挨着中文出现的英文标识符。"""
     return [w for w in BANNED_EN
@@ -171,9 +184,10 @@ class GlossaryGate(unittest.TestCase):
             for chunk in chunks:
                 if _allowed(chunk):
                     continue
-                for word, instead in list(BANNED.items()) + [
-                        (w, BANNED_EN[w]) for w in _en_leaks(chunk)]:
-                    if word in chunk:
+                for word, instead in (list(BANNED.items())
+                                      + [(w, BANNED_EN[w]) for w in _en_leaks(chunk)]
+                                      + [(p, BANNED_RE[p]) for p in _re_leaks(chunk)]):
+                    if word in chunk or word in BANNED_RE:
                         bad.append(f"  {rel}\n"
                                    f"    「{word}」→ {instead}\n"
                                    f"    出处：…{chunk.strip()[:110]}…")
@@ -235,6 +249,15 @@ class GlossaryGate(unittest.TestCase):
         self.assertEqual(got, ["第 ", " 期 as_of 之前"])
         self.assertTrue(any("as_of" in g for g in got),
                         "中文句子里的 as_of 必须被看见")
+
+    def test_a_metaphor_split_by_other_words_is_still_the_metaphor(self):
+        """「各记一本模拟账」躲过了逐字匹配的「本账」，正则规则要抓住它。"""
+        self.assertTrue(_re_leaks("10 个选取策略各记一本模拟账"))
+        self.assertTrue(_re_leaks("八本账"))
+        self.assertFalse(_re_leaks("各管一个模拟组合"))
+        self.assertTrue(_re_leaks("每本账都写着同一个日期"))
+        self.assertFalse(_re_leaks("这一本书讲的是账龄"), "别把不相干的句子也拦了")
+        self.assertFalse(_re_leaks("三本书里都提到过账期"), "中间隔太远就不是这个比喻")
 
     def test_an_english_token_only_counts_when_it_touches_chinese(self):
         self.assertEqual(_en_leaks('结论以 live 期为准'), ["live"])

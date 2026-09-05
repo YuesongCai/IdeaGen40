@@ -3862,7 +3862,7 @@ function raceHero(ag){
   var head='<div class="qhead"><h2 class="qtitle">选取策略对比 · '+books.length+' 个组合 · 第 '+weekN+' 周</h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(4,'筛选C · 选取策略')
     +'<button type="button" class="qlink" onclick="openStageDrawer(4)">筛选C 详情 →</button></span></div>';
-  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各记一本模拟账；统一口径：<b>与全量基准的差距</b>。'
+  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各管一个模拟组合；统一口径：<b>与全量基准的差距</b>。'
     +'<button type="button" class="exp-btn" onclick="openTrustDrawer()" title="未验证假设 · 已修复缺陷 · 历史回测">尚不排名的依据 ⓘ</button></div>';
   /* 芯片：与噪音带同序、同色点、同一个指标（vs 全买），不再印名次大字 */
   var rows=pairedDiffs(books).slice().sort(function(a,b){return (b.diff===null?-1e9:b.diff)-(a.diff===null?-1e9:a.diff)});
@@ -5240,7 +5240,7 @@ function tearsheetCard(){
       '<div class="table-wrap"><table class="data-table">'
         +'<thead><tr><th>组合</th>'
         +'<th class="r">beta<span class="gloss gm" title="把组合超额收益对基准超额收益做回归得到的斜率。此前面板用的是「假设 beta=1」的折算，那一列的说明里自己写着不要引用它——现在这一列是量出来的。">ⓘ</span></th>'
-        +'<th class="r">alpha 年化</th><th class="r">alpha_t</th><th class="r">R²</th>'
+        +'<th class="r">alpha 年化</th><th class="r">alpha 的 t 值</th><th class="r">R²</th>'
         +'<th class="r">IR<span class="gloss gm" title="信息比率＝相对基准的超额收益 ÷ 跟踪误差。为负就是：按承担的偏离风险算，不如直接拿基准。">ⓘ</span></th>'
         +'<th class="r">上行捕获</th><th class="r">下行捕获</th></tr></thead>'
         +'<tbody>'+relRows+'</tbody></table></div>'
@@ -5250,11 +5250,13 @@ function tearsheetCard(){
       names.length+' 条')
 
     +(fd.message?foldBlock('week.tearsheet.dsr','多重检验：试了这么多条，只报最好那条会高估多少',
-      '折减后夏普 DSR '+(fd.deflated_sharpe==null?'—':Number(fd.deflated_sharpe).toFixed(3)),
-      '<p class="p">'+esc(fd.message)+'</p>'
-      +(fdr.m?'<p class="p">'+esc(fdr.note||'')+'</p>'
-        +'<div class="card-note">BH 判为发现：<b>'+esc((fdr.rejected||[]).join('、')||'无')
-        +'</b>；Bonferroni 判为发现：<b>'+esc((fdr.bonferroni_rejected||[]).join('、')||'无')+'</b></div>':''),
+      '折减后的夏普 '+(fd.deflated_sharpe==null?'—':Number(fd.deflated_sharpe).toFixed(3)),
+      '<p class="p">'+esc(humanizeKeys(fd.message))+'</p>'
+      +(fdr.m?'<p class="p">'+esc(humanizeKeys(fdr.note||''))+'</p>'
+        +'<div class="card-note">BH 判为发现：<b>'
+        +esc((fdr.rejected||[]).map(backtestArmName).join('、')||'无')
+        +'</b>；Bonferroni 判为发现：<b>'
+        +esc((fdr.bonferroni_rejected||[]).map(backtestArmName).join('、')||'无')+'</b></div>':''),
       (fd.survives?'扛住':'未扛住')):'')
 
     +(costRows?foldBlock('week.tearsheet.cost','交易成本现实','已扣成本 vs 打平所需成本',

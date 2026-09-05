@@ -160,6 +160,45 @@ def _py_display_strings(src: str) -> list[str]:
     return out
 
 
+def _literal_after(src: str, decl: str) -> str | None:
+    """`decl` 之后那一个 [...] 或 {...} 字面量，按括号配对切出来。
+
+    别用 `var X=\[.*?\n\];` 这类正则：2026-09-05 就栽在这上面——`GEN_ORDER`
+    的收尾 `];` 和最后一行数据写在**同一行**（`…'值债。']];`），非贪婪匹配
+    跳过它一路跑进了下一个数组，于是对账在两张表的并集上做，**假通过**。
+    括号配对不会因为排版而错。
+    """
+    i = src.find(decl)
+    if i < 0:
+        return None
+    i += len(decl)
+    while i < len(src) and src[i] not in "[{":
+        i += 1
+    if i >= len(src):
+        return None
+    close = {"[": "]", "{": "}"}[src[i]]
+    depth, j, in_str, esc = 0, i, "", False
+    while j < len(src):
+        c = src[j]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == in_str:
+                in_str = ""
+        elif c in "'\"":
+            in_str = c
+        elif c in "[{":
+            depth += 1
+        elif c in "]}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1]
+        j += 1
+    return None
+
+
 def _allowed(text: str) -> bool:
     return any(a in text for a in ALLOW)
 
@@ -281,11 +320,10 @@ class GlossaryGate(unittest.TestCase):
         for kind, var in (("idea_generator", "GEN_PATH"),
                           ("idea_generator", "GEN_ORDER"),
                           ("idea_selector", "SEL_PATH")):
-            block = re.search(rf"var {var}=[\{{\[].*?\n\];|var {var}=\{{.*?\}};",
-                              html, re.S)
-            self.assertIsNotNone(block, f"dash.html 里找不到 {var}")
-            mapped = set(re.findall(r"([a-z0-9_]+):'", block.group()))
-            mapped |= set(re.findall(r"\['([a-z0-9_]+)'", block.group()))
+            body = _literal_after(html, f"var {var}=")
+            self.assertIsNotNone(body, f"dash.html 里找不到 {var}")
+            mapped = set(re.findall(r"([a-z0-9_]+):'", body))
+            mapped |= set(re.findall(r"\['([a-z0-9_]+)'", body))
             registered = {m["name"] for m in strategy.available(kind)}
             missing = sorted(registered - mapped)
             self.assertFalse(
@@ -299,6 +337,14 @@ class GlossaryGate(unittest.TestCase):
                    if var.endswith("PATH") else
                    "：[键名, 中文名, 短语, 长说明, 例]——不加的话它一跑起来"
                    "就会被画成「PM 注入」，界面替它编一个来历"))
+
+    def test_the_literal_slicer_stops_at_its_own_closing_bracket(self):
+        """正则版在这个排版上假通过过：收尾 `];` 和最后一行数据同行。"""
+        src = "var A=[\n ['x','一'],\n ['y','二']];\nvar B=[\n ['z','三'],\n];"
+        self.assertEqual(sorted(re.findall(r"\['([a-z]+)'", _literal_after(src, "var A="))),
+                         ["x", "y"], "不能把 B 的内容算进 A")
+        self.assertEqual(re.findall(r"\['([a-z]+)'", _literal_after(src, "var B=")), ["z"])
+        self.assertIsNone(_literal_after(src, "var C="))
 
     def test_every_exemption_names_a_file_that_exists(self):
         """豁免清单会烂掉——文件改名之后那条豁免就在悄悄免掉一个不存在的东西。"""

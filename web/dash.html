@@ -2612,6 +2612,17 @@ function refresh(){
  * 心跳是这份数据里最频繁更新的东西（5 分钟一次），它停了就说明上游停了，
  * 或者这份数据不再被送过来——两种情况读者都需要知道。 */
 var DATA_STALE_WARN_S=1800;   /* 30 分钟：心跳 5 分钟一次，超过 6 次没到就不是抖动 */
+/* 但这条只对自己写库的机器成立。展示节点的心跳是随快照送过来的，链路本身
+ * 就有固有延迟：发布侧最多等 10 分钟、拉取侧最多等 15 分钟，再加上快照打包
+ * 那一刻心跳已经有的几分钟 —— 一切正常时也能到 30 分钟上下。实测过 31 分 48 秒，
+ * 那时链路完全通畅。用同一个阈值，红点就会在没坏的时候亮，而误报几次之后
+ * 没人再信它。所以按数据是「自己写的」还是「送来的」分开定。 */
+var FED_STALE_WARN_S=3600;    /* 送来的：两个轮询间隔 + 打包延迟，留一倍余量 */
+/* 一个**一次快照都没收到**的展示节点，`snapshot` 是 null，于是掉回 1800 的
+ * 严格阈值。这是有意的，不是漏判：宽限是给「链路在转、只是有延迟」的，
+ * 而一份从未到达的数据没有延迟可言，越早喊越好。 */
+function isFedNode(){ return !!(S&&S.snapshot); }
+function staleWarnSeconds(){ return isFedNode()?FED_STALE_WARN_S:DATA_STALE_WARN_S; }
 function dataAgeSeconds(){
   var a=(S&&S.alive)||{};
   var age=Number(a.age_s);
@@ -2619,7 +2630,7 @@ function dataAgeSeconds(){
 }
 function stalenessNote(){
   var age=dataAgeSeconds();
-  if(age===null||age<DATA_STALE_WARN_S)return '';
+  if(age===null||age<staleWarnSeconds())return '';
   var mins=Math.round(age/60);
   var txt=mins>=120?(Math.round(mins/60)+' 小时'):(mins+' 分钟');
   return '数据已 '+txt+'未更新';

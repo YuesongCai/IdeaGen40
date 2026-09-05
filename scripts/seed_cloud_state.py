@@ -35,8 +35,21 @@ sys.path.insert(0, str(ROOT))
 SEED_KEY = "seed/platform_state.db"
 
 #: Tables worth carrying, in dependency order. Everything the dashboard reads
-#: through the platform port, and nothing else — the corpus bodies are licensed
-#: research that already lives in the bucket, and prices resync themselves.
+#: through the platform port, plus the two inputs a weekly run cannot be
+#: performed without. The corpus bodies stay out: they are licensed research and
+#: already live in the bucket.
+#:
+#: "prices resync themselves" was true when this list was written and is only
+#: true of the laptop. Prices come from Futu OpenD over `FUTU_HOST`, which is
+#: localhost; the instance has no OpenD and nothing else fills the table. Same
+#: for `instruments`: the universe feed reads it straight from the database, so
+#: an instance without it produces an empty shelf, and stage B has nothing to
+#: express a theme on.
+#:
+#: Checked on 2026-09-05 against the instance: shelf empty, no `universe` or
+#: `calendar` feed run has ever happened there, and zero weekly runs. The
+#: 2026-09-09 trigger would have been its first attempt, on a database that
+#: cannot answer the question stage A asks.
 TABLES: tuple[str, ...] = (
     "orch_runs",
     "feed_runs",
@@ -46,6 +59,8 @@ TABLES: tuple[str, ...] = (
     "backtest_runs",
     "backtest_points",
     "backtest_positions",
+    "instruments",
+    "prices",
 )
 
 
@@ -103,6 +118,13 @@ def cmd_export(args) -> int:
     dst.close()
     size = out.stat().st_size
     print(f"导出 {total} 行 / {size // 1024}KB")
+    if getattr(args, "dry_run", False):
+        # Building the seed is safe; publishing it is what the instance picks
+        # up on its next boot. Separating the two makes "show me exactly what
+        # would be carried" a question that can be answered without answering
+        # "change production".
+        print(f"--dry-run：未上传。文件留在 {out}")
+        return 0
 
     from ideagen.platform.byteplus import TosBlobStore
     import os
@@ -204,6 +226,8 @@ def main() -> int:
     e.add_argument("--endpoint", default="tos-ap-southeast-1.bytepluses.com")
     e.add_argument("--prefix", default="prod",
                    help="must match the instance IDEAGEN_TOS_PREFIX")
+    e.add_argument("--dry-run", action="store_true",
+                   help="build the seed and report it, upload nothing")
 
     i = sub.add_parser("import", help="fill empty tables from the seed (instance)")
     i.set_defaults(fn=cmd_import)

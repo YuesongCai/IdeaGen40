@@ -283,7 +283,17 @@ def _prices(con, as_of: date, codes: Iterable[str],
         pctl = futu_px.return_percentile(con, code, upto, window=21)
         out[code] = {
             "d": d, "close": close, "clamped_to": upto,
+            # Two different one-month readings, and they disagree. `priced_in`
+            # normalises the move against the instrument's own year, which is
+            # what stage A wants — "how much of this is already in the price".
+            # `ret_21s` is the raw move, which is what a cross-sectional ranking
+            # wants: over 105 weekly periods the percentile picks the calmest
+            # names at the top of their own range and loses (30% of periods),
+            # the raw return picks the strongest and wins (66%). Carrying only
+            # one of them is what let a "momentum" arm be written against the
+            # wrong one.
             "priced_in": pctl if pctl is not None else 50.0,
+            "ret_21s": futu_px.trailing_return(con, code, upto, 21),
             "priced_in_source": "return_percentile_21s" if pctl is not None
                                 else "neutral_default",
             "vol_pctl": futu_px.vol_percentile(con, code, upto),

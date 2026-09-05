@@ -334,6 +334,16 @@ def refresh_surprise_stats(con, upto: date, *, years: int = 2,
                             []).append((d, act - est))
         cursor = end + timedelta(days=1)
 
+    # A refit for a given `upto` *replaces* that fit; it does not add to it.
+    # Without this the first run's keys survive a change to how keys are built,
+    # and the status report counts both schemes at once — which is exactly what
+    # happened when the period suffix was removed from the series name: 2375
+    # stale rows sat beside the 158 real ones under the same stamp. Lookups were
+    # unaffected (they key on the new form), so nothing broke; the count simply
+    # lied, which is the failure that is hardest to notice.
+    con.execute("DELETE FROM macro_surprise_stats WHERE upto=?",
+                (upto.isoformat(),))
+
     fitted = {"ok": 0, "underpowered": 0, "degenerate": 0}
     for key, pairs in errs.items():
         pairs.sort()

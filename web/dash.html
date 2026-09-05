@@ -8082,8 +8082,22 @@ function stageTopicsBody(d){
     +'<span><span class="sw" style="background:var(--color-data-3)"></span>E 实据<span class="gloss gm" title="'+esc(HGEP_GLOSS.E)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-4)"></span>P 已定价<span class="gloss gm" title="'+esc(HGEP_GLOSS.P)+'">ⓘ</span></span>'
     +'<span><span class="sw" style="background:var(--color-data-1);opacity:.34"></span>落选</span>'
-    +'<span><span class="race-cnt pick" style="position:static;transform:none;display:inline-flex;margin-right:5px">2</span>计数打分亦选入</span>'
-    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px">7</span>计数打分未选入<span class="gloss gm" title="'+esc('圈内数字 = 计数对照打分对同一主题的排名。'+COUNT_GLOSS)+'">ⓘ</span></span>'
+    /* 图例里这两个圈原本装的是「个数」（2 个、7 个），而行里同一个圈装的是
+       「名次」（#2）——同一个视觉元素两个含义，而且这一条的 hover 还写着
+       「圈内数字 = 排名」，和它自己圈里的 7 直接打架。
+       现在圈里只放 # 这个符号，数字用文字说，行内那个 #N 是什么写在明面上：
+       这个库自己说过 hover 不存在于截图、投屏和打印件中。
+       两条图例只说标记是什么意思，不带个数——个数在下面那行「两种打分重合
+       3/5：双选…仅语义…仅计数…」里，是从名单本身数出来的。我第一版在这里
+       现算了两个数，而它们和下面那行对不上，正是 test_stated_counts 讲的
+       那个毛病：数字真过，只是不是它旁边那张清单的数字。 */
+    +'<span><span class="race-cnt pick" style="position:static;transform:none;display:inline-flex;margin-right:5px">#</span>'
+      +'行内 #N = 计数对照打分的名次（左边的分数是语义打分，两者次序不同是正常的）'
+      +'<span class="gloss gm" title="'+esc(COUNT_GLOSS)+'">ⓘ</span></span>'
+    +'<span><span class="race-cnt pick" style="position:static;transform:none;display:inline-flex;margin-right:5px"></span>'
+      +'描边 = 计数打分也把它选进前 5</span>'
+    +'<span><span class="race-cnt" style="position:static;transform:none;display:inline-flex;margin-right:5px"></span>'
+      +'无描边 = 计数打分没选它</span>'
     +'</div>';
   var html=tabs+askStep+legend+disLine
     +'<div class="race-sec"><div class="race-sec-h"><span class="t">入选 · '+nIn+'</span><span class="s">进入筛选B，各生成方法据此写想法</span></div>'

@@ -38,8 +38,18 @@ def _pick(ctx: RunContext, method: str, name: str) -> Verdict:
         strategy=name,
         version="1.0",
         chosen=chosen,
+        # The reason has to name the rule, not just the antecedent. It used to
+        # say 「由 ai_native、chain、gap 提出」 — true, and silent about why that
+        # meant rejection. Asked on 2026-09-05 how this arm decides, the model
+        # had every rejection in front of it, reconstructed the pattern
+        # correctly from which combinations were dropped, and then said the
+        # rule itself was not in the record — because it was not. A reason that
+        # states the input and withholds the test cannot be reasoned back to
+        # the test, and this is the arm Jon asks about by name.
         rejected={
-            str(candidate["id"]): "由 " + "、".join(_proposed_by(candidate)) + " 提出"
+            str(candidate["id"]):
+                f"{method} 没有提出它（提出者："
+                + "、".join(_proposed_by(candidate)) + "）"
             for candidate in ctx.candidates
             if method not in _proposed_by(candidate)
         },
@@ -47,6 +57,13 @@ def _pick(ctx: RunContext, method: str, name: str) -> Verdict:
             "generation_method": method,
             "n": len(chosen),
             "selection": "method isolation; no cross-method ranking",
+            # Spelled out because the arm's name reads like a filter and is
+            # not one: nothing here scores, ranks or thresholds an idea. It
+            # holds exactly what one generator wrote, so the book answers
+            # "what if we believed only this method" and the difference
+            # between two such books is attributable to Stage B alone.
+            "rule": (f"只保留 {method} 这条生成方式提出过的想法，其余全部剔除；"
+                     f"不打分、不排序、不设阈值。本期 {len(chosen)} 条入选。"),
         },
     )
 

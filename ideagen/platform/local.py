@@ -23,8 +23,9 @@ import time
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
-from .base import (BlobStore, Cache, Completion, EventBus, Health, Inference,
-                   NotConfigured, PlatformError, SecretStore, StateStore)
+from .base import (BlobMissing, BlobStore, Cache, Completion, EventBus, Health,
+                   Inference, NotConfigured, PlatformError, SecretStore,
+                   StateStore)
 
 
 class LocalBlobStore(BlobStore):
@@ -58,7 +59,7 @@ class LocalBlobStore(BlobStore):
     def get(self, key: str) -> bytes:
         p = self._p(key)
         if not p.exists():
-            raise PlatformError(f"no such artifact: {key}")
+            raise BlobMissing(f"no such artifact: {key}")
         return p.read_bytes()
 
     def exists(self, key: str) -> bool:

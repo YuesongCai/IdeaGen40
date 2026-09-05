@@ -133,17 +133,64 @@ def _run_row(p, run_id: str | None) -> dict[str, Any] | None:
     return dict(rows[0]) if rows else None
 
 
-def _artifact(p, run: dict[str, Any], name: str) -> dict | list | None:
+#: Run kinds that write a `journal.json`. Anything else is a bookkeeping row in
+#: `orch_runs` — real evidence that the pass happened, but never a step-by-step
+#: log — and saying "no journal" about one of those is a description of the
+#: design, not a fault to report.
+JOURNALLED_KINDS = ("weekly", "monitor")
+
+
+def artifact_or_reason(p, run: dict[str, Any],
+                       name: str) -> tuple[Any, str | None]:
+    """One artifact, or the honest reason it is not here.
+
+    Every caller used to `except Exception: return None`, which made three very
+    different situations indistinguishable to a reader: the run never wrote it,
+    the run wrote it and this node cannot reach the store, or it is there and
+    malformed. The dashboard then had to guess, and it guessed "never written" —
+    which is the reassuring answer and, on a node reading a different bucket
+    from the one the runs write to, the false one.
+    """
+    key = f"runs/{run['as_of']}/{run['run_id']}/{name}"
+    from . import platform as _plat
     try:
-        raw = p.blobs.get(f"runs/{run['as_of']}/{run['run_id']}/{name}")
-        return json.loads(raw)
-    except Exception:  # noqa: BLE001 — a missing artifact is reported, not fatal
-        return None
+        raw = p.blobs.get(key)
+    except _plat.BlobMissing:
+        return None, f"这次运行没有写过 {name}"
+    except Exception as e:  # noqa: BLE001 — a store outage is reported, not fatal
+        return None, (f"这台机器读不到产物存储，取不到 {name}"
+                      f"（{_scrub_text(f'{type(e).__name__}: {e}')}）。"
+                      "产物可能存在于别处——这是本机的读取故障，不是记录的空缺")
+    try:
+        return json.loads(raw), None
+    except Exception as e:  # noqa: BLE001
+        return None, f"{name} 读到了但解不开（{type(e).__name__}）"
+
+
+def _artifact(p, run: dict[str, Any], name: str) -> dict | list | None:
+    return artifact_or_reason(p, run, name)[0]
 
 
 def _journal(p, run: dict[str, Any]) -> dict[str, Any] | None:
-    j = _artifact(p, run, "journal.json")
-    return scrub_journal(j) if isinstance(j, dict) else None
+    return journal_or_reason(p, run)[0]
+
+
+def journal_or_reason(p, run: dict[str, Any]
+                      ) -> tuple[dict[str, Any] | None, str | None]:
+    """The run journal, scrubbed — or why there isn't one, specifically.
+
+    The one place that turns a blob outcome into a sentence about a run, so the
+    API, the ask materials and the audit bundle cannot drift into telling the
+    reader three different stories about the same missing file.
+    """
+    j, why = artifact_or_reason(p, run, "journal.json")
+    if isinstance(j, dict):
+        return scrub_journal(j), None
+    kind = str(run.get("kind") or "")
+    if why and why.startswith("这次运行没有写过") and kind not in JOURNALLED_KINDS:
+        why = (f"{kind or '这一类'} 运行不写逐步日志——它在 orch_runs 里只留一行"
+               "起止与结果。这是当时的设计，不是丢失")
+    return None, (why or "journal.json 不是一份日志文档")
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +236,9 @@ def _run_corpus(con, p, run: dict[str, Any]) -> tuple[list[dict], dict[str, Any]
             # journal. Prefer those: the events table is mutable, so
             # re-deriving the calendar from it makes an old period stop
             # verifying the moment another run touches the same event ids.
-            frozen = _frozen_inputs(p, run)
+            frozen, frozen_why = _frozen_inputs(p, run)
+            if frozen_why:
+                note["journal_note"] = frozen_why
             ev = (frozen.get("event_ids") if frozen else None)
             if ev is None:
                 ev = [r["event_id"] for r in p.state.q(
@@ -212,19 +261,28 @@ def _run_corpus(con, p, run: dict[str, Any]) -> tuple[list[dict], dict[str, Any]
     return docs, note
 
 
-def _frozen_inputs(p, run: dict[str, Any]) -> dict[str, Any] | None:
-    """The doc/event id lists the run recorded, if it recorded them.
+def _frozen_inputs(p, run: dict[str, Any]
+                   ) -> tuple[dict[str, Any] | None, str | None]:
+    """The doc/event id lists the run recorded, and why they are absent if so.
 
     Written by the orchestrator's `inputs` journal step. The journal is
     immutable, which is the whole point: it is the only copy of these lists
     that a later run cannot change underneath a reconstruction.
+
+    Returning the reason matters because the caller's answer to "no frozen
+    list" used to be a claim about the *period* — "this run predates the frozen
+    input list" — when on a node that cannot read the artifact store the true
+    statement is about *this machine*. One is a permanent limit of an old run;
+    the other is a fault someone can go fix.
     """
-    j = _journal(p, run)
+    j, why = journal_or_reason(p, run)
     for step in ((j or {}).get("steps") or []):
         if isinstance(step, dict) and step.get("step") == "inputs":
             if step.get("doc_ids") or step.get("event_ids"):
-                return step
-    return None
+                return step, None
+    if j is not None:
+        return None, None          # journal read fine; this run simply predates it
+    return None, why
 
 
 def _match(text: str, terms) -> int:

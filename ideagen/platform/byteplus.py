@@ -27,8 +27,9 @@ import threading
 import time
 from typing import Any, Iterable, Iterator, Sequence
 
-from .base import (BlobStore, Cache, Completion, EventBus, Health, Inference,
-                   NotConfigured, PlatformError, SecretStore, StateStore, redact_url)
+from .base import (BlobMissing, BlobStore, Cache, Completion, EventBus, Health,
+                   Inference, NotConfigured, PlatformError, SecretStore,
+                   StateStore, redact_url)
 
 # Deployment endpoints are intentionally absent from distributed source.
 TOS_ENDPOINTS: dict[str, str] = {}
@@ -70,6 +71,22 @@ def _qmark_to_pyformat(sql: str) -> str:
             out.append(char)
         i += 1
     return "".join(out)
+
+
+def _is_not_found(e: Exception) -> bool:
+    """Whether a TOS exception means "absent" rather than "unreachable".
+
+    The SDK's exception classes vary by error path, so this reads the fields
+    they agree on (`status_code`, `code`) and falls back to the rendered text
+    only when neither is present.
+    """
+    status = getattr(e, "status_code", None)
+    code = str(getattr(e, "code", "") or "")
+    if status == 404 or code in ("NoSuchKey", "NoSuchObject"):
+        return True
+    if status is not None or code:
+        return False
+    return "NoSuchKey" in str(e) or "404" in str(e)
 
 
 class TosBlobStore(BlobStore):
@@ -142,6 +159,14 @@ class TosBlobStore(BlobStore):
         try:
             return self._c().get_object(self.bucket, self._k(key)).read()
         except Exception as e:  # noqa: BLE001 — tos raises many concrete types
+            # "the bucket says there is no such key" and "this node cannot talk
+            # to the bucket" are different facts, and the dashboard says
+            # different things about them. TOS reports the first as a 404 with
+            # code NoSuchKey; anything else — 403, DNS, a missing credential —
+            # is this machine's problem, not a gap in the record.
+            if _is_not_found(e):
+                raise BlobMissing(
+                    f"no such artifact in tos://{self.bucket}: {key}") from e
             raise PlatformError(f"tos get {key} failed: {e}") from e
 
     def presigned_get(self, key: str, *, expires_s: int = 900) -> str:

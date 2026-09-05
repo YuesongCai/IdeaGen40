@@ -289,7 +289,7 @@ def _age_s(iso: str | None, now_utc: datetime) -> float | None:
 
 def _insert_run_row(p: plat.Platform, *, run_id: str, as_of: str, kind: str,
                     started: str, ended: str | None, ok: int,
-                    error: str | None) -> bool:
+                    error: str | None, journal_uri: str | None = None) -> bool:
     """Write one `orch_runs` row, portably and idempotently.
 
     Returns False if a row with that id already exists — which is how the
@@ -298,14 +298,20 @@ def _insert_run_row(p: plat.Platform, *, run_id: str, as_of: str, kind: str,
     """
     have = p.state.q("SELECT run_id FROM orch_runs WHERE run_id=?", (run_id,))
     if have:
-        p.state.execute(
-            "UPDATE orch_runs SET ended_at=?, ok=?, error=? WHERE run_id=?",
-            (ended, ok, error, run_id))
+        if journal_uri is None:
+            p.state.execute(
+                "UPDATE orch_runs SET ended_at=?, ok=?, error=? WHERE run_id=?",
+                (ended, ok, error, run_id))
+        else:
+            p.state.execute(
+                "UPDATE orch_runs SET ended_at=?, ok=?, error=?, journal_uri=? "
+                "WHERE run_id=?", (ended, ok, error, journal_uri, run_id))
         return False
     p.state.execute(
         "INSERT INTO orch_runs (run_id,as_of,kind,platform,started_at,ended_at,"
         " ok,error,inputs_sha,journal_uri,calls) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (run_id, as_of, kind, p.name, started, ended, ok, error, None, None, 0))
+        (run_id, as_of, kind, p.name, started, ended, ok, error, None,
+         journal_uri, 0))
     return True
 
 
@@ -619,6 +625,66 @@ def _last_monitor_at(p: plat.Platform) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _journal_fields(d: Any) -> dict[str, Any]:
+    """The scalar facts of a phase result, flat enough to sit in a journal step.
+
+    Journal steps are read as one line each, so nested structures are dropped
+    rather than rendered — the full result is still in the pass's return value,
+    which is what the scheduler report shows.
+    """
+    if not isinstance(d, dict):
+        return {}
+    return {k: v for k, v in d.items()
+            if not isinstance(v, (dict, list)) and v is not None}
+
+
+def _write_monitor_journal(p: plat.Platform, *, run_id: str, as_of: str,
+                           started_at: str, steps: list[dict[str, Any]],
+                           problems: list[str]) -> str | None:
+    """Persist one monitoring pass as a run journal, like the weekly run does.
+
+    Until this existed, `kind='monitor'` rows were the only record of ~100
+    passes a day, and every dashboard path that offers "运行日志" for a run —
+    the receipt strip, the ask materials, the audit bundle — resolved to a blob
+    that had never been written. The page then explained the absence as a design
+    choice, which is a fine explanation and a bad substitute for the log.
+
+    Failure here degrades the pass, never fails it: monitoring exists to notice
+    trouble, and a monitor that dies because the artifact store is unreachable
+    is a monitor that goes quiet exactly when something is wrong. The store
+    outage becomes a `problems` entry, which is itself visible on the page.
+    """
+    key = f"runs/{as_of}/{run_id}/journal.json"
+    ended = plat.utcnow_iso()
+    try:
+        t0 = datetime.fromisoformat(started_at)
+        t1 = datetime.fromisoformat(ended)
+        duration = round((t1 - t0).total_seconds(), 3)
+    except Exception:  # noqa: BLE001 — a bad clock must not cost us the journal
+        duration = None
+    doc = {
+        "run_id": run_id, "kind": "monitor", "as_of": as_of,
+        "platform": p.name, "started_at": started_at, "ended_at": ended,
+        "duration_s": duration,
+        "ok": not problems, "error": "; ".join(problems)[:500] or None,
+        "port_health": [], "steps": steps, "artifacts": [],
+    }
+    try:
+        # The run id is a deterministic function of the 15-minute bucket, so a
+        # retried pass addresses the key its predecessor already wrote. Blob
+        # stores here are append-only on purpose; the first journal for a bucket
+        # is the one that stands.
+        if p.blobs.exists(key):
+            return p.blobs.uri(key)
+        return p.blobs.put(
+            key, json.dumps(doc, ensure_ascii=False, indent=1,
+                            default=str).encode(),
+            content_type="application/json")
+    except Exception as e:  # noqa: BLE001
+        problems.append(f"盯市日志写入失败：{type(e).__name__}: {e}")
+        return None
+
+
 def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
                     dry_run: bool, log: Callable[[str], None]) -> JobOutcome:
     """Refresh marks, evaluate stops and triggers, report feed health.
@@ -643,13 +709,33 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
     # heartbeat that only lives in Redis is not enough — the byteplus adapter
     # falls back to a *file* cache when IDEAGEN_REDIS_URL is unset, and a file in
     # a disposable sandbox is not evidence of anything.
+    started_at = plat.utcnow_iso()
+    steps: list[dict[str, Any]] = []
+
+    def _step(name: str, /, **fields: Any) -> None:
+        """Record one phase the moment it finishes, with its own clock.
+
+        Stamping the phases as they complete rather than describing them
+        afterwards is what makes the monitor journal worth reading: a pass that
+        hung in `ingest` for eleven minutes looks identical to a fast one in the
+        summary dict, and different in the timeline.
+        """
+        steps.append(plat.journal_step(len(steps) + 1, name, **fields))
+
+    # The durable liveness record. One bounded row per bucket, written before the
+    # work: if the sandbox dies mid-pass, the row with no `ended_at` says so. A
+    # heartbeat that only lives in Redis is not enough — the byteplus adapter
+    # falls back to a *file* cache when IDEAGEN_REDIS_URL is unset, and a file in
+    # a disposable sandbox is not evidence of anything.
     if not dry_run:
         _insert_run_row(p, run_id=run_id, as_of=now_hkt.date().isoformat(),
-                        kind="monitor", started=plat.utcnow_iso(), ended=None,
+                        kind="monitor", started=started_at, ended=None,
                         ok=0, error=None)
 
     problems: list[str] = []
     detail["feeds"] = _feed_health(p, now_hkt, problems)
+    _step("feeds", n=len(detail["feeds"]),
+          bad=len([f for f in detail["feeds"] if f.get("problem")]))
 
     con = _legacy_con(p)
     if con is None:
@@ -669,20 +755,33 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
             "n": detail["marks"].get("alerts", 0),
             "source": "rds-portable-paper",
         }
+        _step("marks", source="rds-portable-paper",
+              **_journal_fields(detail["marks"]))
+        _step("alerts", n=detail["alerts"].get("n"))
     else:
         detail["prices"] = _warm_prices(p, con, now_hkt, problems)
+        _step("prices", **_journal_fields(detail["prices"]))
         detail["marks"] = _advance_books(con, now_hkt, problems, log=log)
+        _step("marks", source="local-paper", **_journal_fields(detail["marks"]))
         detail["alerts"] = _check_triggers(con, now_hkt, problems, log=log)
+        _step("alerts", **_journal_fields(detail["alerts"]))
     detail["ingest"] = _ingest_incremental(p, con, problems, dry_run=dry_run,
                                            log=log)
+    _step("ingest", **_journal_fields(detail["ingest"]))
     detail["olive"] = _sync_olive_daily(
         p, now_hkt, now_utc, problems, dry_run=dry_run, log=log)
+    _step("olive", **_journal_fields(detail["olive"]))
 
+    journal_uri = None
     if not dry_run:
+        journal_uri = _write_monitor_journal(
+            p, run_id=run_id, as_of=now_hkt.date().isoformat(),
+            started_at=started_at, steps=steps, problems=problems)
         _insert_run_row(p, run_id=run_id, as_of=now_hkt.date().isoformat(),
-                        kind="monitor", started=plat.utcnow_iso(),
+                        kind="monitor", started=started_at,
                         ended=plat.utcnow_iso(), ok=0 if problems else 1,
-                        error="; ".join(problems)[:500] or None)
+                        error="; ".join(problems)[:500] or None,
+                        journal_uri=journal_uri)
     p.events.publish("scheduler.monitor",
                      {"run_id": run_id, "problems": problems,
                       "alerts": (detail.get("alerts") or {}).get("n")})

@@ -84,6 +84,20 @@ class NotConfigured(PlatformError):
     """
 
 
+class BlobMissing(PlatformError):
+    """The store answered, and the artifact is not there.
+
+    Separate from PlatformError for the same reason NotConfigured is, and the
+    distinction is load-bearing for anything that shows provenance to a reader.
+    "This run never wrote that artifact" and "this node cannot read the bucket
+    the artifact is in" are opposite facts: the first is a real gap in the
+    record, the second is a gap in *this* machine and the record is intact
+    elsewhere. Collapsed into one exception type they render as the same
+    sentence, and a dashboard ends up telling a reader that evidence was never
+    produced when it exists and is simply out of reach.
+    """
+
+
 # ---------------------------------------------------------------------------
 class BlobStore(abc.ABC):
     """Append-only artifact storage, keyed by path.

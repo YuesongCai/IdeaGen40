@@ -22,12 +22,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .base import (BlobStore, Cache, Completion, EventBus, Health, Inference,
-                   NotConfigured, Platform, PlatformError, SecretStore,
-                   StateStore, Unavailable, port_or_unavailable)
+from .base import (BlobMissing, BlobStore, Cache, Completion, EventBus, Health,
+                   Inference, NotConfigured, Platform, PlatformError,
+                   SecretStore, StateStore, Unavailable, port_or_unavailable)
 
-__all__ = ["load", "Platform", "Health", "RunJournal", "NotConfigured",
-           "PlatformError", "BlobStore", "StateStore", "Inference", "EventBus",
+__all__ = ["load", "Platform", "Health", "RunJournal", "journal_step",
+           "NotConfigured",
+           "PlatformError", "BlobMissing", "BlobStore", "StateStore",
+           "Inference", "EventBus",
            "Cache", "SecretStore", "Completion", "env_report", "Unavailable"]
 
 #: Everything the platform reads, in one place so `env_report` can show operators
@@ -385,6 +387,37 @@ def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def journal_step(n: int, name: str, /, **fields: Any) -> dict[str, Any]:
+    """One journal step record, with the structural keys protected.
+
+    `n`, `step` and `at` are the record's own skeleton — the ordinal, the name
+    and the clock. Splatting the caller's fields over a dict that already held
+    them let a payload silently take the skeleton's place, and it did: several
+    pipeline steps report a count under the key `n`, so the weekly journal's
+    ordinals came out as 1, 858, 5, 9, 156 … — the corpus row count sitting
+    where the step number belonged. Nothing errored, and the run log simply read
+    as though the steps were shuffled.
+
+    The two skeleton parameters are positional-only for the same reason the
+    body exists: a caller passing `n=` as data must reach `**fields`, not bind
+    the ordinal parameter.
+
+    A payload `n` is always a count here, so it keeps its meaning under `count`
+    rather than being dropped; `step` and `at` collisions have no such second
+    meaning and are namespaced instead of silently discarded.
+    """
+    out: dict[str, Any] = {"n": n, "step": name,
+                           "at": datetime.now(timezone.utc).isoformat()}
+    for k, v in fields.items():
+        if k == "n":
+            out["count"] = v
+        elif k in ("step", "at"):
+            out[f"{k}_detail"] = v
+        else:
+            out[k] = v
+    return out
+
+
 class RunJournal:
     """One immutable record per run, written through the blob store.
 
@@ -419,10 +452,9 @@ class RunJournal:
         return f"runs/{self.as_of}/{self.run_id}"
 
     def step(self, name: str, **fields: Any) -> None:
-        rec = {"n": len(self.steps) + 1, "step": name,
-               "at": datetime.now(timezone.utc).isoformat(), **fields}
-        self.steps.append(rec)
-        self.p.events.publish("run.step", {"run_id": self.run_id, **rec})
+        self.steps.append(journal_step(len(self.steps) + 1, name, **fields))
+        self.p.events.publish("run.step",
+                              {"run_id": self.run_id, **self.steps[-1]})
 
     def artifact(self, name: str, data: bytes, *,
                  content_type: str = "application/json") -> str:

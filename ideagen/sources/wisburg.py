@@ -33,6 +33,39 @@ class WisburgError(RuntimeError):
     pass
 
 
+class WisburgRateLimited(WisburgError):
+    """The vendor refused the call because the hourly quota is spent.
+
+    It matters that this is an exception and not an empty page. The refusal
+    arrives as a 200 carrying one sentence of prose — 「已达到智堡(Wisburg) API 的
+    调用频率上限（每小时 1000 次）」 — which `_parse_text_page` reads as a page
+    with no `[id] title` headers, i.e. as a day on which nothing was published.
+    Ingest then recorded `window=0, errors=0` for that day and moved on, so a
+    spent quota and a quiet news day were written into the corpus identically.
+    Every layer above reads the corpus as fact: a silently empty day drags the
+    A factor (三日升温) toward a warming it never saw, and no downstream check
+    can recover the difference once the row is absent.
+    """
+
+    def __init__(self, message: str, retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+#: The refusal is prose, in two languages, with no status code to key on.
+_RATE_LIMIT_RE = re.compile(r"Rate limit exceeded|调用频率上限|rate.?limit", re.I)
+_RETRY_AFTER_RE = re.compile(r"Retry after ~?(\d+)\s*s", re.I)
+
+
+def _reject_refusal(tool: str, res: Any) -> Any:
+    """Turn a prose refusal into an exception before anyone parses it as data."""
+    if isinstance(res, str) and _RATE_LIMIT_RE.search(res) and "[" not in res[:200]:
+        m = _RETRY_AFTER_RE.search(res)
+        raise WisburgRateLimited(f"{tool}: {res.strip()[:200]}",
+                                 int(m.group(1)) if m else None)
+    return res
+
+
 @dataclass
 class Item:
     line: str
@@ -128,7 +161,7 @@ class Wisburg:
 
     def call(self, tool: str, args: dict) -> Any:
         res = self._rpc("tools/call", {"name": tool, "arguments": args})
-        return _unwrap_content(res)
+        return _reject_refusal(tool, _unwrap_content(res))
 
     # -------------------------------------------------------- paged listing
     def list_line(self, line: str, start: date, end: date, limit: int | None = None,
@@ -853,6 +886,11 @@ def ingest(con, as_of: date, lookback_days: int = config.OBSERVATION_WINDOW_DAYS
         for d in window:
             try:
                 got = w.list_line(line, d, d, max_pages=12)
+            except WisburgRateLimited:
+                # Not a bad day: every remaining call in this window would be
+                # refused too, and each would be recorded as a day with no
+                # research. Stop and let the caller wait out the quota.
+                raise
             except Exception as e:  # noqa: BLE001 - one bad day must not kill the line
                 report["errors"][f"{line}@{d}"] = str(e)[:200]
                 failed = True

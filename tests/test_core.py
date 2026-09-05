@@ -367,6 +367,38 @@ class TestWisburgParsing(unittest.TestCase):
         self.assertEqual(cursor, "2")
         self.assertTrue(has_next)
 
+    def test_a_spent_quota_is_not_a_quiet_news_day(self):
+        """The refusal is prose in a 200, and it used to parse as an empty page.
+
+        Verbatim from the server on 2026-09-05, after a backfill walk crossed
+        1000 calls in an hour. Read as a page it has no `[id] title` headers,
+        so ingest recorded `window=0, errors=0` — the same rows a day with no
+        research would leave. Seven weeks of history went in that way before
+        anyone looked at the raw bytes.
+        """
+        refusal = ("已达到智堡(Wisburg) API 的调用频率上限（每小时 1000 次），"
+                   "请在约 37 分钟后重试。如需更高配额，请联系智堡技术支持。 "
+                   "Rate limit exceeded (1000 requests/hour). Retry after ~2196s. "
+                   "Contact Wisburg support to request a higher quota.")
+        # what it looked like before the guard: a page with nothing on it
+        nodes, _, _ = wisburg._extract_page(refusal)
+        self.assertEqual(nodes, [], "premise: the refusal parses as an empty page")
+
+        with self.assertRaises(wisburg.WisburgRateLimited) as caught:
+            wisburg._reject_refusal("list-institutional-reports", refusal)
+        self.assertEqual(caught.exception.retry_after, 2196,
+                         "the wait is the one actionable number in the sentence")
+
+    def test_a_real_page_is_not_mistaken_for_a_refusal(self):
+        """A report about rate limits is still a report."""
+        page = ("Found 1 reports:\n\n"
+                "[99611] 美联储流动性工具与 rate limit 机制评述\n"
+                "  date: 2026-08-06T23:36:29+08:00\n\n"
+                "--- Page Info ---\nNext cursor: 2\n")
+        self.assertIs(wisburg._reject_refusal("list-feed", page), page)
+        nodes, _, _ = wisburg._extract_page(page)
+        self.assertEqual(len(nodes), 1)
+
     def test_detail_sections(self):
         md = ("# 标题\n\n- ID: 123\n- Date: 2026-08-06T00:00:00+08:00\n\n"
               "## Summary\n\n### 主要观点\n1. **甲**\n2. **乙**\n\n"

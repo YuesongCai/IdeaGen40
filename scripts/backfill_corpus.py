@@ -43,8 +43,16 @@ sys.path.insert(0, str(ROOT))
 
 from ideagen import db  # noqa: E402
 from ideagen.sources import wisburg  # noqa: E402
+from ideagen.sources.wisburg import WisburgRateLimited  # noqa: E402
 
 WINDOW = 7
+
+#: The vendor allows 1000 calls an hour and refuses the rest in prose. One
+#: week costs ~70 calls, so a full walk crosses the wall several times; waiting
+#: it out is the walk, not an error in it. The pad covers clock skew between
+#: the server's estimate and ours.
+RETRY_PAD_S = 30
+DEFAULT_WAIT_S = 20 * 60
 
 
 def main(argv: list[str]) -> int:
@@ -64,13 +72,25 @@ def main(argv: list[str]) -> int:
 
     t0 = time.time()
     total_new = 0
+    waited = 0
     for n, as_of in enumerate(stops, 1):
-        try:
-            rep = wisburg.ingest(con, as_of, lookback_days=WINDOW,
-                                 fetch_bodies=0, verbose=False)
-        except Exception as e:  # noqa: BLE001 - one bad week must not end the walk
-            print(f"[{n}/{len(stops)}] {as_of} FAILED {type(e).__name__}: {e}",
-                  flush=True)
+        while True:
+            try:
+                rep = wisburg.ingest(con, as_of, lookback_days=WINDOW,
+                                     fetch_bodies=0, verbose=False)
+                break
+            except WisburgRateLimited as e:
+                wait = (e.retry_after or DEFAULT_WAIT_S) + RETRY_PAD_S
+                waited += wait
+                print(f"[{n}/{len(stops)}] {as_of} 配额用尽，等 {wait}s 后重试本周"
+                      f"（累计等待 {waited // 60} 分钟）", flush=True)
+                time.sleep(wait)
+            except Exception as e:  # noqa: BLE001 - one bad week must not end the walk
+                print(f"[{n}/{len(stops)}] {as_of} FAILED {type(e).__name__}: {e}",
+                      flush=True)
+                rep = None
+                break
+        if rep is None:
             continue
         total_new += rep["new"]
         errs = len(rep.get("errors") or {})

@@ -1072,6 +1072,80 @@ def sweep(con, dates: Sequence[date | str], *,
 
 
 # ---------------------------------------------------------------------------
+def realized_vol_pct(equities: Sequence[float], periods_per_year: int = 252
+                     ) -> float | None:
+    """Annualised volatility of a daily equity series, in percent."""
+    if len(equities) < 3:
+        return None
+    rets = [equities[i] / equities[i - 1] - 1.0 for i in range(1, len(equities))
+            if equities[i - 1]]
+    if len(rets) < 2:
+        return None
+    return st.pstdev(rets) * (periods_per_year ** 0.5) * 100.0
+
+
+def instrument_vol_gradient(con, positions: Sequence[dict[str, Any]],
+                            score_of: Any, *, lookback: int = 60) -> dict:
+    """Whether a score that ranks returns is really just ranking risk.
+
+    The check that has to be run against any ranking that works, and the one
+    it is most likely to fail. Sorting a pool by expected return over six weeks
+    in which risk assets rose produces a clean ladder whether or not the score
+    knows anything — because expected return is largely a restatement of how
+    much the instrument moves, and in a rising window the movers win.
+
+    So: the realised volatility of each bucket's holdings **before entry**,
+    beside its return. If the two ladders have the same shape and return per
+    unit of volatility is flat across buckets, the ranking is a risk sorter and
+    should be reported as one. Measured before entry so the number is knowable
+    on the day the pick was made.
+    """
+    inst = {r["key"]: r["futu_code"] for r in db.q(
+        con, "SELECT key, futu_code FROM instruments WHERE futu_code IS NOT NULL")}
+
+    def vol(code: str, upto: str) -> float | None:
+        px = [r["close"] for r in db.q(
+            con, "SELECT close FROM prices WHERE code=? AND d<=? "
+                 "ORDER BY d DESC LIMIT ?", (code, upto, lookback + 1))][::-1]
+        if len(px) < 21:
+            return None
+        return st.pstdev([px[i] / px[i - 1] - 1 for i in range(1, len(px))]
+                         ) * (252 ** 0.5) * 100.0
+
+    out: dict[str, list[tuple[float, float]]] = {}
+    for r in positions:
+        b = score_of(r)
+        code = inst.get(str(r.get("instrument_id")))
+        if b is None or not code or r.get("return_pct") is None:
+            continue
+        v = vol(code, str(r.get("period")))
+        if v is None:
+            continue
+        out.setdefault(str(b), []).append((float(r["return_pct"]), v))
+
+    buckets = {}
+    for b, rows in sorted(out.items()):
+        mr = sum(x[0] for x in rows) / len(rows)
+        mv = sum(x[1] for x in rows) / len(rows)
+        buckets[b] = {"n": len(rows), "mean_return_pct": round(mr, 4),
+                      "mean_prior_vol_pct": round(mv, 4),
+                      "return_per_vol": round(mr / mv, 4) if mv else None}
+    ratios = [v["return_per_vol"] for v in buckets.values()
+              if v["return_per_vol"] is not None]
+    vols = [v["mean_prior_vol_pct"] for v in buckets.values()]
+    spread = (max(ratios) - min(ratios)) if len(ratios) > 1 else None
+    return {
+        "lookback_days": lookback, "buckets": buckets,
+        "vol_ratio_top_over_bottom": (round(vols[-1] / vols[0], 2)
+                                      if len(vols) > 1 and vols[0] else None),
+        "return_per_vol_spread": None if spread is None else round(spread, 4),
+        "note": (
+            "入场前 60 日年化波动，与同一分桶的收益并列。两条阶梯形状相同、"
+            "而单位波动收益基本持平，就说明这个分数在排风险而不是在排能力——"
+            "上涨窗口里把风险从低到高排一遍，必然得到一条漂亮的收益阶梯。"),
+    }
+
+
 def tranche_curve(con, positions: Sequence[dict[str, Any]], *,
                   horizon_days: int, gap_days: float,
                   cash_pct_annual: float = 0.0) -> list[dict[str, Any]]:

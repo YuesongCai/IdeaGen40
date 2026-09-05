@@ -299,20 +299,59 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
     return "".join(parts)
 
 
-def _benchmark_return(con, points: list[dict]) -> float | None:
-    """Benchmark return over exactly the span the curve covers."""
+def _benchmark_series(con, points: list[dict]) -> tuple[float | None, float | None]:
+    """Benchmark return and realised volatility over exactly the curve's span.
+
+    The volatility is what makes the comparison honest. A return difference
+    against an index says nothing until both sides are divided by the risk that
+    produced them, and these arms do not run at the index's risk — the top
+    expectation bucket holds copper miners and oil against the bottom's T-bills.
+    """
     if not points:
-        return None
+        return None, None
     ds = [p["d"] for p in points]
     a, b = min(ds), max(ds)
-    q = lambda d: db.q1(con, "SELECT close c FROM prices WHERE code=? AND d<=? "
-                             "ORDER BY d DESC LIMIT 1", (BENCHMARK, d))
-    lo, hi = q(a), q(b)
-    return None if not (lo and hi) else (hi["c"] / lo["c"] - 1) * 100
+    rows = db.q(con, "SELECT d, close c FROM prices WHERE code=? AND d>=? AND d<=? "
+                     "ORDER BY d", (BENCHMARK, a, b))
+    if len(rows) < 3:
+        return None, None
+    px = [r["c"] for r in rows]
+    return (px[-1] / px[0] - 1) * 100, backtest.realized_vol_pct(px)
+
+
+def _ev_bucket_of(con, days: list):
+    """Map a backtest position to the expectation quintile of its own period."""
+    import bisect as _b
+    cuts: dict[str, list[float]] = {}
+    ev_by: dict[tuple[str, str], float] = {}
+    for d in days:
+        vals = []
+        for r in db.q(con, "SELECT instrument_id, upside_pct, downside_pct, p_up, "
+                           "p_base, p_down FROM candidates WHERE as_of=?",
+                      (d.isoformat(),)):
+            ps = [r["p_up"], r["p_base"], r["p_down"]]
+            rs = [r["upside_pct"], 0.0, r["downside_pct"]]
+            if any(v is None for v in ps + rs) or sum(ps) <= 0:
+                continue
+            e = sum(p / sum(ps) * v for p, v in zip(ps, rs))
+            ev_by[(d.isoformat(), str(r["instrument_id"]))] = e
+            vals.append(e)
+        vals.sort()
+        if len(vals) >= 15:
+            cuts[d.isoformat()] = [vals[int(len(vals) * k / 5)] for k in range(1, 5)]
+
+    def bucket(row: dict):
+        per = str(row.get("period"))
+        e = ev_by.get((per, str(row.get("instrument_id"))))
+        c = cuts.get(per)
+        if e is None or not c:
+            return None
+        return f"Q{_b.bisect_left(c, e) + 1}"
+    return bucket
 
 
 def _exposure(points: list[dict], gap_days: float, horizon_days: int,
-              bench_pct: float | None) -> dict:
+              bench_pct: float | None, bench_vol: float | None = None) -> dict:
     """How much of the book was at risk, and what the curve means given that.
 
     A tranche portfolio ramps: the first period commits one slot of four, so the
@@ -338,12 +377,20 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
     mean_inv = (sum(fracs) / len(fracs)) if fracs else None
     beta_eq = (None if (mean_inv is None or bench_pct is None)
                else mean_inv * bench_pct)
+    bench_ratio = (None if (bench_vol is None or not bench_vol or bench_pct is None)
+                   else bench_pct / bench_vol)
     arms = {}
     for name, rows in sorted(by_arm.items()):
         ret = rows[-1]["equity"] - 100.0
+        vol = backtest.realized_vol_pct([r["equity"] for r in rows])
         arms[name] = {
             "nav_end": round(rows[-1]["equity"], 4),
             "return_pct": round(ret, 4),
+            "realized_vol_pct": None if vol is None else round(vol, 4),
+            "return_per_vol": (None if not vol else round(ret / vol, 4)),
+            "return_per_vol_vs_benchmark": (
+                None if not (vol and bench_ratio is not None)
+                else round(ret / vol - bench_ratio, 4)),
             "excess_over_benchmark_pct": (None if bench_pct is None
                                           else round(ret - bench_pct, 4)),
             "excess_over_exposure_pct": (None if beta_eq is None
@@ -359,6 +406,9 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
                  for p in any_arm[1:]],
         "benchmark": BENCHMARK,
         "benchmark_pct": None if bench_pct is None else round(bench_pct, 4),
+        "benchmark_vol_pct": None if bench_vol is None else round(bench_vol, 4),
+        "benchmark_return_per_vol": (None if bench_ratio is None
+                                     else round(bench_ratio, 4)),
         "beta_equivalent_pct": None if beta_eq is None else round(beta_eq, 4),
         "arms": arms,
         "instruments_without_daily_series": no_series,
@@ -367,8 +417,11 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
             "持有期，空出的档位是现金。窗口开头必然欠投——第一期只占一个档位，"
             "所以拿它和满仓指数直接比会低估每条臂一个建仓成本。"
             "beta_equivalent_pct 是同样平均敞口拿着基准会有的收益，"
-            "excess_over_exposure_pct 是相对它的差；该折算假设对 SPY 的 beta 为 1，"
-            "而板块/商品/汇率 ETF 组合并不满足，所以它是粗折算，读次序比读数值可靠。"),
+            "excess_over_exposure_pct 是相对它的差。**该折算假设对 SPY 的 beta 为 1，"
+            "而这些臂并不满足**——2026-09-05 实测 ev_rank 的顶格分位持仓入场前年化波动"
+            "35%，SPY 约 11%，所以那一列偏乐观，不要单独引用。"
+            "要判断有没有超额，看 return_per_vol_vs_benchmark：它拿每条臂自己实现的"
+            "净值波动做分母，不假设任何 beta。"),
     }
 
 
@@ -1042,8 +1095,11 @@ def main(argv: list[str]) -> int:
             f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
     provenance = _theme_provenance(days)
     ranking_power = _ranking_power(con, days, args.horizon_days)
+    bench = _benchmark_series(con, points)
     exposure = _exposure(points, rep.gap_days, args.horizon_days,
-                         _benchmark_return(con, points))
+                         bench[0], bench[1])
+    ranking_power["volatility_control"] = backtest.instrument_vol_gradient(
+        con, positions, _ev_bucket_of(con, days))
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",

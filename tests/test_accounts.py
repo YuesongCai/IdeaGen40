@@ -306,3 +306,40 @@ class TheRosterIsNotPublished(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheComposeVolumeIsActuallyWritable(unittest.TestCase):
+    """A named volume for the accounts only helps if the container can write it.
+
+    Docker seeds a *fresh* named volume from the image directory it is mounted
+    over — including its owner and mode. If the Dockerfile does not create that
+    directory and give it to the runtime user, docker makes it root-owned 0755,
+    the unprivileged container cannot write there, `_writable()` says no, and the
+    accounts fall back into the container. Which is precisely the failure the
+    volume was added to prevent, arriving dressed as the fix, and visible only
+    as `local_durable: false` on an endpoint nobody reads on a good day.
+
+    So the two files have to agree, and this is the assertion that makes them.
+    """
+
+    def test_the_dockerfile_prepares_every_account_path_compose_mounts(self):
+        from ideagen import config
+        root = Path(config.ROOT)
+        compose, dockerfile = root / "deploy/compose.yaml", root / "deploy/Dockerfile"
+        if not compose.is_file() or not dockerfile.is_file():
+            self.skipTest("这里没有 deploy/（镜像里就是如此）")
+        text = compose.read_text(encoding="utf-8")
+        want = [line.split(":", 1)[1].strip().strip('"\'')
+                for line in text.splitlines()
+                if line.strip().startswith("IDEAGEN_ACCOUNTS_FILE:")]
+        self.assertTrue(want, "compose 没有显式指定账号文件位置")
+        df = dockerfile.read_text(encoding="utf-8")
+        for path in want:
+            d = str(Path(path).parent)
+            self.assertIn(d, df,
+                          f"compose 把账号放在 {d}，但镜像没有建这个目录 —— "
+                          f"docker 会用 root 0755 初始化那个卷，容器写不进去，"
+                          f"账号会悄悄退回容器内")
+            self.assertRegex(
+                df, r"chown[^\n]*" + __import__("re").escape(d),
+                f"{d} 建了但没 chown 给运行用户，等于没建")

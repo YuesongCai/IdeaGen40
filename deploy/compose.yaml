@@ -38,7 +38,13 @@ services:
       # 所以每次写入顺带镜像一份到桶里，新容器起来时先找它再谈初始化。
       # 显式打开：笔记本同样配了云平台，靠推断会让本机测试去碰生产桶。
       IDEAGEN_ACCOUNTS_MIRROR: "1"
+      # 显式指到一个具名卷上。原先靠自动选路落到 /run/ideagen-oauth，
+      # 而那个宿主机目录是 0700、容器不是属主 —— 探测拿到 EACCES，账号退回
+      # 容器内，只剩镜像那条腿在扛。具名卷换容器不会消失，而且镜像里已经把
+      # 这个目录建好并 chown 给运行用户，docker 初始化新卷时会继承这个属主。
+      IDEAGEN_ACCOUNTS_FILE: "/var/lib/ideagen-accounts/accounts.json"
     volumes:
+      - accounts_data:/var/lib/ideagen-accounts
       - /opt/ideagen/oauth:/run/ideagen-oauth
       # 只读挂进来，好让 /deploy 能说出「云端现在是哪个 commit、跟 origin/main
       # 差多少、上一次自更新成功还是被测试拦下」。自更新如果没人看得见，
@@ -128,3 +134,7 @@ services:
 
 volumes:
   caddy_data:
+  # 账号表。卷是空的那一次（第一次部署）由 accounts.bootstrap() 先去读
+  # 对象存储上的镜像，读到就恢复、读不到就明确拒绝新建管理员 —— 所以换到
+  # 卷上不会把已有的人弄丢。
+  accounts_data:

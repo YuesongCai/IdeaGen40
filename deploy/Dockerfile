@@ -73,7 +73,16 @@ RUN chmod +x ./deploy/entrypoint.sh ./deploy/dashboard_entrypoint.sh
 # SQLite fallback during the first migration step, and losing it must never lose
 # anything that matters — which is exactly what the configured RDS state port
 # and `IDEAGEN_TOS_BUCKET` are for.
-RUN mkdir -p /app/data && useradd -u 10001 -m ideagen && chown -R ideagen /app
+# `/var/lib/ideagen-accounts` is where a compose deployment keeps the account
+# list, on a named volume. It is created here, owned by the runtime user, for a
+# specific docker behaviour: a *fresh* named volume inherits the ownership and
+# mode of the image directory it is mounted over. Without this line docker
+# creates it root-owned 0755, the unprivileged container cannot write it, and
+# the accounts silently fall back into the container — which is the exact
+# failure this volume exists to prevent, arriving in the disguise of a fix.
+RUN mkdir -p /app/data /var/lib/ideagen-accounts \
+    && useradd -u 10001 -m ideagen \
+    && chown -R ideagen /app /var/lib/ideagen-accounts
 USER ideagen
 
 ENV IDEAGEN_PLATFORM=byteplus \

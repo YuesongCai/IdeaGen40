@@ -7270,8 +7270,13 @@ function pipeCanvasCard(){
   currentBooks().forEach(function(b){
     nBooked+=(b.open_positions||[]).filter(function(p){return p&&p.as_of===w.as_of}).length;
   });
+  var ik=w.inputs_by_kind||{};
+  var leadIn=[];
+  if((ik.calendar||{}).rows)leadIn.push(fmtInt(ik.calendar.rows)+' 行宏观日历');
+  if((ik.universe||{}).rows)leadIn.push(fmtInt(ik.universe.rows)+' 只货架');
   var lead=(nDocs&&nPool)
-    ? '本期读入 <b>'+fmtInt(nDocs)+'</b> 篇研报，收敛出 <b>'+fmtInt(nTopics)+'</b> 个宏观主题，'
+    ? '本期读入 <b>'+fmtInt(nDocs)+'</b> 篇研报'
+      +(leadIn.length?'（另有 '+leadIn.join(' · ')+'）':'')+'，收敛出 <b>'+fmtInt(nTopics)+'</b> 个宏观主题，'
       +'<b>'+fmtInt(nRan)+'</b> 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
       +(ag&&ag.openN?('，'+fmtInt((ag.books||[]).length)+' 个组合各自从中选出持仓'
         +(nBooked?('，本期建仓 <b>'+fmtInt(nBooked)+'</b> 仓（累计在持 '+fmtInt(ag.openN)+' 仓）。')
@@ -7311,6 +7316,15 @@ function pipeCanvasSVG(){
   var sels=orderedSelectors();
   var books=currentBooks();
   var corpusN=w.corpus_total||corpusRowsFor(w.as_of);
+  /* 这一列画的是「本期的输入」，而它长期只画了研报一样东西。同一次运行的
+   * feed 回执里还有宏观日历和货架——2026-09-02 那期是日历 14 行、货架 156 只，
+   * 它们进了生成器，却在这张自称「想法从哪来」的图上一次都没出现过。
+   * 初心写的输入是「wisburg 日报 + 宏观日历」两半，所以只画一个方块不是漏了
+   * 一个细节，是把这个系统画成了「只读研报」。 */
+  var inputKinds=w.inputs_by_kind||{};
+  var otherInputs=[];
+  if((inputKinds.calendar||{}).rows)otherInputs.push(['宏观日历',inputKinds.calendar.rows,'条']);
+  if((inputKinds.universe||{}).rows)otherInputs.push(['货架',inputKinds.universe.rows,'只']);
   var W=1120;
   var SEL_Y0=44,SEL_GAP=42,PAD_TOP=20;
   var H=Math.max(450,PAD_TOP+SEL_Y0+Math.max(0,sels.length-1)*SEL_GAP+31);
@@ -7348,7 +7362,11 @@ function pipeCanvasSVG(){
    * 方块副行、浮层一起改口——宁可换一个口径说清楚，也不要画一段空的。 */
   var perNow=nowTotal>0;
   var stagePop=[
-    pop('研报'+(corpusN?' · '+fmtInt(corpusN)+' 篇研报':''),null,'本期全部判断的输入；4 种生成方法共用同一份研报'),
+    pop('输入'+(corpusN?' · '+fmtInt(corpusN)+' 篇研报':'')
+        +(otherInputs.length?otherInputs.map(function(o){return ' · '+fmtInt(o[1])+' '+o[2]+o[0]}).join(''):''),
+      null,
+      '研报进筛选A（打分选主题）与筛选B（4 种方法共用同一份）；'
+      +'宏观日历与货架进筛选B，作为写想法时的触发条件、价格锚与可买范围。'),
     pop('筛选A · 选主题',totalScored?fmtInt(totalScored)+' 个主题已评分 · 前 '+chosen.length+' 入选':'尚未评分',ctrl?'与计数对照打分重合 '+overlapN+'/'+chosen.length:''),
     pop('筛选B · 写想法',gens.length?'4 种方法合计 '+fmtInt(rawIdeas)+' 条':'尚无产出','彼此独立，输入为同一批 '+chosen.length+' 个主题'),
     pop('合并 · 候选池',pool.n?fmtInt(rawIdeas)+' → '+fmtInt(pool.n)+' 条（一标的一条）':'候选池为空','同标的合并，赔率取中位数；共识度仅作记录，不参与打分'),
@@ -7358,7 +7376,7 @@ function pipeCanvasSVG(){
   /* 每列标注数值口径，画布上不出现无单位的裸数字。
    * 一个非技术读者第一次看这张图时问的第一个问题就是「这个数是几什么」，
    * 而答案此前只藏在 hover 里；hover 不存在于截图、投屏和打印件中。 */
-  var cols=[[60,'研报',0,'块内 = 研报篇数'],
+  var cols=[[60,'输入',0,'块内 = 研报篇数；其下为同期其他输入'],
             [255,'筛选A · 主题',1,'圆内 = 命中研报篇数'],
             [505,'筛选B · 写想法',2,'框内 = 写出想法条数'],
             [705,'合并 · 候选池',3,'环内 = 合并后候选条数'],
@@ -7384,6 +7402,12 @@ function pipeCanvasSVG(){
       +txt(62,196,fmtInt(corpusN),20,'var(--color-text-on-brand)','middle',600,true)
       +txt(62,216,'篇研报',11,'var(--color-surface-brand-sunken)','middle')
       +'</g>';
+    /* 同期其他输入。刻意画得比研报块小：它们的体量和作用都不同，画成并列的
+     * 三个方块会说「三者等重」，而研报是本期全部语义判断的来源。 */
+    otherInputs.forEach(function(o,i){
+      s+=txt(62,272+i*20,o[0]+' · '+fmtInt(o[1])+' '+o[2],10,
+             'var(--color-text-tertiary)','middle',400);
+    });
   }else{
     s+='<g class="pc-click" onclick="openStageDrawer(0)"'+popRef(stagePop[0])+'><rect x="14" y="152" width="96" height="96" rx="14" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'
       +txt(62,204,'未读入',11,'var(--color-text-tertiary)','middle')+'</g>';

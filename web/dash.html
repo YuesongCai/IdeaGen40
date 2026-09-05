@@ -706,6 +706,11 @@ tr.expandable:focus-visible,th.sortable:focus-visible{
 }
 .empty .e-action:hover{background:var(--color-action-primary-hover)}
 .empty .e-action:active{background:var(--color-action-primary-pressed)}
+td.vc{position:relative;text-align:right;min-width:104px}
+td.vc .vcbar{position:absolute;left:10px;top:50%;transform:translateY(-50%);height:8px;border-radius:1px;opacity:.42}
+td.vc .vcbar.r{background:var(--color-fill-brand-green)}
+td.vc .vcbar.v{background:var(--color-text-tertiary)}
+td.vc em{position:relative;font-style:normal;font-family:var(--font-sans);font-variant-numeric:tabular-nums;font-weight:500}
 .ls-note{margin:var(--space-3) 0;padding:var(--space-3) var(--space-4);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface-muted);font:400 13px/20px var(--font-sans);color:var(--color-text-secondary)}
 tr.ls-ev td{background:var(--color-surface-muted)}
 .rk-bars{display:flex;flex-direction:column;gap:var(--space-3)}
@@ -1367,6 +1372,8 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 /* 筛选B 生产网格 */
 .pgrid{display:grid;gap:6px;align-items:stretch}
 .pg-h{font:500 11px/14px var(--font-mono);color:var(--color-text-metadata);display:flex;align-items:flex-end;justify-content:center;text-align:center;padding-bottom:2px}
+/* 主题列头写中文名：mono 是给英文代号用的字体，中文在里面又宽又散。 */
+.pg-h.zh{font-family:var(--font-sans);letter-spacing:0;word-break:break-word}
 .pg-m{display:flex;flex-direction:column;justify-content:center;min-width:0;border:none;background:none;text-align:left;font:inherit;cursor:pointer;border-radius:var(--radius-sm)}
 .pg-m .t{font:500 13px/18px var(--font-sans);color:var(--color-text-primary);white-space:nowrap}
 .pg-m .s{font:400 11px/14px var(--font-sans);color:var(--color-text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3648,12 +3655,20 @@ function statusStrip(){
     +' · <button type="button" class="exp-btn" style="padding:1px 4px" onclick="openCalDrawer()" title="按期查看运行记录">上次成功'
     +'<span class="gloss" title="每周自动执行一次的全流程：读研报 → 选主题 → 写想法 → 筛选持仓 → 建仓">周跑</span>'
     +(lw?'：'+esc(lw.as_of)+' 期'+(lw.ended_at?'（'+hktFmt(lw.ended_at,true)+'）':''):'：尚无成功记录')+' ›</button>'
-    +' · '+nextRunPhrase();
+    +' · '+nextRunPhrase()
+    /* 永久缺失的期次是历史，不是此刻的体征。它此前是一枚红色徽标，排在绿点和
+       「运行正常」中间——三个东西同时出现，读起来像在说「正常，但是红的」。
+       现在这一行本来就是讲历史与下一次的（上次成功周跑 · 下次几时），它归这里。
+       写成文字而不是第二颗按钮：左边那颗「上次成功周跑 ›」去的就是运行记录，
+       同一个去处不该在一行里出现两个入口。悬停里的那句话一并摊开——
+       「缺失」和「还没跑」是两回事，不写出来读者会等它自己补上。 */
+    +(gaps?' · <span style="color:var(--color-feedback-warning-text)">另有 <b class="num">'
+        +gaps+'</b> 期永久缺失</span>'
+        +'<span class="gloss gm" title="超过 48 小时宽限仍未跑成即判定失败，不补跑：那一期的判断永远不存在，组合里也不会有它的仓。">ⓘ</span>':'');
 
   return '<div class="card status-card section">'
     +'<button type="button" class="status-line" onclick="openStatusDrawer()" title="查看系统状态">'
       +'<span class="status-dot '+cls+'"></span>'
-      +(gaps?'<span class="tag" style="flex:none;background:var(--color-feedback-error-subtle);color:var(--color-feedback-error-text)" title="'+gaps+' 期周跑永久缺失：超过 48 小时宽限即判定失败，不补跑">'+gaps+' 期缺失</span>':'')
       +'<span class="status-word">'+word+'<span class="sub">　'+sub+'</span></span>'
       +'<svg class="status-chev" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="transform:rotate(-90deg)"><path d="M3 5.5 7 9.5 11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     +'</button>'
@@ -5183,9 +5198,13 @@ function tearsheetCard(){
         +'<td class="r num '+(bad?'down':'')+'">'+Number(c.breakeven_round_trip_pct).toFixed(2)+'%</td></tr>';
     }).join('');
 
-  var banner=sep.can_rank
+  /* 关键在方向：有组合和基准分开了，不等于有组合跑赢了基准。2026-09-04 的
+     实况就是 mom_21 从下方越出区间——只看「分开没分开」会把它读成可以排名。 */
+  var beats=(sep.beats_benchmark!==undefined)?sep.beats_benchmark:sep.can_rank;
+  var banner=beats
     ? '<div class="card-note">'+esc(sep.note||'')+'</div>'
-    : '<div class="ls-note"><b>这张表不能用来排名。</b>'+esc(sep.note||'')+'</div>';
+    : '<div class="ls-note"><b>这张表不能用来排名——没有任何一条被证明跑赢基准。</b>'
+      +esc(sep.note||'')+'</div>';
 
   return '<div class="card section"><div class="card-title-row">'
     +'<h2 class="card-title">业绩表</h2>'
@@ -5416,6 +5435,58 @@ function liveSplitBlock(){
     +'<div class="table-wrap"><table class="data-table"><thead><tr>'+head
     +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
+/* ── 证伪：这条排序是不是只是在排风险 ────────────────────────
+   任何能排序收益的分数都要先过这一关，而这是它最可能挂掉的一关：上涨窗口里
+   把风险从低到高排一遍，必然得到一条漂亮的收益阶梯。所以入场前波动和收益
+   并排放，同一个分桶、同一张表——分开放等于让读者自己去发现它们形状相同。
+   这块算出来了却一直没有屏幕指向它，而它是对上面那张图最强的反证。 */
+function volControlBlock(){
+  var rp=(((S||{}).backtest||{}).summary||{}).ranking_power||{};
+  var vc=rp.volatility_control;
+  if(!vc||!vc.buckets)return '';
+  var KEYS=['Q1','Q2','Q3','Q4','Q5'].filter(function(k){return vc.buckets[k]});
+  if(!KEYS.length)return '';
+  var mr=0,mv=0;
+  KEYS.forEach(function(k){
+    mr=Math.max(mr,Math.abs(vc.buckets[k].mean_return_pct||0));
+    mv=Math.max(mv,vc.buckets[k].mean_prior_vol_pct||0);
+  });
+  var rows=KEYS.map(function(k){
+    var b=vc.buckets[k];
+    return '<tr><td class="primary">'+k+'</td>'
+      +'<td class="r num dim">'+fmtInt(b.n)+'</td>'
+      +'<td class="vc"><i class="vcbar r" style="width:'
+        +(mr?Math.max(Math.abs(b.mean_return_pct||0)/mr*100,1.5):1.5).toFixed(1)+'%"></i>'
+        +'<em class="'+pctCls(b.mean_return_pct)+'">'+fmtPct(b.mean_return_pct)+'</em></td>'
+      +'<td class="vc"><i class="vcbar v" style="width:'
+        +(mv?Math.max((b.mean_prior_vol_pct||0)/mv*100,1.5):1.5).toFixed(1)+'%"></i>'
+        +'<em>'+fmtRate(b.mean_prior_vol_pct)+'</em></td>'
+      +'<td class="r num strong">'+(b.return_per_vol==null?'—'
+        :Number(b.return_per_vol).toFixed(4))+'</td></tr>';
+  }).join('');
+  var hdr=[
+    ['分位','',''],
+    ['条数','r','该分桶里可计价的持仓条数。'],
+    ['平均收益','r','该分桶的单笔平均收益。'],
+    ['入场前波动','r','建仓前 '+fmtInt(vc.lookback_days)+' 天的年化波动率，按持仓取平均。'
+      +'刻意用入场前——这个数在做出选择那天就是知道的。'],
+    ['收益／波动','r','两条阶梯形状相同、而这一列基本持平，就说明这个分数在排风险不是在排能力。']
+  ].map(function(h){return '<th'+(h[1]?' class="'+h[1]+'"':'')+'>'+esc(h[0])
+      +(h[2]?'<span class="gloss gm" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>'}).join('');
+  var ratio=vc.vol_ratio_top_over_bottom, spread=vc.return_per_vol_spread;
+  return '<div style="margin-top:var(--space-6)">'
+    +'<div class="card-title-row"><h3 class="card-title" style="font-size:15px">'
+    +'先证伪：它是不是只是在排风险</h3>'
+    +'<span class="card-note">入场前 '+fmtInt(vc.lookback_days)+' 天波动，与收益并列</span></div>'
+    +'<div class="table-wrap"><table class="data-table"><thead><tr>'+hdr
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="ls-note">顶格分位的持仓波动是末位的 <b>'
+      +(ratio==null?'—':Number(ratio).toFixed(1)+' 倍')+'</b>，'
+      +'而单位波动收益全表极差只有 <b>'+(spread==null?'—':Number(spread).toFixed(3))+'</b>。'
+      +'<b>两条阶梯形状相同，所以这一关只过了一半</b>——这个分数一阶上在排风险；'
+      +'组合层面分散把波动压下来之后它仍是全部策略里最好的一条，但没有跑赢指数。</div>'
+    +'</div>';
+}
 function rankingPowerCard(){
   var sum=((S||{}).backtest||{}).summary||{},rp=sum.ranking_power;
   if(!rp||!rp.pooled){
@@ -5503,6 +5574,7 @@ function rankingPowerCard(){
     +lead
     +meta
     +rankingQuintileBars(pooled,benchMean)
+    +volControlBlock()
     +warn
     +foldBlock('week.ranking.detail','逐期拆解','每期两端 · 同期基准 · 主题来源',table,scored.length?(scored.length+' 期'):'')
     /* 这张卡的 </div> 一直缺着，靠浏览器在段落末尾替它兜底。只要它后面还什么
@@ -7392,10 +7464,10 @@ function stageGeneratorsBody(d){
   });
   /* 两侧固定列在抽屉里会把网格顶出 34px，最右的「合计」被裁掉。
    * 给它们一个可压缩的下限：宽处照旧，窄处先让固定列让步，而不是让内容出界。 */
-  var cols='minmax(112px,150px) '+chosen.map(function(){return 'minmax(56px,1fr)'}).join(' ')+' minmax(104px,130px)';
+  var cols='minmax(112px,150px) '+chosen.map(function(){return 'minmax(72px,1fr)'}).join(' ')+' minmax(104px,130px)';
   var html='<div class="pgrid-wrap scroll-thin"><div class="pgrid" style="grid-template-columns:'+cols+'">';
   html+='<div class="pg-h" style="justify-content:flex-start;align-items:flex-end;text-align:left">方法 ＼ 主题</div>';
-  chosen.forEach(function(t){html+='<div class="pg-h" title="'+esc(topicLabel(t))+'">'+esc(t)+'</div>'});
+  chosen.forEach(function(t){html+='<div class="pg-h zh" title="'+esc(t)+'">'+esc(topicName(t))+'</div>'});
   html+='<div class="pg-h" style="justify-content:flex-end;text-align:right">合计</div>';
   genOrder().forEach(function(o){
     var g=genByKey(o[0]);
@@ -7600,7 +7672,7 @@ function stageSelectorsBody(d){
         var c=r.c;
         return '<tr>'
           +'<td class="primary mono"><button type="button" class="exp-btn" style="padding:2px 4px" onclick="filterPoolCode(\''+jss(c.instrument_id)+'\')" title="'+esc(c.instrument_name||'')+' — 回候选池核对原始赔率">'+esc(c.instrument_id)+'</button></td>'
-          +'<td><span class="tag" title="'+esc(topicLabel(c.topic_id))+'">'+esc(c.topic_id||'')+'</span></td>'
+          +'<td><span class="tag" title="'+esc(c.topic_id||'')+'">'+esc(topicName(c.topic_id))+'</span></td>'
           +sels.map(function(s,si){
             var m=selMetaOf(s.name);
             return '<td class="gd'+(foc===s.name?' cf':'')+'">'+(chSet[si][c.instrument_id]
@@ -8561,7 +8633,7 @@ function renderCandBody(){
        * 73 行的表因此忽高忽低、还比可视区宽出 90px。名称是辅助信息：一行放不下
        * 就省略，全名挂 title。行高齐了，表也收得进画面。 */
       +'<td><div class="clamp1" style="max-width:172px" title="'+esc(c.instrument_name||'')+'">'+esc(c.instrument_name||'')+'</div></td>'
-      +'<td><span class="tag" title="'+esc(topicLabel(c.topic_id))+'">'+esc(c.topic_id||'')+'</span></td>'
+      +'<td><span class="tag" title="'+esc(c.topic_id||'')+'">'+esc(topicName(c.topic_id))+'</span></td>'
       +'<td class="r num '+pctCls(c.upside_pct)+'">'+fmtPct(c.upside_pct)+'</td>'
       +'<td class="r num '+pctCls(c.downside_pct)+'">'+fmtPct(c.downside_pct)+'</td>'
       +'<td class="r num">'+fmtProb(c.p_up)+'</td>'

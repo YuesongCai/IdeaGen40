@@ -161,3 +161,93 @@ class DashGridContracts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwappingTheBoxMustBeatTheTypingGuard(unittest.TestCase):
+    """换掉输入框里的内容之前，得先把焦点从框里挪开。
+
+    `renderDrawers` 有一道守卫：光标还在 `#phSay` 里就不重画，并把框里的内容
+    收回 `PH.say`。它是对的——每 60 秒一次的整页轮询会把打了一半的话连同光标
+    一起换掉，这个功能里为这件事已经付过两次代价。
+
+    但同一道守卫会拦下**故意要换掉框里内容**的那一类动作：接着写另一条草稿、
+    照一条在跑的准则改一版、填一个示例、生成草案之后清空。2026-09-05 实测：
+    光标停在框里点「接着写」，`PH.draftId` 换了、`PH.arm` 换了，框里的字一个
+    没变——从外面看就是点了没反应，而人下一次输入会把新草稿的内容改成旧那条。
+
+    没有异常、没有报错，和本文件开头那两类同宗。所以钉成断言：凡是给 `PH.say`
+    赋一个新值的函数，都必须先叫 `phBlurBox()`。
+    """
+
+    #: 例外，各自说明为什么。`test_every_exemption_still_points_at_a_real_function`
+    #: 会检查它们仍然存在，免得名字改了之后这里悄悄放行一个不该放行的。
+    EXEMPT = {
+        "phDraftTouch": "它就是 oninput 本身：人正在框里打字，挪开焦点等于打断他",
+        "phTyping": "轮询让路前把话收好，读的是框里的现值，不是要换掉它",
+        "phSay": "同上，读框里的现值",
+        "renderDrawers": "守卫本身",
+        # 回填草稿的分支带着 `!(PH.say||'').trim()` 这个条件：框是空的、也没人
+        # 动过，才谈得上回填——没有要换掉的东西。守卫最多让这一帧不画，之后
+        # 任何一次点击都会把它补上。反过来，在这里强行挪走焦点会打断一个刚
+        # 点进框、正准备写的人。
+        "phLoad": "只在框空着且无人动过时回填，没有要换掉的内容",
+    }
+
+    _ASSIGN = re.compile(r"\bPH\.say\s*=")
+    _FN_HEAD = re.compile(r"function\s+([A-Za-z_$][\w$]*)\s*\(")
+
+    # 自带切分，不用文件里别处的公用件。原因不是洁癖：2026-09-05 这个仓里
+    # 一晚上栽过两次「测试进了 HEAD、它依赖的东西还留在某人的工作区」——
+    # 闸门 fail-closed，所有人的云端部署一起停，而红的原因看起来跟那个人
+    # 毫无关系。一段测试只要引用别人尚未提交的符号，它就随时会以这种方式
+    # 变红。十行重复换掉这种耦合，划算。
+    @staticmethod
+    def _js(src):
+        return re.findall(r"<script[^>]*>(.*?)</script>", src, re.S)[-1]
+
+    @classmethod
+    def _fns(cls, js):
+        """(函数名, 函数体) —— 按顶层 `function` 粗切，够用且不需要 JS 解析器。"""
+        for chunk in re.split(r"\n(?=function\s+[A-Za-z_$][\w$]*\s*\()", js):
+            m = cls._FN_HEAD.match(chunk)
+            if m:
+                yield m.group(1), chunk
+
+    def _offenders(self, src):
+        bad, scanned = [], 0
+        for name, body in self._fns(self._js(src)):
+            if not self._ASSIGN.search(body) or name in self.EXEMPT:
+                continue
+            scanned += 1
+            if "phBlurBox()" not in body:
+                bad.append(name)
+        return bad, scanned
+
+    def test_every_exemption_still_points_at_a_real_function(self):
+        src = DASH.read_text(encoding="utf-8")
+        names = {n for n, _ in self._fns(self._js(src))}
+        missing = sorted(set(self.EXEMPT) - names)
+        self.assertFalse(missing,
+                         f"例外名单指向已经不存在的函数：{missing}——"
+                         "改名的时候这条放行就变成了一个洞")
+
+    def test_nothing_swaps_the_box_without_blurring_it_first(self):
+        bad, scanned = self._offenders(DASH.read_text(encoding="utf-8"))
+        self.assertTrue(scanned >= 4,
+                        f"只扫到 {scanned} 个改写 PH.say 的函数，切分方式可能失效了")
+        self.assertFalse(bad,
+                         "这些函数要换掉输入框里的内容，却没先把焦点挪开。\n"
+                         "光标恰好停在框里时，那次重画会被「正在打字就不重画」的\n"
+                         "守卫整个吃掉：状态换了，框里的字没换，看起来像点了没反应。\n"
+                         f"在函数开头加一句 phBlurBox()：{bad}")
+
+    def test_the_gate_can_actually_see_a_violation(self):
+        """闸门自己不被验，就可能一直绿着却什么都没看。"""
+        src = DASH.read_text(encoding="utf-8")
+        self.assertEqual([], self._offenders(src)[0], "现在就有漏的，先修它")
+        broken = src.replace("  phBlurBox();\n  phDraftSave();"
+                             "          /* 桌上原来那条先落盘", "  phDraftSave();"
+                             "          /* 桌上原来那条先落盘", 1)
+        self.assertNotEqual(src, broken, "没能造出回归样本，自检失效了")
+        self.assertIn("phReviseFrom", self._offenders(broken)[0],
+                      "拿掉 phBlurBox 后闸门居然没红——它没在看")

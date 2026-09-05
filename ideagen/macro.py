@@ -121,6 +121,15 @@ DDL = (
 #: it, so a reader can see the series was looked at and rejected.
 MIN_OBS = 8
 
+#: How much the theme's indicator has to have moved before a release that
+#: settled the same day is treated as *its* news. Without a floor, "the biggest
+#: day in the window" always names some day, so a theme whose indicator twitched
+#: 0.34 sigma inherits the full 1.35 sigma of that morning's payrolls — an
+#: attribution the price attribution was supposed to prevent. Observed on the
+#: first live run: TERM-PREMIUM and POLICY-PATH both picked up NFP on moves of
+#: 0.34 and 0.38.
+MIN_REACTION_Z = 1.0
+
 #: An `sd` of zero means every print matched consensus exactly, which in this
 #: data means the vendor is republishing the estimate as the actual rather than
 #: that the economy is deterministic. Dividing by it yields infinity.
@@ -201,8 +210,18 @@ def refresh(con, as_of: date, *, feeds_to_run: tuple[str, ...] = CONSUMED_FEEDS,
         stats["reused_fit"] = str(newest["u"])
         stats["age_days"] = age
 
+    # The period's macro state, written down and used for nothing. One key per
+    # day rather than an overwritten "latest", because the whole point is the
+    # series: a single current reading answers no question that six periods of
+    # readings would not answer better, and the question this is being saved for
+    # cannot be asked for another year.
+    snap = regime(con, as_of.isoformat())
+    db.kv_set(con, f"macro:regime:{as_of.isoformat()}", snap)
+    con.commit()
+
     return {"as_of": as_of.isoformat(), "feeds_tried": len(feeds_to_run),
             "feeds_ok": ok, "events_upserted": upserted, "stats": stats,
+            "regime_coverage": snap["coverage"],
             "flags": flags(), "problems": problems}
 
 
@@ -232,6 +251,36 @@ def _num(v: Any) -> float | None:
         return None
 
 
+#: The vendor glues the reference period onto the event name — "Core PCE Price
+#: Index YoY (Jul)", "GDP Price Index QoQ (Q2)", "Initial Jobless Claims
+#: (Aug/22)". Keyed on the raw name, every print is its own series with n=1, and
+#: a two-year fit came back with **1 usable series out of 2375** — a result that
+#: reads as "this vendor rarely publishes consensus" and is nothing of the kind.
+#:
+#: Only period-shaped suffixes are stripped. "(Flash)", "(Prel)", "(Final)" and
+#: "(Adv)" stay, because a flash estimate and a final print genuinely have
+#: different error scales and merging them would fabricate the opposite error:
+#: one distribution fitted across two.
+_PERIOD_SUFFIX = re.compile(
+    r"\s*\((?:"
+    r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)"
+    r"(?:[/\s-]\d{1,4})?"          # (Aug) / (Aug/22) / (Aug 2026)
+    r"|q[1-4](?:[/\s-]\d{2,4})?"   # (Q2) / (Q2 2026)
+    r"|\d{4}"                      # (2026)
+    r"|w\d{1,2}"                   # (W34)
+    r")\)\s*$", re.IGNORECASE)
+
+
+def _series_name(event: Any) -> str:
+    """The release name with its reference period removed, lowercased."""
+    name = str(event or "").strip()
+    prev = None
+    while prev != name:                       # "(Q2) (2026)" would need two passes
+        prev = name
+        name = _PERIOD_SUFFIX.sub("", name).strip()
+    return name.lower()
+
+
 def _event_key(country: Any, event: Any) -> str:
     """The identity a forecast-error distribution is fitted per.
 
@@ -240,7 +289,7 @@ def _event_key(country: Any, event: Any) -> str:
     Rate YoY" is published by every country in the file and their errors are not
     the same distribution.
     """
-    return f"{str(country or '').upper()}|{str(event or '').strip().lower()}"
+    return f"{str(country or '').upper()}|{_series_name(event)}"
 
 
 # ---------------------------------------------------------------- N: surprise
@@ -361,9 +410,19 @@ def window_surprises(con, days: list[str], *,
             item["why"] = "未结算" if act is None else "无一致预期"
             out.append(item)
             continue
-        stats = _stats_for(con, _event_key(country, r["label"]), hi)
+        key = _event_key(country, r["label"])
+        stats = _stats_for(con, key, hi)
         if not stats:
-            item["why"] = "该序列没有拟合过误差分布"
+            # Distinguish "never fitted" from "only fitted after this window",
+            # which is the look-ahead guard working as designed. Reported as one
+            # message, a replay of an old period looks like a vendor gap.
+            later = db.q1(con, "SELECT MIN(upto) u FROM macro_surprise_stats"
+                               " WHERE event_key=?", (key,))
+            if later and later["u"]:
+                item["why"] = (f"误差分布最早拟合于 {later['u']}，晚于本窗口"
+                               f"（{hi}）——不回填")
+            else:
+                item["why"] = "该序列没有拟合过误差分布"
         elif stats["status"] != "ok":
             item["why"] = (f"误差分布 {stats['status']}"
                            f"（n={stats['n']}，需 ≥{MIN_OBS}）")
@@ -421,8 +480,16 @@ def theme_consensus_z(con, ev: dict, theme, *,
     meta["indicator"] = theme.price_indicator
     meta["indicator_day"] = best_day
     meta["indicator_move_z"] = (round(best_z, 3) if best_day else None)
+    meta["min_reaction_z"] = MIN_REACTION_Z
     if not best_day:
         meta["reason"] = "指标在窗口内没有可用价格"
+        return None, meta
+    if abs(best_z) < MIN_REACTION_Z:
+        # The theme did not react to anything this window. Handing it the
+        # morning's surprise anyway would say "this release was news for this
+        # theme" on the evidence that it was news for somebody.
+        meta["reason"] = (f"指标最大波动仅 {best_z:+.2f}σ，低于 {MIN_REACTION_Z}σ"
+                          f"——本窗口该主题没有反应，不归因")
         return None, meta
 
     same_day = [s for s in rel if s["date"] == best_day]

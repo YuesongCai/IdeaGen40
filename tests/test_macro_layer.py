@@ -65,6 +65,43 @@ class _Theme:
         self.label = "t"
 
 
+# --------------------------------------------------------------- series identity
+class TheReferencePeriodIsNotPartOfTheSeriesName(unittest.TestCase):
+    """The trap that produced a wrong conclusion before it produced a wrong number.
+
+    FMP writes the reference period into the event name: "Core PCE Price Index
+    YoY (Jul)", "GDP Price Index QoQ (Q2)", "Initial Jobless Claims (Aug/22)".
+    Keyed on the raw name every print is its own series with n=1, and the first
+    two-year fit returned **1 usable series out of 2375** — which reads exactly
+    like "this vendor rarely publishes a consensus" and is nothing of the kind.
+    Nothing errored, and the number was plausible enough to have been believed.
+    """
+
+    def test_the_period_suffix_is_stripped_so_prints_share_a_series(self):
+        for raw in ("Core PCE Price Index YoY (Jul)",
+                    "Core PCE Price Index YoY (Aug)",
+                    "Core PCE Price Index YoY"):
+            self.assertEqual(macro._series_name(raw), "core pce price index yoy")
+        self.assertEqual(macro._series_name("Initial Jobless Claims (Aug/22)"),
+                         "initial jobless claims")
+        self.assertEqual(macro._series_name("GDP Price Index QoQ (Q2)"),
+                         "gdp price index qoq")
+
+    def test_a_revision_stage_is_not_a_period_and_must_survive(self):
+        """A flash estimate and a final print have different error scales.
+        Stripping "(Final)" alongside "(Aug)" would fit one distribution across
+        two — the opposite error, and a quieter one."""
+        for keep in ("Final", "Prel", "Adv", "Flash"):
+            self.assertIn(keep.lower(),
+                          macro._series_name(f"S&P Global PMI {keep} (Aug)"))
+
+    def test_country_stays_in_the_key(self):
+        """Every country publishes "Inflation Rate YoY" and their forecast
+        errors are not the same distribution."""
+        self.assertNotEqual(macro._event_key("US", "Inflation Rate YoY (Aug)"),
+                            macro._event_key("EU", "Inflation Rate YoY (Aug)"))
+
+
 # --------------------------------------------------------------- surprise
 class SurpriseNeedsADistribution(unittest.TestCase):
 
@@ -92,6 +129,23 @@ class SurpriseNeedsADistribution(unittest.TestCase):
         _stats(con, "US|core cpi yoy", AS_OF, n=24, sd=0.1)
         rows = macro.window_surprises(con, [AS_OF])
         self.assertAlmostEqual(rows[0]["z"], 2.0, places=6)
+
+    def test_a_fit_made_after_the_window_is_refused_and_says_so(self):
+        """The look-ahead guard, and why it needs its own message.
+
+        A fit stamped later than the window has seen prints the window could
+        not. Refusing it is right; reporting the refusal as "this series was
+        never fitted" is not — a replay of an old period would then look like a
+        vendor gap, and someone would go looking for data that is already there.
+        """
+        con = _con()
+        _event(con, "e1", "2026-08-01", "Core CPI YoY", "macro_release",
+               "2.4%", 2.6)
+        _stats(con, "US|core cpi yoy", "2026-09-05", n=24, sd=0.1)
+        rows = macro.window_surprises(con, ["2026-08-01"])
+        self.assertIsNone(rows[0]["z"])
+        self.assertIn("2026-09-05", rows[0]["why"])
+        self.assertIn("不回填", rows[0]["why"])
 
     def test_an_absent_release_and_an_unscoreable_one_stay_distinguishable(self):
         """`window_surprises` returns the unscoreable row. A caller that filters
@@ -141,6 +195,24 @@ class AttributionRunsThroughPriceNotNames(unittest.TestCase):
         self.assertAlmostEqual(z, 2.0, places=6)
         self.assertEqual(meta["release"], "Core CPI YoY")
         self.assertEqual(meta["release_date"], "2026-09-02")
+
+    def test_a_theme_that_did_not_react_does_not_inherit_the_mornings_surprise(self):
+        """Caught on the first live run against real data.
+
+        "The biggest day in the window" always names some day, so on a quiet
+        window TERM-PREMIUM picked up the full +1.35 sigma of that morning's
+        payrolls on an indicator move of 0.34 sigma, and POLICY-PATH on 0.38.
+        That is the attribution the price join was supposed to prevent, arriving
+        through the join itself.
+        """
+        moves = {"2026-09-02": 0.34, "2026-09-03": 0.2, "2026-09-04": 0.1}
+        with mock.patch("ideagen.sources.futu_px.move_z",
+                        side_effect=lambda c, code, d: moves.get(d)):
+            z, meta = macro.theme_consensus_z(self.con, self.ev, _Theme(),
+                                              require_flag=False)
+        self.assertIsNone(z)
+        self.assertIn("没有反应", meta["reason"])
+        self.assertEqual(meta["min_reaction_z"], macro.MIN_REACTION_Z)
 
     def test_the_switch_being_off_records_the_finding_and_applies_nothing(self):
         """The point of the off state. If it returned nothing at all there would

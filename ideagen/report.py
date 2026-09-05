@@ -510,6 +510,26 @@ const hint = k => {
   });
   return el;
 };
+/* hint() only speaks glossary keys. Descriptions that belong to one specific
+   place — a formula, a legend, a caveat — used to be printed as body text in a
+   <p class="hintline">, which is exactly the thing the ⓘ exists to prevent.
+   hintText carries the same bubble for ad-hoc copy so nothing has to leak out. */
+const hintText = (term, text) => {
+  if (!text) return null;
+  const el = E('span', { cls: 'hint', tabindex: '0', role: 'button',
+                         'aria-label': term + '：' + text }, 'i');
+  const show = () => showTip(el, term, text);
+  el.addEventListener('mouseenter', show);
+  el.addEventListener('focus', show);
+  el.addEventListener('mouseleave', hideTip);
+  el.addEventListener('blur', hideTip);
+  el.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); show(); });
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); show(); }
+  });
+  return el;
+};
+
 const lbl = (text, k) => E('span', {}, text, hint(k === undefined ? text : k));
 
 function relLabel(d) {
@@ -962,7 +982,8 @@ function viewReport(dd) {
   if (r) {
     const c = r.corpus;
     wrap.append(E('details', {},
-      E('summary', {}, `当日研报底稿 · ${c.total.toLocaleString()} 条来源条目`),
+      E('summary', {}, `当日研报底稿 · ${c.total.toLocaleString()} 条来源条目`,
+        hintText('溯源', G['溯源'])),
       E('div', { cls: 'panel', style: 'margin-top:8px' },
         E('p', { cls: 'small muted', style: 'margin:0 0 10px' },
           `观察窗口 ${c.window[0]} → ${c.window[2]}。逐条证据挂在它支撑的那个主题下面`
@@ -975,8 +996,7 @@ function viewReport(dd) {
           ...Object.entries(c.by_line).map(([k, n]) => E('div', {},
             E('span', {}, k), E('span', {}, n.toLocaleString())))),
         provenanceNote(c),
-        reachBlock(c.reach),
-        E('p', { cls: 'hintline' }, G['溯源']))));
+        reachBlock(c.reach))));
   }
   return wrap;
 }
@@ -1107,7 +1127,11 @@ function themeDetail(d) {
   box.append(E('h4', {}, t.label),
     E('p', { cls: 'lead' }, E('strong', {}, '预注册关键结果　'), t.key_question));
 
-  box.append(dsec('推理链 · 每个因子是怎么算出来的',
+  box.append(dsec(['推理链 · 每个因子是怎么算出来的',
+      hintText('TIS 口径',
+        'TIS = 0.15·D + 0.25·A + 0.25·B + 0.35·N。'
+        + 'M 与 C 是独立维度，不进 TIS。'
+        + '方向取自研报净立场，不取自价格——否则 M 会自我验证。')],
     E('div', { cls: 'chain' },
       ...['D', 'A', 'B', 'N', 'M', 'C'].map(k => {
         const x = (t.trail || {})[k] || {};
@@ -1116,26 +1140,24 @@ function themeDetail(d) {
           E('span', { cls: 'wy' }, x.why || '—'));
       })),
     E('p', { cls: 'hintline' },
-      `TIS = 0.15·D + 0.25·A + 0.25·B + 0.35·N = ${n2(t.tis, 1)}（${t.tier}）。`
-      + `M 与 C 是独立维度，不进 TIS：当前 ${t.stage} / ${t.crowd}。`
-      + `方向 ${t.direction} 取自研报净立场，不取自价格——否则 M 会自我验证。`)));
+      `TIS ${n2(t.tis, 1)}（${t.tier}）　M / C ${t.stage} / ${t.crowd}　方向 ${t.direction}`)));
 
   if (t.charts && t.charts.length) box.append(dsec(
-    `原始图表 · ${t.charts.length} 张`,
-    E('div', { cls: 'chartgrid' }, t.charts.map(chartFig)),
-    E('p', { cls: 'hintline' },
-      '图与解读均来自智堡图表库；与本主题的关联是用冻结词典做的关键词匹配，'
-      + '标「弱匹配」的只命中一个词，请自行折扣。')));
+    [`原始图表 · ${t.charts.length} 张`,
+      hintText('图表匹配',
+        '图与解读均来自智堡图表库；与本主题的关联是用冻结词典做的关键词匹配，'
+        + '标「弱匹配」的只命中一个词，请自行折扣。')],
+    E('div', { cls: 'chartgrid' }, t.charts.map(chartFig))));
 
   if (t.evidence && t.evidence.length) box.append(dsec(
-    `证据 · ${t.evidence.length} 条（共 ${t.n_items} 条，${t.n_sources} 个独立来源）`,
+    [`证据 · ${t.evidence.length} 条（共 ${t.n_items} 条，${t.n_sources} 个独立来源）`,
+      hintText('证据读法',
+        '↑ / ↓ 是该条对关键结果的立场；深度分 100 已实现利润或政策落地、75 订单收入、'
+        + '50 市场价格、25 叙事。' + G['溯源'])],
     E('div', { cls: 'src' }, t.evidence.map(e => srcRow({
       ...e, resolved: true,
       title: (e.stance > 0 ? '↑ ' : e.stance < 0 ? '↓ ' : '· ') + e.title,
-    }))),
-    E('p', { cls: 'hintline' },
-      '↑ / ↓ 是该条对关键结果的立场；深度分 100 已实现利润或政策落地、75 订单收入、'
-      + '50 市场价格、25 叙事。' + G['溯源'])));
+    })))));
 
   if (d.ideas.length) box.append(dsec(
     `由此产生的 ${d.ideas.length} 条想法`,
@@ -1203,14 +1225,14 @@ function ideaDetail(i) {
   const scen = (lab, o) => E('tr', {},
     E('td', {}, lab),
     ...o.p.map((x, k) => E('td', {}, `${x}%　${n2(o.r[k], 2)}%`)));
-  box.append(dsec('三情景（概率　持有期回报）',
+  box.append(dsec(['三情景（概率　持有期回报）',
+      hintText('幅度校验', G['幅度校验'])],
     E('div', { cls: 'scen' }, E('table', {},
       E('thead', {}, E('tr', {}, E('th', {}, ''), E('th', {}, '上涨'),
         E('th', {}, '基准'), E('th', {}, '下跌'))),
       E('tbody', {}, scen('中心', i.central), scen('保守', i.conservative)))),
     E('p', { cls: 'hintline' },
-      `σ_${i.horizon === '6个月' ? '6m' : '1m'} = ${n2(i.sigma_h)}%，`
-      + `幅度校验 ${i.vol_check}。` + G['幅度校验'])));
+      `σ_${i.horizon === '6个月' ? '6m' : '1m'} = ${n2(i.sigma_h)}%　幅度校验 ${i.vol_check}`)));
 
   box.append(dsec('执行口径', kvg([
     ['期限', `${i.horizon}（到期 ${i.horizon_end}）`],
@@ -1240,10 +1262,9 @@ function ideaDetail(i) {
         : `未在组合中成交；已实现 ${pc(i.realized)} 是按收盘价的反事实读数。`)));
 
   const src = i.sources_resolved || [];
-  box.append(dsec(`来源 · ${src.length} 条`,
+  box.append(dsec([`来源 · ${src.length} 条`, hintText('溯源', G['溯源'])],
     src.length ? E('div', { cls: 'src' }, src.map(srcRow))
-      : E('p', { cls: 'small muted', style: 'margin:0' }, '无'),
-    E('p', { cls: 'hintline' }, G['溯源'])));
+      : E('p', { cls: 'small muted', style: 'margin:0' }, '无')));
   return box;
 }
 

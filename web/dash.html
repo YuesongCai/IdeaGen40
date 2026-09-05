@@ -9372,6 +9372,21 @@ function phDocHTML(uid){
   return '<div class="ph-doc">'+inner+'</div>';
 }
 
+/* 二十秒的等待里，一个禁用的按钮读起来像卡死了。走秒不是装饰：它是「还在动」
+   的唯一证据，而这一步没有中间产物可以流式吐出来。计时器只改按钮那一个节点，
+   不整页重画——重画会把读者在别处展开的东西和滚动位置一起动了。 */
+function phWaitLabel(){
+  var s=Math.max(0,Math.round((Date.now()-(PH.t0||Date.now()))/1000));
+  return '正在蒸馏… '+s+' 秒';
+}
+function phTick(){
+  if(PH._tick)return;
+  PH._tick=setInterval(function(){
+    if(!PH.busy){clearInterval(PH._tick);PH._tick=null;return}
+    var b=$('phGo');if(b)b.textContent=phWaitLabel();
+  },1000);
+}
+
 function phSay(){var el=$('phSay');PH.say=el?el.value:PH.say;return PH.say}
 function phFill(i){PH.say=PH_EG[i];renderRules();var el=$('phSay');if(el){el.focus();
   el.setSelectionRange(el.value.length,el.value.length)}}
@@ -9379,7 +9394,7 @@ function phFill(i){PH.say=PH_EG[i];renderRules();var el=$('phSay');if(el){el.foc
 function phPropose(){
   var say=(phSay()||'').trim();
   if(!say){PH.err='还没有内容。';return renderRules()}
-  PH.problems=null;
+  PH.problems=null;PH.t0=Date.now();phTick();
   phPost('propose',{say:say,arm:PH.arm},function(b){
     if(b.error){PH.err=b.error;return renderRules()}
     if(b.ok===false){PH.problems=b;return renderRules()}
@@ -9496,10 +9511,11 @@ function phTeachCard(){
      +esc(PH.problems.hint||'')+'</div></div>';
   }
   if(PH.err)h+='<div class="ph-err" style="margin-top:var(--space-3)">'+esc(PH.err)+'</div>';
-  h+='<div class="ph-acts"><button type="button" class="ph-go" data-el="rules.try"'
+  h+='<div class="ph-acts"><button type="button" class="ph-go" id="phGo" data-el="rules.try"'
    +(PH.busy?' disabled':'')+' onclick="phPropose()">'
-   +(PH.busy?'正在蒸馏…':'生成草案')+'</button>'
-   +(PH.busy?'<span class="card-note">约二十秒</span>'
+   +(PH.busy?phWaitLabel():'生成草案')+'</button>'
+   +(PH.busy?'<span class="card-note">在读你这句话、对着初心和硬边界体检、'
+       +'再落成想法必须回答的字段</span>'
      /* 原来这句话自己占一张卡（「在跑的准则 · 0 条」）。它是这个表单的回执，
         不是一个章节——回执就该待在按下按钮的地方。 */
      :(function(){var n=((PH.data||{}).live||[]).length;

@@ -236,7 +236,7 @@ def drop_worktree(dest: pathlib.Path) -> None:
     subprocess.run(("git", "worktree", "prune"), cwd=ROOT, capture_output=True)
 
 
-def code_leg(dry_run: bool) -> dict:
+def code_leg(st: dict, dry_run: bool) -> dict:
     out: dict = {"leg": "code", "at": now()}
     git("fetch", "origin", "--quiet")
     head = git("rev-parse", "HEAD")
@@ -255,32 +255,51 @@ def code_leg(dry_run: bool) -> dict:
         out.update(action="none", ok=True, detail="已同步")
         return out
 
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ideagen-gate-")) / "head"
-    try:
-        export_head(tmp)
-        tests = subprocess.run(
-            (sys.executable, "-m", "pytest", "tests", "-q", "-x"),
-            cwd=tmp, capture_output=True, text=True, timeout=900,
-            env=gate_env(tmp / "gate.db"))
-        raw = (tests.stdout or tests.stderr or "").strip().splitlines()
-        # 只报最后一行，等于一个说不出原因的闸门。2026-09-05 代码腿被拦了一小时,
-        # `--status` 从头到尾只说 "1 failed, 32 passed" —— 够判断被拦了,
-        # 不够判断拦在哪,于是没人去看。pytest 的短摘要里每个失败自带一行
-        # `FAILED <文件>::<用例>`,带上它们,「被拦了」和「拦在哪」一句话说完。
-        named = [ln for ln in raw if ln.startswith(("FAILED ", "ERROR "))]
-        summary = raw[-1] if raw else "(no output)"
-        out["tests"] = " | ".join([summary, *named])[:400]
-        if tests.returncode != 0:
+    # The suite grew from 6 seconds to 230 as sessions added tests, and this
+    # timer fires every 10 minutes. Re-running four minutes of tests against a
+    # commit already judged — which is the normal case once the gate has
+    # blocked and nobody has committed since — spends a quarter of this
+    # laptop's CPU to re-derive an answer it already has. A commit's verdict
+    # cannot change, so it is remembered by sha.
+    verdict = st.get("gate") or {}
+    if verdict.get("sha") == head:
+        out["tests"] = f"{verdict.get('summary')}（沿用对 {head[:7]} 的判定）"
+        if not verdict.get("passed"):
             out.update(action="blocked", ok=False,
-                       detail=f"测试闸门拦下 HEAD {head[:7]}，没有推送")
+                       detail=f"测试闸门此前已拦下 HEAD {head[:7]}，未重跑")
             return out
-    except Exception as e:  # noqa: BLE001 — a gate that cannot run is a closed gate
-        out.update(action="blocked", ok=False,
-                   detail=f"测试闸门无法运行: {type(e).__name__}: {e}"[:300])
-        return out
-    finally:
-        drop_worktree(tmp)
-        shutil.rmtree(tmp.parent, ignore_errors=True)
+    else:
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ideagen-gate-")) / "head"
+        try:
+            export_head(tmp)
+            tests = subprocess.run(
+                (sys.executable, "-m", "pytest", "tests", "-q", "-x"),
+                cwd=tmp, capture_output=True, text=True, timeout=1800,
+                env=gate_env(tmp / "gate.db"))
+            raw = (tests.stdout or tests.stderr or "").strip().splitlines()
+            # 只报最后一行，等于一个说不出原因的闸门。2026-09-05 代码腿被拦了一小时,
+            # `--status` 从头到尾只说 "1 failed, 32 passed" —— 够判断被拦了,
+            # 不够判断拦在哪,于是没人去看。pytest 的短摘要里每个失败自带一行
+            # `FAILED <文件>::<用例>`,带上它们,「被拦了」和「拦在哪」一句话说完。
+            named = [ln for ln in raw if ln.startswith(("FAILED ", "ERROR "))]
+            summary = raw[-1] if raw else "(no output)"
+            out["tests"] = " | ".join([summary, *named])[:400]
+            st["gate"] = {"sha": head, "passed": tests.returncode == 0,
+                          "summary": out["tests"], "at": now()}
+            if tests.returncode != 0:
+                out.update(action="blocked", ok=False,
+                           detail=f"测试闸门拦下 HEAD {head[:7]}，没有推送")
+                return out
+        except Exception as e:  # noqa: BLE001 — a gate that cannot run is a closed gate
+            # Deliberately not remembered: an exception says the gate could
+            # not reach a verdict, not that the commit is bad. Caching that
+            # would keep refusing a commit nobody ever managed to test.
+            out.update(action="blocked", ok=False,
+                       detail=f"测试闸门无法运行: {type(e).__name__}: {e}"[:300])
+            return out
+        finally:
+            drop_worktree(tmp)
+            shutil.rmtree(tmp.parent, ignore_errors=True)
 
     if dry_run:
         out.update(action="would-push", ok=True,
@@ -417,7 +436,7 @@ def main(argv: list[str]) -> int:
     try:
         if args.only != "data":
             try:
-                results.append(code_leg(args.dry_run))
+                results.append(code_leg(st, args.dry_run))
             except Exception as e:  # noqa: BLE001 — one leg must not kill the other
                 results.append({"leg": "code", "at": now(), "ok": False,
                                 "action": "error",

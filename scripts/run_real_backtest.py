@@ -425,6 +425,19 @@ def _ev_bucket_of(con, days: list):
     return bucket
 
 
+def _posthoc_arms() -> list[str]:
+    """Arms registered `exploratory` — i.e. designed after seeing results.
+
+    Derived from the registry rather than listed here, so an arm added next
+    month is covered without anyone remembering to update a literal. The role
+    already carries exactly this meaning: `live_vs_backfill` uses it to decide
+    which column is an arm's evidence, and the walk-forward check uses it to
+    decide which arms could legitimately have been on the roster at all.
+    """
+    return sorted(s["name"] for s in strat.available("idea_selector")
+                  if str(s.get("role")) == "exploratory")
+
+
 def _tearsheet(con, points: list[dict], positions: list[dict],
                paired: dict, horizon_days: int) -> dict:
     """The institutional performance record, built from the same daily curve.
@@ -468,6 +481,19 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
                 for name, blk in (paired or {}).items()
                 if blk.get("t_eff") is not None}
 
+    # Per-period mean position return, the unit the walk-forward check decides
+    # on. Built from the stored positions rather than from the sweep's scores so
+    # the two cannot drift apart.
+    per_period: dict[str, dict[str, float | None]] = {}
+    for r in positions:
+        if r.get("return_pct") is None:
+            continue
+        per_period.setdefault(str(r["arm"]), {}).setdefault(
+            str(r["period"]), []).append(float(r["return_pct"]) / 100.0)
+    per_period = {a: {p: (sum(v) / len(v) if v else None)
+                      for p, v in rows.items()}
+                  for a, rows in per_period.items()}
+
     rep = perf.compare_arms(
         curves, bench_dates=bd, bench_closes=bc,
         benchmark=BENCHMARK.split(".")[-1],
@@ -481,13 +507,49 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
         # before them) were trials too. Three is a floor on that count, stated
         # here so the deflation is not quietly anchored to "however many arms
         # happen to be registered today".
-        extra_trials=3)
+        extra_trials=3,
+        per_period_returns=per_period or None,
+        posthoc_arms=_posthoc_arms(),
+        control=CONTROL)
+    # Capacity: participation of average daily dollar volume at the design's own
+    # sizing. `turnover_and_cost` already answers "does the edge survive the
+    # fee"; this answers the question a fee-blind reader still has, which is
+    # whether real money fits at all. ADV is read here rather than inside `perf`
+    # so that module stays free of a database handle.
+    adv_cache: dict[tuple[str, str], float | None] = {}
+
+    def _adv(code: str, upto: str, days: int = 20) -> float | None:
+        key = (code, upto)
+        if key not in adv_cache:
+            vals = [r["v"] for r in db.q(
+                con, "SELECT close*volume v FROM prices WHERE code=? AND d<? "
+                     "AND volume IS NOT NULL AND close IS NOT NULL "
+                     "ORDER BY d DESC LIMIT ?", (code, upto, days))]
+            adv_cache[key] = (sum(vals) / len(vals)) if vals else None
+        return adv_cache[key]
+
+    codes = {r["key"]: r["futu_code"] for r in db.q(
+        con, "SELECT key, futu_code FROM instruments WHERE futu_code IS NOT NULL")}
+    cap_rows = []
+    for r in positions:
+        c = codes.get(str(r.get("instrument_id")))
+        cap_rows.append({
+            "arm": r.get("arm"), "period": r.get("period"),
+            "instrument_id": r.get("instrument_id"),
+            "adv_usd": (_adv(c, str(r["entry_d"]))
+                        if c and r.get("entry_d") else None)})
+    rep["capacity"] = perf.capacity(
+        cap_rows, capital=config.CAPITAL_USD,
+        slots=max(1, round(horizon_days / max(1.0, 7.0))))
+
     rep["note"] = (
         "这张表描述的是净值曲线本身，和上面的配对检验回答的是两个问题："
         "配对检验问「A 挑得比 B 好吗」，这里问「拿着它这段时间会怎样、"
         "路上有多难受」。两边读的是同一批净值点，所以不会互相打架。"
         "年化收益在样本不足半年时直接不给；夏普永远带 95% 置信区间；"
-        "beta 是回归出来的，不再假设为 1。")
+        "beta 是回归出来的，不再假设为 1。"
+        "walk_forward 检验的是「挑组合」这个动作本身值不值——它必须读 no_posthoc 那一栏，"
+        "因为含事后设计组合的名单本身就带未来信息。")
     return rep
 
 

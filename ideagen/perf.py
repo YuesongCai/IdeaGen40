@@ -133,6 +133,11 @@ def norm_ppf(p: float) -> float:
            (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)
 
 
+def _pct(v: float | None) -> str:
+    """Decimal fraction to a signed percent string, for the Chinese notes."""
+    return "—" if v is None else f"{v * 100:+.2f}%"
+
+
 def to_returns(equities: Sequence[float]) -> list[float]:
     """Simple period returns from a NAV series. Zero/None points break the chain.
 
@@ -409,6 +414,14 @@ class Relative:
     correlation: float | None = None
     tracking_error: float | None = None
     information_ratio: float | None = None
+    residual_vol: float | None = None
+    appraisal_ratio: float | None = None
+    #: The appraisal ratio this window would need before alpha clears ±1.96.
+    #: Printed beside the ratio so it cannot become the new flattering headline
+    #: the moment the information ratio stops being one.
+    appraisal_needed_for_significance: float | None = None
+    beta_matched_bench_return: float | None = None
+    excess_vs_beta_matched: float | None = None
     up_capture: float | None = None
     down_capture: float | None = None
     capture_spread: float | None = None
@@ -472,6 +485,43 @@ def relative(port_rets: Sequence[float], bench_rets: Sequence[float], *,
         # compounding an intercept mixes it with the beta term.
         r.alpha_ann = a_d * periods_per_year
 
+        # Residual (idiosyncratic) volatility and the appraisal ratio.
+        #
+        # This is the metric the information ratio should have been compared
+        # against all along, and its absence is why the first run of this table
+        # read as an indictment. A book running beta 0.09 against a fully
+        # invested index is *mostly* being measured on the exposure it does not
+        # have: tracking error against SPY is then dominated by the missing
+        # 0.91 of market, and IR goes negative in a rising tape no matter how
+        # good the selection is. The appraisal ratio divides alpha by the
+        # volatility of what is left after beta is taken out, which is the part
+        # the manager is actually responsible for.
+        #
+        # It is not a kinder number by construction — it is a different
+        # question. IR asks "was deviating from the index worth it"; the
+        # appraisal ratio asks "per unit of risk you took that the index did not
+        # give you, what did you earn". A closet tracker can have a fine IR and
+        # no appraisal ratio; this book is the opposite shape and needs both.
+        if n > 2:
+            rv = math.sqrt(sse / (n - 2))
+            r.residual_vol = rv * math.sqrt(periods_per_year)
+            if rv > 0:
+                r.appraisal_ratio = a_d / rv * math.sqrt(periods_per_year)
+                # The appraisal ratio and alpha's t statistic are the same
+                # quantity in different units: t ≈ AR·√(n/periods_per_year).
+                # Writing the inverse down converts "3.52 looks impressive" into
+                # "this window needs 6.0", which is the only form that survives
+                # being quoted. Without it the appraisal ratio simply becomes
+                # the next number someone reads as a result.
+                r.appraisal_needed_for_significance = (
+                    1.959964 * math.sqrt(periods_per_year / n))
+
+        # What the same *market exposure* would have returned: beta of the
+        # index, the rest in cash. Cumulative, because that is the form a PM
+        # reads, and stated beside the raw excess so the two cannot be confused.
+        bm = [r.beta * x + (1 - r.beta) * rf_d for x in br]
+        r.beta_matched_bench_return = math.prod(1 + x for x in bm) - 1
+
     sp = st.pstdev(pr) if n > 1 else 0.0
     sb = st.pstdev(br) if n > 1 else 0.0
     if sp > 0 and sb > 0:
@@ -486,6 +536,9 @@ def relative(port_rets: Sequence[float], bench_rets: Sequence[float], *,
             r.information_ratio = _mean(diff) / te_d * math.sqrt(periods_per_year)
     r.excess_cum = (math.prod(1 + x for x in pr)
                     - math.prod(1 + x for x in br))
+    if r.beta_matched_bench_return is not None:
+        r.excess_vs_beta_matched = (math.prod(1 + x for x in pr) - 1
+                                    - r.beta_matched_bench_return)
     r.batting_average = sum(1 for d in diff if d > 0) / len(diff)
 
     up = [(a, b) for a, b in zip(pr, br) if b > 0]
@@ -506,6 +559,21 @@ def relative(port_rets: Sequence[float], bench_rets: Sequence[float], *,
         f"beta / alpha 来自把组合超额收益对基准（{benchmark}）超额收益做回归，"
         f"不再假设 beta=1。上下行捕获分别只用基准上涨的 {r.n_up_days} 天和下跌的 "
         f"{r.n_down_days} 天算——天数少时这两个比率就是关于那几天的陈述，别当稳定特征读。"
+        f"alpha 的 t 值按逐日残差算，未对分批持仓的重叠做折算，偏乐观；"
+        f"样本量的正式口径在 backtest.paired_difference。"
+        f"「IR」和「评价比率」问的不是同一件事：IR 拿相对基准的偏离"
+        f"（含「没拿满市场」这部分）做分母，一个 beta 只有 {r.beta:.2f} 的组合"
+        f"在上涨行情里 IR 必然难看，那主要是敞口差不是能力差；"
+        f"appraisal_ratio 拿剔掉 beta 之后剩下的特质波动做分母，"
+        f"量的才是这个选取策略自己挣到的部分。beta_matched_bench_return 是"
+        f"「同样市场敞口、其余拿现金」会有的收益，excess_vs_beta_matched 是相对它的差。"
+        f"但评价比率不是新的结论：它和 alpha 的 t 值是同一个量的两种单位，"
+        f"t ≈ 评价比率 × √(n/252)。本窗口 n={r.n}，"
+        f"评价比率要到 {r.appraisal_needed_for_significance:.1f} 以上 alpha 才过 ±1.96——"
+        f"低于这个数的，好看也只是好看。"
+        if r.appraisal_needed_for_significance else
+        f"appraisal_ratio 拿剔掉 beta 之后剩下的特质波动做分母。"
+        if r.beta is not None else
         f"alpha 的 t 值按逐日残差算，未对分批持仓的重叠做折算，偏乐观；"
         f"样本量的正式口径在 backtest.paired_difference。")
     return r
@@ -757,8 +825,22 @@ def turnover_and_cost(positions: Sequence[dict[str, Any]], *,
     has no edge net of trading; if it is many multiples of it, cost is not what
     decides this question.
     """
-    rows = [r for r in positions if r.get("arm") == arm
-            and r.get("return_pct") is not None]
+    # Deduplicated by (period, instrument): the same ETF proposed by three
+    # generators is three idea rows and **one purchase**. Counting idea rows
+    # here inflated ev_rank's opening count from 2.7 to 8.0 per period, and
+    # every number derived from position size — cost per trade, and capacity
+    # next door — moves with it. The win-rate table upstream already reports
+    # 标的×期; this is the same unit, so the two cannot disagree.
+    seen: set[tuple[str, str]] = set()
+    rows = []
+    for r in positions:
+        if r.get("arm") != arm or r.get("return_pct") is None:
+            continue
+        k = (str(r.get("period")), str(r.get("instrument_id")))
+        if k in seen:
+            continue
+        seen.add(k)
+        rows.append(r)
     if not rows:
         return {"arm": arm, "n_positions": 0}
     periods = sorted({str(r.get("period")) for r in rows})
@@ -773,6 +855,7 @@ def turnover_and_cost(positions: Sequence[dict[str, Any]], *,
         "n_positions": len(rows),
         "n_periods": len(periods),
         "positions_per_period": round(per_period, 2),
+        "dedup": "按（期次，标的）去重——同一只标的被多种生成方式提出只买一次",
         "holding_days": horizon_days,
         "round_trips_per_year": round(round_trips_yr, 2),
         "applied_round_trip_pct": applied_cost_pct,
@@ -853,6 +936,9 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
                  horizon_days: int = 30,
                  applied_cost_pct: float = 0.0,
                  extra_trials: int = 0,
+                 per_period_returns: dict[str, dict[str, float | None]] | None = None,
+                 posthoc_arms: Sequence[str] = (),
+                 control: str | None = None,
                  periods_per_year: int = TRADING_DAYS) -> dict[str, Any]:
     """Every arm's tear sheet plus the family-level checks, in one object.
 
@@ -895,6 +981,36 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
         pv = {k: two_sided_p(t, df) for k, (t, df) in paired_t.items()}
         out["fdr"] = _clean(benjamini_hochberg(pv))
         out["paired_p"] = _clean(pv)
+
+    # Does choosing between arms pay for itself? Two runs, because the answer
+    # depends entirely on whether an arm designed after seeing this window is
+    # allowed into the roster — and on the 2026-09-04 data that single
+    # inclusion is worth more than the whole apparent edge.
+    if per_period_returns:
+        allv = walk_forward_selection(
+            per_period_returns, control=control, label="all_arms")
+        out["walk_forward"] = {"all_arms": _clean(asdict(allv))}
+        if posthoc_arms:
+            clean = walk_forward_selection(
+                per_period_returns, control=control,
+                exclude=posthoc_arms, label="no_posthoc")
+            out["walk_forward"]["no_posthoc"] = _clean(asdict(clean))
+            if (allv.follow_leader_mean is not None
+                    and clean.follow_leader_mean is not None):
+                gap = clean.follow_leader_mean - allv.follow_leader_mean
+                out["walk_forward"]["contamination"] = round(gap, 6)
+                out["walk_forward"]["note"] = (
+                    f"把事后设计的组合（{'、'.join(sorted(posthoc_arms))}）从候选名单里"
+                    f"拿掉，跟随领先者的成绩从 {_pct(allv.follow_leader_mean)}/期变成 "
+                    f"{_pct(clean.follow_leader_mean)}/期，差 {_pct(gap)}。"
+                    f"前推检验管的是「什么时候做的选择」，管不了「这个组合什么时候被造出来」"
+                    f"——名单本身就可能带未来信息，而且这次带的比全部表面优势还多。"
+                    f"该读的是 no_posthoc 那一栏。")
+
+    # PBO over the daily curves, at three block counts.
+    daily = {n: to_returns(list(eq)) for n, (_, eq) in curves.items()}
+    if len(daily) >= 2 and min(len(v) for v in daily.values()) >= 24:
+        out["pbo"] = pbo_sweep(daily)
 
     if positions:
         out["cost_reality"] = {
@@ -1055,7 +1171,7 @@ def print_comparison(rep: dict[str, Any]) -> None:
         print(f"\n【相对基准】beta 是回归出来的，不是假设的 1")
         print("  " + _pad("组合", 26, False) + _pad("beta", 7)
               + _pad("alpha年化%", 11) + _pad("alpha_t", 9) + _pad("R²", 7)
-              + _pad("跟踪误差%", 10) + _pad("IR", 7)
+              + _pad("跟踪误差%", 10) + _pad("IR", 7) + _pad("评价比率", 10)
               + _pad("上行捕获%", 10) + _pad("下行捕获%", 10) + _pad("胜天率%", 9))
         for n, t in sorted(arms.items(),
                            key=lambda kv: -((kv[1].get("relative") or {}).get(
@@ -1067,12 +1183,19 @@ def print_comparison(rep: dict[str, Any]) -> None:
                   + _f(r.get('r2'),7,dp=3,sign=False)
                   + _f(r.get('tracking_error'),10,100,sign=False)
                   + _f(r.get('information_ratio'),7)
+                  + _f(r.get('appraisal_ratio'),10)
                   + _f(r.get('up_capture'),10,100,dp=0,sign=False)
                   + _f(r.get('down_capture'),10,100,dp=0)
                   + _f(r.get('batting_average'),9,100,dp=0,sign=False))
         r0 = next((t.get("relative") for t in arms.values() if t.get("relative")), {})
+        need = r0.get("appraisal_needed_for_significance")
         print(f"    * = alpha 的 t 值过 ±1.96。上行/下行捕获分别只用基准涨的 "
               f"{r0.get('n_up_days','?')} 天和跌的 {r0.get('n_down_days','?')} 天算。")
+        print(f"    IR 拿「相对基准的偏离」做分母，含「没拿满市场」那部分——"
+              f"低 beta 的组合在涨势里 IR 必然难看，那是敞口差不是能力差。"
+              f"评价比率拿剔掉 beta 后的特质波动做分母，量的才是选取策略自己挣的。"
+              + (f"但它和 alpha 的 t 值是同一个量：本窗口要到 {need:.1f} 才算显著。"
+                 if need else ""))
 
     fd = rep.get("family_deflation")
     if fd and fd.get("message"):
@@ -1083,6 +1206,71 @@ def print_comparison(rep: dict[str, Any]) -> None:
         print(f"  {fdr.get('note','')}")
         print(f"    BH 判为发现：{fdr.get('rejected') or '无'}；"
               f"Bonferroni 判为发现：{fdr.get('bonferroni_rejected') or '无'}")
+
+    wf = rep.get("walk_forward") or {}
+    if wf:
+        print(f"\n【挑组合这个动作本身有用吗（前推检验）】"
+              f"每期只用此前的成绩挑领先者，再看它当期结果")
+        for key in ("all_arms", "no_posthoc"):
+            blk = wf.get(key)
+            if not blk:
+                continue
+            tag = "含事后设计的组合" if key == "all_arms" else "剔除事后设计的组合"
+            print(f"  · {tag}：跟随领先者 {_pct(blk.get('follow_leader_mean'))}/期"
+                  f" | 全量基准 {_pct(blk.get('control_mean'))}"
+                  f" | 随机挑一条 {_pct(blk.get('all_arms_mean'))}"
+                  f" | 事后最优 {_pct(blk.get('hindsight_best_mean'))}"
+                  f" | n={blk.get('n_decisions')}")
+            ranks = [x.get("rank_of_pick") for x in (blk.get("picks") or [])]
+            n_live = ((blk.get("picks") or [{}])[0] or {}).get("n_arms_live")
+            print(f"      被挑中那条的当期实际排名 {ranks}（共 {n_live} 条）"
+                  + ("" if blk.get("usable") else "  ← 决策次数不足，还不该读"))
+        if wf.get("note"):
+            print(f"  {wf['note']}")
+
+    pb = rep.get("pbo") or {}
+    if pb.get("splits"):
+        rng = pb.get("pbo_range")
+        print(f"\n【回测过拟合概率 PBO】样本内最优的那条，样本外落进后半段的比例")
+        for k in sorted(pb["splits"], key=int):
+            b = pb["splits"][k]
+            if b.get("pbo") is None:
+                continue
+            nul = b.get("null") or {}
+            ci = nul.get("ci95") or [None, None]
+            print(f"  切 {k:>2} 块（{b.get('n_combinations')} 种组合）"
+                  f"  实测 {b['pbo']:.2f}"
+                  f"   同形状噪声 {nul.get('median','—')}"
+                  f" [{ci[0]}, {ci[1]}]"
+                  f"   p={b.get('p_value')}"
+                  f"   {'优于噪声' if b.get('better_than_noise') else '与噪声分不开'}")
+        if rng:
+            print(f"  实测区间 {rng[0]:.2f}~{rng[1]:.2f}。"
+                  f"门槛不是 0.5，而是上面那列「同形状噪声」——样本内外取自同一段"
+                  f"有限数据，赢家会机械性回归，偏移多少取决于组合数/观测数/块数。"
+                  f"{'三个块数方向一致。' if pb.get('verdict_stable_across_splits') else '三个块数不一致，别引用点估计。'}")
+
+    cap = rep.get("capacity") or {}
+    if cap.get("arms"):
+        print(f"\n【容量：自己的单子会不会把价格推走】"
+              f"资本 {cap['capital_usd']/1e6:.0f}M ÷ {cap['slots']} 档，"
+              f"参与度 = 单笔金额 ÷ 入场前 20 日均成交额")
+        print("  " + _pad("组合", 26, False) + _pad("每期开仓", 10)
+              + _pad("单笔(千$)", 11) + _pad("参与度中位%", 12)
+              + _pad("参与度p90%", 12) + _pad("容量(百万$)", 13))
+        for n, v in sorted(cap["arms"].items(),
+                           key=lambda kv: (kv[1]["capacity_usd"] or 9e18)):
+            print("  " + _pad(n, 26, False)
+                  + _pad(f"{v['median_positions_per_period']:.0f}", 10)
+                  + _pad(f"{v['position_usd']/1000:.0f}", 11)
+                  + _pad(f"{v['participation_median']*100:.3f}", 12)
+                  + _pad(f"{v['participation_p90']*100:.3f}", 12)
+                  + _pad(("—" if v["capacity_usd"] is None
+                          else f"{v['capacity_usd']/1e6:.0f}"), 13))
+        if cap.get("tightest_capacity_usd"):
+            print(f"    最紧的容量 ${cap['tightest_capacity_usd']/1e6:.0f}M——"
+                  f"容量由最薄的那个标的定，不由典型标的定。"
+                  f"仓位越集中，容量越小：这和「集中持仓更容易出成绩」是同一件事的两面。")
 
     cr = rep.get("cost_reality") or {}
     if cr:
@@ -1103,3 +1291,496 @@ def print_comparison(rep: dict[str, Any]) -> None:
         print(f"    「打平所需往返成本」低于「已扣成本」的组合，"
               f"扣完交易费之后没有超额可言。")
     print()
+
+
+# ---------------------------------------------------------------------------
+# Does the *selection procedure* work? (walk-forward)
+
+@dataclass
+class WalkForward:
+    label: str = "all_arms"
+    excluded: list[str] = field(default_factory=list)
+    n_decisions: int = 0
+    picks: list[dict[str, Any]] = field(default_factory=list)
+    follow_leader_mean: float | None = None
+    control_mean: float | None = None
+    all_arms_mean: float | None = None
+    hindsight_best_mean: float | None = None
+    edge_vs_control: float | None = None
+    edge_vs_all_arms: float | None = None
+    hit_rate_vs_control: float | None = None
+    usable: bool = False
+    message: str = ""
+
+
+def walk_forward_selection(per_period: dict[str, dict[str, float | None]], *,
+                           control: str | None = None,
+                           exclude: Sequence[str] = (),
+                           label: str = "all_arms",
+                           min_decisions: int = 4) -> WalkForward:
+    """Pick the leader on everything seen so far; take what it did next.
+
+    Every other number in this file grades an arm. This one grades **the act of
+    choosing between arms**, and it is the only test that can justify running
+    eleven of them. Nine arms exist so that one can be picked; if picking the
+    leader does no better than the control, the apparatus is a cost with no
+    product, and no per-arm statistic will ever reveal that — each arm can look
+    fine while the procedure that selects among them adds nothing.
+
+    Strictly forward: the leader for period *t* is decided on periods 1..t−1
+    only, so every decision is out-of-sample by construction. This is the same
+    discipline `live_vs_backfill` applies to one exploratory arm, generalised to
+    the selection itself.
+
+    Three reference points, because "did it beat the control" alone is not
+    interpretable:
+
+    * `control_mean` — never choose; hold the full pool.
+    * `all_arms_mean` — choose at random among the arms, in expectation.
+    * `hindsight_best_mean` — the ceiling, chosen with the answers. The gap
+      between follow-the-leader and this is what the procedure leaves on the
+      table; the gap between it and `all_arms_mean` is what it earns.
+
+    Refuses to be read below `min_decisions`, for the same reason
+    `live_vs_backfill` does: below one full rotation of the tranche cycle every
+    decision is still riding positions that are open somewhere.
+
+    **`exclude` is the part that matters, and the first run without it was
+    wrong in a way that looked like a result.** Walk-forward is honest about
+    *when an arm was chosen* and says nothing about *when the arm was created*.
+    On the 2026-09-04 data, four of five decisions picked `ev_rank` — an arm
+    designed on 2026-09-05 after looking at these six periods. The procedure
+    was replaying a choice among candidates one of which could not have existed
+    at the time, which is look-ahead one level up from the prices: the leak is
+    in the arm roster, not in any arm's inputs. Callers pass every
+    post-hoc-designed arm here and read the two runs side by side; the gap
+    between them is the size of that contamination.
+    """
+    w = WalkForward(label=label, excluded=sorted(exclude))
+    drop = set(exclude)
+    per_period = {a: r for a, r in per_period.items() if a not in drop}
+    periods = sorted({p for rows in per_period.values() for p in rows})
+    arms = sorted(per_period)
+    if len(periods) < 2 or not arms:
+        w.message = "期数或组合数不足，无法做前推选择检验。"
+        return w
+
+    lead_rets: list[float] = []
+    ctl_rets: list[float] = []
+    all_rets: list[float] = []
+    best_rets: list[float] = []
+    for i in range(1, len(periods)):
+        now = periods[i]
+        seen = periods[:i]
+        # Leader on the record through the prior period only.
+        score: dict[str, float] = {}
+        for a in arms:
+            vals = [per_period[a][p] for p in seen
+                    if per_period[a].get(p) is not None]
+            if vals:
+                score[a] = _mean(vals)          # type: ignore[arg-type]
+        live = {a: per_period[a].get(now) for a in arms}
+        live = {a: v for a, v in live.items() if v is not None}
+        if not score or not live:
+            continue
+        pick = max(score, key=lambda a: score[a])
+        if pick not in live:
+            continue
+        lead_rets.append(live[pick])            # type: ignore[arg-type]
+        all_rets.append(_mean(list(live.values())))   # type: ignore[arg-type]
+        best_rets.append(max(live.values()))    # type: ignore[arg-type]
+        c = live.get(control) if control else None
+        if c is not None:
+            ctl_rets.append(c)
+        w.picks.append({
+            "period": now, "picked": pick,
+            "picked_on_record_through": seen[-1],
+            "realised": round(live[pick], 6),          # type: ignore[arg-type]
+            "control": None if c is None else round(c, 6),
+            "best_available": round(max(live.values()), 6),
+            "rank_of_pick": 1 + sorted(live.values(), reverse=True).index(
+                live[pick]),
+            "n_arms_live": len(live),
+        })
+
+    w.n_decisions = len(lead_rets)
+    if not w.n_decisions:
+        w.message = "没有一期能同时给出「此前的领先者」和「它当期的结果」。"
+        return w
+    w.follow_leader_mean = round(_mean(lead_rets), 6)
+    w.all_arms_mean = round(_mean(all_rets), 6)
+    w.hindsight_best_mean = round(_mean(best_rets), 6)
+    if ctl_rets:
+        w.control_mean = round(_mean(ctl_rets), 6)
+        w.edge_vs_control = round(w.follow_leader_mean - w.control_mean, 6)
+        w.hit_rate_vs_control = round(
+            sum(1 for a, b in zip(lead_rets, ctl_rets) if a > b)
+            / len(ctl_rets), 3)
+    w.edge_vs_all_arms = round(w.follow_leader_mean - w.all_arms_mean, 6)
+    w.usable = w.n_decisions >= min_decisions
+
+    ranks = [p["rank_of_pick"] for p in w.picks]
+    w.message = (
+        (f"[{label}] " if label != "all_arms" else "")
+        + (f"（已剔除事后设计的组合：{'、'.join(w.excluded)}）"
+           if w.excluded else "")
+        + f"前推选择：每期只用此前各期的成绩挑出领先者，再看它当期的结果，共 "
+        f"{w.n_decisions} 次决策。跟随领先者 {_pct(w.follow_leader_mean)}/期"
+        + (f"，全量基准 {_pct(w.control_mean)}（差 {_pct(w.edge_vs_control)}）"
+           if w.control_mean is not None else "")
+        + f"，随机挑一条 {_pct(w.all_arms_mean)}（差 {_pct(w.edge_vs_all_arms)}），"
+        f"事后最优 {_pct(w.hindsight_best_mean)}。"
+        f"被挑中的那条当期实际排名依次为 {ranks}（共 {w.picks[0]['n_arms_live']} 条）。"
+        + ("" if w.usable else
+           f" 不足 {min_decisions} 次决策，这一段还不该被读——"
+           f"四周才是一轮完整的分批周期。"))
+    return w
+
+
+# ---------------------------------------------------------------------------
+# Probability of backtest overfitting (CSCV)
+
+def _combinations(n: int, k: int) -> list[tuple[int, ...]]:
+    out: list[tuple[int, ...]] = []
+
+    def rec(start: int, cur: tuple[int, ...]) -> None:
+        if len(cur) == k:
+            out.append(cur)
+            return
+        for i in range(start, n):
+            rec(i + 1, cur + (i,))
+    rec(0, ())
+    return out
+
+
+@dataclass
+class PBO:
+    n_splits: int = 0
+    n_combinations: int = 0
+    n_arms: int = 0
+    n_obs: int = 0
+    pbo: float | None = None
+    median_oos_rank_of_is_winner: float | None = None
+    oos_beats_median_frac: float | None = None
+    usable: bool = False
+    message: str = ""
+
+
+def pbo_cscv(returns: dict[str, Sequence[float]], *, n_splits: int = 8,
+             min_obs: int = 24) -> PBO:
+    """Bailey et al.'s combinatorially symmetric cross-validation.
+
+    The DSR asks whether the winner's Sharpe survives the number of trials. This
+    asks a different and blunter question: **when you pick the in-sample winner,
+    does it tend to land below the median out of sample?** A procedure for which
+    it does is overfitting by construction, whatever any individual arm's
+    statistics look like.
+
+    The construction: cut the observations into `n_splits` contiguous blocks,
+    take every way of choosing half of them as in-sample with the complement as
+    out-of-sample, pick the best Sharpe in-sample, and record where that arm
+    ranks out-of-sample. PBO is the share of splits where it lands in the bottom
+    half. 0.5 is a coin flip — no information survives selection; near 0 means
+    the in-sample winner keeps winning.
+
+    Two honest caveats, both live here. The blocks are contiguous rather than
+    random, so a regime that fills one half biases the answer; and these arms
+    hold overlapping tranches of the same pool, so their daily returns are
+    strongly correlated and the ranks are less independent than the arithmetic
+    assumes. Both make PBO *less* discriminating, not more, which is the safe
+    direction for a check whose job is to refuse.
+    """
+    p = PBO(n_splits=n_splits, n_arms=len(returns))
+    names = sorted(returns)
+    if len(names) < 2:
+        p.message = "少于 2 条组合，PBO 无从谈起。"
+        return p
+    n = min(len(returns[a]) for a in names)
+    p.n_obs = n
+    if n < min_obs or n_splits < 2 or n_splits % 2:
+        p.message = (f"观测 {n} 个、切 {n_splits} 块——PBO 需要至少 {min_obs} 个观测"
+                     f"且块数为偶数。")
+        return p
+
+    edges = [round(i * n / n_splits) for i in range(n_splits + 1)]
+    blocks = [list(range(edges[i], edges[i + 1])) for i in range(n_splits)]
+    combos = _combinations(n_splits, n_splits // 2)
+    p.n_combinations = len(combos)
+
+    def sharpe(xs: list[float]) -> float | None:
+        if len(xs) < 2:
+            return None
+        m = _mean(xs)
+        sd = math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
+        return None if sd <= 0 else m / sd
+
+    ranks: list[float] = []
+    below = 0
+    for c in combos:
+        is_idx = [i for b in c for i in blocks[b]]
+        oos_idx = [i for b in range(n_splits) if b not in c for i in blocks[b]]
+        is_s, oos_s = {}, {}
+        for a in names:
+            r = returns[a]
+            si = sharpe([r[i] for i in is_idx])
+            so = sharpe([r[i] for i in oos_idx])
+            if si is not None and so is not None:
+                is_s[a], oos_s[a] = si, so
+        if len(is_s) < 2:
+            continue
+        win = max(is_s, key=lambda a: is_s[a])
+        order = sorted(oos_s, key=lambda a: oos_s[a])       # worst first
+        # Relative rank in [0,1]; 1 = best out of sample.
+        rr = (order.index(win) + 1) / len(order)
+        ranks.append(rr)
+        if rr <= 0.5:
+            below += 1
+    if not ranks:
+        p.message = "每种切分下都算不出足够的夏普，PBO 无结果。"
+        return p
+    p.pbo = round(below / len(ranks), 4)
+    p.median_oos_rank_of_is_winner = round(st.median(ranks), 4)
+    p.oos_beats_median_frac = round(1 - p.pbo, 4)
+    p.usable = True
+    p.message = (
+        f"把 {p.n_obs} 个观测切成 {n_splits} 块、取遍 {p.n_combinations} 种"
+        f"「一半样本内一半样本外」的组合：样本内最优的那条，样本外落进后半段的比例是 "
+        f"PBO={p.pbo:.2f}（越低越好；但门槛不是 0.5——样本内外取自同一段有限数据，"
+        f"赢家会机械性回归，这个偏移的大小要按本次的组合数/观测数/块数实算，"
+        f"参照值是 pbo_null 给出的零分布中位数）。"
+        f"样本外相对排名中位数 {p.median_oos_rank_of_is_winner:.2f}。"
+        f"注意：这些组合持有的是同一个候选池的重叠批次，日收益高度相关，"
+        f"排名的独立性比算式假设的低——这让 PBO 更钝而不是更利。")
+    return p
+
+
+def pbo_sweep(returns: dict[str, Sequence[float]],
+              splits: Sequence[int] = (4, 6, 8),
+              n_perm: int = 200) -> dict[str, Any]:
+    """PBO at several block counts, because one is a number the author picked.
+
+    Same objection `robustness_drop_top` raises against a single cut depth: a
+    verdict that only holds at the granularity its author chose is a verdict
+    about the author. On 27 observations the answer moves between 0.55 and 0.67
+    across 4/6/8 blocks — all above the 0.5 coin-flip line, none of them stable,
+    and reporting the spread is the finding.
+    """
+    # Each split carries its own permutation null. Reporting PBO without one is
+    # what produced the wrong sign here the first time: 0.5 is not the null.
+    runs: dict[str, Any] = {}
+    for sp in splits:
+        blk = pbo_null(returns, n_splits=sp, n_perm=n_perm)
+        row = dict(blk["observed"])
+        row["null"] = blk.get("null")
+        row["p_value"] = blk.get("p_value")
+        row["better_than_noise"] = blk.get("better_than_noise")
+        runs[str(sp)] = _clean(row)
+    vals = [r["pbo"] for r in runs.values() if r.get("pbo") is not None]
+    # Stability is about agreeing with each other, not about a 0.5 line that
+    # turned out not to be the null. Median of the three is the reference.
+    mid = st.median(vals) if vals else 0.0
+    agree = bool(vals) and (max(vals) - min(vals)) <= 0.15
+    ps = [r["p_value"] for r in runs.values() if r.get("p_value") is not None]
+    return {
+        "splits": runs,
+        "pbo_range": ([min(vals), max(vals)] if vals else None),
+        "p_range": ([min(ps), max(ps)] if ps else None),
+        "any_split_beats_noise": any(r.get("better_than_noise")
+                                     for r in runs.values()),
+        "all_splits_beat_noise": bool(runs) and all(
+            r.get("better_than_noise") for r in runs.values()),
+        "verdict_stable_across_splits": agree,
+        "note": (
+            "PBO 在 4/6/8 块下各算一次。只报一个块数，等于报一个「作者挑的粒度」下的结论。"
+            + ("三个块数指向同一侧，结论方向稳定。" if agree else
+               "三个块数没有指向同一侧，说明这个样本撑不起 PBO 的结论，不要引用点估计。")
+            + "判断好坏和每个块数各自的置换零分布比，不和 0.5 比："
+              "样本内外取自同一段有限数据，赢家会机械性回归，这个偏移有多大"
+              "取决于组合数、观测数和块数，只能逐个算出来，不能假定是 0.5。"
+            if vals else "样本不足，PBO 无结果。"),
+    }
+
+
+def pbo_null(returns: dict[str, Sequence[float]], *, n_splits: int = 8,
+             n_perm: int = 200, seed: int = 20260905) -> dict[str, Any]:
+    """The PBO a skill-free version of this same data would produce.
+
+    Written because reading PBO against 0.5 is wrong, and the first version of
+    this module said 0.5 in three places. The coin-flip intuition assumes the
+    in-sample and out-of-sample ranks are independent; they come from one finite
+    sample, so an arm whose in-sample blocks are high by chance has mechanically
+    lower out-of-sample blocks. The winner regresses, and PBO on pure noise
+    lands far above 0.5 — measured here at 0.77 for eight independent gaussian
+    arms. Against 0.5 this book's 0.55-0.67 reads as "worse than a coin flip",
+    which has the sign of the conclusion backwards.
+
+    **The null is exchangeability of arms, and getting that right took two
+    attempts.** The first permuted the time index with one shared permutation.
+    That preserves each arm's own mean, so an arm with a durable edge keeps it
+    under permutation, the null distribution contains the very signal it is
+    supposed to exclude, and a genuinely persistent arm comes back
+    indistinguishable from noise. A null that cannot reject anything is not
+    conservative, it is broken.
+
+    What is permuted instead is the **arm label within each observation**. Every
+    instant keeps its exact set of returns, so the cross-sectional spread and
+    the correlation these overlapping tranches have at each date survive
+    untouched — a null that broke those would be a null about a different
+    portfolio. What does not survive is arm identity, which is precisely H0:
+    no arm is durably better than another.
+
+    `p_value` is the share of permutations whose PBO is at least as low as the
+    observed one. Small means the in-sample winner keeps winning more than
+    exchangeable arms would.
+    """
+    import random as _r
+    rng = _r.Random(seed)
+    names = sorted(returns)
+    n = min(len(returns[a]) for a in names) if names else 0
+    obs = pbo_cscv(returns, n_splits=n_splits)
+    if not obs.usable:
+        return {"observed": _clean(asdict(obs)), "null": None,
+                "note": "观测样本本身算不出 PBO，零分布无从比较。"}
+
+    cols = [[returns[a][t] for a in names] for t in range(n)]
+    draws: list[float] = []
+    for _ in range(n_perm):
+        shuffled = []
+        for c in cols:
+            c2 = list(c)
+            rng.shuffle(c2)
+            shuffled.append(c2)
+        perm = {a: [shuffled[t][i] for t in range(n)]
+                for i, a in enumerate(names)}
+        r = pbo_cscv(perm, n_splits=n_splits)
+        if r.pbo is not None:
+            draws.append(r.pbo)
+    if not draws:
+        return {"observed": _clean(asdict(obs)), "null": None,
+                "note": "置换样本都算不出 PBO。"}
+
+    draws.sort()
+    lo = draws[max(0, int(0.025 * len(draws)) - 1)]
+    hi = draws[min(len(draws) - 1, int(0.975 * len(draws)))]
+    med = st.median(draws)
+    p = sum(1 for d in draws if d <= obs.pbo) / len(draws)
+    return {
+        "observed": _clean(asdict(obs)),
+        "null": {
+            "n_perm": len(draws),
+            "mean": round(_mean(draws), 4),
+            "median": round(med, 4),
+            "ci95": [round(lo, 4), round(hi, 4)],
+            "construction": "每个时点内打乱组合标签（各组合可交换）",
+        },
+        "p_value": round(p, 4),
+        "better_than_noise": obs.pbo < med,
+        "note": (
+            f"实测 PBO={obs.pbo:.2f}。零假设是「各条组合可交换」——在每个交易日内"
+            f"打乱组合标签、保留当天的横截面分布与相关结构，只抹掉组合身份，"
+            f"{len(draws)} 次给出 PBO 中位数 {med:.2f}，95% 区间 [{lo:.2f}, {hi:.2f}]。"
+            f"该比的是这个实测出来的中位数，而不是默认的 0.5：样本内外取自同一段"
+            f"有限数据，赢家会机械性回归，这个偏移有多大取决于组合数、观测数和"
+            f"块数，只能算不能猜（本次这个形状下是 {med:.2f}）。"
+            f"p={p:.3f}（置换中不高于实测的比例）。"
+            + ("实测低于零分布中位数，样本内的赢家在样本外确实比可交换的情形更能守住。"
+               if obs.pbo < med else
+               "实测不低于零分布中位数，挑出来的赢家守不住，选择过程没有留下可辨认的东西。")),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Capacity: the other half of the seventh sin
+
+def capacity(rows: Sequence[dict[str, Any]], *, capital: float, slots: int,
+             participation_cap: float = 0.10) -> dict[str, Any]:
+    """How much money this could run before its own orders move the price.
+
+    `turnover_and_cost` answers "does the edge survive the fee". This answers
+    the question a fee-blind reader still has to ask: **could you put real money
+    in it at all.** Deutsche Bank's seventh sin is a Sharpe presented without
+    turnover, borrow and impact beside it; the fee half was already covered and
+    this is the impact half.
+
+    The estimate is deliberately crude and stated as such. Position size is
+    `capital / slots / positions-per-period` — the design's own sizing — and
+    participation is that divided by the instrument's average daily dollar
+    volume before entry. `capacity_usd` is the capital at which the *90th
+    percentile* position would hit `participation_cap` of ADV; the 90th rather
+    than the median, because capacity is set by the thinnest name a strategy
+    reaches for, not by the typical one.
+
+    What it deliberately does not do is model impact. There is no square-root
+    law here, no spread, no borrow. Participation of ADV is the input every
+    impact model starts from, and reporting it honestly is worth more than
+    reporting a dollar cost derived from coefficients nobody here has fitted.
+
+    Rows need `arm` and `adv_usd`; anything missing ADV is counted and excluded
+    rather than assumed liquid, which would be the zero-fill again.
+    """
+    # Same dedup as `turnover_and_cost`, for the same reason: one instrument in
+    # one period is one order however many generators proposed it, and position
+    # size — the whole input to participation — divides by that count.
+    by_arm: dict[str, list[dict[str, Any]]] = {}
+    missing = 0
+    seen: set[tuple[str, str, str]] = set()
+    for r in rows:
+        k = (str(r.get("arm")), str(r.get("period")),
+             str(r.get("instrument_id")))
+        if k in seen:
+            continue
+        seen.add(k)
+        if r.get("adv_usd") in (None, 0):
+            missing += 1
+            continue
+        by_arm.setdefault(str(r.get("arm")), []).append(r)
+    if not by_arm:
+        return {"arms": {}, "missing_adv": missing,
+                "note": "没有一条持仓拿得到日均成交额，容量无从估计。"}
+
+    def pctile(xs: list[float], q: float) -> float:
+        s = sorted(xs)
+        i = min(len(s) - 1, max(0, int(round(q * (len(s) - 1)))))
+        return s[i]
+
+    out: dict[str, Any] = {}
+    for arm, rs in sorted(by_arm.items()):
+        per_period: dict[str, int] = {}
+        for r in rs:
+            per_period[str(r.get("period"))] = per_period.get(
+                str(r.get("period")), 0) + 1
+        n_pos = st.median(list(per_period.values())) if per_period else 1
+        pos_usd = capital / max(1, slots) / max(1, n_pos)
+        part = [pos_usd / float(r["adv_usd"]) for r in rs]
+        p90 = pctile(part, 0.90)
+        out[arm] = {
+            "n_positions_scored": len(rs),
+            "median_positions_per_period": n_pos,
+            "position_usd": round(pos_usd, 0),
+            "participation_median": round(st.median(part), 6),
+            "participation_p90": round(p90, 6),
+            "participation_max": round(max(part), 6),
+            "n_over_cap": sum(1 for x in part if x > participation_cap),
+            "capacity_usd": (round(capital * participation_cap / p90, 0)
+                             if p90 > 0 else None),
+        }
+    caps = [v["capacity_usd"] for v in out.values()
+            if v["capacity_usd"] is not None]
+    return {
+        "capital_usd": capital,
+        "slots": slots,
+        "participation_cap": participation_cap,
+        "missing_adv": missing,
+        "arms": out,
+        "tightest_capacity_usd": min(caps) if caps else None,
+        "note": (
+            f"单笔金额 = 资本 {capital/1e6:.0f}M ÷ {slots} 个档位 ÷ 当期持仓数；"
+            f"参与度 = 单笔金额 ÷ 该标的入场前的日均成交额。"
+            f"capacity_usd 是让第 90 百分位的那笔达到 {participation_cap*100:.0f}% "
+            f"日均成交额时的资本量——取 90 分位而不是中位数，因为容量由最薄的那个标的定，"
+            f"不由典型标的定。"
+            f"这里只报参与度，不套冲击成本模型：参与度是所有冲击模型的输入，"
+            f"如实报它，好过报一个用没人拟合过的系数算出来的美元数。"
+            + (f" 有 {missing} 条持仓拿不到成交额，已剔除而不是当成流动性充足。"
+               if missing else "")),
+    }

@@ -236,8 +236,10 @@ def test_monthly_table_flags_partial_months():
 
 
 def test_breakeven_cost_is_the_cost_that_zeroes_the_net_edge():
-    pos = [{"arm": "x", "period": "2026-01-01", "return_pct": 1.0},
-           {"arm": "x", "period": "2026-01-01", "return_pct": 3.0}]
+    pos = [{"arm": "x", "period": "2026-01-01", "instrument_id": "A",
+            "return_pct": 1.0},
+           {"arm": "x", "period": "2026-01-01", "instrument_id": "B",
+            "return_pct": 3.0}]
     c = perf.turnover_and_cost(pos, arm="x", horizon_days=30,
                                applied_cost_pct=0.08)
     assert c["mean_position_return_net_pct"] == pytest.approx(2.0)
@@ -261,3 +263,237 @@ def test_an_arm_separable_only_by_being_worse_is_not_permission_to_rank():
     assert sep["beats_benchmark"] is False
     assert sep["can_rank"] is False
     assert "没有任何一条被证明跑赢基准" in sep["note"]
+
+
+def test_no_runtime_note_carries_markdown_emphasis():
+    """`**bold**` in a string that reaches the dashboard prints the asterisks.
+
+    Hit twice in one session — once in the separability note, once in the
+    relative note — so it is pinned rather than remembered. Docstrings are
+    exempt: they are read in an editor, never rendered.
+    """
+    import ast as _ast
+    import inspect
+    src = inspect.getsource(perf)
+    tree = _ast.parse(src)
+    docstrings = set()
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.Module, _ast.ClassDef, _ast.FunctionDef,
+                             _ast.AsyncFunctionDef)):
+            d = _ast.get_docstring(node, clean=False)
+            if d:
+                docstrings.add(d)
+    offenders = []
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+            if node.value in docstrings:
+                continue
+            if "**" in node.value:
+                offenders.append((node.lineno, node.value[:70]))
+    assert not offenders, f"这些运行期字符串带 markdown 加粗，会原样印到面板上：{offenders}"
+
+
+def test_appraisal_ratio_states_the_bar_it_has_to_clear():
+    """The appraisal ratio must not become the next number read as a result
+    the moment the information ratio stops being flattering."""
+    b = [0.01, -0.008, 0.012, -0.011, 0.006, -0.004, 0.009, -0.007] * 4
+    # Real residual variance, or the regression is exact and there is no
+    # idiosyncratic risk to divide by — which is the correct refusal, not a bug.
+    noise = [0.003, -0.002, 0.001, 0.004, -0.005, 0.002, -0.001, 0.0] * 4
+    p = [0.3 * x + 0.004 + e for x, e in zip(b, noise)]
+    rel = perf.relative(p, b, rf_annual=0.0)
+    assert rel.appraisal_ratio is not None
+    assert rel.appraisal_needed_for_significance is not None
+    # t ≈ AR·√(n/252) is the identity the note claims; hold it to it.
+    implied_t = rel.appraisal_ratio * math.sqrt(rel.n / 252)
+    assert implied_t == pytest.approx(rel.alpha_t, rel=0.15)
+    assert (abs(rel.appraisal_ratio) >= rel.appraisal_needed_for_significance) \
+        == bool(rel.alpha_significant)
+
+
+def test_beta_matched_benchmark_is_not_the_raw_benchmark_for_a_low_beta_book():
+    """A beta-0.2 book compared to a fully invested index is mostly being
+    measured on exposure it never had."""
+    b = [0.01, -0.006, 0.011, -0.009, 0.005, -0.003, 0.008] * 4
+    noise = [0.001, -0.001, 0.002, 0.0, -0.002, 0.001, 0.0] * 4
+    p = [0.2 * x + e for x, e in zip(b, noise)]
+    rel = perf.relative(p, b, rf_annual=0.0)
+    raw = math.prod(1 + x for x in b) - 1
+    assert rel.beta_matched_bench_return is not None
+    assert abs(rel.beta_matched_bench_return) < abs(raw) * 0.5
+    assert abs(rel.excess_vs_beta_matched) < abs(rel.excess_cum)
+
+
+# --------------------------------------------------------- walk-forward / PBO
+
+def test_walk_forward_never_lets_a_decision_see_its_own_period():
+    """The leader for period t is decided on 1..t-1. An implementation that
+    includes t scores a choice it could not have made."""
+    per = {
+        "good_late": {"p1": -0.10, "p2": -0.10, "p3": +0.50},
+        "steady": {"p1": +0.02, "p2": +0.02, "p3": +0.02},
+    }
+    w = perf.walk_forward_selection(per, control="steady", min_decisions=1)
+    # p3 is decided on p1..p2, where `steady` leads — so the +0.50 is NOT taken.
+    assert [p["picked"] for p in w.picks] == ["steady", "steady"]
+    assert w.follow_leader_mean == pytest.approx(0.02)
+
+
+def test_walk_forward_excludes_arms_that_could_not_have_existed():
+    """Walk-forward is honest about when a choice was made and silent about
+    when the arm was created. On live data that gap was worth more than the
+    entire apparent edge."""
+    per = {
+        "posthoc": {"p1": +0.09, "p2": +0.09, "p3": +0.09},
+        "plain_a": {"p1": +0.01, "p2": -0.01, "p3": +0.01},
+        "plain_b": {"p1": -0.01, "p2": +0.01, "p3": -0.01},
+    }
+    dirty = perf.walk_forward_selection(per, min_decisions=1)
+    clean = perf.walk_forward_selection(per, exclude=["posthoc"],
+                                        min_decisions=1)
+    assert all(p["picked"] == "posthoc" for p in dirty.picks)
+    assert all(p["picked"] != "posthoc" for p in clean.picks)
+    assert clean.follow_leader_mean < dirty.follow_leader_mean
+    assert clean.excluded == ["posthoc"]
+    assert "posthoc" in clean.message
+
+
+def test_walk_forward_refuses_below_one_rotation():
+    per = {"a": {"p1": 0.01, "p2": 0.02}, "b": {"p1": 0.0, "p2": 0.01}}
+    w = perf.walk_forward_selection(per, min_decisions=4)
+    assert w.n_decisions == 1
+    assert w.usable is False
+    assert "还不该被读" in w.message
+
+
+def test_pure_noise_gives_a_pbo_well_above_the_half_line():
+    """PBO's null is not 0.5, and reading it against 0.5 flips the sign of the
+    conclusion. In-sample and out-of-sample halves come from one finite sample,
+    so the in-sample winner regresses mechanically and skill-free arms land far
+    above the coin-flip line. Pinned because the first version of this file
+    said 0.5 in three places."""
+    import random
+    random.seed(7)
+    rets = {f"a{i}": [random.gauss(0, 0.01) for _ in range(120)]
+            for i in range(8)}
+    p = perf.pbo_cscv(rets, n_splits=8)
+    assert p.usable
+    assert p.pbo > 0.6
+    assert "不是 0.5" in p.message
+
+
+def test_permutation_null_calls_pure_noise_indistinguishable_from_noise():
+    import random
+    random.seed(7)
+    rets = {f"a{i}": [random.gauss(0, 0.01) for _ in range(120)]
+            for i in range(8)}
+    out = perf.pbo_null(rets, n_splits=8, n_perm=60)
+    assert out["null"]["median"] > 0.5
+    assert out["better_than_noise"] is False
+    assert out["p_value"] > 0.2
+
+
+def test_permutation_null_detects_a_genuinely_persistent_arm():
+    import random
+    random.seed(11)
+    rets = {f"a{i}": [random.gauss(0, 0.01) for _ in range(120)]
+            for i in range(6)}
+    rets["real"] = [0.004 + random.gauss(0, 0.002) for _ in range(120)]
+    out = perf.pbo_null(rets, n_splits=8, n_perm=60)
+    assert out["better_than_noise"] is True
+    assert out["p_value"] < 0.1
+
+
+def test_pbo_is_low_when_one_arm_is_genuinely_better_everywhere():
+    import random
+    random.seed(11)
+    rets = {f"a{i}": [random.gauss(0, 0.01) for _ in range(120)]
+            for i in range(6)}
+    rets["real"] = [0.004 + random.gauss(0, 0.002) for _ in range(120)]
+    p = perf.pbo_cscv(rets, n_splits=8)
+    assert p.usable
+    assert p.pbo < 0.2
+
+
+def test_pbo_sweep_reports_whether_the_verdict_moves_with_the_cut():
+    import random
+    random.seed(3)
+    rets = {f"a{i}": [random.gauss(0, 0.01) for _ in range(120)]
+            for i in range(5)}
+    out = perf.pbo_sweep(rets, splits=(4, 6, 8))
+    assert set(out["splits"]) == {"4", "6", "8"}
+    assert out["pbo_range"] and out["pbo_range"][0] <= out["pbo_range"][1]
+    assert isinstance(out["verdict_stable_across_splits"], bool)
+
+
+def test_pbo_refuses_a_sample_too_short_to_split():
+    rets = {"a": [0.01] * 10, "b": [0.0] * 10}
+    p = perf.pbo_cscv(rets, n_splits=8)
+    assert p.usable is False
+    assert p.pbo is None
+
+
+def test_no_top_level_name_is_defined_twice():
+    """A second `def` silently shadows the first and the module keeps working.
+
+    Hit while editing this file: a string-surgery patch spliced the tail back
+    in, leaving two `pbo_null` definitions where the stale one won. Tests kept
+    passing on the functions that had not moved, and the rebuilt statistic
+    quietly did nothing.
+    """
+    import ast as _ast
+    import inspect
+    tree = _ast.parse(inspect.getsource(perf))
+    names: list[str] = []
+    for node in tree.body:
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef,
+                             _ast.ClassDef)):
+            names.append(node.name)
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert not dupes, f"这些顶层定义出现了不止一次，后一个会静默覆盖前一个：{dupes}"
+
+
+def test_cost_and_capacity_count_purchases_not_idea_rows():
+    """One ETF proposed by three generators is three idea rows and one order.
+
+    Counting rows inflated openings-per-period from 2.7 to 8.0 for `ev_rank`,
+    and position size — which everything about cost and capacity divides by —
+    moves with that count.
+    """
+    pos = []
+    for gen in ("a", "b", "c"):
+        pos.append({"arm": "x", "period": "p1", "instrument_id": "SPY",
+                    "return_pct": 1.0, "gen": gen, "adv_usd": 1e9})
+    pos.append({"arm": "x", "period": "p1", "instrument_id": "QQQ",
+                "return_pct": 2.0, "adv_usd": 1e9})
+    c = perf.turnover_and_cost(pos, arm="x", horizon_days=30,
+                               applied_cost_pct=0.08)
+    assert c["n_positions"] == 2
+    assert c["positions_per_period"] == pytest.approx(2.0)
+
+    cap = perf.capacity(pos, capital=10_000_000, slots=4)
+    assert cap["arms"]["x"]["n_positions_scored"] == 2
+    assert cap["arms"]["x"]["median_positions_per_period"] == 2
+
+
+def test_capacity_excludes_names_with_no_volume_rather_than_assuming_liquid():
+    pos = [{"arm": "x", "period": "p1", "instrument_id": "A", "adv_usd": 1e8},
+           {"arm": "x", "period": "p1", "instrument_id": "B", "adv_usd": None}]
+    cap = perf.capacity(pos, capital=10_000_000, slots=4)
+    assert cap["missing_adv"] == 1
+    assert cap["arms"]["x"]["n_positions_scored"] == 1
+    assert "剔除" in cap["note"]
+
+
+def test_capacity_is_set_by_the_thinnest_name_not_the_typical_one():
+    """p90 rather than median, because a strategy's capacity is decided by what
+    it reaches for at the edge."""
+    pos = [{"arm": "x", "period": "p1", "instrument_id": f"i{i}",
+            "adv_usd": 1e9} for i in range(8)]
+    pos += [{"arm": "x", "period": "p1", "instrument_id": f"thin{i}",
+             "adv_usd": 1e6} for i in range(2)]
+    cap = perf.capacity(pos, capital=10_000_000, slots=1)
+    a = cap["arms"]["x"]
+    # The thin tail, not the typical name, must set p90 and therefore capacity.
+    assert a["participation_p90"] > a["participation_median"] * 50
+    assert a["capacity_usd"] < 10_000_000 * 10

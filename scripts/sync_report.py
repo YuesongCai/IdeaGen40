@@ -17,6 +17,7 @@ import re
 import ssl
 import subprocess
 import sqlite3
+import time
 import sys
 import urllib.request
 
@@ -39,10 +40,36 @@ def dash_key() -> str:
     return ""
 
 
-def get(url: str, key: str, timeout: int = 25):
-    req = urllib.request.Request(url, headers={"X-Dash-Key": key})
-    with urllib.request.urlopen(req, timeout=timeout, context=LAX) as r:
-        return json.loads(r.read().decode())
+def get(url: str, key: str, timeout: int = 40, tries: int = 3):
+    """Ask, and do not call a healthy node dead on one bad packet.
+
+    This laptop reaches both nodes through a local tunnel that drops
+    connections in bursts — measured 14/30 in the two minutes after the machine
+    woke from sleep, then 20/20 a minute later against the same node, while an
+    external control site failed in the same pattern. A single-attempt probe
+    reported "不可达" twice against nodes that were fine.
+
+    Also asks for gzip: /api/state is ~1MB of JSON and ~170KB compressed, and
+    the uncompressed transfer alone was taking 13 of the 17 seconds. The
+    browser always negotiates it; a status tool that does not was measuring a
+    slowness no user experiences.
+    """
+    last = None
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(
+                url, headers={"X-Dash-Key": key, "Accept-Encoding": "gzip"})
+            with urllib.request.urlopen(req, timeout=timeout, context=LAX) as r:
+                raw = r.read()
+                if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+                    import gzip
+                    raw = gzip.decompress(raw)
+                return json.loads(raw.decode())
+        except Exception as e:  # noqa: BLE001 — retried, then reported
+            last = e
+            if attempt + 1 < tries:
+                time.sleep(2)
+    raise last
 
 
 def local_mark_date() -> str | None:
@@ -98,7 +125,7 @@ def main() -> int:
     ok = ahead == "0"
     for label, base in NODES:
         try:
-            h = get(base + "/healthz", key, timeout=15)
+            h = get(base + "/healthz", key)
             fp = h["code"]["fingerprint"]
             files = h["code"]["files"]
         except Exception as e:  # noqa: BLE001 — an unreachable node is a reportable state
@@ -107,7 +134,7 @@ def main() -> int:
             continue
         sha = None
         try:
-            up = (get(base + "/api/deploy", key, timeout=15) or {}).get("updater")
+            up = (get(base + "/api/deploy", key, tries=2) or {}).get("updater")
             sha = (up or {}).get("deployed_sha")
         except Exception:  # noqa: BLE001 — only one node runs an updater
             pass

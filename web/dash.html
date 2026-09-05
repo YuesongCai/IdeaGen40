@@ -4999,14 +4999,21 @@ function falsificationCard(){
   if(hcEv&&hcBa&&hcEv.mean_return_full_horizon_pct!=null&&hcBa.mean_return_full_horizon_pct!=null){
     var edgeAll=num(hcEv.mean_return_pct)-num(hcBa.mean_return_pct);
     var edgeFull=num(hcEv.mean_return_full_horizon_pct)-num(hcBa.mean_return_full_horizon_pct);
+    /* 三档而不是两档：这一刀的结果是「优势缩水一半但还在」，
+       印成「扛住了」会把缩水抹掉，印成「没扛住」又是我上一版犯的错——
+       那一版读的是没去重的想法行，把 +0.11% 当成了满窗后的领先。 */
+    var keepFrac=(edgeAll&&edgeFull!=null)?(edgeFull/edgeAll):null;
+    var hv=(edgeFull==null||edgeAll==null)?null
+      :(edgeFull<0.5?'没扛住':(keepFrac!=null&&keepFrac<0.8?'打折':'扛住了'));
     rows.push(row('减去「窗口没跑满的那些仓位」',
       '只有 '+fmtRate((hc.complete_frac||0)*100)+' 的仓位真的持满了 '
         +fmtInt(hc.horizon_days)+' 天，而均值把 2 天和 30 天等权混在一起；'
         +'只看满窗，对全量基准的领先从 '+fmtPct(edgeAll)+' 收到 '+fmtPct(edgeFull)
-        +'。注意：满窗仓位几乎都来自最早那几期，所以这也换了一段行情，'
+        +'（满窗子样本只剩 '+fmtInt(hcEv.n_full_horizon)+' 笔）。'
+        +'注意：满窗仓位几乎都来自最早那几期，所以这同时换了一段行情，'
         +'不是一次更干净的测量',
       fmtPct(hcEv.mean_return_full_horizon_pct)+' vs '+fmtPct(hcBa.mean_return_full_horizon_pct),
-      vd(edgeFull==null?null:edgeFull>=0.5),'backtest'));
+      hv==null?'没算':hv,'backtest'));
   }else rows.push(na('减去「窗口没跑满的那些仓位」','满窗与全部窗口的对照','没有 horizon_completeness 数据块','backtest'));
 
   /* 第七刀：试了多少次。 */

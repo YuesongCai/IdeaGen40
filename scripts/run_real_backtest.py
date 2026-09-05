@@ -942,13 +942,25 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
             return None
         return exit_d >= period + _td(days=horizon_days)
 
+    # Deduped by (arm, period, instrument), like `ArmScore`, `turnover_and_cost`,
+    # `capacity` and `cost_sensitivity`. One instrument held in one period is one
+    # position however many generators proposed it; counting the idea rows
+    # inflates n about three-fold and quietly turns the mean into a
+    # consensus-weighted average — a defensible statistic, but not the one the
+    # column says it is, and not the one every other table on the page uses.
     arms: dict[str, Any] = {}
+    seen: set[tuple[str, str, str]] = set()
     for row in positions:
         if row.get("return_pct") is None:
             continue
         done = reached(row)
         if done is None:
             continue
+        key = (str(row.get("arm")), str(row.get("period")),
+               str(row.get("instrument_id")))
+        if key in seen:
+            continue
+        seen.add(key)
         entry = arms.setdefault(str(row["arm"]),
                                 {"n": 0, "n_full": 0, "all": [], "full": []})
         entry["n"] += 1

@@ -181,6 +181,34 @@ class GlossaryGate(unittest.TestCase):
                               "换法见 docs/词表.md：\n\n" + "\n".join(bad[:12])
                               + (f"\n\n（共 {len(bad)} 处）" if len(bad) > 12 else ""))
 
+    def test_every_registered_selector_has_a_chinese_name_on_the_panel(self):
+        """后端注册一条策略、面板不知道它，读者就会在业绩表里看见 `mom_21`。
+
+        `SEL_META` 是面板给选取策略取中文名的**唯一**对照表，而它是一份手工
+        维护的后端注册表镜像。2026-09-05 就漏了一次：`select_momentum.py` 注册
+        `mom_21` 时后端 `label` 写的是「一月动量（对照）」，面板照样把内部键名
+        印进夏普表——同一张表其余十行都是中文，只有它露着英文。
+
+        和 `SURFACES` 那份手写清单同一类毛病：镜像不会自己跟上。所以让注册表
+        来对账，加一条策略却忘了取名字，这里红。
+        """
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from ideagen import strategy
+        import ideagen.strategies                       # noqa: F401  触发注册
+        registered = {m["name"] for m in strategy.available("idea_selector")}
+        html = (ROOT / "web" / "dash.html").read_text(encoding="utf-8")
+        block = re.search(r"var SEL_META=\[.*?\n\];", html, re.S)
+        self.assertIsNotNone(block, "dash.html 里找不到 SEL_META")
+        named = set(re.findall(r"\['([a-z0-9_]+)'", block.group()))
+        missing = sorted(registered - named)
+        self.assertFalse(
+            missing,
+            "这些选取策略在后端注册了，面板却没有中文名，会直接印内部键名：\n  "
+            + "\n  ".join(missing)
+            + "\n往 web/dash.html 的 SEL_META 里加一行："
+              "[键名, 中文名, 主策略/常驻探索/对照, 短说明, 长说明]")
+
     def test_every_exemption_names_a_file_that_exists(self):
         """豁免清单会烂掉——文件改名之后那条豁免就在悄悄免掉一个不存在的东西。"""
         for rel, why in EXEMPT.items():

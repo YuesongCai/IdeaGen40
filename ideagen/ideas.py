@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Sequence
 
-from . import config, db, universe
+from . import config, db, macro, universe
 from .sources import futu_px, olive
 
 SCENARIOS = ("up", "base", "down")
@@ -211,10 +211,20 @@ def compute(con, raw: dict, as_of: date, batch_id: str) -> dict:
         if hit:
             ref_d, ref_px = hit[0], hit[1]
 
+    # The band's sigma. Realised vol is what this has always used — `db.py`
+    # says so in the column comment — and the band is where the money went
+    # missing: 264 of 383 orders expired unfilled, which is a statement about
+    # width, not about direction. `macro.band_sigma_pct` records what the
+    # market's own implied number says either way, and only widens the band when
+    # `IDEAGEN_SIGMA_IMPLIED` is set, because a change to the band changes fills
+    # and therefore is not comparable with the periods already booked.
     sigma_h = None
+    sigma_meta: dict[str, Any] = {"note": "无价格或无参考日，未计算"}
     if futu_code and ref_d:
         s = futu_px.horizon_sigma(con, futu_code, ref_d, hm)
-        sigma_h = (s * 100.0) if s is not None else None
+        realised_pct = (s * 100.0) if s is not None else None
+        sigma_h, sigma_meta = macro.band_sigma_pct(
+            con, futu_code, ref_d, hm, realised_pct)
     vcheck, vmeta = vol_sanity(cr[0], cr[2], sigma_h)
 
     grade, rule = grade_absolute(oc["or"], ok["or"], oc["or_inf"], ok["or_inf"])
@@ -253,6 +263,7 @@ def compute(con, raw: dict, as_of: date, batch_id: str) -> dict:
         "risk": raw.get("risk"), "role": raw.get("role"),
         "sources": raw.get("sources") or [],
         "raw": {**raw, "_derived": {"hurdle": hmeta, "vol": vmeta,
+                                    "sigma": sigma_meta,
                                     "cost_pct": round_trip_cost_pct(market, kind),
                                     "central_net": cr_net, "conservative_net": kr_net}},
     }

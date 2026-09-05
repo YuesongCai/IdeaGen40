@@ -67,7 +67,7 @@ import statistics as st
 from datetime import date, timedelta
 from typing import Any, Iterable
 
-from . import config, db, lexicon
+from . import config, db, lexicon, macro
 from . import themes as themes_mod
 from .lexicon import Theme, all_themes
 from .sources import futu_px
@@ -425,6 +425,36 @@ def factor_C(con, theme: Theme, as_of: str) -> tuple[float | None, dict]:
     parts.update({"near_high": round(near_high, 1),
                   "vol_pct_20d": (round(vol_pct, 1) if vol_pct is not None else None),
                   "calm_score": round(calm, 1)})
+
+    # The non-price leg. All three terms above are read off the price series, so
+    # they cannot test the 2026-09-05 finding that the `ev` ranking is largely a
+    # volatility ladder — that finding was reached from price too, and a fourth
+    # view of the same series will agree with the first three for reasons that
+    # have nothing to do with crowding. CFTC speculative positioning is the only
+    # independent measure available here, and it covers precisely the contracts
+    # behind COPX / USO / GLD / TLT, the names the drop-top-N check identified as
+    # carrying the whole advantage.
+    #
+    # Weighted by how the instrument reaches its contract: a fund whose exposure
+    # *is* the future gets 0.25, a beta relationship (copper miners against
+    # copper) gets 0.15, because those are different claims and averaging them at
+    # one weight would launder the weaker one.
+    pos, pmeta = macro.positioning_crowding(con, code, as_of)
+    parts["positioning"] = pmeta
+    parts["score_price_only"] = round(min(score, 100.0), 1)
+    if pos is not None:
+        w = 0.25 if pmeta.get("link") == "direct" else 0.15
+        blended = (1.0 - w) * score + w * pos
+        parts["positioning_weight"] = w
+        parts["score_with_positioning"] = round(min(blended, 100.0), 1)
+        # Recorded whether or not it is applied. A scoring input switched on
+        # mid-stream makes this period incomparable with the six before it, so
+        # the switch stays off until someone decides — and the evidence to decide
+        # with accumulates from now either way.
+        if macro.flags()["factor_c_positioning"]:
+            parts["applied"] = "price+positioning"
+            return round(min(blended, 100.0), 1), parts
+    parts["applied"] = "price_only"
     return round(min(score, 100.0), 1), parts
 
 
@@ -501,7 +531,14 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
         d, dd = factor_D(ev, t.id, max_raw)
         a, ad = factor_A(con, ev, t.id)
         b, bd = factor_B(ev, t.id)
-        n, nd = factor_N(con, ev, t.id, t)
+        # The consensus surprise `factor_N` has always accepted and never been
+        # given. Attribution runs through the theme's pre-registered price
+        # indicator rather than through release names — see
+        # `macro.theme_consensus_z` for why name matching is the join this repo
+        # already paid to remove once.
+        cz, czmeta = macro.theme_consensus_z(con, ev, t)
+        n, nd = factor_N(con, ev, t.id, t, consensus_z=cz)
+        nd["consensus"] = czmeta
 
         # Direction registered for M comes from the corpus stance, never from the
         # price series — otherwise M would validate itself.

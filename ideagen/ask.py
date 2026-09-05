@@ -57,7 +57,14 @@ SYSTEM_PROMPT = """你是 IdeaGen 投研系统在某一次已封存的运行里�
    当时的判断，但每个论断都必须能指回具体材料条目。
 4. 引用材料时在句中标注条目编号，如 [M3]。回答结尾单独一行列出
    「引用材料：」加上你实际用到的全部编号。
-5. 中文作答，说人话：面向基金经理，不堆术语，不贴原始日志。长度适中。"""
+5. 中文作答，说人话：面向基金经理，不堆术语，不贴原始日志。长度适中。
+6. 材料里如果给了「证据研报」条目，而用户问的是「为什么选它 / 为什么这么判断」，
+   答案要落到研报本身：哪家机构、当时说了什么、几家在同一个方向上。只复述打分
+   表就等于用「E 维度拿了 100 分」回答「你读了一百份报告看到了什么」——那是机制
+   说明，不是复盘。
+7. 但**不要为了满足第 6 条去编故事**。如果当时的取舍确实是打分算出来的、研报
+   之间并没有一条看得出的线索，就直说「这一步是分数定的，研报只是把证据堆到了
+   那个密度」。把机械的判断说成有洞见的判断，比只报分数更糟。"""
 
 
 # ---------------------------------------------------------------------------
@@ -711,6 +718,12 @@ def answer(p, question: str, context: dict[str, Any],
         f"（{subj.get('label')}）。\n"
         f"以下是当时封存的全部材料{ver_line}：\n\n"
         + _render_materials(context)
+        # Say how many of the materials are reports the decision actually read.
+        # Without it the model cannot tell a context that happens to carry three
+        # documents from one carrying fifty, and answers both the same way —
+        # from the score table, which is the shape of answer a PM rejects as
+        # 「还不是人话版本」.
+        + _evidence_line(context)
         + (("\n\n材料缺口（如实告知用户）：" + "；".join(context["notes"]))
            if context.get("notes") else "")
         + convo
@@ -725,6 +738,29 @@ def answer(p, question: str, context: dict[str, Any],
     return {"answer": _scrub_text(c.text), "cited": cited,
             "model": c.model, "usage": c.usage,
             "latency_ms": c.latency_ms or int((_time.time() - t0) * 1000)}
+
+
+def _evidence_line(context: dict[str, Any]) -> str:
+    """One line naming how much of the context is actual research.
+
+    The count is the question. "You read a hundred reports and picked this
+    topic" is answerable only if the answer knows a hundred reports are sitting
+    in front of it; with the number unstated the model reaches for the tidiest
+    material in the set, which is always the score table.
+    """
+    mats = context.get("materials") or []
+    cited = sum(1 for m in mats if m.get("kind") == "doc"
+                and str(m.get("title", "")).startswith("证据研报"))
+    other = sum(1 for m in mats if m.get("kind") == "doc") - cited
+    if not (cited or other):
+        return ""
+    bits = []
+    if cited:
+        bits.append(f"{cited} 篇是当时给这个对象打分时实际命中的证据研报")
+    if other > 0:
+        bits.append(f"{other} 篇是同窗口内其他研报（未命中本主题词表）")
+    return ("\n\n（上面的材料里，" + "、".join(bits)
+            + "。它们是当时真读过的东西，不是事后找的。）")
 
 
 def log_ask(entry: dict[str, Any]) -> None:

@@ -180,6 +180,60 @@ class AskContextCase(_FrozenRun, unittest.TestCase):
         self.assertIn(ask.UNAVAILABLE_MSG, str(caught.exception))
 
 
+
+class TestTheAnswerReachesTheReports(unittest.TestCase):
+    """Jon's question is "you read a hundred reports, why this topic".
+
+    Answered from the score table alone it comes back as "the evidence factor
+    scored 100" — a description of the mechanism, which is the shape of answer
+    he rejected as 「还不是人话版本」. On 2026-09-05 that is exactly what the
+    live model did: asked why EARNINGS-QUALITY made the cut, with 47 corpus
+    documents in context, it cited two materials and both were scoring blobs.
+
+    Two things changed and both are asserted here: the prompt states how many
+    of the materials are reports the decision actually read, and the system
+    prompt asks for the reports by name — with a matching rule that a
+    mechanical call must be reported as mechanical rather than dressed up.
+    """
+
+    def _ctx(self, n_cited: int, n_other: int = 0) -> dict:
+        mats = [{"id": "M1", "kind": "verdict", "title": "筛选A 打分明细 · X",
+                 "source": "blob", "text": "综合 62.7"}]
+        for i in range(n_cited):
+            mats.append({"id": f"M{len(mats)+1}", "kind": "doc",
+                         "title": f"证据研报 ib:{100+i}", "source": "corpus",
+                         "text": "《某某》\n机构: GS\n摘要: ..."})
+        for i in range(n_other):
+            mats.append({"id": f"M{len(mats)+1}", "kind": "doc",
+                         "title": f"同窗口研报 ib:{900+i}", "source": "corpus",
+                         "text": "《别的》\n机构: MS\n摘要: ..."})
+        return {"materials": mats}
+
+    def test_the_prompt_says_how_many_reports_it_is_holding(self):
+        line = ask._evidence_line(self._ctx(47))
+        self.assertIn("47", line)
+        self.assertIn("证据研报", line)
+
+    def test_read_and_merely_present_reports_are_counted_apart(self):
+        """A document the scorer matched is not the same as one that sat in the
+        same window; merging them would inflate what the decision actually saw."""
+        line = ask._evidence_line(self._ctx(12, 8))
+        self.assertIn("12", line)
+        self.assertIn("8", line)
+
+    def test_a_context_with_no_reports_adds_no_line(self):
+        self.assertEqual(ask._evidence_line({"materials": [
+            {"id": "M1", "kind": "verdict", "title": "x", "source": "y",
+             "text": "z"}]}), "")
+
+    def test_the_system_prompt_asks_for_the_reports_and_forbids_inventing_a_story(self):
+        sp = ask.SYSTEM_PROMPT
+        self.assertIn("证据研报", sp)
+        self.assertIn("哪家机构", sp)
+        # The other half: a decision the score made must be reported as such.
+        self.assertIn("分数定的", sp)
+
+
 if __name__ == "__main__":
     unittest.main()
 

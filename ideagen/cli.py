@@ -1269,18 +1269,35 @@ def cmd_philosophy(args) -> int:
     arms = {r["name"] for r in available("idea_generator")}
 
     if args.action == "list":
-        live = philosophy.cards(include_retired=True)
-        if not live:
+        # `history()` rather than `cards()`: this is the person's question
+        # 「都写过什么、当时说了什么」, not the run's 「现在什么在跑」, and a
+        # retired card answering only the second one is how a rule used to
+        # disappear from view the moment it was stopped.
+        past = philosophy.history()
+        if not past:
             print("还没有任何 PM 准则卡。")
-        for c in live:
-            mark = f"（{c['retired_on']} 起停用）" if c.get("retired_on") else ""
+        for c in past:
+            mark = ""
+            if c.get("retired_on"):
+                mark = f"（{c['retired_on']} 起停用"
+                mark += f"，被 {c['replaced_by']} 接替）" if c.get("replaced_by") \
+                    else (f"：{c['retired_reason']}）" if c.get("retired_reason")
+                          else "）")
             print(f"{c['card_id']}  {c['as_of']}  → {philosophy.arm_name(c)} {mark}")
             print(f"    原话：{c['source_utterance']}")
+            if c.get("replaces"):
+                print(f"    改自：{c['replaces']}")
             for d in c.get("directives") or []:
                 print(f"    · {d}")
             print(f"    必填字段：{'、'.join(philosophy.require_keys(c)) or '（无）'}")
         for f in sorted(pending.glob("*.json")) if pending.exists() else []:
             print(f"[待确认] {f.stem}  —  ideagen philosophy activate {f.stem}")
+        # Sentences written on the panel and not yet distilled. They live in the
+        # same place the panel keeps them, so the two surfaces cannot disagree
+        # about what is on the desk.
+        from . import philosophy_web
+        for d in philosophy_web._drafts():
+            print(f"[草稿] {d['id']}  {d['saved_at'][:16]}  {d['say']}")
         return 0
 
     if args.action == "propose":

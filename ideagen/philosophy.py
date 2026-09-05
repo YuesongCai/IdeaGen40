@@ -477,12 +477,66 @@ def activate(card: dict[str, Any], *, known_arms: set[str] | None = None,
     return card
 
 
-def retire(card_id: str, as_of: date, reason: str = "") -> None:
-    """Stop a card from a date forward. The history it already wrote stays."""
+def retire(card_id: str, as_of: date, reason: str = "",
+           replaced_by: str = "") -> None:
+    """Stop a card from a date forward. The history it already wrote stays.
+
+    `replaced_by` is a field rather than a phrase inside `reason`. 「被 pm-…
+    替换」 as prose is readable by a person and by nothing else, and a revision
+    is the one case where two cards are the same thought at two ages — the only
+    case where the record has to be able to draw a line between them.
+    """
     if card_id not in {c["card_id"] for c in cards(include_retired=True)}:
         raise ValueError(f"没有这张卡：{card_id}")
-    _append({"event": "retire", "card_id": card_id,
-             "as_of": as_of.isoformat(), "reason": reason})
+    ev = {"event": "retire", "card_id": card_id,
+          "as_of": as_of.isoformat(), "reason": reason}
+    if replaced_by:
+        ev["replaced_by"] = replaced_by
+    _append(ev)
+
+
+def history() -> list[dict[str, Any]]:
+    """Every card ever put in force, newest first, with when and why it stopped.
+
+    `cards()` answers 「现在哪几条在跑」 and is right to drop what has been
+    retired: a run must not see a rule that was stopped before it, and a replay
+    of August must not see September's. But a person asking 「我上个月写的那条
+    到底说了什么」 is not a run, and he was getting the run's answer. Retiring a
+    rule made it vanish from every surface a person looks at — the sentence, the
+    directives it became, the fields it demanded — while the ledger that was
+    built append-only precisely so nothing would be lost sat on disk unread.
+
+    The whole card comes back, not a summary of it. The question is what this
+    rule said at the time, and a summary of a rule is a different rule.
+
+    Lineage travels both ways because it is read both ways: from the old card
+    「后来被哪一条接替」, from the new one 「是从哪一句改出来的」.
+    """
+    live: dict[str, dict[str, Any]] = {}
+    gone: dict[str, dict[str, Any]] = {}
+    for e in _read_events():
+        cid = str(e.get("card_id") or "")
+        if not cid:
+            continue
+        if e.get("event") == "activate":
+            live[cid] = e["card"]
+        elif e.get("event") == "retire":
+            gone[cid] = {"on": str(e.get("as_of") or ""),
+                         "reason": str(e.get("reason") or ""),
+                         "by": str(e.get("replaced_by") or "")}
+    replaces = {v["by"]: cid for cid, v in gone.items() if v.get("by")}
+    out = []
+    for cid, card in live.items():
+        g = gone.get(cid) or {}
+        row = dict(card)
+        row["retired_on"] = g.get("on") or ""
+        row["retired_reason"] = g.get("reason") or ""
+        row["replaced_by"] = g.get("by") or ""
+        row["replaces"] = replaces.get(cid, "")
+        out.append(row)
+    out.sort(key=lambda c: (str(c.get("as_of")), str(c.get("card_id"))),
+             reverse=True)
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,8 @@ P&L that does not exist yet. Zero is stated as zero.
 from __future__ import annotations
 
 import json
+import re
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,21 @@ from typing import Any
 from . import config, philosophy
 
 PENDING = config.DATA / "philosophy" / "pending"
+
+#: Sentences written but not yet distilled. The proposal has always lived on
+#: the server so that 「换个浏览器、隔一天回来，那句话还在等你拍板」 was true —
+#: but the sentence *before* distillation lived only in one tab's memory, and
+#: that is the state a person actually leaves this in: mid-thought, interrupted,
+#: three words short of the point. A reload threw away the only part that took
+#: any thinking. It gets the same durability as the card it will become.
+DRAFTS = config.DATA / "philosophy" / "drafts"
+
+#: How many unfinished rules the desk will hold. Not a storage limit — a
+#: reading one. A pile of half-sentences nobody can face is the same as no list,
+#: and the pile becomes the reason not to open this at all.
+MAX_DRAFTS = 20
+
+DRAFT_ID_RE = re.compile(r"^d-[0-9a-f]{12}$")
 
 #: Where a rule goes unless the PM picks otherwise. The constraint-boundary
 #: method is the one whose shape a philosophy usually has — a way of deciding
@@ -127,6 +144,12 @@ def _view(card: dict[str, Any], p=None, *, pending: bool = False
         "arm_label": next(
             (o["label"] for o in _arm_options()
              if o["arm"] == (card.get("scope") or {}).get("arm")), ""),
+        # Which rule this one was written to replace, carried on the card
+        # rather than held in the tab. 「照这条改一版」 used to be a fact known
+        # only to the browser that started it: reload before confirming and the
+        # revision quietly became an addition, so both versions ran at once and
+        # neither one's number meant anything.
+        "replaces": str(card.get("replaces") or ""),
         "pending": pending,
     }
     if not pending:
@@ -148,6 +171,115 @@ def _pending_cards() -> list[dict[str, Any]]:
     return out
 
 
+def _history_view(card: dict[str, Any]) -> dict[str, Any]:
+    """One rule as the record shows it — the whole card, as it was written.
+
+    `_view` is the operating readout: what is running, how much it produced,
+    what to click next. This one answers a different question — 「当时这条准则
+    到底说了什么」 — so it carries the parts `_view` drops on purpose, including
+    the ones only the record needs: why the distiller read the sentence that
+    way, what it checked against the founding principles, and which rule this
+    one grew out of.
+    """
+    arm = str((card.get("scope") or {}).get("arm") or "")
+    return {
+        "id": card.get("card_id") or "",
+        "said": card.get("source_utterance") or "",
+        "since": card.get("as_of") or "",
+        "retired_on": card.get("retired_on") or "",
+        "retired_reason": card.get("retired_reason") or "",
+        "replaced_by": card.get("replaced_by") or "",
+        "replaces": card.get("replaces") or "",
+        "live": not card.get("retired_on"),
+        "understood": list(card.get("directives") or []),
+        "refuses": list(card.get("forbids") or []),
+        "must_answer": [{"field": str(r.get("field") or ""),
+                         "desc": str(r.get("desc") or "")}
+                        for r in (card.get("require") or [])],
+        "rewrites": philosophy.translations(card),
+        "why": str(card.get("rationale") or ""),
+        "founding_check": str(card.get("founding_check") or ""),
+        "arm": arm,
+        "arm_label": next((o["label"] for o in _arm_options()
+                           if o["arm"] == arm), ""),
+    }
+
+
+def _draft_path(did: str) -> Path | None:
+    """The file for a draft id, or None if the id is not one we minted.
+
+    The id reaches here from a request body and is about to be a filename, so
+    it is matched against the shape this module writes rather than merely
+    checked for slashes.
+    """
+    return DRAFTS / f"{did}.json" if DRAFT_ID_RE.match(did or "") else None
+
+
+def _drafts() -> list[dict[str, Any]]:
+    """Sentences written but not yet distilled, newest first."""
+    if not DRAFTS.exists():
+        return []
+    out = []
+    for f in DRAFTS.glob("d-*.json"):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(d, dict) or not str(d.get("say") or "").strip():
+            continue
+        out.append({"id": f.stem, "say": str(d.get("say") or ""),
+                    "arm": str(d.get("arm") or ""),
+                    "replaces": str(d.get("replaces") or ""),
+                    "saved_at": str(d.get("saved_at") or "")})
+    out.sort(key=lambda d: d["saved_at"], reverse=True)
+    return out
+
+
+def handle_draft(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """POST /api/philosophy/draft — keep the sentence before it is a card.
+
+    Called on a pause in typing, not on a button. A save key you have to
+    remember to press is exactly how this goes wrong: the interruption that
+    loses the draft is the same interruption that stops you pressing it.
+    """
+    say = str(payload.get("say") or "").strip()
+    did = str(payload.get("id") or "")
+    if did and not DRAFT_ID_RE.match(did):
+        return {"error": "草稿号不合规范。"}, 400
+    if not say:
+        # An emptied box is a deletion. A sentence the PM just cleared must not
+        # come back tomorrow as though he had never cleared it.
+        f = _draft_path(did) if did else None
+        if f is not None and f.exists():
+            f.unlink()
+        return {"ok": True, "id": "", "saved_at": "", "drafts": _drafts()}, 200
+    if len(say) > 500:
+        return {"error": "过长。一句话即可，越具体越有效（上限 500 字）。"}, 400
+    if not did:
+        if len(_drafts()) >= MAX_DRAFTS:
+            return {"error": f"没写完的准则已经有 {MAX_DRAFTS} 条。"
+                             "先把其中一条生成草案或删掉，再写新的。"}, 400
+        did = "d-" + uuid.uuid4().hex[:12]
+    DRAFTS.mkdir(parents=True, exist_ok=True)
+    body = {"say": say,
+            "arm": str(payload.get("arm") or DEFAULT_ARM),
+            "replaces": str(payload.get("replaces") or ""),
+            "saved_at": config.now_hkt().isoformat(timespec="seconds")}
+    (DRAFTS / f"{did}.json").write_text(
+        json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "id": did, "saved_at": body["saved_at"],
+            "drafts": _drafts()}, 200
+
+
+def handle_draft_delete(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """POST /api/philosophy/draft-delete — throw one unfinished sentence away."""
+    f = _draft_path(str(payload.get("id") or ""))
+    if f is None or not f.exists():
+        return {"error": "没有这条草稿。"}, 404
+    f.unlink()
+    return {"ok": True, "drafts": _drafts()}, 200
+
+
 def handle_list() -> tuple[dict[str, Any], int]:
     """GET /api/philosophy — what is running, what is waiting for a decision."""
     from . import ask, platform as plat
@@ -165,6 +297,14 @@ def handle_list() -> tuple[dict[str, Any], int]:
         # the panel and get shown.
         "ledger_problems": philosophy.ledger_problems(),
         "pending": [_view(c, pending=True) for c in _pending_cards()],
+        # Written, not yet distilled. Server-side for the same reason the
+        # proposals are: the tab is not where a person's thinking should live.
+        "drafts": _drafts(),
+        # Every rule ever in force, retired ones included. `live` above is what
+        # is running; this is what was ever said. Retiring a rule used to erase
+        # it from every surface anyone looks at, which is the one thing an
+        # append-only ledger exists to prevent.
+        "history": [_history_view(c) for c in philosophy.history()],
         "arms": _arm_options(),
         "default_arm": DEFAULT_ARM,
         "can_propose": bool(can),
@@ -217,9 +357,21 @@ def handle_propose(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
                 "hint": "换一个更具体的说法。有效的准则通常是这个形状："
                         "「看到 X 时，我要的是 Y，因为 Z」。"}, 200
 
+    # What this rule was written to replace rides on the card from here on.
+    # Held in the tab instead, a revision confirmed after a reload became an
+    # addition — both versions running, neither one's number meaning anything.
+    replaces = str(payload.get("replaces") or "")
+    if replaces:
+        card["replaces"] = replaces
     PENDING.mkdir(parents=True, exist_ok=True)
     (PENDING / f"{card['card_id']}.json").write_text(
         json.dumps(card, ensure_ascii=False, indent=2), encoding="utf-8")
+    # The sentence is now stored as a card, which carries `source_utterance`
+    # verbatim — so the draft is redundant rather than lost, and leaving it
+    # would show the same rule twice in two different states.
+    f = _draft_path(str(payload.get("draft") or ""))
+    if f is not None and f.exists():
+        f.unlink()
     return {"ok": True, **_view(card, pending=True)}, 200
 
 
@@ -243,11 +395,11 @@ def handle_activate(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     # changed while keeping its name turns one track record into a blend of
     # several different rules. Two events on the ledger instead — the lineage
     # is queryable and each arm's series stays clean.
-    replaced = str(payload.get("replaces") or "")
+    replaced = str(payload.get("replaces") or card.get("replaces") or "")
     if replaced and replaced != cid:
         try:
             philosophy.retire(replaced, config.now_hkt().date(),
-                              f"被 {cid} 替换")
+                              f"被 {cid} 替换", replaced_by=cid)
         except ValueError:
             pass  # already retired, or never existed — the new card still stands
     # Registering the derived arm now means the next weekly run picks it up
@@ -263,13 +415,33 @@ def handle_activate(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
 
 
 def handle_discard(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """POST /api/philosophy/discard — throw away a proposal, nothing recorded."""
+    """POST /api/philosophy/discard — throw the card away, keep the sentence.
+
+    「重写」 means rewrite this sentence, not lose it. The card is a machine's
+    reading and is disposable; the sentence is the part that took thinking, so
+    it goes back to the desk as a draft — on the server, where a reload cannot
+    reach it. Nothing is recorded in the ledger either way: a proposal that was
+    never in force has no history to keep.
+    """
     cid = str(payload.get("id") or "")
     f = PENDING / f"{cid}.json"
     if not cid or "/" in cid or not f.exists():
         return {"error": "待确认列表中已无此项。"}, 404
+    try:
+        card = json.loads(f.read_text(encoding="utf-8"))
+        assert isinstance(card, dict)
+    except (OSError, json.JSONDecodeError, AssertionError):
+        card = {}
     f.unlink()
-    return {"ok": True}, 200
+    said = str(card.get("source_utterance") or "")
+    arm = str((card.get("scope") or {}).get("arm") or "")
+    back, _ = handle_draft({"say": said, "arm": arm,
+                            "replaces": str(card.get("replaces") or "")})
+    # `draft` may be empty if the desk is full. The sentence still travels back
+    # in the response, so the box is never the thing that loses it.
+    return {"ok": True, "draft": str(back.get("id") or ""),
+            "said": said, "arm": arm,
+            "replaces": str(card.get("replaces") or "")}, 200
 
 
 def handle_retire(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:

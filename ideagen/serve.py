@@ -501,6 +501,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                   "activate": philosophy_web.handle_activate,
                   "discard": philosophy_web.handle_discard,
                   "retire": philosophy_web.handle_retire,
+                  # Autosave for the sentence being written. It fires on a
+                  # pause in typing, so it is the most frequent write here and
+                  # the cheapest — no model call, one small file.
+                  "draft": philosophy_web.handle_draft,
+                  "draft-delete": philosophy_web.handle_draft_delete,
                   }.get(path.rsplit("/", 1)[-1])
             if fn is None:
                 return self._json({"error": "没有这个操作"}, status=404)

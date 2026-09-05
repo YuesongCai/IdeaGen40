@@ -53,8 +53,31 @@ ENV_FILE = Path(os.environ.get("IDEAGEN_ENV", Path.home() / ".ideagen.env"))
 
 
 def _load_env_file(path: Path = ENV_FILE) -> None:
-    if not path.exists():
-        return
+    """Read KEY=VALUE lines from the operator env file, if there is one.
+
+    `Path.exists()` looks like it answers "is there a file", and for a missing
+    one it does. For an unreadable one it *raises*: pathlib swallows ENOENT,
+    ENOTDIR, EBADF and ELOOP and lets everything else through, EACCES included.
+    This line runs at import of `ideagen.config`, which every other module
+    imports, so a file with the wrong owner takes the whole application down
+    with a traceback pointing at an existence check.
+
+    That happened on the cloud node, where `/opt/ideagen/oauth` was root-owned
+    0700 and the container runs unprivileged. The instructive part is that
+    swallowing the error would have been just as wrong: a file that exists but
+    cannot be read is not "no configuration". Starting anyway means every port
+    reports "not configured" and no line anywhere says why — the same silent
+    failure, moved one layer down. So a missing file is fine and anything else
+    is named.
+    """
+    try:
+        if not path.is_file():
+            return
+    except OSError as e:
+        raise PermissionError(
+            f"读不到配置文件 {path}（{e.strerror or e}）。"
+            f"文件在那里但打不开——通常是属主或权限不对，"
+            f"不是「没有配置」。修好它，或把 IDEAGEN_ENV 指向别处。") from e
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:

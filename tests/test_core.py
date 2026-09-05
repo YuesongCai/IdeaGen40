@@ -367,6 +367,52 @@ class TestWisburgParsing(unittest.TestCase):
         self.assertEqual(cursor, "2")
         self.assertTrue(has_next)
 
+    def test_an_unreachable_env_file_is_not_the_same_as_no_env_file(self):
+        """`Path.is_file()` raises on EACCES, and this runs at import.
+
+        pathlib swallows ENOENT, ENOTDIR, EBADF and ELOOP; everything else
+        propagates. `_load_env_file` is called while `ideagen.config` is being
+        imported, and every module imports it, so an unreachable file used to
+        take the whole application down with a traceback pointing at an
+        existence check.
+
+        The mode that matters is on the *directory*, not the file — checked
+        both ways before writing this. A file at 000 still stats fine (the
+        error surfaces later, from `read_text`, which is loud enough); a
+        directory the process cannot traverse makes the stat itself raise. That
+        is the shape that happened on the cloud node, where
+        `/opt/ideagen/oauth` was root-owned 0700 under an unprivileged
+        container — so that is the shape asserted here.
+
+        Swallowing it would be the other half of the same bug: a file that is
+        there but cannot be reached is not "no configuration", and starting
+        anyway leaves every port reporting "not configured" with nothing saying
+        why. The two cases are asserted apart.
+        """
+        import os
+        import tempfile
+        from ideagen import config as cfg
+
+        with tempfile.TemporaryDirectory() as d:
+            cfg._load_env_file(Path(d) / "nope.env")   # missing is fine
+
+            locked = Path(d) / "locked"
+            locked.mkdir()
+            env = locked / "runtime.env"
+            env.write_text("IDEAGEN_TEST_KEY=v\n", encoding="utf-8")
+            os.chmod(locked, 0o000)
+            try:
+                if os.access(env, os.R_OK):    # root, or a permissive FS
+                    self.skipTest("this filesystem does not enforce the mode")
+                with self.assertRaises(PermissionError) as caught:
+                    cfg._load_env_file(env)
+                msg = str(caught.exception)
+                self.assertIn(str(env), msg)
+                self.assertIn("不是「没有配置」", msg,
+                              "the message has to say which of the two it is")
+            finally:
+                os.chmod(locked, 0o700)
+
     def test_a_spent_quota_is_not_a_quiet_news_day(self):
         """The refusal is prose in a 200, and it used to parse as an empty page.
 

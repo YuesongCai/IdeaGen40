@@ -115,7 +115,8 @@ DDL: tuple[str, ...] = (
          unit        TEXT,
          source      TEXT,
          as_of       TEXT,
-         feed        TEXT
+         feed        TEXT,
+         payload     TEXT
        )""",
     "CREATE INDEX IF NOT EXISTS events_date ON events (date)",
 
@@ -438,6 +439,7 @@ MYSQL_DDL: tuple[str, ...] = (
          source      VARCHAR(128),
          as_of       VARCHAR(10),
          feed        VARCHAR(128),
+         payload     TEXT,
          KEY events_date (date)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
@@ -723,6 +725,16 @@ ADD_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Existing rows stay NULL until `scripts/backfill_position_periods.py`
     # derives them from the order that opened them.
     ("positions", "as_of", "TEXT"),
+    # Everything a calendar feed reported that `events` has no column for. The
+    # table was designed around a release with an expectation, and the feeds
+    # added on 2026-09-05 carry fields it never anticipated: an impact rating and
+    # a previous print on a macro release, net position and reversal trend on a
+    # COT row, the single-name concentration behind an aggregated congressional
+    # flow. Without somewhere to put them the upsert drops them, and a replay
+    # then reads a thinner row than the run was actually handed — the run and its
+    # record stop being the same thing, which is the one property `backtest.py`
+    # depends on when it re-reads `events` for an old period.
+    ("events", "payload", "TEXT"),
 )
 
 

@@ -204,3 +204,123 @@ def country_weightings(symbol: str) -> dict[str, float]:
 def profile(symbol: str) -> dict[str, Any]:
     rows = _get("profile", symbol=symbol) or []
     return rows[0] if rows else {}
+
+
+# ============================================================ macro & positioning
+#
+# The four ports below exist because the founding process spec names its data
+# sources as "wisburg 日报 + 宏观日历" and only the first half had ever been
+# built. `feeds_impl/calendar_fred.py` supplies five FRED levels and a Treasury
+# auction schedule; neither is a macro calendar. Until now the `events` table
+# held 51 auctions and 13 levels and zero rows of kind `macro_release`, so
+# `gen_carl` — whose prompt demands "一个带日期或带水平的触发条件" and rejects
+# "如果情绪转弱" by name — could offer a model no dated trigger except a bill
+# auction.
+#
+# Two vendor traps found while wiring these, both of which return well-formed
+# data rather than an error, and so would have been read as fact:
+#
+#   * `commitment-of-traders-report?symbol=ES` answers 200 with nine rows whose
+#     newest date is **2024-02-27**. So do GC, CL and NQ — the same nine-row
+#     window, frozen two and a half years back. The `from`/`to` form of the same
+#     endpoint returns 301 rows through 2026-09-01. Positioning read through the
+#     symbol form is not stale-ish, it is a different regime; `cot()` therefore
+#     only ever calls the range form, and `cot_symbol_form_is_frozen()` keeps the
+#     evidence for that decision runnable rather than a comment.
+#
+#   * Congress disclosures are single stocks, and lumpy ones: of 200 latest rows
+#     across both chambers, 68 were one member's trades in one micro-cap (TKNO).
+#     This mandate expresses itself in funds and ETFs, so a per-name feed of them
+#     would be untradeable rows crowding out the calendar. `congress_trades()`
+#     returns the raw rows and the *aggregation* is done in the feed, where the
+#     look-through leg can map names onto the products that actually hold them.
+
+
+def economic_calendar(start: str, end: str) -> list[dict[str, Any]]:
+    """Scheduled macro releases between two ISO dates, all countries.
+
+    Filtering is the caller's job because the vendor charges one call for the
+    whole world and the interesting subset differs per use: a US rates thesis
+    wants US High-impact, a dollar thesis wants ECB and BoJ decisions too.
+    """
+    return _get("economic-calendar", **{"from": start, "to": end}) or []
+
+
+def quotes(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """One quote per symbol, keyed by symbol; symbols that return nothing are
+    absent rather than present-and-empty.
+
+    Used here for the volatility complex. FMP has **no options data at all** —
+    `options-chain`, `option-chain`, `historical-options`, `implied-volatility`
+    and `volatility` are all 404 on this key — so implied vol has to arrive as
+    the exchange-published indices instead of being computed from a chain. That
+    is the right altitude for this mandate anyway: the book holds funds and
+    ETFs, so ^VIX3M/^VIX9D term structure and ^MOVE say more than one name's
+    smile would.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for s in symbols:
+        rows = _get("quote", symbol=s) or []
+        if rows and isinstance(rows, list):
+            out[s] = rows[0]
+    return out
+
+
+def treasury_curve(start: str, end: str) -> list[dict[str, Any]]:
+    """The full published curve per day — twelve tenors in one call.
+
+    FRED's DGS10/DGS30 (two series, two HTTP round trips) are a subset of this.
+    Keeping both would double-report the same two points under two labels, so
+    the feed built on this one emits the tenors FRED does not carry plus the
+    spreads, and leaves DGS10/DGS30 to `calendar_fred`.
+    """
+    return _get("treasury-rates", **{"from": start, "to": end}) or []
+
+
+def cot(start: str, end: str) -> list[dict[str, Any]]:
+    """Commitment of Traders analysis for a date range — never by symbol.
+
+    See the module note above: the `symbol=` form of this endpoint is frozen at
+    2024-02-27 on this key and answers 200 with plausible rows. Anything that
+    needs one contract must filter the range result, not ask for the contract.
+    """
+    rows = _get("commitment-of-traders-analysis",
+                **{"from": start, "to": end}) or []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def cot_symbol_form_is_frozen(symbol: str = "ES") -> tuple[bool, str]:
+    """Re-check the trap rather than trusting this docstring.
+
+    Returns (frozen, newest_date). A vendor fix would make this return False,
+    at which point the range-only rule can be revisited on evidence. A test
+    asserting "frozen" forever would instead encode today's bug as a
+    requirement, so nothing asserts on this — it is a probe, run by
+    `ideagen feeds doctor` and by hand.
+    """
+    rows = _get("commitment-of-traders-report", symbol=symbol) or []
+    dates = sorted(str(r.get("date") or "")[:10] for r in rows if r.get("date"))
+    newest = dates[-1] if dates else ""
+    return (bool(newest) and newest < "2025-01-01"), newest
+
+
+def congress_trades(chamber: str) -> list[dict[str, Any]]:
+    """Latest disclosed trades for `senate` or `house`.
+
+    Note the dates: `transactionDate` can trail `disclosureDate` by ten months
+    (the STOCK Act allows 45 days and compliance is uneven), so a run keyed on
+    transaction date would silently backdate this period's signal into last
+    year. The feed keys on disclosure — the day the information became public is
+    the day it could have been acted on.
+    """
+    ep = {"senate": "senate-latest", "house": "house-latest"}.get(chamber)
+    if not ep:
+        raise FMPError(f"chamber must be senate or house, got {chamber!r}")
+    return _get(ep, page=0, limit=100) or []
+
+
+def news_general(limit: int = 50) -> list[dict[str, Any]]:
+    """Broad market news. Corpus-shaped, deliberately not corpus-registered by
+    default — see `feeds_impl/corpus_fmp.py` for why that is the user's call
+    and not this port's."""
+    return _get("news/general-latest", page=0, limit=limit) or []

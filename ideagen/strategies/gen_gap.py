@@ -56,22 +56,44 @@ def price_block(ctx: RunContext, limit: int = 20) -> str:
     the run recorded as of this date, or step one becomes a recollection and the
     whole comparison stops being replayable.
     """
-    lines = [f"{e.get('label')} = {e.get('actual')}{e.get('unit') or ''}"
-             f"（{e.get('date')}，{e.get('source') or ''}）"
-             for e in ctx.calendar if (e.get("kind") or "") == "level"]
+    # Two budgets, not one shared cap. Until 2026-09-05 the calendar supplied
+    # five levels and a single `lines[:limit]` was harmless. The volatility,
+    # curve, COT and congressional feeds took that to forty-two, and since levels
+    # were appended first, a cut at twenty removed **every instrument price** —
+    # from the one arm whose entire method starts at the price. The shared cap
+    # was always a latent bug; more data only made it fire.
+    prices: list[str] = []
     for key, px in list(ctx.prices.items())[:limit]:
         if isinstance(px, dict):
             bits = ", ".join(f"{k}={v}" for k, v in list(px.items())[:6])
-            lines.append(f"{key}: {bits}")
+            prices.append(f"{key}: {bits}")
         else:
-            lines.append(f"{key}: {px}")
-    if not lines:
+            prices.append(f"{key}: {px}")
+
+    # `priority` lets a feed say how central its rows are (see the congressional
+    # aggregate, which is real but peripheral beside VIX or the curve). Missing
+    # means central, so feeds written before the field behave as they always did.
+    ranked = sorted(
+        ((int(e.get("priority") or 1), e) for e in ctx.calendar
+         if (e.get("kind") or "") == "level"),
+        key=lambda pe: pe[0])
+    levels = [f"{e.get('label')} = {e.get('actual')}{e.get('unit') or ''}"
+              f"（{e.get('date')}，{e.get('source') or ''}）"
+              for _, e in ranked]
+
+    if not prices and not levels:
         # No stored anchor, so say so. A model that thinks it was handed levels and
         # was not will assert a consensus it invented, which is the one thing this
         # method must not do — its entire discipline rests on step one being real.
         return ("本次运行没有可用的价格或水平数据。第一步请只依据上面材料里被反复重复的"
                 "一致预期来推断市场已经相信什么，并明确写出这是从材料推断、不是从价格读出。")
-    return "当前可参考的水平（截至今天，来自本次运行的输入）：\n" + "\n".join(lines[:limit])
+    out = []
+    if prices:
+        out.append("标的当前价格（本次运行的输入）：\n" + "\n".join(prices[:limit]))
+    if levels:
+        out.append("当前可参考的水平（截至今天，来自本次运行的输入）：\n"
+                   + "\n".join(levels[:limit]))
+    return "\n\n".join(out)
 
 
 def build_prompt(ctx: RunContext,

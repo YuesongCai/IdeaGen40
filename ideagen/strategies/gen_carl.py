@@ -51,20 +51,49 @@ STEPS = (
 
 
 def calendar_block(ctx: RunContext, limit: int = 20) -> str:
-    """Scheduled events and current reference levels, split because they trigger
-    differently: an event fires on a date, a level fires on a threshold crossing."""
-    dated: list[str] = []
-    levels: list[str] = []
+    """Scheduled events and current reference levels, split three ways.
+
+    A level fires on a threshold crossing and an event fires on a date — but a
+    date that has already passed fires on nothing, and that distinction only
+    started to matter on 2026-09-05, when `fmp_macro_releases` began returning a
+    backward window alongside the forward one. Sorted ascending and cut at
+    `limit`, the combined list put twelve already-published releases at the top
+    of a section headed「可作为触发日期」, and a model asked for a dated trigger
+    would reasonably have written one against last Friday's payrolls.
+
+    The backward window is worth keeping, because a release that has *already*
+    surprised is the most useful thing on this page for a Carl-style thesis —
+    it is a live dislocation rather than a scheduled one. It just has to be
+    labelled as what it is. So: upcoming events are offered as triggers, recent
+    prints are offered as evidence, and only the former are called dates.
+    """
+    as_of = ctx.as_of.isoformat()
+    upcoming: list[str] = []
+    published: list[str] = []
+    levels: list[tuple[int, str]] = []
     for e in ctx.calendar:
         if (e.get("kind") or "") == "level":
-            levels.append(f"{e.get('label')} = {e.get('actual')}"
-                          f"{e.get('unit') or ''}（{e.get('date')}）")
-        else:
-            exp = e.get("expectation")
-            dated.append(f"{e.get('date')} {e.get('label')}"
-                         + (f"，预期 {exp}" if exp else ""))
-    dated.sort()
-    if not dated and not levels:
+            # Feeds may rank their own rows; a congressional sector aggregate is
+            # real but peripheral next to VIX or the curve, and without an order
+            # the peripheral rows crowd the central ones out of `limit`.
+            levels.append((int(e.get("priority") or 1),
+                           f"{e.get('label')} = {e.get('actual')}"
+                           f"{e.get('unit') or ''}（{e.get('date')}）"))
+            continue
+        d = str(e.get("date") or "")
+        exp, act = e.get("expectation"), e.get("actual")
+        if d >= as_of:
+            upcoming.append(f"{d} {e.get('label')}"
+                            + (f"，预期 {exp}" if exp else ""))
+        elif act is not None:
+            published.append(f"{d} {e.get('label')}"
+                             + (f"，预期 {exp}" if exp else "")
+                             + f"，实际 {act}")
+    upcoming.sort()
+    published.sort(reverse=True)          # most recent surprise first
+    levels.sort()
+    dated, levels = upcoming, [t for _, t in levels]
+    if not dated and not levels and not published:
         # Said out loud rather than left as an empty section: a model given no
         # schedule will otherwise invent plausible dates, and an invented date is
         # worse than an honest level threshold because it looks checkable.
@@ -72,8 +101,11 @@ def calendar_block(ctx: RunContext, limit: int = 20) -> str:
                 "（写清水平和方向），不要编造具体日期。")
     out = []
     if dated:
-        out.append("已排定事件（可作为触发日期）：\n"
+        out.append("未来已排定事件（可作为触发日期）：\n"
                    + "\n".join(dated[:limit]))
+    if published:
+        out.append("最近已公布（预期与实际的差就是现成的错位，不是触发日期）：\n"
+                   + "\n".join(published[:limit // 2 or 1]))
     if levels:
         out.append("当前参考水平（可作为触发阈值）：\n"
                    + "\n".join(levels[:limit]))

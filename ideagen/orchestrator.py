@@ -248,7 +248,17 @@ def weekly(
             # Calendar rows are upserted so a threshold can be compared against a
             # level, and a watchpoint can name an event that already exists.
             if calendar and not dry_run:
+                # `_CORE` are the columns `events` has always had. Everything
+                # else a feed chose to report goes to `payload` rather than
+                # being dropped: `feeds.validate` deliberately preserves extra
+                # fields ("a feed with something useful to add should not have
+                # to ask permission"), and dropping them at the last step made
+                # that promise true only in memory. A replay reading this table
+                # would see a row the run never had.
+                _CORE = ("event_id", "date", "label", "kind", "expectation",
+                         "actual", "unit", "source", "as_of", "feed")
                 for e in calendar:
+                    extra = {k: v for k, v in e.items() if k not in _CORE}
                     schema.upsert(p.state, "events", {
                         "event_id": e.get("event_id"), "date": e.get("date"),
                         "label": e.get("label"), "kind": e.get("kind"),
@@ -256,7 +266,9 @@ def weekly(
                         "actual": (None if e.get("actual") is None
                                    else str(e["actual"])),
                         "unit": e.get("unit"), "source": e.get("source"),
-                        "as_of": e.get("as_of"), "feed": e.get("feed")})
+                        "as_of": e.get("as_of"), "feed": e.get("feed"),
+                        "payload": (json.dumps(extra, ensure_ascii=False,
+                                               default=str) if extra else None)})
 
             # Theme discovery runs before scoring, every week, in the run itself.
             # The founding requirement is that topics emerge from the corpus

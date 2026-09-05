@@ -68,3 +68,19 @@ fi
 if ! "$PYBIN" scripts/push_state_to_cloud.py; then
   echo "WARN: 状态快照未发布到对象存储；云端页面会停在上一份快照"
 fi
+
+# The artifacts travel separately from the state, and until 2026-09-05 they did
+# not travel at all: the display node reads a different bucket from the one the
+# weekly run writes to, so every 运行日志 opened empty and 「问它为什么这么选」
+# had nothing but the verdicts row the database carried over. Same non-fatal
+# treatment — the objects are immutable and already-present ones are skipped, so
+# a failed pass costs nothing but a retry tomorrow.
+if ! "$PYBIN" scripts/push_runs_to_cloud.py --kinds weekly --runs 4; then
+  echo "WARN: 周跑产物未镜像到云端桶；云端的运行日志与追问材料会缺当期产物"
+fi
+# Monitor journals are small and there are ~96 a day, so this bounds itself to
+# the last day rather than the whole history: enough that a reader opening
+# 「最近一次盯市」 on the cloud node sees the same timeline the runner sees.
+if ! "$PYBIN" scripts/push_runs_to_cloud.py --kinds monitor --runs 100; then
+  echo "WARN: 盯市日志未镜像到云端桶；云端只能看到 orch_runs 的起止行"
+fi

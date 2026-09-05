@@ -33,8 +33,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ideagen import backtest, db, platform as plat, schema  # noqa: E402
+from ideagen import backtest, db, perf, platform as plat, schema  # noqa: E402
 from ideagen import config  # noqa: E402
+from ideagen import ideas as ideas_mod  # noqa: E402
 from ideagen import strategy as strat  # noqa: E402
 from ideagen.poc_workflow import _arm_positions  # noqa: E402
 
@@ -424,6 +425,72 @@ def _ev_bucket_of(con, days: list):
     return bucket
 
 
+def _tearsheet(con, points: list[dict], positions: list[dict],
+               paired: dict, horizon_days: int) -> dict:
+    """The institutional performance record, built from the same daily curve.
+
+    Everything above this line answers "did arm A pick better than arm B".
+    Nobody outside the repository opens with that question — an allocator opens
+    with "what would it have done to my money and how much did it hurt", and
+    until this existed the whole answer was the last point of the curve and the
+    minimum of its drawdown column. `perf` computes the record a hedge fund DDQ
+    or a fund factsheet expects from exactly the same points, so the two halves
+    can never disagree about what happened.
+
+    It also closes the beta hole `_exposure` documents against itself.
+    `excess_over_exposure_pct` assumes a beta of one against SPY and its own note
+    tells the reader not to cite it; `perf.relative` regresses the curve on the
+    benchmark and reports the beta the book actually ran. On the 2026-09-04 data
+    that beta is 0.04–0.32 with R² under 0.5 — the assumption was not slightly
+    off, it was pointing the wrong way, and the correction is worth more than
+    the caveat it replaces.
+
+    Paired t statistics come in as `t_eff` — the overlap-discounted one, not the
+    raw t — so the family-wide FDR control is applied to the same numbers the
+    power gate uses. Feeding it the inflated raw t would let an arm the paired
+    test refuses to call a winner arrive at the FDR stage looking significant.
+    """
+    if not points:
+        return {}
+    curves: dict[str, tuple[list[str], list[float]]] = {}
+    for r in points:
+        ds, eq = curves.setdefault(r["arm"], ([], []))
+        ds.append(r["d"])
+        eq.append(r["equity"])
+    lo = min(r["d"] for r in points)
+    hi = max(r["d"] for r in points)
+    rows = db.q(con, "SELECT d, close FROM prices WHERE code=? AND d>=? AND d<=? "
+                     "ORDER BY d", (BENCHMARK, lo, hi))
+    bd = [r["d"] for r in rows]
+    bc = [r["close"] for r in rows]
+
+    paired_t = {name: (blk.get("t_eff"), max(1, int(blk.get("n_pairs") or 1) - 1))
+                for name, blk in (paired or {}).items()
+                if blk.get("t_eff") is not None}
+
+    rep = perf.compare_arms(
+        curves, bench_dates=bd, bench_closes=bc,
+        benchmark=BENCHMARK.split(".")[-1],
+        rf_annual=config.RISK_FREE_ANNUAL,
+        paired_t=paired_t or None,
+        positions=positions, horizon_days=horizon_days,
+        applied_cost_pct=ideas_mod.round_trip_cost_pct("US", "listed"),
+        # The arm count understates the search. `ev_rank` was chosen on
+        # 2026-09-05 after looking at these same six periods, and the rules
+        # tried and dropped on the way (grade buckets, and the omega variants
+        # before them) were trials too. Three is a floor on that count, stated
+        # here so the deflation is not quietly anchored to "however many arms
+        # happen to be registered today".
+        extra_trials=3)
+    rep["note"] = (
+        "这张表描述的是净值曲线本身，和上面的配对检验回答的是两个问题："
+        "配对检验问「A 挑得比 B 好吗」，这里问「拿着它这段时间会怎样、"
+        "路上有多难受」。两边读的是同一批净值点，所以不会互相打架。"
+        "年化收益在样本不足半年时直接不给；夏普永远带 95% 置信区间；"
+        "beta 是回归出来的，不再假设为 1。")
+    return rep
+
+
 def _exposure(points: list[dict], gap_days: float, horizon_days: int,
               bench_pct: float | None, bench_vol: float | None = None) -> dict:
     """How much of the book was at risk, and what the curve means given that.
@@ -491,11 +558,16 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
             "持有期，空出的档位是现金。窗口开头必然欠投——第一期只占一个档位，"
             "所以拿它和满仓指数直接比会低估每个组合一个建仓成本。"
             "beta_equivalent_pct 是同样平均敞口拿着基准会有的收益，"
-            "excess_over_exposure_pct 是相对它的差。**该折算假设对 SPY 的 beta 为 1，"
-            "而这些组合并不满足**——2026-09-05 实测 ev_rank 的顶格分位持仓入场前年化波动"
-            "35%，SPY 约 11%，所以那一列偏乐观，不要单独引用。"
-            "要判断有没有超额，看 return_per_vol_vs_benchmark：它拿每个组合自己实现的"
-            "净值波动做分母，不假设任何 beta。"),
+            "excess_over_exposure_pct 是相对它的差。该折算假设对 SPY 的 beta 为 1。"
+            "2026-09-05 起这个假设不必再猜了：summary.tearsheet 里的 beta 是把"
+            "组合超额收益对基准超额收益做回归量出来的，实测落在 0.04~0.32、"
+            "R² 多数低于 0.3。**beta 远小于 1，意味着这一列偏悲观而不是偏乐观**"
+            "——它把市场没给的收益算作市场给了。"
+            "（此前这条注解写的是「偏乐观」，依据是顶格分位持仓的入场前波动高达 35%；"
+            "波动大不等于 beta 大，这两件事在这里正好指向相反方向，实测的那个才算数。）"
+            "要判断有没有超额，优先看 tearsheet 的 alpha / information_ratio；"
+            "其次 return_per_vol_vs_benchmark——它拿每个组合自己实现的净值波动做分母，"
+            "不假设任何 beta。"),
     }
 
 
@@ -1179,6 +1251,10 @@ def main(argv: list[str]) -> int:
                          bench[0], bench[1])
     ranking_power["volatility_control"] = backtest.instrument_vol_gradient(
         con, positions, _ev_bucket_of(con, days))
+    tear = _tearsheet(
+        con, points, positions,
+        {k: {kk: vv for kk, vv in vars(v).items()} for k, v in rep.paired.items()},
+        args.horizon_days)
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",
@@ -1199,6 +1275,7 @@ def main(argv: list[str]) -> int:
         "theme_provenance": provenance,
         "ranking_power": ranking_power,
         "exposure": exposure,
+        "tearsheet": tear,
         "live_vs_backfill": live_split,
         "horizon_completeness": horizon,
         "generation_head_to_head": head_to_head,
@@ -1286,6 +1363,9 @@ def main(argv: list[str]) -> int:
         for row in positions:
             schema.upsert(p.state, "backtest_positions",
                           {"backtest_id": backtest_id, **row})
+
+    if tear:
+        perf.print_comparison(tear)
 
     print(f"\n回测已落库 {backtest_id}")
     print(f"  {len(points)} 个净值点 · {len(positions)} 条持仓 · "

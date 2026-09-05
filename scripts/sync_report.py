@@ -134,7 +134,7 @@ def main() -> int:
             # on a decision, not a sync failure — calling it one every tick
             # would bury the failures that are real.
             print(f"{label:22s} 指纹={fp} ({files}文件)  "
-                  "无组合（RDS 未迁组合表，非同步问题）")
+                  "无组合（RDS 未迁持仓与净值表，非同步问题）")
             continue
         same = "✅" if d == mark else "⚠️ 落后"
         print(f"{label:22s} 指纹={fp} ({files}文件)  组合={d} {same}")

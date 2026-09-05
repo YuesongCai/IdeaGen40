@@ -1108,7 +1108,16 @@ def _proposal_index(p, run: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     #: holdings — a specific explanation, offered where none is known.
     unread: list[str] = []
     from . import platform as _plat
-    for method in ("ai_native", "carl_constraint", "chain", "gap"):
+    # 方法名从注册表取，不写死。写死的那四条会漏掉两类：内置的新方法
+    # （lookthrough 是 2026-09-05 加的第五种），以及 PM 写一条准则派生出来的
+    # 那一条（`carl_constraint@pm-xxxx`）。漏掉的后果不是少一行，是**答错**：
+    # 只有它们提过的标的，抽屉会说「本期生成产物里没有这条的提案记录」，
+    # 再附一句「可能是上期滚过来的持仓」——一个凭空给出的解释。
+    # 本期没跑过的方法走 BlobMissing 那条安静跳过的路，多列几个不花代价。
+    from . import strategy as _strategy
+    from . import strategies as _strategies          # noqa: F401  触发注册
+    methods = sorted(m["name"] for m in _strategy.available("idea_generator"))
+    for method in methods:
         # Not `key`: that name is the cache key for the whole run, three lines
         # up, and shadowing it here filed the index under the last artifact
         # path instead — the cache then never hit and every request re-read

@@ -329,6 +329,38 @@ class ProposalsCase(_FrozenRun, unittest.TestCase):
         self.assertIn("error", review.proposals_for(
             "", RUN_ID, p=self.p, con=self.con))
 
+    def test_every_registered_generator_is_looked_for(self):
+        """方法名写死，新方法提的想法就会被答成「没有这条的提案记录」。
+
+        这一段原本写死 `("ai_native", "carl_constraint", "chain", "gap")`。
+        它漏两类：内置的新方法（`lookthrough` 是 2026-09-05 加的第五种），
+        以及 PM 写一条准则派生出来的那一条（`carl_constraint@pm-xxxx`）。
+        漏掉的后果不是少一行——只有它们提过的标的，抽屉会说「本期生成产物里
+        没有这条的提案记录」，再附一句「可能是上期滚过来的持仓」，一个凭空
+        给出的解释。本期没跑过的方法走 BlobMissing 安静跳过，多问几个不花代价。
+        """
+        from ideagen import strategy
+        import ideagen.strategies                    # noqa: F401  触发注册
+        asked = []
+        real_get = self.p.blobs.get
+
+        def counting_get(key):
+            asked.append(key)
+            return real_get(key)
+
+        self.p.blobs.get = counting_get              # type: ignore[method-assign]
+        try:
+            review.proposals_for("AAA", RUN_ID, p=self.p, con=self.con)
+        finally:
+            self.p.blobs.get = real_get              # type: ignore[method-assign]
+        looked = {k.rsplit("/", 1)[-1][:-5] for k in asked if "B_generators/" in k}
+        registered = {m["name"] for m in strategy.available("idea_generator")}
+        self.assertFalse(
+            sorted(registered - looked),
+            "这些生成方式注册了，但这一段没去找它们的产物：\n  "
+            + "\n  ".join(sorted(registered - looked))
+            + "\n它们提的想法会被答成「本期生成产物里没有这条的提案记录」")
+
     def test_the_run_is_read_once_however_many_instruments_are_asked_for(self):
         """Reading four artifacts out of object storage took four seconds; a
         reader opens this drawer once per instrument they are curious about."""

@@ -124,6 +124,8 @@
   --layout-chart-max:800px;
   --color-overlay-image:rgb(0 0 0 / 40%);
   --z-drawer:60;
+  /* 研报浏览器是从抽屉里点开的最后一层，必须盖在抽屉（70/71）之上 */
+  --z-corpus:80;
   --color-scrollbar-thumb:rgb(36 32 24 / 18%);
   --color-scrollbar-thumb-hover:rgb(36 32 24 / 32%);
 }
@@ -209,6 +211,44 @@ button:focus-visible,a:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var
 }
 .page-title{font:600 24px/32px var(--font-sans);color:var(--color-text-primary)}
 .topbar-actions{display:flex;align-items:center;gap:var(--space-3);margin-left:auto}
+/* ── 期次步进器 ────────────────────────────────────────────────────
+   这里放的是**步进器**，不是选择器，区别是有意的：选择器让人从一个集合里挑
+   （把那个集合复制到第二个地方，就是把「选哪一期」这个决定要求做两次）；
+   步进器只是沿着你已经在的那根轴挪一格，像翻页。全部期次的清单只在「各期」
+   一处，那里的行本身就是控件。中间那块标签是状态，点它去「各期」。 */
+.pnav{display:flex;align-items:center;gap:2px}
+.pnav-step{
+  width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);
+  background:var(--color-surface-white);color:var(--color-text-secondary);
+  cursor:pointer;padding:0;
+}
+.pnav-step:hover:not(:disabled){
+  border-color:var(--color-border-brand);color:var(--color-text-brand);
+  background:var(--color-surface-brand-subtle);
+}
+.pnav-step:disabled{opacity:.32;cursor:default}
+.pnav-lab{
+  display:flex;align-items:baseline;gap:5px;padding:3px 9px;min-height:24px;
+  border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);
+  background:var(--color-surface-white);cursor:pointer;
+  font:500 12px/18px var(--font-mono);color:var(--color-text-primary);
+  white-space:nowrap;
+}
+.pnav-lab:hover{border-color:var(--color-border-brand);color:var(--color-text-brand)}
+.pnav-lab .u{font-family:var(--font-sans);color:var(--color-text-tertiary)}
+/* 不在最新一期时，整块换成品牌色——离开默认状态这件事必须一眼看得出来，
+   否则读者会拿着上个月的数字当本周的读。 */
+.pnav.off .pnav-lab{
+  border-color:var(--color-border-brand);background:var(--color-surface-brand-subtle);
+  color:var(--color-text-brand);
+}
+.pnav-back{
+  border:none;background:none;padding:0 2px 0 6px;cursor:pointer;
+  font:500 12px/18px var(--font-sans);color:var(--color-text-brand);
+  text-decoration:underline;text-underline-offset:2.5px;white-space:nowrap;
+}
+@media (max-width:900px){.pnav-lab .u{display:none}}
 .refresh-stamp{font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);display:flex;align-items:center;gap:8px}
 .refresh-stamp .rs-dot{width:6px;height:6px;border-radius:var(--radius-pill);background:var(--color-feedback-success-default)}
 .refresh-stamp.stale .rs-dot{background:var(--color-feedback-error-default)}
@@ -1057,6 +1097,11 @@ button.chain-node:hover .cn-go{opacity:1}
 
 /* ── 研报浏览器 ─────────────────────────────────────────────── */
 .corpus-panel{width:640px;max-width:94vw}
+/* 研报浏览器有两个入口：页面上的「浏览 ›」，和抽屉里「读研报」那一层的同一个链接。
+ * 后者点开时，浮层用的 .toc-scrim/.help-panel 停在 z=60，而抽屉在 70/71——
+ * 于是清单整个落到抽屉背后，读者只看得见一层变暗的遮罩，以为没反应。
+ * 它是最后打开的一层，就该盖在最上面。 */
+#corpusRoot .toc-scrim,#corpusRoot .help-panel{z-index:var(--z-corpus)}
 .corpus-search{
   width:100%;height:36px;flex:none;
   border:1px solid var(--color-border-default);border-radius:var(--radius-lg);
@@ -1636,28 +1681,10 @@ body.drawer-lock{overflow:hidden}
 .gate-table th.cf .r-in{color:var(--color-text-brand);font-weight:600}
 .gate-table td.cf,.gate-table th.cf{background:var(--color-surface-brand-subtle)}
 
-/* ── 期次坐标：阶梯、主题矩阵、状态回执 ───────────────────────────── */
-/* 回执不是选择器。它出现在原本会放期次选择器的位置，但不让人再做一次
-   「选哪一期」的决定——只说明现在在看什么、以及怎么回去。 */
-.pr-bar{
-  display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
-  margin:0 0 var(--space-4);padding:9px 14px;
-  background:var(--color-surface-brand-subtle);
-  border:1px solid var(--color-border-brand-subtle);
-  border-radius:var(--radius-md);
-  font:400 13px/19px var(--font-sans);color:var(--color-text-secondary);
-}
-.pr-eye{display:inline-flex;color:var(--color-text-brand)}
-.pr-p{font-family:var(--font-mono);font-weight:600;color:var(--color-text-primary)}
-.pr-sep{color:var(--color-text-disabled)}
-.pr-note{color:var(--color-text-tertiary)}
-.pr-back{
-  margin-left:auto;border:none;background:none;padding:2px 0;cursor:pointer;
-  font:500 13px/19px var(--font-sans);color:var(--color-text-brand);
-  text-decoration:underline;text-underline-offset:2.5px;
-}
-.pr-back:hover{color:var(--color-text-brand-hover)}
-
+/* ── 期次坐标：阶梯、主题矩阵 ───────────────────────────────────────── */
+/* 期次此前在每个视图顶上挂一条横幅说「正在看 X 期」。顶栏常驻步进器之后那就是
+   同一句话说第二遍了，横幅连同样式一起删掉——留着不用的类，下一个人会以为
+   还有别的地方在用它。 */
 .lad-wrap{overflow-x:auto;margin:0 calc(-1*var(--space-2))}
 .lad-svg{display:block;min-width:860px;width:100%;height:auto}
 .lad-row{cursor:pointer}
@@ -1813,6 +1840,7 @@ table.ptbl td.exw{white-space:nowrap}
       <div class="topbar">
         <h1 class="page-title" id="pageTitle">组合</h1>
         <div class="topbar-actions">
+          <div class="pnav" id="periodNav"></div>
           <div class="refresh-stamp" id="stamp"><span class="rs-dot"></span><span id="stampText">刷新于 --:--:-- · 每 60 秒自动</span></div>
           <button type="button" class="ask-top" id="askTop" data-el="ask.global" onclick="openAskPicker()" title="本期任何一个宏观主题、标的、选取策略，都能问它当时为什么这么定——只依据那次运行封存的材料作答，不使用事后信息"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.6 2.2h8.8v5.6H5.2L2.8 9.9V7.8H1.6z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.7 4.1a1.3 1.3 0 0 1 2.4.6c0 .9-1.2.9-1.2 1.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><circle cx="5.9" cy="7" r=".5" fill="currentColor"/></svg><span>问它为什么选它</span></button>
           <a class="source-link" href="/olive">数据源</a>
@@ -2787,31 +2815,61 @@ function todayISO(){
   return g?String(g).slice(0,10):new Date().toISOString().slice(0,10);
 }
 
-/* ── 状态回执 ────────────────────────────────────────────────────────
-   不是选择器。它不让人再做一次「选哪一期」的决定，只说明现在在看什么、
-   以及怎么回去。默认状态下它不存在——没有焦点就没有回执。 */
-function periodReceipt(mode){
-  if(!PERIOD)return '';
-  var r=periodAt(PERIOD)||{as_of:PERIOD};
-  var w=S&&S.weekly||{};
-  var bits=[];
-  if(w.loading)bits.push('载入中…');
-  else if(w.offline)bits.push('快照页取不到别期的流水线');
-  else if(w.missing)bits.push('这一期没有跑成的运行记录');
-  else if(r.status==='rolled')bits.push('已滚出，'+fmtInt(r.n_closed)+' 仓全部平仓');
-  else if(r.days_left!==null&&r.days_left!==undefined){
-    bits.push(r.days_left>0?('还有 '+r.days_left+' 天到期')
-             :(r.days_left===0?'今天到期':'已过到期日'));
-  }
-  bits.push(mode==='focus'?'其余各期已压暗':'其余各期已收起');
-  return '<div class="pr-bar" role="status">'
-    +'<span class="pr-eye" aria-hidden="true">'
-      +'<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3">'
-      +'<path d="M1 7s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><circle cx="7" cy="7" r="1.7"/></svg></span>'
-    +'正在看 <b class="pr-p">'+esc(PERIOD)+' 期</b>'
-    +'<span class="pr-sep">·</span><span class="pr-note">'+esc(bits.join(' · '))+'</span>'
-    +'<button type="button" class="pr-back" onclick="setPeriod(null)">'
-    +'回到最新（'+esc(latestPeriod()||'—')+'）</button></div>';
+/* ── 顶栏期次步进器 ──────────────────────────────────────────────────
+   期坐标是全站的，可它此前的入口只在「各期」一页——人在持仓或方法上想换一期，
+   得先绕回去。所以把它提到顶栏，和「刷新于」并排：两个都是「什么时候」，
+   只是刷新于说的是这份数据多新，期次说的是你在看哪一周的内容。
+
+   刻意做成步进而不是下拉：下拉是把「全部期次」这个集合复制到第二个地方，
+   于是「选哪一期」这个决定要做两次——正是 08 月被否掉的那个形状。步进只是
+   沿着已经在的轴挪一格。完整清单只有「各期」一处，那里的行本身就是控件，
+   中间这块标签点下去就是去那里。 */
+function periodStep(dir){
+  var L=periodList();
+  if(!L.length)return;
+  var cur=curPeriod(), i=-1;
+  for(var k=0;k<L.length;k++)if(L[k].as_of===cur){i=k;break}
+  if(i<0)return;
+  var j=i+dir;
+  if(j<0||j>=L.length)return;
+  /* 步到最新一期就等于回到默认：PERIOD 留 null，URL 里不留 ?p=，否则「最新」
+     会有两种表示法，同一个画面分享出去的链接也会长得不一样。 */
+  setPeriodExact(L[j].as_of===latestPeriod()?null:L[j].as_of);
+}
+/* setPeriod 有「再点一次取消」的语义，适合行、格子这类切换；步进器不要那个，
+   它每一次都是明确地去某一期。 */
+function setPeriodExact(a){
+  PERIOD=a||null;
+  try{syncRoute()}catch(e){}
+  renderAll();
+}
+function renderPeriodNav(){
+  var host=$('periodNav');
+  if(!host)return;
+  var L=periodList();
+  if(!L.length){host.innerHTML='';host.className='pnav';return}
+  var cur=curPeriod(), last=latestPeriod(), i=-1;
+  for(var k=0;k<L.length;k++)if(L[k].as_of===cur){i=k;break}
+  var off=!!PERIOD&&cur!==last;
+  var r=periodAt(cur)||{};
+  var w=(S&&S.weekly)||{};
+  var note=w.loading?'载入中…'
+    :(w.missing?'这一期没有跑成的运行记录'
+    :(r.status==='rolled'?('已滚出 · '+fmtInt(r.n_closed)+' 仓全部平仓')
+    :(r.days_left===0?'今天到期'
+    :(r.days_left>0?('还有 '+r.days_left+' 天到期'):''))));
+  host.className='pnav'+(off?' off':'');
+  host.innerHTML=
+     '<button type="button" class="pnav-step" onclick="periodStep(-1)"'
+      +(i<=0?' disabled':'')+' aria-label="上一期" title="上一期">'
+      +'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 1.6 2.8 5l3.4 3.4"/></svg></button>'
+    +'<button type="button" class="pnav-lab" onclick="goto(\'periods\')"'
+      +' title="'+esc(cur+' 期'+(note?(' · '+note):'')+'　点开看全部 '+L.length+' 期')+'">'
+      +'<span>'+esc(cur||'—')+'</span><span class="u">期</span></button>'
+    +'<button type="button" class="pnav-step" onclick="periodStep(1)"'
+      +(i<0||i>=L.length-1?' disabled':'')+' aria-label="下一期" title="下一期">'
+      +'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 1.6 7.2 5l-3.4 3.4"/></svg></button>'
+    +(off?'<button type="button" class="pnav-back" onclick="setPeriodExact(null)">回到最新</button>':'');
 }
 
 /* ── 图一：四周阶梯 ──────────────────────────────────────────────────
@@ -3177,9 +3235,14 @@ function ladderStrip(){
       +'<span class="lstrip-n">'+fmtInt(r.n_open)+'</span></button>';
   }).join('');
   var goneN=all.filter(function(r){return r.status==='rolled'}).length;
+  /* 顶栏那块说的是「你在看哪一期」，是全站的；这一句说的是「这一页拿它怎么办」，
+     是这一页独有的——持仓不过滤，只压暗，因为这页要讲的正是持仓来自好几期。 */
+  var cap=PERIOD
+    ? ('只看 <b>'+esc(PERIOD)+'</b> 期 · 其余各期已压暗，仍在场')
+    : ('在场的 '+L.length+' 期 · 宽度是仓位数 · 点一期只看它'
+       +(goneN?('　|　左边 '+goneN+' 期已滚出，不再占仓位'):''));
   return '<div class="lstrip">'
-    +'<div class="lstrip-cap">在场的 '+L.length+' 期 · 宽度是仓位数 · 点一期只看它'
-      +(goneN?('　|　左边 '+goneN+' 期已滚出，不再占仓位'):'')+'</div>'
+    +'<div class="lstrip-cap">'+cap+'</div>'
     +'<div class="lstrip-bar">'+out+segs+'</div></div>';
 }
 
@@ -3199,6 +3262,7 @@ function renderAll(){
   POPS={};popSeq=0; /* 速览注册表随全量重渲染重建 */
   /* 期坐标先落地：它决定 S.weekly 是哪一期的，下面每个 render 都读它。 */
   applyPeriod();
+  renderPeriodNav();
   renderStamp();
   renderOverview();
   renderPeriods();
@@ -3301,7 +3365,6 @@ function renderOverview(){
       })()
       +'</div>'
     +askHintHTML()
-    +periodReceipt()
     +secWrap('overview','verdict',portfolioHeadline(ag))
     /* 「系统状态」和「周历」原本各是一个抽屉，可它们讲的是同一件事——这台
        机器在不在跑、每一期跑成了没有。类别不该住在抽屉里，抽屉留给某一个
@@ -3326,7 +3389,7 @@ function renderOverview(){
 function renderHoldings(){
   var root=$('view-holdings');
   if(!S){root.innerHTML='';return}
-  root.innerHTML=ladderStrip()+periodReceipt('focus')
+  root.innerHTML=ladderStrip()
     +secWrap('holdings','exposure',holdMapCard(aggBooks()));
 }
 /* 证据：凭什么信。选取策略对比属于这里而不是首屏——它是一个还要十几周
@@ -3335,8 +3398,7 @@ function renderEvidence(){
   var root=$('view-evidence');
   if(!S){root.innerHTML='';return}
   root.innerHTML=
-     periodReceipt()
-    +secWrap('evidence','strategies',raceHero(aggBooks()))
+     secWrap('evidence','strategies',raceHero(aggBooks()))
     +secWrap('evidence','backtest',backtestCard())
     +secWrap('evidence','ranking',rankingPowerCard())
     +secWrap('evidence','attribution',attributionCard())
@@ -3548,6 +3610,19 @@ function miniChain(stage,label){
  * 改成取主策略里最大的那个要求；取不到才回落到旧常量。
  * 这个要求本身是下限（sd 由重叠窗口估出，会被低估），VERDICT_GLOSS 已说明。 */
 var TARGET_WEEKS_FALLBACK=17;
+/* `required_pairs` 是**有效独立样本**数，不是周数。后端判定用的是
+ * `n_eff >= required_pairs`，而 n_eff = 期数 × 间隔/持有期 —— 每周开一期、
+ * 持有 30 天，一期只值 7/30 ≈ 0.23 个独立样本。把要求直接当周数用，等于
+ * 把窗口重叠这件事在分子上算了、在分母上忘了：低估 4.3 倍，并且让进度条
+ * 把 6/59 画成完成度，而真实是 1.4/59。
+ * 上一版已经把写死的 17 周换成实测要求，方向对；漏的是这一步折算。 */
+function overlapDiscount(){
+  var sum=(((S||{}).backtest||{}).summary)||{};
+  var h=Number(sum.horizon_days)||30;
+  var gap=Number(((sum.exposure||{}).gap_days))||7;
+  var d=gap/h;
+  return (isFinite(d)&&d>0)?Math.min(1,d):1;
+}
 function targetWeeks(){
   var pr=((((S||{}).backtest||{}).summary||{}).paired)||{};
   var main={};
@@ -3558,16 +3633,20 @@ function targetWeeks(){
     if(main[k]&&typeof v.required_pairs==='number')need.push(v.required_pairs);
   });
   if(!need.length)return TARGET_WEEKS_FALLBACK;
-  return Math.max.apply(null,need);
+  return Math.ceil(Math.max.apply(null,need)/overlapDiscount());
 }
-/* 单一目标数会盖掉一件事：有的臂已经够了，有的还差得远。 */
+/* 单一目标数会盖掉一件事：有的臂已经够了，有的还差得远。
+ * 单位与上面同口径——折算成周，否则两个数字并排却量着不同的东西。 */
 function targetWeeksSpread(){
   var pr=((((S||{}).backtest||{}).summary||{}).paired)||{};
+  var d=overlapDiscount();
   var ns=Object.keys(pr).map(function(k){return (pr[k]||{}).required_pairs})
-    .filter(function(v){return typeof v==='number'});
+    .filter(function(v){return typeof v==='number'})
+    .map(function(v){return Math.ceil(v/d)});
   if(ns.length<2)return '';
   ns.sort(function(a,b){return a-b});
-  return '各组合所需 '+ns[0]+'-'+ns[ns.length-1]+' 期，随实测标准差变化';
+  return '各组合所需 '+ns[0]+'-'+ns[ns.length-1]+' 周，随实测标准差变化'
+    +'（已按窗口重叠折算：一期只值 '+(d).toFixed(2)+' 个有效独立样本）';
 }
 /* 回测表把 1 天和 30 天的持仓放在一起算胜率，页面却平铺写着「持有期 30 天」。
  * 目标期限确实是 30 天，但最近几期还没跑完——它们的收益是中途读数，
@@ -3591,7 +3670,7 @@ function backtestMaturity(){
   return {periods:ks,byPeriod:byPeriod,min:Math.min.apply(null,ds),max:Math.max.apply(null,ds),
           full:full,n:ks.length,target:target};
 }
-var VERDICT_GLOSS='样本量要求约 17 周（≈4 个月）：各组合使用同一候选池，净值差异仅来自选取策略。按预注册的配对检验口径（持有期重叠折算 + 配对相关 ρ≈0.8 先验），可靠识别 2 个百分点/月的真实差距需约 4 个月重叠持有样本。此前的排名不构成结论。';
+var VERDICT_GLOSS='各组合使用同一候选池，净值差异仅来自选取策略。所需样本按各臂实测标准差算，并按窗口重叠折算：每周开一期、持有 30 天，一期只值 7/30 个有效独立样本，所以周数是要求数的约 4.3 倍。按 2 个百分点/月的可检出目标，当前主策略里最苛刻的一条需要数年而不是数月——这是这套设计的真实代价，不是可以绕过的估计误差。要缩短只有两条路：放宽可检出目标（所需样本按 1/差距² 缩小，5pp 时约一年），或降低窗口重叠（缩短持有期，或拉开期次间隔）。此前的排名不构成结论。';
 var BAND_GLOSS='±2 个百分点为预注册的可检出差距。当前样本量下，小于该幅度的领先无法与随机波动区分，带内排名不构成结论。';
 function bookColor(name){
   var i=SEL_META.findIndex(function(m){return m[0]===name});
@@ -5617,14 +5696,51 @@ function hidePop(){
   clearTimeout(popTimer);popCur=null;
   var el=$('pcPop');if(el)el.classList.remove('show');
 }
+/* ⓘ 的正路是「鼠标移上去就出字」。原生 title 要停留约一秒、样式还是系统的，
+ * 所以这里把 .gloss 也接进同一个气泡：移上去 120ms 就出，移开就收。
+ * 把 title 摘成 data-tip 是必须的——留着它，原生 tooltip 会在自己的气泡旁边
+ * 再弹一个。摘的同时补 aria-label：.gloss 的可见文字只有一个「ⓘ」，
+ * 读屏软件本来就靠 title，不能白摘。 */
+function tipTextOf(el){
+  if(!el)return '';
+  if(el.hasAttribute('title')){
+    var t=el.getAttribute('title')||'';
+    el.setAttribute('data-tip',t);
+    el.removeAttribute('title');
+    if(t&&!el.getAttribute('aria-label'))el.setAttribute('aria-label',t);
+  }
+  return el.getAttribute('data-tip')||'';
+}
+function showTipFor(el){
+  var txt=tipTextOf(el);
+  if(!txt)return;
+  var r=el.getBoundingClientRect();
+  showPop('<div style="white-space:normal">'+esc(txt)+'</div>',r.left,r.bottom-8);
+}
 document.addEventListener('mouseover',function(e){
   var t=e.target;
   var el=(t&&t.closest)?t.closest('[data-pop]'):null;
-  if(!el){if(popCur)hidePop();return}
-  var id=el.getAttribute('data-pop');
-  if(id===popCur)return;
-  hidePop();popCur=id;popX=e.clientX;popY=e.clientY;
-  popTimer=setTimeout(function(){if(popCur===id)showPop(POPS[id]||'',popX,popY)},150);
+  if(el){
+    var id=el.getAttribute('data-pop');
+    if(id===popCur)return;
+    hidePop();popCur=id;popX=e.clientX;popY=e.clientY;
+    popTimer=setTimeout(function(){if(popCur===id)showPop(POPS[id]||'',popX,popY)},150);
+    return;
+  }
+  var g=(t&&t.closest)?t.closest('.gloss[title],.gloss[data-tip]'):null;
+  if(g){
+    if(popCur===g)return;
+    hidePop();popCur=g;
+    popTimer=setTimeout(function(){if(popCur===g)showTipFor(g)},120);
+    return;
+  }
+  if(popCur)hidePop();
+});
+document.addEventListener('mouseout',function(e){
+  if(!(popCur&&typeof popCur==='object'))return;      /* 只管 .gloss 那一路 */
+  var to=e.relatedTarget;
+  if(to&&popCur.contains&&popCur.contains(to))return;
+  hidePop();
 });
 document.addEventListener('mousemove',function(e){popX=e.clientX;popY=e.clientY});
 document.addEventListener('scroll',function(){hidePop()},true);
@@ -5634,21 +5750,13 @@ document.addEventListener('scroll',function(){hidePop()},true);
  * 复用同一个气泡，不新增一套 UI。桌面维持 hover 原生 tooltip 不变。 */
 document.addEventListener('click',function(e){
   var t=e.target;
-  var g=(t&&t.closest)?t.closest('.gloss[title],[data-tip]'):null;
-  if(!g){if(popCur==='tip')hidePop();return}
+  var g=(t&&t.closest)?t.closest('.gloss[title],.gloss[data-tip]'):null;
+  if(!g){if(popCur&&typeof popCur==='object')hidePop();return}
+  /* 有 hover 的设备已经靠移入出字了，点击不该再变成一个开关；
+   * 只在触屏上把点击当作唯一入口。 */
   e.preventDefault();e.stopPropagation();
-  var txt=g.getAttribute('title')||g.getAttribute('data-tip')||'';
-  if(!txt)return;
-  /* 只有在没有 hover 的设备上才把 title 摘掉（摘掉是为了不和原生 tooltip 打架）。
-   * 桌面必须保留 title：否则点过一次之后，之后的 hover 就什么都不弹了。 */
-  if(g.hasAttribute('title')&&window.matchMedia&&window.matchMedia('(hover:none)').matches){
-    g.setAttribute('data-tip',txt);g.removeAttribute('title');
-  }
-  if(popCur==='tip'){hidePop();return}
-  hidePop();popCur='tip';
-  var r=g.getBoundingClientRect();
-  showPop('<div style="max-width:280px;white-space:normal">'+esc(txt)+'</div>',
-          r.left,r.bottom-8);
+  if(popCur===g){hidePop();return}
+  hidePop();popCur=g;showTipFor(g);
 },true);
 
 /* ══════════ 候选池筛选（勾稽枢纽——现在通向候选池抽屉） ══════════ */
@@ -5874,7 +5982,6 @@ function renderMethod(force){
   if(!force&&phTyping())return;
   root.innerHTML=
      procFailBanner()
-    +periodReceipt()
     /* 「主链路」曾在这里画第二遍同一件事：它的 01/02/03 三段和下面流水线图的
        前三块点的是同一个 openStageDrawer(0/1/2)，858 与 73 两个数也和图上方那句
        导读逐字重复。同一个视图里一件事讲两遍、一个抽屉三个入口——留图，
@@ -5920,7 +6027,7 @@ function corpusSourceCard(){
   var w=S.weekly||{};
   var rows=(S.feeds||[]).filter(function(x){return x.kind==='corpus'&&x.as_of===w.as_of});
   var n=w.corpus_total||corpusRowsFor(w.as_of);
-  if(!n&&!rows.length)return '';
+  if(!n&&!rows.length&&!corpusPeriods().length)return '';
   var g={};rows.forEach(function(f){(g[f.feed]=g[f.feed]||[]).push(f)});
   var keys=Object.keys(g);
   var tbl=keys.length
@@ -5942,7 +6049,14 @@ function corpusSourceCard(){
    * 「研报清单 ›」、整行可点，去的是同一个地方。后来又发现「来源分布与主题
    * 归属 ›」和流水线图上那个 858 的研报方块也是同一个 openStageDrawer(0)——
    * 同一视图同一抽屉两个入口。留图上那块：入口就该是内容本身。 */
-  return tbl;
+  /* 抓取表只画本期，可「期次」这一栏摆在那里就是在说这是一根轴。往期语料
+   * 一直在库里，缺的只是入口——补在同一张卡里，和抽屉里是同一份清单。 */
+  var curN2=corpusPeriodN(w.as_of);
+  if(!keys.length&&curN2){
+    tbl='<div class="card-note">本期没有新的抓取记录——这一期复用了已入库的语料。'
+      +'<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of)+'\')">浏览这 '+fmtInt(curN2)+' 篇 ›</button></div>';
+  }
+  return tbl+pastCorpusList(w.as_of);
 }
 /* 本期读入多少、多少家机构——盖子上要报的体量 */
 function corpusCount(){
@@ -6662,8 +6776,44 @@ function stageCorpusBody(){
           +' <span class="exp-btn">浏览 ›</span></td></tr>';
       }).join('')+'</tbody></table></div>'
     :'';
-  return body+breakdown+topicChips+feedTable
+  /* 本期没有抓取记录，不等于本期没有研报：复用上一轮已入库语料的那一周
+   * （如 2026-08-26）不产生 feed_runs 行，可它的 400 多篇就在库里。
+   * 只看抓取表就会告诉读者「这期没有」，而点进去明明有。 */
+  var curN=corpusPeriodN(w.as_of);
+  if(!rows.length&&curN){
+    feedTable='<div class="card-note" style="margin-top:var(--space-4)">'
+      +'本期没有新的抓取记录——这一期复用了已入库的语料。'
+      +'<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of)+'\')">浏览这 '+fmtInt(curN)+' 篇 ›</button></div>';
+  }
+  return body+breakdown+topicChips+feedTable+pastCorpusList(w.as_of)
     +epi('本期全部判断的唯一信息来源，4 种生成方法共用同一份');
+}
+
+/* ── 往期研报：这一列本来只可能有一个值 ──────────────────────────────
+ * 来源表有一栏「期次」，但它只画本期那一行，于是那一栏永远只有一个值——
+ * 一个只能取一个值的坐标轴不是坐标轴。历史各期的语料一直都在库里
+ * （/api/corpus?as_of= 随时能取），只是这里没有入口。把入口摆出来。 */
+function corpusPeriods(){return (S&&S.corpus_periods)||[]}
+function corpusPeriodN(asOf){
+  var hit=corpusPeriods().filter(function(x){return x.as_of===asOf})[0];
+  return hit?hit.n:null;
+}
+function pastCorpusList(curAsOf){
+  var past=corpusPeriods().filter(function(x){return x.as_of!==curAsOf});
+  if(!past.length)return '';
+  return '<div style="margin-top:var(--space-5)">'
+    +'<div class="card-note" style="margin-bottom:6px">往期研报 · 共 '+fmtInt(past.length)+' 期'
+    +'<span class="gloss gm" title="每一期的语料 = 截至该期 as_of 的 3 天窗口内入库的全部研报，与本期同一口径。历史各期一直存着，点开就是当时读到的那一份。">ⓘ</span>：</div>'
+    +'<div class="table-wrap"><table>'
+    +'<thead><tr><th>期次</th><th class="r">条数</th><th>窗口</th></tr></thead><tbody>'
+    +past.map(function(x){
+      var win=(x.window&&x.window.length)?(x.window[x.window.length-1].slice(5)+' ~ '+x.window[0].slice(5)):'';
+      return '<tr class="expandable" onclick="openCorpus(\''+jss(x.as_of)+'\')" title="点开浏览这一期存了哪些研报">'
+        +'<td class="mono primary">'+esc(x.as_of)+'</td>'
+        +'<td class="r num">'+fmtInt(x.n)+'</td>'
+        +'<td class="mono">'+esc(win)+' <span class="exp-btn">浏览 ›</span></td></tr>';
+    }).join('')
+    +'</tbody></table></div></div>';
 }
 
 /* ── 2 · 筛选A：主题评分（focus = 主题 id：该行高亮+证据就地展开，其余压暗） ── */
@@ -8015,8 +8165,10 @@ function askDrawerBody(d){
 /* Esc：先关抽屉，再关别的浮层 */
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape')return;
-  if(drawerStack.length){if(e.shiftKey)closeDrawers();else popDrawer();return}
+  /* 研报浏览器可以叠在抽屉之上打开，它在最上面就该最先被关掉——
+     否则 Esc 会从它背后抽走一层抽屉，看起来像按错了键。 */
   if(typeof corpusOpen!=='undefined'&&corpusOpen){closeCorpus();return}
+  if(drawerStack.length){if(e.shiftKey)closeDrawers();else popDrawer();return}
   if(typeof helpOpen!=='undefined'&&helpOpen){toggleHelp();return}
 });
 

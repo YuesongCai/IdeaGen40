@@ -6602,7 +6602,46 @@ function tearsheetCard(){
         +'各组合持仓的日均成交额中位数相差 4.6 倍（$163M–$749M），日均成交额低于 '
         +'$20M 的仓位占比在 2.3%–10.4% 之间。持薄票多的那几个会被多扣，'
         +'而现在这张表看不见这件事。')+'">ⓘ</span></div>',''):'')
+
+    /* 成交现实。上面那张讲的是「成交之后被扣掉多少」，这张讲的是「到底成不成交」
+       ——回测按当期第一个收盘价无条件成交，而唯一用了进场区间的那个组合只成交了
+       三成。两个数必须一起读，单看任何一个结论都会反过来。 */
+    +fillRealityBlock()
     +'</div>';
+}
+function fillRealityBlock(){
+  var fr=(((S||{}).backtest||{}).summary||{}).fill_reality;
+  if(!fr||!fr.books)return '';
+  var ks=Object.keys(fr.books).filter(function(k){return fr.books[k].band_selection_pp!=null});
+  if(!ks.length)return '';
+  var rows=ks.map(function(k){
+    var b=fr.books[k];
+    return '<tr><td class="primary">'+esc(k)+'</td>'
+      +'<td class="r num">'+fmtRate((b.fill_rate||0)*100)+'</td>'
+      +'<td class="r num '+pctCls(b.filled_mean_pct)+'">'+fmtPct(b.filled_mean_pct)+'</td>'
+      +'<td class="r num '+pctCls(b.unfilled_mean_pct)+'">'+fmtPct(b.unfilled_mean_pct)+'</td>'
+      +'<td class="r num '+pctCls(b.assume_all_filled_pct)+'">'+fmtPct(b.assume_all_filled_pct)+'</td>'
+      +'<td class="r num '+pctCls(b.at_observed_fill_rate_pct)+'">'+fmtPct(b.at_observed_fill_rate_pct)+'</td></tr>';
+  }).join('');
+  var b0=fr.books[ks[0]];
+  return foldBlock('week.tearsheet.fill','成交现实：回测假设全成交，当期实跑只成交了三成',
+    '区间会挑，但只有成交的那部分钱在场',
+    '<div class="table-wrap"><table class="data-table"><thead><tr>'
+      +'<th>组合</th><th class="r">成交率</th>'
+      +'<th class="r">成交的<span class="gloss gm" title="从下单日收盘起算的同期限收益。成交与未成交都按同一个起点计价，所以这两列之差量的是「区间挑得准不准」，不是「买得早不早」。">ⓘ</span></th>'
+      +'<th class="r">未成交的</th>'
+      +'<th class="r">全成交假设</th>'
+      +'<th class="r">按实际成交率<span class="gloss gm" title="成交那部分按实际收益、未成交那部分按现金收益折算出来的组合层面结果。回测报的是「全成交假设」那一列。">ⓘ</span></th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="card-note">两个数得一起读：区间<b>会挑</b>（成交的比未成交的高 '
+      +fmtPct(b0.band_selection_pp)+'），但<b>只有成交的那部分钱在场</b>'
+      +'（组合层面比全成交假设低 '+fmtPct(Math.abs(b0.participation_cost_pp))+'）。'
+      +'所以「区间有效」和「区间亏钱」同时成立，原因在成交率不在排序。'
+      +'回测这一侧按当期第一个收盘价无条件成交，看不见这件事的任何一半。'
+      +'<span class="gloss gm" title="'+esc('逐单统计，30 天窗口高度重叠，n 不是独立观测数。'
+        +'另外：目前十个选取策略的组合都是市价单，全部成交；这张表来自唯一一个'
+        +'用了进场区间的组合。若把区间推广到全部组合，这一列就是要付的价钱。')
+      +'">ⓘ</span></div>','');
 }
 function backtestCard(){
   var b=(S&&S.backtest)||{};

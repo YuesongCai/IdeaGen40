@@ -1431,6 +1431,9 @@ def main(argv: list[str]) -> int:
         "attribution_theme_layer": attribution,
         "theme_provenance": provenance,
         "ranking_power": ranking_power,
+        # What the replay's unconditional fill is worth, measured on the live
+        # book that actually placed banded orders. See `backtest.fill_reality`.
+        "fill_reality": backtest.fill_reality(con, horizon_days=args.horizon_days),
         "exposure": exposure,
         "tearsheet": tear,
         "live_vs_backfill": live_split,

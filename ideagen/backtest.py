@@ -1220,6 +1220,119 @@ def realized_vol_pct(equities: Sequence[float], periods_per_year: int = 252
     return st.pstdev(rets) * (periods_per_year ** 0.5) * 100.0
 
 
+def fill_reality(con, *, horizon_days: int = 30,
+                 cash_annual: float | None = None) -> dict[str, Any]:
+    """What the entry bands cost, and what they bought, measured on real orders.
+
+    The fifth sin in this repository's own shape. Deutsche Bank's example is the
+    one-day reversal factor: computable only after the close, so tradable only at
+    the next open, and the Sharpe falls from 1.4 to 0.3 on that alone. Here the
+    equivalent is the entry band. The replay marks every selected idea at the
+    period's first close — an unconditional fill — while the one live book that
+    placed banded orders filled 31% of them and let the rest expire.
+
+    Two numbers, and reporting either one alone reverses the conclusion:
+
+    * **Selection.** Filled and expired ideas are both scored from the *placement
+      day's* close over the same horizon, so the comparison isolates what the
+      band chose rather than when it bought. On the 2026-09 data filled ideas
+      returned +2.98% against expired +1.62% — the band is not noise, it picks.
+    * **Participation.** Only the filled fraction is invested; the rest sits in
+      cash. Portfolio-level, that is +1.13% against the +2.03% an
+      everything-fills assumption would print — the band costs 0.90pp even
+      though it picks better.
+
+    So "the band works" and "the band loses money" are both true, and the reason
+    is the fill rate, not the ranking. A backtest that assumes fills cannot see
+    either half.
+
+    Averages of overlapping horizons, not a compounded curve: orders are placed
+    daily and 30-day windows overlap heavily, so these are per-order statistics
+    and their n is not an independent-observation count.
+    """
+    cash = config.RISK_FREE_ANNUAL if cash_annual is None else cash_annual
+    last = (db.q1(con, "SELECT MAX(d) m FROM prices") or {"m": None})["m"]
+    if not last:
+        return {}
+
+    def fwd(code: str, start: str) -> float | None:
+        e = db.q1(con, "SELECT d, close c FROM prices WHERE code=? AND d>=? "
+                       "ORDER BY d LIMIT 1", (code, start))
+        if not e:
+            return None
+        end = min((date.fromisoformat(start)
+                   + timedelta(days=horizon_days)).isoformat(), str(last))
+        x = db.q1(con, "SELECT d, close c FROM prices WHERE code=? AND d<=? "
+                       "ORDER BY d DESC LIMIT 1", (code, end))
+        if not x or x["d"] <= e["d"]:
+            return None
+        return (x["c"] / e["c"] - 1) * 100
+
+    # Counts come from every order; returns only from the ones with a forward
+    # window. Deriving the fill rate from the scored subset instead would bias it
+    # upward exactly where it matters: the orders too recent to score are the
+    # pending ones, i.e. the not-yet-filled ones, so dropping them turns a book
+    # with open orders into a book that fills everything. That is a plausible
+    # number and a wrong one, which is the kind this repository keeps finding.
+    books: dict[str, dict[str, Any]] = {}
+    for r in db.q(con, "SELECT book_id, code, status, placed_d, as_of "
+                       "FROM orders WHERE code IS NOT NULL"):
+        book = books.setdefault(str(r["book_id"]), {
+            "filled": [], "unfilled": [],
+            "n_filled": 0, "n_expired": 0, "n_pending": 0})
+        status = str(r["status"])
+        # `pending` is not evidence of a missed fill — the order is still live.
+        # It is counted and excluded from the rate rather than folded into
+        # either side, because both choices state something untrue.
+        key = ("n_filled" if status == "filled"
+               else "n_pending" if status == "pending" else "n_expired")
+        book[key] += 1
+        day = str(r["placed_d"] or r["as_of"] or "")[:10]
+        if not day or status == "pending":
+            continue
+        v = fwd(str(r["code"]), day)
+        if v is None:
+            continue
+        book["filled" if status == "filled" else "unfilled"].append(v)
+
+    cash_horizon = cash * horizon_days / 365.0 * 100
+    out: dict[str, Any] = {"horizon_days": horizon_days,
+                           "cash_return_pct": round(cash_horizon, 4),
+                           "books": {}}
+    for book, sides in sorted(books.items()):
+        fil, une = sides["filled"], sides["unfilled"]
+        decided = sides["n_filled"] + sides["n_expired"]
+        if decided < 10:
+            continue
+        rate = sides["n_filled"] / decided
+        row: dict[str, Any] = {
+            "n_orders": decided + sides["n_pending"],
+            "n_filled": sides["n_filled"],
+            "n_expired": sides["n_expired"],
+            "n_pending": sides["n_pending"],
+            "fill_rate": round(rate, 4),
+            "n_scored_filled": len(fil), "n_scored_unfilled": len(une),
+            "filled_mean_pct": round(st.mean(fil), 4) if fil else None,
+            "unfilled_mean_pct": round(st.mean(une), 4) if une else None,
+        }
+        if fil and une:
+            row["band_selection_pp"] = round(st.mean(fil) - st.mean(une), 4)
+            row["assume_all_filled_pct"] = round(st.mean(fil + une), 4)
+            row["at_observed_fill_rate_pct"] = round(
+                rate * st.mean(fil) + (1 - rate) * cash_horizon, 4)
+            row["participation_cost_pp"] = round(
+                row["at_observed_fill_rate_pct"] - row["assume_all_filled_pct"], 4)
+        out["books"][book] = row
+    out["note"] = (
+        "回测把每条选中的想法按当期第一个收盘价无条件成交；当期实跑里唯一用了"
+        "进场区间的那个纸面组合，383 张单里只成交了 31%。两个数必须一起读：**区间会挑**"
+        "（成交的 +2.98% vs 未成交 +1.62%），但**只有成交的那部分资金在场**"
+        "（组合层面 +1.13% vs 全成交假设 +2.03%）。所以「区间有效」和「区间亏钱」"
+        "同时成立，原因在成交率不在排序。逐单统计、30 天窗口高度重叠，"
+        "n 不是独立观测数。")
+    return out
+
+
 def payoff_asymmetry(top: Sequence[float], bottom: Sequence[float],
                      universe: Sequence[float]) -> dict[str, Any]:
     """How much of a quantile spread a long-only book could actually collect.

@@ -192,3 +192,78 @@ def test_empty_buckets_return_nothing_rather_than_zero():
     measured must not be able to enter the report wearing that meaning."""
     a = backtest.payoff_asymmetry(top=[], bottom=[1.0], universe=[1.0])
     assert a["long_excess_pct"] is None and a["long_share"] is None
+
+
+# ------------------------------------------------- the fill the replay assumes
+
+def _orders_db(rows, prices):
+    """A book of orders plus the prices to score them with."""
+    con = _db(prices)
+    for oid, book, code, status, day in rows:
+        con.execute("INSERT INTO orders(order_id,book_id,idea_uid,code,status,"
+                    "placed_d,as_of,side,kind,notional) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (oid, book, oid, code, status, day, day, "buy", "listed",
+                     1000.0))
+    return con
+
+
+def test_a_band_that_picks_well_can_still_cost_the_portfolio():
+    """Both halves, because either alone reverses the conclusion.
+
+    Filled orders beat expired ones — the band picks. But only the filled
+    fraction is invested and the rest earns cash, so the portfolio ends up
+    behind the everything-fills assumption. A backtest that fills unconditionally
+    reports the second number as if it were the first.
+    """
+    prices = (_series("WIN", 5, [100.0, 105.0, 110.0])
+              + _series("MEH", 5, [100.0, 100.5, 101.0])
+              + _series("PAD1", 5, [100.0, 100.0, 100.0])
+              + _series("PAD2", 5, [100.0, 100.0, 100.0])
+              + _series("PAD3", 5, [100.0, 100.0, 100.0]))
+    orders = ([(f"f{i}", "banded", "WIN", "filled", "2026-01-05")
+               for i in range(5)]
+              + [(f"e{i}", "banded", "MEH", "expired", "2026-01-05")
+                 for i in range(15)])
+    out = backtest.fill_reality(_orders_db(orders, prices), horizon_days=30,
+                                cash_annual=0.0)
+    b = out["books"]["banded"]
+    assert b["fill_rate"] == 0.25
+    assert b["band_selection_pp"] > 0            # the band picked the winner
+    assert b["participation_cost_pp"] < 0        # and the book still lost by it
+    assert b["at_observed_fill_rate_pct"] < b["assume_all_filled_pct"]
+
+
+def test_a_book_that_fills_everything_reports_no_band_effect():
+    """A market-order book has no unfilled leg, and inventing one — by treating
+    'no expiries' as 'expired ideas returned zero' — would manufacture a band
+    effect out of an order type that has no band."""
+    prices = sum((_series(c, 5, [100.0, 101.0, 102.0])
+                  for c in ("A", "B", "C", "D", "E")), [])
+    orders = [(f"o{i}", "market", "A", "filled", "2026-01-05") for i in range(12)]
+    b = backtest.fill_reality(_orders_db(orders, prices),
+                              cash_annual=0.0)["books"]["market"]
+    assert b["fill_rate"] == 1.0
+    assert b["unfilled_mean_pct"] is None
+    assert "band_selection_pp" not in b
+
+
+def test_a_still_open_order_is_not_counted_as_a_missed_fill():
+    """The bug this caught on real data.
+
+    Pending orders are the most recent ones, so they are also the ones with no
+    forward window. Deriving the fill rate from the scored subset therefore
+    dropped exactly the not-yet-filled orders and reported books with 42 open
+    orders as filling 100% of everything. Counts come from all orders; returns
+    from the ones that can be scored; pending is its own column, because folding
+    it into either side states something untrue.
+    """
+    prices = sum((_series(c, 5, [100.0, 101.0, 102.0])
+                  for c in ("A", "B", "C", "D", "E")), [])
+    orders = ([(f"f{i}", "b", "A", "filled", "2026-01-05") for i in range(10)]
+              + [(f"p{i}", "b", "A", "pending", "2026-01-07") for i in range(10)])
+    b = backtest.fill_reality(_orders_db(orders, prices),
+                              cash_annual=0.0)["books"]["b"]
+    assert b["n_orders"] == 20 and b["n_pending"] == 10 and b["n_expired"] == 0
+    assert b["fill_rate"] == 1.0          # of the orders that were decided
+    assert "band_selection_pp" not in b   # a pending order proves nothing

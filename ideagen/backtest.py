@@ -1565,6 +1565,106 @@ def shelf_equal_weight_series(con, start: str, end: str, *,
     }
 
 
+def trailing_vol_pct(con, code: str, upto: str, lookback: int = 60
+                     ) -> float | None:
+    """Annualised volatility of the `lookback` sessions up to and including
+    `upto`, in percent. Measured before entry so the number was knowable on the
+    day the pick was made."""
+    px = [r["close"] for r in db.q(
+        con, "SELECT close FROM prices WHERE code=? AND d<=? "
+             "ORDER BY d DESC LIMIT ?", (code, upto, lookback + 1))][::-1]
+    if len(px) < 21:
+        return None
+    return st.pstdev([px[i] / px[i - 1] - 1 for i in range(1, len(px))]
+                     ) * (252 ** 0.5) * 100.0
+
+
+def partial_rank_correlation(rows: Sequence[tuple[str, float, float, float]]
+                             ) -> dict[str, Any]:
+    """The score's ranking power after the risk it was ranking is taken out.
+
+    `instrument_vol_gradient` shows the two ladders side by side and lets the
+    reader conclude. This computes the conclusion: the rank correlation of score
+    against realised return, **holding pre-entry volatility fixed**, by the usual
+    partial-correlation identity applied to ranks
+
+        rho_partial = (r_sr - r_sc * r_cr) / sqrt((1 - r_sc^2) * (1 - r_cr^2))
+
+    It exists because a picture two ladders wide is an invitation to disagree
+    about what it shows, and this repository has already disagreed with itself
+    once about whether the expectation score was ranking skill or risk. The
+    number settles it in one line, per period, and can be tracked forward.
+
+    Inside a period only — pooling across periods would let a rising month rank
+    its names against a falling month's and report the calendar. Periods with
+    fewer than 15 usable rows are skipped rather than reported, and periods where
+    either denominator collapses (a control with no cross-sectional variation)
+    return no partial, not a zero.
+
+    `rows` are (period, score, control, realised return).
+    """
+    from . import analytics
+
+    by_period: dict[str, list[tuple[float, float, float]]] = {}
+    for period, score, control, ret in rows:
+        by_period.setdefault(str(period), []).append(
+            (float(score), float(control), float(ret)))
+
+    per_period: list[dict[str, Any]] = []
+    for period in sorted(by_period):
+        obs = by_period[period]
+        if len(obs) < 15:
+            per_period.append({"as_of": period, "n": len(obs),
+                               "skipped": "样本不足 15 条，不给偏相关"})
+            continue
+        sc = [o[0] for o in obs]
+        cn = [o[1] for o in obs]
+        rt = [o[2] for o in obs]
+        r_sr = analytics.spearman(sc, rt)
+        r_sc = analytics.spearman(sc, cn)
+        r_cr = analytics.spearman(cn, rt)
+        row: dict[str, Any] = {
+            "as_of": period, "n": len(obs),
+            "rho_score_return": None if r_sr is None else round(r_sr, 4),
+            "rho_score_control": None if r_sc is None else round(r_sc, 4),
+            "rho_control_return": None if r_cr is None else round(r_cr, 4),
+        }
+        if None not in (r_sr, r_sc, r_cr):
+            denom = ((1 - r_sc ** 2) * (1 - r_cr ** 2)) ** 0.5
+            row["rho_partial"] = (None if denom <= 0
+                                  else round((r_sr - r_sc * r_cr) / denom, 4))
+        per_period.append(row)
+
+    scored = [p for p in per_period if p.get("rho_partial") is not None]
+    raw = [p["rho_score_return"] for p in scored
+           if p.get("rho_score_return") is not None]
+    partial = [p["rho_partial"] for p in scored]
+    mean_p = st.mean(partial) if partial else None
+    # A t on the per-period series, with the sample it actually has. Six periods
+    # is six numbers; the t is printed with n beside it precisely so nobody reads
+    # it as more than that.
+    t_stat = None
+    if len(partial) > 2:
+        sd = st.pstdev(partial)
+        if sd > 0:
+            t_stat = mean_p / (sd / (len(partial) ** 0.5))
+    return {
+        "per_period": per_period,
+        "periods_scored": len(scored),
+        "mean_rho_raw": round(st.mean(raw), 4) if raw else None,
+        "mean_rho_partial": None if mean_p is None else round(mean_p, 4),
+        "t_partial": None if t_stat is None else round(t_stat, 2),
+        "periods_partial_positive": sum(1 for v in partial if v > 0),
+        "shrinkage": (None if (mean_p is None or not raw)
+                      else round(st.mean(raw) - mean_p, 4)),
+        "note": (
+            "把「入场前 60 日波动」按住不动之后，分数与实际收益还剩多少秩相关。"
+            "两条阶梯并排看是邀请读者自己下结论，而本仓已经为「这个分数排的是"
+            "能力还是风险」自我矛盾过一次；偏相关把结论压成一行，逐期给、可以往前追。"
+            "秩相关一律在期内算；分母塌掉的期次不给数，而不是给 0。"),
+    }
+
+
 def instrument_vol_gradient(con, positions: Sequence[dict[str, Any]],
                             score_of: Any, *, lookback: int = 60) -> dict:
     """Whether a score that ranks returns is really just ranking risk.

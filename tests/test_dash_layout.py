@@ -606,3 +606,70 @@ class OneSectionOneCard(unittest.TestCase):
         found = [(v, s) for v, s, _ in self._multi(merged)]
         self.assertIn(("overview", "now"), found,
                       "两张卡塞回一个段，闸门居然没红——它没在看")
+
+
+class FunnelReadsFieldsThatExist(unittest.TestCase):
+    """证伪漏斗读的每个字段，必须真的由后端写出来。
+
+    2026-09-06 第一版漏斗读的是 `walk.random_mean`——那个字段根本不存在。
+    `undefined || 0` 变成 0，于是「跟随领先者 +0.59% vs 随机 0.00%」被印成
+    **扛住了**，而真实对照是 +1.00%、这一层其实没扛住。没有报错、没有空白，
+    只是把结论说反了；而这张卡的全部意义就是给出判定。
+
+    所以这里把「前端读的键」和「后端写的键」钉在一起。它抓的是同一族缺陷里
+    最贵的那个：字段改名或从来没有过，界面照常渲染，判定却翻了面。
+    """
+
+    #: 漏斗里那些不是 payload 字段的局部名字（循环变量、DOM 类名、辅助函数）。
+    LOCAL = {
+        "length", "toFixed", "indexOf", "filter", "map", "join", "push",
+        "reduce", "keys", "forEach", "books", "families", "arms", "overall",
+        "capital_sweep", "per_period", "pooled", "abs", "round",
+    }
+
+    def _funnel_body(self) -> str:
+        """函数体，去掉注释——注释里会引用「曾经写错的那个字段名」，
+        而那正是这条闸门要判违规的东西，留着它自己就红了。"""
+        src = DASH.read_text(encoding="utf-8")
+        i = src.index("function falsificationCard()")
+        j = src.index("\nfunction ", i + 10)
+        body = src[i:j]
+        body = re.sub(r"/\*.*?\*/", " ", body, flags=re.S)
+        return re.sub(r"(?m)^\s*//.*$", " ", body)
+
+    def test_every_payload_key_the_funnel_reads_is_written_by_the_backend(self):
+        body = self._funnel_body()
+        # 只看 snake_case 的属性访问：payload 的键都是 snake_case，而 DOM / JS
+        # 自己的成员是 camelCase 或单词，这条分界把两边干净地分开。
+        keys = {m for m in re.findall(r"\.([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b", body)}
+        keys -= self.LOCAL
+        self.assertTrue(keys, "漏斗没读到任何 payload 字段，这条闸门就没在看东西")
+
+        # 后端有两种写法都算「写出来了」：字典字面量里的 "key"，以及 dataclass
+        # 的字段名（`asdict` 之后就是同一个键）。所以按词匹配，而不是只认引号——
+        # 只认引号会把 `follow_leader_mean` 这种判成缺失，闸门就会因为噪音被关掉。
+        root = Path(__file__).resolve().parent.parent
+        produced = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in [root / "scripts" / "run_real_backtest.py"]
+            + sorted((root / "ideagen").rglob("*.py")))
+        missing = sorted(k for k in keys
+                         if not re.search(rf"\b{re.escape(k)}\b", produced))
+        self.assertFalse(missing, (
+            "证伪漏斗读了这些字段，但后端从没写过它们：\n  "
+            + "\n  ".join(missing)
+            + "\n\n读不到的字段会变成 undefined，再被 ||0 或 !=null 吃掉，"
+              "而这张卡印出来的是判定——说反了没有任何迹象。"))
+
+    def test_the_gate_can_actually_see_a_violation(self):
+        """既要看得见那个键，也要判它缺失——只断言「解析出来了」的闸门，
+        在匹配放宽之后会安静地永远通过。"""
+        body = self._funnel_body() + "\n  var x = walk.no_such_field_here;\n"
+        keys = {m for m in re.findall(r"\.([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b", body)}
+        self.assertIn("no_such_field_here", keys)
+        root = Path(__file__).resolve().parent.parent
+        produced = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in [root / "scripts" / "run_real_backtest.py"]
+            + sorted((root / "ideagen").rglob("*.py")))
+        self.assertIsNone(re.search(r"\bno_such_field_here\b", produced))

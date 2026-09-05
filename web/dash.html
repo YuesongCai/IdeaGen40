@@ -737,6 +737,22 @@ tr.ls-ev td{background:var(--color-surface-muted)}
 .rk-warn p{font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);margin:0 0 var(--space-2)}
 .rk-warn p:last-child{margin-bottom:0}
 @media (max-width:560px){.rk-row{grid-template-columns:30px 1fr 66px}.rk-n{display:none}}
+/* ── 证伪漏斗 ─────────────────────────────────────────────────
+   判定那一列是这张表唯一需要颜色的东西：没扛住用警示色、打折用中性、
+   扛住了用成功色。行本身不上色——八行里六行是警示色的话，整张表就只剩
+   一片红，读者读到的是「情况很糟」而不是「哪一层没过」。 */
+.fx-lede{font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-4)}
+.fx-d{font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary);margin-top:2px}
+.fx-n{white-space:nowrap}
+.fx-t td{vertical-align:top}
+.fx-v{display:inline-block;min-width:52px;text-align:center;padding:1px 8px;border-radius:var(--radius-sm);font:600 12px/18px var(--font-sans)}
+.fx-v.fx-no{background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text)}
+.fx-v.fx-half{background:var(--color-surface-muted);color:var(--color-text-secondary)}
+.fx-v.fx-yes{background:var(--color-feedback-success-subtle);color:var(--color-feedback-success-text)}
+.fx-v.fx-na{background:var(--color-surface-subtle);color:var(--color-text-tertiary)}
+.fx-out{margin-top:var(--space-4);padding:var(--space-4) var(--space-5);border:1px solid var(--color-border-brand-subtle);border-radius:var(--radius-lg);background:var(--color-surface-brand-subtle);display:flex;gap:var(--space-4);align-items:baseline;flex-wrap:wrap}
+.fx-out-k{font:600 13px/20px var(--font-sans);color:var(--color-text-brand);white-space:nowrap}
+.fx-out-v{font:400 14px/22px var(--font-sans);color:var(--color-text-primary);flex:1;min-width:260px}
 .empty-sm{padding:var(--space-6);border:1px dashed var(--color-border-strong);border-radius:var(--radius-lg);text-align:center;color:var(--color-text-tertiary);font:400 14px/20px var(--font-sans)}
 
 /* ── books ────────────────────────────────────────────────────── */
@@ -2857,6 +2873,7 @@ var VIEWS=[
       判定要和证据待在一起。留在概览时，同一个结论在两页各写一遍，而且
       各写各的——概览那份还得把「期」「实跑」「补跑」重讲一遍才说得通。 */
    secs:[{s:'verdict',label:'证据进度'},
+         {s:'funnel',label:'减到最后剩什么'},
          {s:'finding',label:'唯一的发现'},
          {s:'strategies',label:'选取策略对比'},
          {s:'armorder',label:'策略次序'},
@@ -4791,6 +4808,158 @@ function grpH(t,sub){
     +(sub?'<span class="gs">'+esc(sub)+'</span>':'')+'</div>';
 }
 
+/* ══ 证伪漏斗 ═══════════════════════════════════════════════════
+   这一页此前的形状是仓库：12 张卡、五万像素，而**唯一一条候选发现要经过的
+   每一道检验，都躺在三张不同卡的折叠块里**——波动率控制在「排序力」里、
+   多重检验在「业绩表」里、前推检验在「挑选过程」里，读者要自己把它们串成
+   一句话，而没人会串。
+   这张卡把它们串成一条：从「表面上看有个发现」开始，每减掉一层就报那一层
+   的数和判定，最后剩下的那句话就是这一页真正的结论。
+   三条规矩：
+   ① 每一行必须有数。取不到就写「没算」，而不是让这一行消失——消失和通过
+      在界面上长得一模一样，这是本仓最常见的缺陷形状。
+   ② 判定只有三种：没扛住 / 打折 / 扛住了。含糊的措辞会被读成通过。
+   ③ 每一行右边指向拥有这份细节的那张卡，漏斗只负责串，不负责重讲。 */
+function falsificationCard(){
+  var sm=(((S||{}).backtest||{}).summary)||{};
+  var rp=sm.ranking_power||{},ts=sm.tearsheet||{};
+  var pooled=rp.pooled||{},pv=rp.partial_vs_volatility||null,wf=rp.within_family||null;
+  var asym=rp.asymmetry||null,fr=sm.fill_reality||null,cs=ts.cost_sensitivity||null;
+  var fd=ts.family_deflation||null,walk=(ts.walk_forward||{}).no_posthoc||null;
+  var rb=(sm.robustness_drop_top||{}).arms||{};
+  if(!rp.pooled)return '';
+
+  /* 判定只能由「两个数都在」得出。第一版这里写的是 `walk.random_mean`——
+     那个字段根本不存在，undefined||0 变成 0，于是「+0.59% vs 随机 0.00%」
+     被印成「扛住了」，而真实对照是 +1.00%、这一层其实没扛住。
+     缺一个数就印一个通过的判定，是本仓最贵的那种缺陷：它不报错、不空白、
+     只是把结论说反。所以判定统一走这里：任一输入是 null 就返回「没算」。 */
+  function vd(pass){return pass==null?'没算':(pass?'扛住了':'没扛住')}
+  function num(v){return (v==null||isNaN(v))?null:Number(v)}
+  function row(label,detail,num,verdict,sec){
+    var cls=verdict==='没扛住'?'fx-no':(verdict==='打折'?'fx-half':(verdict==='扛住了'?'fx-yes':'fx-na'));
+    return '<tr class="'+cls+'"><td class="primary">'+esc(label)
+      +'<div class="fx-d">'+esc(detail)+'</div></td>'
+      +'<td class="r num fx-n">'+num+'</td>'
+      +'<td class="r"><span class="fx-v '+cls+'">'+esc(verdict)+'</span></td>'
+      +'<td class="r">'+(sec?'<button type="button" class="exp-btn" '
+        +'onclick="gotoSection(\'evidence\',\''+sec+'\')">看细节 ›</button>':'')+'</td></tr>';
+  }
+  function na(label,detail,why,sec){return row(label,detail,'—','没算',sec)}
+
+  var rows=[];
+  /* 起点：表面上的那条发现。 */
+  var q5=(pooled.Q5||{}).mean_return_pct,q1=(pooled.Q1||{}).mean_return_pct;
+  rows.push(row('表面：这个分数能把候选排出次序',
+    '每期内部切五分位，顶格 Q5 对末位 Q1',
+    (q5==null?'—':fmtPct(q5)+' vs '+fmtPct(q1)),
+    (rp.periods_top_beats_bottom===rp.periods_scored&&rp.periods_scored?'看起来成立':'看起来成立'),
+    'ranking'));
+
+  /* 第一刀：它是不是只是在排风险。 */
+  rows.push(pv&&pv.mean_rho_partial!=null
+    ? row('减去「它只是在排风险」',
+        '按住入场前 60 日波动，再看分数与收益的秩相关（原始 '
+          +(pv.mean_rho_raw==null?'—':pv.mean_rho_raw.toFixed(3))+'）',
+        pv.mean_rho_partial.toFixed(3)+(pv.t_partial==null?'':' <span class="dim">t='+pv.t_partial.toFixed(2)+'</span>'),
+        vd(!(Math.abs(pv.mean_rho_partial)<0.05
+             ||(num(pv.t_partial)!=null&&Math.abs(pv.t_partial)<2))),'ranking')
+    : na('减去「它只是在排风险」','控波动后的偏秩相关','没有 partial_vs_volatility 数据块','ranking'));
+
+  /* 第二刀：换一个 universe。 */
+  if(wf&&wf.families&&Object.keys(wf.families).length){
+    var fs=Object.keys(wf.families),best=fs.reduce(function(a,f){
+      var v=wf.families[f].mean_rho;return (v!=null&&v>a)?v:a},-9);
+    rows.push(row('减去「它只是把商品排在国库券之上」',
+      '同一套规则在四个风险家族内部各排一次（整体 '
+        +((wf.overall||{}).mean_rho==null?'—':wf.overall.mean_rho.toFixed(3))+'）',
+      '家族内最高 '+best.toFixed(3),
+      vd(!(best<0.15)),'ranking'));
+  }else rows.push(na('减去「它只是把商品排在国库券之上」','家族内秩相关','没有 within_family 数据块','ranking'));
+
+  /* 第三刀：优势是不是压在少数标的上。 */
+  var ev=rb.ev_rank,ba=rb.buy_all;
+  if(ev&&ev.excluded&&ba&&ba.excluded){
+    rows.push(row('减去「优势压在少数几个标的上」',
+      '剔除本期最常持有的 '+fmtInt((sm.robustness_drop_top||{}).top_n)+' 只之后，与全量基准并列',
+      fmtPct(ev.excluded.mean_return_pct)+' vs '+fmtPct(ba.excluded.mean_return_pct),
+      vd(num(ev.excluded.mean_return_pct)==null||num(ba.excluded.mean_return_pct)==null
+         ? null
+         : (ev.excluded.mean_return_pct-ba.excluded.mean_return_pct)>=0.5),'ranking'));
+  }else rows.push(na('减去「优势压在少数几个标的上」','剔除头部标的后的表现','没有 robustness_drop_top 数据块','ranking'));
+
+  /* 第四刀：这个授权只做多。 */
+  rows.push(asym&&asym.long_share_of_spread!=null
+    ? row('减去「只做多能拿到的那部分」',
+        '顶格减末位是多空统计量；多头超额 '+fmtPct(asym.long_excess_pct)
+          +' / 空头超额 '+fmtPct(asym.short_excess_pct),
+        fmtRate(asym.long_share_of_spread*100)+' 可兑现',
+        asym.long_share_of_spread>0.85?'扛住了':'打折','ranking')
+    : na('减去「只做多能拿到的那部分」','多空拆分','没有 asymmetry 数据块','ranking'));
+
+  /* 第五刀：成交拿不拿得到。 */
+  var band=null;if(fr&&fr.books)Object.keys(fr.books).forEach(function(k){
+    if(fr.books[k].band_selection_pp!=null&&!band)band=fr.books[k]});
+  rows.push(band
+    ? row('减去「成交拿不到的那部分」',
+        '回测按收盘无条件成交；挂进场区间的组合成交率 '+fmtRate(band.fill_rate*100)
+          +'，区间会挑（'+fmtPct(band.band_selection_pp)+'）但只有成交的钱在场',
+        fmtPct(band.participation_cost_pp)+' <span class="dim">组合层面</span>',
+        (num(band.participation_cost_pp)==null?'没算'
+          :(band.participation_cost_pp>=0?'扛住了':'打折')),'tearsheet')
+    : na('减去「成交拿不到的那部分」','成交率与参与成本','没有 fill_reality 数据块','tearsheet'));
+
+  /* 第六刀：钱大了以后的成本。 */
+  if(cs&&cs.capital_sweep){
+    var ks=Object.keys(cs.capital_sweep),last=cs.capital_sweep[ks[ks.length-1]]||{},mid=last.tiered_heavy||{};
+    var n=Object.keys(cs.arms||{}).length;
+    var moved=num(mid.arms_that_moved);
+    rows.push(moved==null
+      ? na('减去「盘子大了以后的成本」','成本 × 规模敏感性','这次没算出换位数','tearsheet')
+      : row('减去「盘子大了以后的成本」',
+          '按流动性分档的成本，在 $'+fmtInt(Math.round((last.capital_usd||0)/1e6))+'M 上换掉几个名次',
+          fmtInt(moved)+' / '+fmtInt(n)+' 换位',
+          moved>=n/2?'打折':'扛住了','tearsheet'));
+  }else rows.push(na('减去「盘子大了以后的成本」','成本 × 规模敏感性','没有 cost_sensitivity 数据块','tearsheet'));
+
+  /* 第七刀：试了多少次。 */
+  rows.push(fd&&fd.deflated_sharpe!=null
+    ? row('减去「一共试了多少次」',
+        '一共 '+fmtInt(fd.n_trials)+' 次试验（表上的组合之外还有试过没做成的），'
+          +'折减后的夏普概率要过 0.95',
+        'DSR '+fd.deflated_sharpe.toFixed(3),
+        vd(!!fd.survives),'tearsheet')
+    : na('减去「一共试了多少次」','多重检验折减','没有 family_deflation 数据块','tearsheet'));
+
+  /* 第八刀：挑组合这个动作本身。 */
+  var fl=num(walk&&walk.follow_leader_mean),rndPick=num(walk&&walk.all_arms_mean);
+  rows.push(fl!=null&&rndPick!=null
+    ? row('减去「挑组合这个动作本身」',
+        '每期只用此前成绩挑领先者，对照随机挑一条（已剔除事后设计的组合，'
+          +fmtInt(walk.n_decisions)+' 次决策）',
+        fmtPct(fl*100)+' vs 随机 '+fmtPct(rndPick*100),
+        vd(fl>=rndPick),'selection')
+    : na('减去「挑组合这个动作本身」','前推检验','没有 walk_forward 数据块','selection'));
+
+  var nNo=rows.filter(function(r){return r.indexOf('fx-no')>=0}).length;
+  var nHalf=rows.filter(function(r){return r.indexOf('fx-half')>=0}).length;
+
+  return '<div class="card section" id="sec-funnel">'
+    +'<div class="card-title-row"><h2 class="card-title">这条发现，减到最后剩什么</h2>'
+    +'<span class="card-note">一条候选发现 · '+fmtInt(rows.length-1)+' 道检验</span></div>'
+    +'<div class="fx-lede">这一页只有一条候选发现。下面每一行减掉它的一种解释，'
+      +'并给出那一层的数与判定——<b>'+fmtInt(nNo)+' 道没扛住、'+fmtInt(nHalf)+' 道打折</b>。'
+      +'所以能说的只有最后那一行。</div>'
+    +'<div class="table-wrap"><table class="data-table fx-t"><thead><tr>'
+      +'<th>减掉哪一层</th><th class="r">这一层的数</th><th class="r">判定</th><th class="r"></th>'
+      +'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'
+    +'<div class="fx-out"><span class="fx-out-k">剩下能说的</span>'
+      +'<span class="fx-out-v">值得往前跑一段看看。这条排序按<b>探索类</b>注册，'
+      +'只有它注册之后的当期实跑才算证据——上面每一道检验都是在同一段样本内做的，'
+      +'样本内没扛住的东西，样本外不会自己好起来。</span></div>'
+    +'</div>';
+}
+
 function renderEvidence(){
   var root=$('view-evidence');
   if(!S){root.innerHTML='';return}
@@ -4803,6 +4972,10 @@ function renderEvidence(){
     /* 「能不能读」排在「读到了什么」前面：六期里只有一期算数，这件事不先
        说清，下面每一段的样本量都会被读大五倍。 */
     +secWrap('evidence','verdict',evidenceProgressCard())
+    /* 证伪漏斗排在「唯一的发现」前面：先看这条发现被减到剩什么，再看它本身
+       是怎么来的。反过来读，读者会先记住那条阶梯，后面每一道检验都变成了
+       「可是……」，而实际次序是相反的——检验是结论，阶梯只是起点。 */
+    +secWrap('evidence','funnel',falsificationCard())
     /* 六问里唯一出信号的那条，连同它没干净通过的三关。它紧跟总账，因为
        总账第⑤行就是它的一句话版本——展开在下一屏，读者不必翻到页尾。 */
     +secWrap('evidence','finding',learnedCard())

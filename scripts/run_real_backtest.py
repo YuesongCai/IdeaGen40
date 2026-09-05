@@ -720,6 +720,7 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
               for r in db.q(con, "SELECT key, meta FROM instruments "
                                  "WHERE futu_code IS NOT NULL")}
     fam_rows: list[tuple[str, str, float, float]] = []
+    vol_rows: list[tuple[str, float, float, float]] = []
     last = (db.q1(con, "SELECT MAX(d) m FROM prices") or {"m": None})["m"]
 
     def fwd(code: str, start: str) -> float | None:
@@ -759,6 +760,9 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
                 obs.append((ev, ret))
                 fam_rows.append((d.isoformat(),
                                  family.get(r["instrument_id"], "股票"), ev, ret))
+                vol = backtest.trailing_vol_pct(con, code, d.isoformat())
+                if vol is not None:
+                    vol_rows.append((d.isoformat(), ev, vol, ret))
         if len(obs) < 15:
             per_period.append({"as_of": d.isoformat(), "n": len(obs),
                                "skipped": "候选太少，切不出五分位"})
@@ -844,6 +848,9 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
         # `backtest.rank_within_families` — this is where the pooled correlation
         # stops looking like a score and starts looking like a risk premium.
         "within_family": backtest.rank_within_families(fam_rows),
+        # The conclusion the two ladders in `volatility_control` invite the
+        # reader to draw, computed instead of drawn.
+        "partial_vs_volatility": backtest.partial_rank_correlation(vol_rows),
         "note": (
             "分位在每期内部切，不跨期合并——合并会让窗口完整、行情向上的那一期"
             "供出大半个顶格分位，那张表报的就成了日历。顶格分位与同期基准并列，"

@@ -1038,9 +1038,13 @@ def state(con=None, p=None) -> dict[str, Any]:
     # `macro.state_block`, so there is one implementation to keep true.
     try:
         from . import macro as _macro
-        _as_of = ((out.get("weekly") or {}).get("as_of")
-                  or config.today_hkt().isoformat())
-        out["macro"] = _macro.state_block(con, _as_of)
+        # Today, not the weekly period. These are readings of the market as it
+        # stands — implied vol, the curve, this week's positioning — and every
+        # one of them is stamped with a date that the as-of guard compares
+        # against. Anchored to the last weekly period the block came back
+        # 1/6 covered and zero settled surprises, describing a market three days
+        # gone as though nothing had been measured since.
+        out["macro"] = _macro.state_block(con, config.today_hkt().isoformat())
     except Exception as e:  # noqa: BLE001 — a new block must not take the page down
         out["macro"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
 

@@ -24,20 +24,27 @@ import argparse
 import hashlib
 import json
 import math
+import bisect
 import sys
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ideagen import backtest, db, platform as plat, schema  # noqa: E402
+from ideagen import config  # noqa: E402
 from ideagen import strategy as strat  # noqa: E402
 from ideagen.poc_workflow import _arm_positions, _curves  # noqa: E402
 
 METHODOLOGY = "real-pool-asof-replay/v1"
 CONTROL = "buy_all"
+
+
+#: The index a PM compares against. Named once so the ranking table and the
+#: curve cannot drift onto different benchmarks.
+BENCHMARK = config.BENCHMARKS["SPY"]
 
 
 def _periods(con) -> list[tuple[date, str]]:
@@ -290,6 +297,124 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
     if excluded:
         parts.append(f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。")
     return "".join(parts)
+
+
+def _ranking_power(con, days: list, horizon_days: int) -> dict:
+    """Does the run's own expected return rank what actually happened?
+
+    Every candidate states a three-point scenario, and its expectation is the one
+    number that folds all six inputs together. For six periods nothing selected
+    on it: the omega arms rank gains over losses against cash and are blind to
+    the size of the upside, calibration ranks the honesty of the probabilities,
+    spread and left-tail rank portfolio shape. `analytics.ranking_report` had
+    measured Spearman 0.164 of expectation against realised return across 1561
+    ideas and no arm acted on it.
+
+    Quintiles are cut *within each period*, never pooled. Pooling would let a
+    period with a complete 30-day window and a rising tape supply most of the
+    top quintile, and the table would then be reporting the calendar. Cut inside
+    the period, every quintile is scored over the same days by construction.
+
+    Reported next to the same-window benchmark, because a quintile that ranks
+    but never clears SPY has established that the ordering works and that the
+    strategy still does not beat buying the index — two different findings that
+    one number would merge.
+    """
+    inst = {r["key"]: r["futu_code"] for r in db.q(
+        con, "SELECT key, futu_code FROM instruments WHERE futu_code IS NOT NULL")}
+    last = (db.q1(con, "SELECT MAX(d) m FROM prices") or {"m": None})["m"]
+
+    def fwd(code: str, start: str) -> float | None:
+        e = db.q1(con, "SELECT d, close c FROM prices WHERE code=? AND d>=? "
+                       "ORDER BY d LIMIT 1", (code, start))
+        if not e:
+            return None
+        end = (date.fromisoformat(start) + timedelta(days=horizon_days)).isoformat()
+        if last:
+            end = min(end, last)
+        x = db.q1(con, "SELECT d, close c FROM prices WHERE code=? AND d<=? "
+                       "ORDER BY d DESC LIMIT 1", (code, end))
+        if not x or x["d"] <= e["d"]:
+            return None
+        return (x["c"] / e["c"] - 1) * 100
+
+    def ev_of(r) -> float | None:
+        rs = [r["upside_pct"], 0.0, r["downside_pct"]]
+        ps = [r["p_up"], r["p_base"], r["p_down"]]
+        if any(v is None for v in rs + ps):
+            return None
+        tot = sum(ps)
+        return sum(p / tot * v for p, v in zip(ps, rs)) if tot > 0 else None
+
+    per_period, pooled = [], {}
+    for d in days:
+        rows = db.q(con, "SELECT instrument_id, upside_pct, downside_pct, p_up, "
+                         "p_base, p_down FROM candidates WHERE as_of=?",
+                    (d.isoformat(),))
+        obs = []
+        for r in rows:
+            code, ev = inst.get(r["instrument_id"]), ev_of(r)
+            if not code or ev is None:
+                continue
+            ret = fwd(code, d.isoformat())
+            if ret is not None:
+                obs.append((ev, ret))
+        if len(obs) < 15:
+            per_period.append({"as_of": d.isoformat(), "n": len(obs),
+                               "skipped": "候选太少，切不出五分位"})
+            continue
+        obs.sort()
+        evs = [o[0] for o in obs]
+        cuts = [evs[int(len(evs) * k / 5)] for k in range(1, 5)]
+        buckets: dict[str, list[float]] = {f"Q{k}": [] for k in range(1, 6)}
+        for ev, ret in obs:
+            buckets[f"Q{bisect.bisect_left(cuts, ev) + 1}"].append(ret)
+        for k, v in buckets.items():
+            pooled.setdefault(k, []).extend(v)
+        bench = fwd(BENCHMARK, d.isoformat())
+        q1 = buckets["Q1"]; q5 = buckets["Q5"]
+        per_period.append({
+            "as_of": d.isoformat(), "n": len(obs),
+            "benchmark_pct": None if bench is None else round(bench, 4),
+            "quintiles": {k: {"n": len(v),
+                              "hit_rate": round(sum(1 for x in v if x > 0) / len(v), 4),
+                              "mean_return_pct": round(sum(v) / len(v), 4)}
+                          for k, v in buckets.items() if v},
+            "top_minus_bottom_pct": (round(sum(q5) / len(q5) - sum(q1) / len(q1), 4)
+                                     if q1 and q5 else None),
+            "top_minus_benchmark_pct": (round(sum(q5) / len(q5) - bench, 4)
+                                        if q5 and bench is not None else None)})
+
+    scored = [p for p in per_period if "quintiles" in p]
+    tb = [p["top_minus_bottom_pct"] for p in scored
+          if p["top_minus_bottom_pct"] is not None]
+    vb = [p["top_minus_benchmark_pct"] for p in scored
+          if p["top_minus_benchmark_pct"] is not None]
+    return {
+        "score": "ev", "score_label": "候选自陈情景的概率加权期望回报",
+        "ex_ante": "只用生成时写下的三点情景，与其后发生的事无关",
+        "quintiles_cut": "per_period",
+        "benchmark": BENCHMARK,
+        "horizon_days": horizon_days,
+        "per_period": per_period,
+        "pooled": {k: {"n": len(v),
+                       "hit_rate": round(sum(1 for x in v if x > 0) / len(v), 4),
+                       "mean_return_pct": round(sum(v) / len(v), 4)}
+                   for k, v in sorted(pooled.items()) if v},
+        "periods_scored": len(scored),
+        "periods_top_beats_bottom": sum(1 for x in tb if x > 0),
+        "periods_top_beats_benchmark": sum(1 for x in vb if x > 0),
+        "note": (
+            "分位在每期内部切，不跨期合并——合并会让窗口完整、行情向上的那一期"
+            "供出大半个顶格分位，那张表报的就成了日历。顶格分位与同期基准并列，"
+            "因为「排序有效」和「跑赢指数」是两个结论，合成一个数会把它们混掉。"),
+        "provenance_warning": (
+            "这条排序是在看过这些期次的结果之后才被挑出来检验的（试过 grade 与"
+            "期望值两种，grade 不排序）。因此上表对这次搜索是样本内的，只够支持"
+            "「值得往前跑一段看看」，不足以支持「已确认有效」——这正是 Jon "
+            "2026-08-18 提的 multiple testing。ev_rank 臂按 exploratory 注册，"
+            "它的 live 期次才是证据。"),
+    }
 
 
 def _theme_provenance(days: list) -> dict:
@@ -836,6 +961,7 @@ def main(argv: list[str]) -> int:
             f"货架上有 {dating['shelf_undated']} 个标的缺少上架日期，按当期资格"
             f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
     provenance = _theme_provenance(days)
+    ranking_power = _ranking_power(con, days, args.horizon_days)
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",
@@ -854,6 +980,7 @@ def main(argv: list[str]) -> int:
         "robustness_drop_top": robustness,
         "attribution_theme_layer": attribution,
         "theme_provenance": provenance,
+        "ranking_power": ranking_power,
         "horizon_completeness": horizon,
         "generation_head_to_head": head_to_head,
         # The sweep ran with strict=True, so every period's context passed the

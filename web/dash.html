@@ -8770,13 +8770,13 @@ function assumQA(claim){
   for(var i=0;i<ASSUM_QA.length;i++){if(claim.indexOf(ASSUM_QA[i][0])>=0)return ASSUM_QA[i][1]}
   return null;
 }
-var FEED_NAMES={wisburg:['研报研报','每周读入的宏观研报，全流程的唯一输入'],
+var FEED_NAMES={wisburg:['研报','每周读入的宏观研报，全流程的唯一输入'],
                 instruments:['可交易清单','系统允许交易的 ETF 与个股名单'],
                 treasury_auctions:['宏观日历 · 美债拍卖','未来一周的美债拍卖安排'],
                 fred_levels:['宏观日历 · 经济数据','未来一周要公布的关键经济指标']};
 function feedMeta(key){
   if(String(key).indexOf('wisburg-mcp')>=0){
-    if(key==='wisburg-mcp'||/-corpus$/.test(key))return ['研报研报 · Wisburg MCP','已持久化的授权研报窗口'];
+    if(key==='wisburg-mcp'||/-corpus$/.test(key))return ['研报 · Wisburg MCP','已持久化的授权研报窗口'];
     if(/-universe$/.test(key))return ['可交易货架','本次周跑的可选标的'];
     if(/-calendar$/.test(key))return ['宏观日历','本次运行未混入其他日历源'];
   }

@@ -45,6 +45,11 @@ BANNED = {
 BANNED_RE = {
     r"[一二三四五六七八九十两几每这那0-9]\s*本[一-鿿]{0,2}账":
         "个组合（「各记一本模拟账」→「各管一个模拟组合」）",
+    # 换词换出来的叠词。「研报语料」被全局替换成「研报研报」，在概览的数据源
+    # 列表和方法页的来源表上挂了一整天——替换脚本自己制造的毛病，逐字规则
+    # 看不见（「研报」本来就是对的词）。
+    r"(研报|组合|建仓|选取策略|打分方法|生成方式)\1":
+        "去掉重复的那半——这是替换和原文里已有的词撞上了",
 }
 
 #: 裸英文：后端字段名漏进中文句子。同一个毛病的另一半——「账本」是内部比喻，
@@ -258,6 +263,13 @@ class GlossaryGate(unittest.TestCase):
         self.assertTrue(_re_leaks("每本账都写着同一个日期"))
         self.assertFalse(_re_leaks("这一本书讲的是账龄"), "别把不相干的句子也拦了")
         self.assertFalse(_re_leaks("三本书里都提到过账期"), "中间隔太远就不是这个比喻")
+
+    def test_a_replacement_that_collided_with_an_existing_word_is_caught(self):
+        """「研报语料」→「研报研报」：换词换出来的叠词，逐字规则看不见。"""
+        self.assertTrue(_re_leaks("研报研报 · Wisburg MCP"))
+        self.assertTrue(_re_leaks("10 个组合组合合计"))
+        self.assertFalse(_re_leaks("研报 · Wisburg MCP"))
+        self.assertFalse(_re_leaks("每周读入的宏观研报"))
 
     def test_an_english_token_only_counts_when_it_touches_chinese(self):
         self.assertEqual(_en_leaks('结论以 live 期为准'), ["live"])

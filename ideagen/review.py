@@ -659,7 +659,14 @@ def _snapshot_state() -> dict[str, Any] | None:
     The laptop writes its own database continuously and has no such moment, so
     it reports None and callers should say nothing rather than invent a time.
     """
-    marker = pathlib.Path(os.environ.get("IDEAGEN_DB", "")).parent / ".state-sha"
+    db = os.environ.get("IDEAGEN_DB")
+    if not db:
+        # 没设这个变量的机器（本机就是）自己写库，本来就没有「装上」这个时刻。
+        # 不能省这一步：`Path("").parent` 是当前目录，于是会去找 ./.state-sha，
+        # 哪天仓库根下真有这么个文件，本机就会报出一个假的新鲜度 —— 而这个
+        # 字段存在的全部意义就是不让人被假新鲜骗。
+        return None
+    marker = pathlib.Path(db).parent / ".state-sha"
     try:
         if not marker.is_file():
             return None

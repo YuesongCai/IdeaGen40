@@ -150,6 +150,22 @@ class SnapshotFreshness(unittest.TestCase):
         self.assertGreater(got["age_s"], 0)
         self.assertIn("installed_at", got)
 
+    def test_an_unset_db_path_does_not_reach_for_the_working_directory(self):
+        """`Path("").parent` is the current directory, so an unset IDEAGEN_DB
+        would make this look for ./.state-sha — and a stray file by that name
+        in the repo root would hand the laptop a fabricated freshness, which is
+        the exact thing this field exists to prevent."""
+        d = self._marker()
+        env = dict(os.environ)
+        env.pop("IDEAGEN_DB", None)
+        cwd = os.getcwd()
+        os.chdir(d)
+        try:
+            with mock.patch.dict(os.environ, env, clear=True):
+                self.assertIsNone(review._snapshot_state())
+        finally:
+            os.chdir(cwd)
+
     def test_says_nothing_rather_than_inventing_a_time(self):
         """The laptop writes its own database continuously; there is no install
         moment to report, and a fabricated one would read as freshness."""

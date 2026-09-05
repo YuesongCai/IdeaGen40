@@ -3364,6 +3364,11 @@ function ladderCard(){
     }
     if(!exN&&r.days_left===0)
       flag='<text x="'+(b+8).toFixed(1)+'" y="'+(by+13)+'" font-family="var(--font-mono)" font-size="10.5" font-weight="600" fill="var(--color-feedback-warning-strong)">今天到期</text>';
+    /* 到期日已过、仓还在场：阶梯规则说它该走了，所以必须看得见。结算只发生在
+       交易日，到期日碰上周末就会停在这个状态一两天，是正常的。 */
+    else if(!rolled&&r.days_left<0)
+      flag='<text x="'+(b+8).toFixed(1)+'" y="'+(by+13)+'" font-family="var(--font-mono)" font-size="10.5" font-weight="600" fill="var(--color-feedback-warning-strong)">待结算 '+(-r.days_left)+' 天'
+        +'<title>到期日已过但仍在场——结算在交易日收盘后发生，到期日碰上周末或假日就要等下一个交易日。</title></text>';
 
     var mdCol=md<=1?'var(--color-feedback-warning-strong)':'var(--color-text-primary)';
     rows+='<g class="lad-row'+(dim?' dim':'')+(PERIOD===r.as_of?' on':'')+'" role="button" tabindex="0"'
@@ -3558,7 +3563,20 @@ function periodRosterCard(){
       +'<td class="mono b">'+esc(r.as_of)+'</td>'
       +'<td>'+st+' '+cl+'</td>'
       +'<td class="mono">'+esc(r.horizon_end||'—')+'</td>'
-      +'<td class="mono">'+(r.status==='rolled'?'—':(r.days_left===null||r.days_left===undefined?'—':(r.days_left+' 天')))+'</td>'
+      +(function(){
+          /* 到期日过了、仓还在场，是这条阶梯最该被问到的状态。原来这里只印一个
+             「-1 天」，把「那它怎么还在」整个丢给读者。到期日落在周末或假日时
+             本来就要等下一个交易日结算，说出来它就从异常变回正常。 */
+          if(r.status==='rolled')return '<td class="mono">—</td>';
+          var dl=r.days_left;
+          if(dl===null||dl===undefined)return '<td class="mono">—</td>';
+          if(dl>0)return '<td class="mono">'+dl+' 天</td>';
+          if(dl===0)return '<td class="mono" style="color:var(--color-feedback-warning-strong);font-weight:600">今天到期</td>';
+          return '<td class="mono" style="color:var(--color-feedback-warning-strong);font-weight:600"'
+            +' title="到期日已过 '+(-dl)+' 天，这一批仍在场——结算发生在交易日收盘之后，'
+            +'到期日碰上周末或假日就要等下一个交易日。持续多个交易日不结算才是异常。">'
+            +'已过 '+(-dl)+' 天</td>';
+        })()
       +'<td class="mono n'+((Number(r.mark_days)||0)<=1?' thin':'')+'"'
         +' title="'+esc((r.held_from||'—')+' → '+(r.held_to||'—')
           +(r.booked_late?'（这一期是事后补跑建的仓，所以持有天数远少于名义的 30 天）':''))+'">'
@@ -4161,6 +4179,13 @@ function scatterNote(rows,ex){
 function armOrderCard(){
   var ex=(((S||{}).backtest||{}).summary||{}).exposure;
   if(!ex||!ex.arms)return '';
+  /* 哪几条是对照，取后端每条臂自带的 role，不自己列名单。
+   * 这里原本硬写着五个键名（buy_all / random_pick / mom_21 / generated_*）——
+   * 和页面上那批「写死 4 种生成方法」是同一个病：把一份会长的花名册抄进代码。
+   * 本期生成方法已经变成 5 种（多了穿透反查），派生臂（chain@pm-…）还会继续加，
+   * 名单里没有的新臂会被静默当成主策略，画成深色，而它可能只是个基准。
+   * live_vs_backfill 已经按 control / primary / exploratory 给了 role，
+   * 取不到时再退回词表里的「对照」二字。 */
   var ROLE=((((S||{}).backtest||{}).summary||{}).live_vs_backfill||{}).arms||{};
   /* 词表在前、role 兜底，次序是有理由的：payload 里的 role 来自**上一次回测
    * 存下的**那份 summary，改了后端注册也要等下次重跑才会变，中间这段时间
@@ -7765,6 +7790,45 @@ function stuckBatchNote(){
         + '而建仓那一步本来就会跳过拿不到价格的标的。')
     +'">ⓘ</span>';
 }
+/* ρ 是配对检验的功效来源，也是这一页自己登记的「首月实测」项：Var(差) =
+ * 2σ²(1−ρ)，ρ 越高，同样的差距越容易被分辨。假设登记表把它写成 ρ≈0.8 并注明
+ * 「首月实测」——首月已经过去了，而净值序列前端就有，算得出来。
+ * 2026-09-05 实测：45 对里中位 0.496、均值 0.577，从 0.037 到 1.000。
+ * 后端 `backtest.REF_RHO=0.80` 仍是先验，它在 sd_diff 不可得时当回退值用
+ * （那种情况下所需期数会被低估约 2.5 倍），并且撑着面板上那句
+ * 「1/(1-ρ)=5 倍，这就是配对存在的理由」——按实测应是 2 倍。 */
+function measuredRho(){
+  var bs=(typeof currentBooks==='function'?currentBooks():[])||[];
+  var ser={};
+  bs.forEach(function(b){
+    var m={};(b.equity||[]).forEach(function(x){
+      if(x&&x.d&&typeof x.equity==='number')m[x.d]=x.equity});
+    if(Object.keys(m).length>=10)ser[b.selector||b.book_id]=m;
+  });
+  var keys=Object.keys(ser); if(keys.length<3)return null;
+  var days=Object.keys(ser[keys[0]]).filter(function(d){
+    return keys.every(function(k){return ser[k][d]!==undefined})}).sort();
+  if(days.length<8)return null;
+  var rets={};keys.forEach(function(k){
+    var r=[];for(var i=1;i<days.length;i++){
+      var a=ser[k][days[i-1]],b2=ser[k][days[i]];r.push(a?(b2-a)/a:0)}
+    rets[k]=r;});
+  function corr(x,y){
+    var n=x.length,mx=0,my=0,i;
+    for(i=0;i<n;i++){mx+=x[i];my+=y[i]}mx/=n;my/=n;
+    var sx=0,sy=0,sxy=0;
+    for(i=0;i<n;i++){sx+=(x[i]-mx)*(x[i]-mx);sy+=(y[i]-my)*(y[i]-my);sxy+=(x[i]-mx)*(y[i]-my)}
+    if(sx<=0||sy<=0)return null;
+    return sxy/Math.sqrt(sx*sy);
+  }
+  var cs=[];
+  for(var i=0;i<keys.length;i++)for(var j=i+1;j<keys.length;j++){
+    var c=corr(rets[keys[i]],rets[keys[j]]);if(c!==null)cs.push(c)}
+  if(cs.length<3)return null;
+  cs.sort(function(a,b){return a-b});
+  var mid=cs.length%2?cs[(cs.length-1)/2]:(cs[cs.length/2-1]+cs[cs.length/2])/2;
+  return {median:mid,lo:cs[0],hi:cs[cs.length-1],pairs:cs.length,days:days.length-1};
+}
 var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。两条线按想法成文那一期的参考价算，不是按实际成交价——成交离参考越远，它们相对成交价越偏。触发后自动执行。';
 var ARM_GLOSS='正式比较组合 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索组合不参与结论判定。';
 var RULER_GLOSS='基准 = 不作判断的对照组合（全量 / 随机）。跑不赢全量基准即选取环节无增量，跑不赢随机基准即排序为噪声。';
@@ -10485,7 +10549,16 @@ var ASSUM_QA=[
   ['语义打分',['语义打分相对计数打分是否有增量','两种打分每周并行记录，样本累积中。']],
   ['σ×2',['止损止盈幅度是否合适','设有仅改动止损的对照组合，以两者差值检验。']],
   ['去集中上限',['分散度上限取值是否合理','当前可选满 10 只；上限收紧至 1 时仅可选出 5 只。']],
-  ['ρ≈0.8',['判定所需样本量','取决于组合之间净值相关度，首月实测。']],
+  ['ρ≈0.8',['判定所需样本量',(function(){
+      var r=(typeof measuredRho==='function')?measuredRho():null;
+      if(!r)return '取决于组合之间净值相关度，首月实测。';
+      return '取决于组合之间净值相关度。**首月已实测：'+r.median.toFixed(2)
+        +'**（'+r.pairs+' 对两两日收益，'+r.days+' 天，从 '+r.lo.toFixed(2)
+        +' 到 '+r.hi.toFixed(2)+'），低于先验的 0.8。配对的功效来自相关性——'
+        +'Var(差)=2σ²(1−ρ)，ρ 从 0.8 降到 '+r.median.toFixed(2)
+        +' 意味着同样的差距要多约 '+((1-r.median)/(1-0.8)).toFixed(1)
+        +' 倍的样本才分辨得出。所需期数当前按实测差值标准差算，不受此影响；'
+        +'受影响的是标准差还算不出来时的回退值。';})()]],
   ['赚亏比下限',['1.5 的赔率门槛是否过松','低赔率区间方生效；本期中位数见实时状态。']],
   ['1 个月',['单一 1 个月持有期是否恰当','原设计含 6 个月版本，当前仅运行 1 个月期限，未作正式对比。']]
 ];

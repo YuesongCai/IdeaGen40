@@ -72,14 +72,23 @@ BASES: dict[str, dict[str, Any]] = {
 }
 
 
-def options() -> list[dict[str, str]]:
+def options() -> list[dict[str, Any]]:
     """The arms a rule can be grafted onto, for the panel's picker.
 
     Labels rather than names: 「约束边界」 is what the panel already calls this
     method everywhere else, and the PM should never have to learn that it is
     spelled `carl_constraint` underneath.
+
+    `scratch` says which of these is actually "start a new method from
+    nothing". A base with no reasoning fields of its own imposes no skeleton,
+    so a card grafted there is the arm's only reasoning instruction — that is
+    a new method, not an amendment to an existing one, and the panel was
+    calling both of them 「加到哪种生成方式上」. Derived from `keys` rather than
+    hardcoded to `ai_native`, so a second skeleton-free base lands in the right
+    group the day it is added.
     """
-    return [{"arm": k, "label": v["label"], "note": v.get("note", "")}
+    return [{"arm": k, "label": v["label"], "note": v.get("note", ""),
+             "scratch": not v["keys"]}
             for k, v in BASES.items()]
 
 

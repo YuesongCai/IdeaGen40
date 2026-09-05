@@ -2412,12 +2412,13 @@ function bookedThisPeriod(b){
 function aggBooks(){
   var bs=currentBooks();
   if(!bs.length)return null;
-  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={},wins=0,deployed=0,pending=0;
+  var cap=0,openN=0,closedN=0,realized=0,unreal=0,exits={},wins=0,deployed=0,pending=0,sameDay=0;
   bs.forEach(function(b){
     cap+=(b.capital||0);
     openN+=(b.open_positions||[]).length;
     closedN+=(b.closed_n||0);
     wins+=(b.wins||0);
+    sameDay+=(Number(b.closed_same_day)||0);
     realized+=(b.realized||0);
     pending+=(Number(b.pending_orders)||0);
     (b.open_positions||[]).forEach(function(p){
@@ -2449,7 +2450,7 @@ function aggBooks(){
   if(!haveEq)lastEq=null;
   return {books:bs,capital:cap,openN:openN,closedN:closedN,wins:wins,realized:realized,
           unrealized:unreal,exits:exits,equity:eq,deployed:deployed,pending:pending,
-          lastEquity:lastEq};
+          lastEquity:lastEq,sameDay:sameDay};
 }
 /* 持仓代码 → 候选池条目（US.BTAL → BTAL） */
 function candByCode(code){
@@ -4505,7 +4506,7 @@ function raceHero(ag){
   var agg=ag?'<div class="agg-line">'+books.length+' 个组合合计：浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
     +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
     +(ret!==null?' · 合计收益 <span class="num '+pctCls(ret)+'">'+fmtPct(ret)+'</span>':'')
-    +' · 胜率 '+fmtWinRate(ag.wins||0,ag.closedN||0)
+    +' · 胜率 '+fmtWinRate(ag.wins||0,ag.closedN||0,ag.sameDay||0)
     +spyLine(ret)
     +'（全部组合合计口径，非实盘组合）'
     /* 这张卡的抬头里已经有一个「尚不排名的依据 ⓘ」去同一处。同一张卡上
@@ -5372,12 +5373,23 @@ function spyLine(ret){
   }
   return t;
 }
-function fmtWinRate(wins,closed){
+function fmtWinRate(wins,closed,sameDay){
   // Jon 的硬门槛是胜率>50%。样本太小时不上色：1 平 1 亏染红整块面板，
   // 读出来是「这方法不行」，而真相是「还没什么可下结论的」。
   if(!closed)return '<span class="num" title="尚无已平仓记录，胜率不可计算">—</span>';
   var r=wins/closed,txt=(r*100).toFixed(0)+'%（'+wins+'/'+closed+'）';
   var cls=closed>=5?(r>0.5?'up':'down'):'';
+  /* 同日开平的往返在这套成本模型下必亏点差——毛利为正的笔数是 0，不是 0 附近。
+     所以当已平仓全部是同日开平时，这个 0% 是算术必然，不是选股结论。染红会被
+     读成「这方法不行」，而真相是「这几笔根本不是交易」。数字照印，红色去掉，
+     前提说出来。字段缺失时（老快照）什么都不加，不替数据编解释。 */
+  if(sameDay&&closed&&sameDay>=closed){
+    return '<span class="num" title="'+esc('这 '+closed+' 笔已平仓全部是同日开平'
+      +'——补跑把几期订单挤在撮合当天，到期日已经在过去，于是建仓当天就按「到期」'
+      +'平掉。同日往返在这套成本模型下必亏点差（毛利为正的笔数是 0，不是 0 附近），'
+      +'所以这个比例是算术必然，不是选股结论。真正的胜率要从第一个当期实跑的'
+      +'期次开始攒。')+'">'+txt+' <span class="gloss gm">全是同日开平 ⚠</span></span>';
+  }
   return '<span class="num '+cls+'" title="已平仓中赚钱的比例；打平算输。Jon 的门槛：>50% 才拿去见 PM'+(closed<5?'。样本仍太小（<5 单），先别下结论':'')+'">'+txt+'</span>';
 }
 function togglePos(pid){

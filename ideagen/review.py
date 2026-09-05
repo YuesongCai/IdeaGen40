@@ -795,8 +795,15 @@ def state(con=None, p=None) -> dict[str, Any]:
         # because a method that only breaks even must not clear Jon's >50% bar
         # on rounding. win_rate stays null until something has actually closed —
         # 0% would read as "always loses" when the truth is "no verdicts yet".
+        # `same_day` 是这个胜率能不能被当成业绩读的前提。2026-09-05 实测：
+        # 十个组合的 202 笔已平仓**全部**是同日开平（补跑把五期订单挤在撮合
+        # 当天，horizon_end 已经在过去，于是建仓当天就按「到期」平掉）。同日
+        # 往返在这套成本模型下必亏点差——毛利为正的笔数是 0，不是 0 附近。
+        # 所以面板上那个红色的「胜率 0%（0/202）」是算术必然，不是选股结论，
+        # 而它是页面上最容易被当成业绩念出来的数字之一。
         realized = db.q1(con, "SELECT COALESCE(SUM(realized),0) r, COUNT(*) n, "
-                              "COALESCE(SUM(realized > 0), 0) w "
+                              "COALESCE(SUM(realized > 0), 0) w, "
+                              "COALESCE(SUM(closed_d = opened_d), 0) same_day "
                               "FROM positions WHERE book_id=? AND status='closed'",
                          (b["book_id"],))
         exits = {x["exit_reason"]: x["n"] for x in db.q(
@@ -816,6 +823,8 @@ def state(con=None, p=None) -> dict[str, Any]:
                       "realized": realized["r"] if realized else 0,
                       "closed_n": realized["n"] if realized else 0,
                       "wins": realized["w"] if realized else 0,
+                      "closed_same_day": (realized["same_day"]
+                                          if realized else 0),
                       "win_rate": (round(realized["w"] / realized["n"], 4)
                                    if realized and realized["n"] else None),
                       # Orders placed but not yet filled, and orders that

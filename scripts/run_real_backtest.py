@@ -34,6 +34,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ideagen import backtest, db, perf, platform as plat, schema  # noqa: E402
+from ideagen import trials  # noqa: E402
 from ideagen import config  # noqa: E402
 from ideagen import ideas as ideas_mod  # noqa: E402
 from ideagen import strategy as strat  # noqa: E402
@@ -526,16 +527,17 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
         paired_t=paired_t or None,
         positions=positions, horizon_days=horizon_days,
         applied_cost_pct=ideas_mod.round_trip_cost_pct("US", "listed"),
-        # The arm count understates the search. `ev_rank` was chosen on
-        # 2026-09-05 after looking at these same six periods, and the rules
-        # tried and dropped on the way (grade buckets, and the omega variants
-        # before them) were trials too. Three is a floor on that count, stated
-        # here so the deflation is not quietly anchored to "however many arms
-        # happen to be registered today".
-        extra_trials=3,
+        # The arm count understates the search: rules tried and dropped, and
+        # versions replaced, never reach the family of Sharpe ratios the
+        # deflation sees. That count now comes from the trial ledger in
+        # `ideagen.trials`, which a test forces to stay in step with the
+        # registry — a literal typed here could only decay, because the way it
+        # goes stale is somebody searching harder.
+        extra_trials=trials.extra_trials(sorted(curves)),
         per_period_returns=per_period or None,
         posthoc_arms=_posthoc_arms(),
         control=CONTROL)
+    rep["trials"] = trials.summary(sorted(curves))
     # Capacity: participation of average daily dollar volume at the design's own
     # sizing. `turnover_and_cost` already answers "does the edge survive the
     # fee"; this answers the question a fee-blind reader still has, which is
@@ -757,9 +759,19 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
             pooled.setdefault(k, []).extend(v)
         bench = fwd(BENCHMARK, d.isoformat())
         q1 = buckets["Q1"]; q5 = buckets["Q5"]
+        # The seventh sin, applied to this table. A quintile spread is a
+        # long/short statistic and this book is long-only, so the spread names a
+        # number the mandate cannot collect. Split against the period's own
+        # candidate average — the paper's construction: long excess is Q5 over
+        # the universe, short excess is the universe over Q1, and only the first
+        # is available to a book that may not short.
+        asym = backtest.payoff_asymmetry(q5, q1, [r for _, r in obs])
         per_period.append({
             "as_of": d.isoformat(), "n": len(obs),
             "benchmark_pct": None if bench is None else round(bench, 4),
+            "universe_mean_pct": asym["universe_mean_pct"],
+            "long_excess_pct": asym["long_excess_pct"],
+            "short_excess_pct": asym["short_excess_pct"],
             "quintiles": {k: {"n": len(v),
                               "hit_rate": round(sum(1 for x in v if x > 0) / len(v), 4),
                               "mean_return_pct": round(sum(v) / len(v), 4)}
@@ -774,6 +786,31 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
           if p["top_minus_bottom_pct"] is not None]
     vb = [p["top_minus_benchmark_pct"] for p in scored
           if p["top_minus_benchmark_pct"] is not None]
+    lx = [p["long_excess_pct"] for p in scored
+          if p.get("long_excess_pct") is not None]
+    sx = [p["short_excess_pct"] for p in scored
+          if p.get("short_excess_pct") is not None]
+    long_mean = (sum(lx) / len(lx)) if lx else None
+    short_mean = (sum(sx) / len(sx)) if sx else None
+    span = (None if (long_mean is None or short_mean is None)
+            else long_mean + short_mean)
+    asymmetry = {
+        "long_excess_pct": None if long_mean is None else round(long_mean, 4),
+        "short_excess_pct": None if short_mean is None else round(short_mean, 4),
+        "long_share_of_spread": (None if not span
+                                 else round(long_mean / span, 4)),
+        "periods_long_side_positive": sum(1 for x in lx if x > 0),
+        "periods_scored": len(scored),
+        "mandate": "long_only",
+        "note": (
+            "顶格减末位是一个多空统计量，而本组合只做多、剩余资金买 JPST，"
+            "所以那个价差里只有多头那一半是这个授权能拿到的。拆法按论文："
+            "多头超额 = 顶格分位 − 当期全部候选的平均，空头超额 = 当期平均 − 末位分位。"
+            "long_share_of_spread 就是「广告里的价差有多少比例是可兑现的」；"
+            "它明显小于 1 时，任何引用 top_minus_bottom_pct 的说法都在高估自己。"
+            "（论文实测：价值类的 alpha 在多头，动量/质量类的 alpha 在空头——"
+            "所以这个比例是随分数而变的事实，不是常数。）"),
+    }
     return {
         "score": "ev", "score_label": "候选自陈情景的概率加权期望回报",
         "ex_ante": "只用生成时写下的三点情景，与其后发生的事无关",
@@ -788,6 +825,7 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
         "periods_scored": len(scored),
         "periods_top_beats_bottom": sum(1 for x in tb if x > 0),
         "periods_top_beats_benchmark": sum(1 for x in vb if x > 0),
+        "asymmetry": asymmetry,
         "note": (
             "分位在每期内部切，不跨期合并——合并会让窗口完整、行情向上的那一期"
             "供出大半个顶格分位，那张表报的就成了日历。顶格分位与同期基准并列，"

@@ -159,3 +159,36 @@ def test_no_alt_benchmark_leaves_the_report_exactly_as_it_was():
     assert "separability_vs_alt" not in rep
     assert "alt_benchmark_performance" not in rep
     assert "relative_alt" not in rep["arms"]["arm"]
+
+
+# --------------------------------------------- the half the mandate can reach
+
+def test_a_spread_that_lives_on_the_short_side_is_not_an_edge_this_book_has():
+    """The seventh sin, in the form this repository can actually commit.
+
+    Top bucket flat against the universe, bottom bucket badly negative: the
+    quintile spread looks large and every point of it would have had to be
+    shorted. A long-only book collects nothing, and `long_share` says so.
+    """
+    a = backtest.payoff_asymmetry(top=[1.0, 1.0], bottom=[-9.0, -9.0],
+                                  universe=[1.0, 1.0, -9.0, -9.0])
+    assert a["long_excess_pct"] == 5.0     # universe mean is -4
+    assert a["short_excess_pct"] == 5.0
+    assert a["long_share"] == 0.5
+
+
+def test_long_share_is_not_clipped_into_a_comfortable_range():
+    """A bottom bucket that beat the universe means the short leg would have
+    lost money — share above 1. Clipping to [0, 1] would erase exactly the
+    period most worth looking at."""
+    a = backtest.payoff_asymmetry(top=[10.0], bottom=[6.0],
+                                  universe=[10.0, 5.0, 0.0])
+    assert a["short_excess_pct"] == -1.0    # the short leg would have lost money
+    assert a["long_share"] == 1.25
+
+
+def test_empty_buckets_return_nothing_rather_than_zero():
+    """Zero reads as 'measured, and the long side contributed none'. Nothing
+    measured must not be able to enter the report wearing that meaning."""
+    a = backtest.payoff_asymmetry(top=[], bottom=[1.0], universe=[1.0])
+    assert a["long_excess_pct"] is None and a["long_share"] is None

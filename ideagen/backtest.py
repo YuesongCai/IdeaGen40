@@ -1200,6 +1200,42 @@ def realized_vol_pct(equities: Sequence[float], periods_per_year: int = 252
     return st.pstdev(rets) * (periods_per_year ** 0.5) * 100.0
 
 
+def payoff_asymmetry(top: Sequence[float], bottom: Sequence[float],
+                     universe: Sequence[float]) -> dict[str, Any]:
+    """How much of a quantile spread a long-only book could actually collect.
+
+    The seventh sin. A top-minus-bottom spread is a long/short statistic, and
+    this mandate is long-only with idle cash in JPST, so quoting the spread as
+    the size of an edge quotes a number the book may not reach for. Deutsche
+    Bank's construction, used here: long excess is the top bucket against the
+    average of the whole universe (equivalent to shorting the universe equally
+    weighted), short excess is that average against the bottom bucket. The
+    paper's own result is that the split is not a constant — value premia sit on
+    the long side, momentum and quality premia on the short — so this has to be
+    measured per score rather than assumed once.
+
+    `long_share` can exceed 1 or go negative, and is not clipped: a period whose
+    bottom bucket *beat* the universe average is a period where the short side
+    would have lost money, and rounding that into [0, 1] would hide the most
+    informative case. On this repository's first six periods the long share is
+    64% overall but −0% on 2026-07-29, where the entire advertised spread came
+    from the half the mandate cannot trade.
+    """
+    if not top or not bottom or not universe:
+        return {"long_excess_pct": None, "short_excess_pct": None,
+                "long_share": None}
+    mean = sum(universe) / len(universe)
+    long_x = sum(top) / len(top) - mean
+    short_x = mean - sum(bottom) / len(bottom)
+    span = long_x + short_x
+    return {
+        "long_excess_pct": round(long_x, 4),
+        "short_excess_pct": round(short_x, 4),
+        "long_share": (None if span == 0 else round(long_x / span, 4)),
+        "universe_mean_pct": round(mean, 4),
+    }
+
+
 def shelf_equal_weight_series(con, start: str, end: str, *,
                              codes: Sequence[str] | None = None,
                              min_codes: int = 5) -> dict[str, Any]:

@@ -2527,7 +2527,11 @@ function refresh(){
      标注快照时刻——一张过期页面必须自己说明自己是快照，而不是装活。 */
   if(window.__STATIC__){
     S=window.__STATIC__.state||null;
-    J=window.__STATIC__.journal||null;JErr=J?null:'静态快照未包含运行日志';
+    J=window.__STATIC__.journal||null;
+    /* 导出时就知道日志为什么缺，从前那个原因只进了导出机的终端。
+       「快照未包含」是关于快照的事实，不是缺失的原因——两者都要说。 */
+    JErr=J?null:('静态快照未包含运行日志'
+      +(window.__STATIC__.journal_error?'：'+window.__STATIC__.journal_error:''));
     fetchFailed=false;lastFetchOk=S&&S.generated_at?new Date(S.generated_at):new Date();
     renderAll();
     var st=$('stampText'),fs=$('footStamp');
@@ -2945,6 +2949,14 @@ var PCACHE={};        /* as_of -> weekly 块。按需取，不进每分钟轮询
 var PFETCH={};        /* 正在飞的请求，避免重复发 */
 
 function periodList(){return (S&&S.periods)||[]}
+/* review.py 认真地把每个失败的原因写进状态文档（periods_error /
+   corpus_periods_error / evidence_error），而面板一个都没读过——三种失败
+   都退化成同一句「没有」。空集合和读失败在这里必须分开说。 */
+function stateErr(k){return (S&&S[k])||''}
+function failNote(msg,why){
+  return '<div class="quiet" style="text-align:center;color:var(--color-feedback-warning-text)">'
+    +esc(msg)+'<br><span style="font-size:11.5px">服务端报的原因：'+esc(why)+'</span></div>';
+}
 function periodAt(a){
   var L=periodList();
   for(var i=0;i<L.length;i++)if(L[i].as_of===a)return L[i];
@@ -2981,8 +2993,17 @@ function fetchPeriod(a){
   if(window.__STATIC__){PCACHE[a]={as_of:a,offline:true};return}
   PFETCH[a]=1;
   fetch('/api/period?as_of='+encodeURIComponent(a),{cache:'no-store'})
-    .then(function(r){return r.json()})
-    .then(function(j){PCACHE[a]=(j&&j.weekly)||{as_of:a,missing:true}})
+    /* 服务端是分得清的：真没跑过 → 200 带 weekly:null 和 reason；出错 → 500
+       带 error。这里从前既不看 r.ok 也不看 reason，于是 500 的响应体里没有
+       weekly，就被当成 missing:true，渲染成「这一期没有跑成的运行记录」——
+       把服务器故障说成了这一期没跑。 */
+    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}},
+                                           function(){return {ok:r.ok,b:null}})})
+    .then(function(res){
+      var b=res.b||{};
+      if(!res.ok||b.error){PCACHE[a]={as_of:a,error:String(b.error||('HTTP '+(res.ok?'响应不是 JSON':'错误')))};return}
+      PCACHE[a]=b.weekly||{as_of:a,missing:true,reason:b.reason||''};
+    })
     .catch(function(e){PCACHE[a]={as_of:a,error:String(e&&e.message||e)}})
     .then(function(){delete PFETCH[a];renderAll()});
 }
@@ -3041,17 +3062,27 @@ function renderPeriodNav(){
   var host=$('periodNav');
   if(!host)return;
   var L=periodList();
-  if(!L.length){host.innerHTML='';host.className='pstep-wrap';return}
+  if(!L.length){
+    /* 期次骨架取失败时 periods 是 []，这一整条步进器消失——读者看不到有东西
+       坏了，只看到一个少了控件的页面。列不出来就说列不出来。 */
+    var pe=stateErr('periods_error');
+    host.className='pstep-wrap';
+    host.innerHTML=pe
+      ?('<div class="pstep-box off"><span class="pstep-lab" title="'+esc(pe)+'">期次列不出来</span></div>')
+      :'';
+    return;
+  }
   var cur=curPeriod(), last=latestPeriod(), i=-1;
   for(var k=0;k<L.length;k++)if(L[k].as_of===cur){i=k;break}
   var off=!!PERIOD&&cur!==last;
   var r=periodAt(cur)||{};
   var w=(S&&S.weekly)||{};
   var note=w.loading?'载入中…'
+    :(w.error?('这一期取不到：'+w.error)
     :(w.missing?'这一期没有跑成的运行记录'
     :(r.status==='rolled'?('已滚出 · '+fmtInt(r.n_closed)+' 仓全部平仓')
     :(r.days_left===0?'今天到期'
-    :(r.days_left>0?('还有 '+r.days_left+' 天到期'):''))));
+    :(r.days_left>0?('还有 '+r.days_left+' 天到期'):'')))));
   /* host 是外壳，盒子在里面：「回到最新」要待在盒子外，否则 overflow:hidden 会裁掉它。 */
   host.className='pstep-wrap';
   host.innerHTML='<div class="pstep-box'+(off?' off':'')+'">'+
@@ -3075,8 +3106,11 @@ function renderPeriodNav(){
 function ladderCard(){
   var L=periodList();
   if(!L.length){
+    var pe=stateErr('periods_error');
     return '<div class="card section"><div class="qhead"><h2 class="qtitle">四周阶梯</h2></div>'
-      +'<div class="quiet" style="text-align:center">尚无期次记录。</div></div>';
+      +(pe?failNote('期次骨架这次没取出来——不是没有期次，是这一步失败了。',pe)
+          :'<div class="quiet" style="text-align:center">尚无期次记录。</div>')
+      +'</div>';
   }
   var today=todayISO();
   var x0=L[0].as_of, x1=today;
@@ -6885,7 +6919,13 @@ function corpusSourceCard(){
   var w=S.weekly||{};
   var rows=(S.feeds||[]).filter(function(x){return x.kind==='corpus'&&x.as_of===w.as_of});
   var n=w.corpus_total||corpusRowsFor(w.as_of);
-  if(!n&&!rows.length&&!corpusPeriods().length)return '';
+  var ce=stateErr('corpus_periods_error');
+  if(!n&&!rows.length&&!corpusPeriods().length){
+    /* 整块卡片消失是最不该有的失败方式：页面看起来就像本来没有这一节。 */
+    if(!ce)return '';
+    return '<div class="card section"><div class="qhead"><h2 class="qtitle">研报来源</h2></div>'
+      +failNote('往期研报索引这次没建出来——不是没有研报。',ce)+'</div>';
+  }
   var g={};rows.forEach(function(f){(g[f.feed]=g[f.feed]||[]).push(f)});
   var keys=Object.keys(g);
   var tbl=keys.length
@@ -7898,7 +7938,10 @@ function topicDrawerBody(tid,embedded){
         +(ev.truncated?'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px">另有 '+fmtInt(ev.truncated)+' 条未显示</div>':''),
         fmtInt(ev.n)+' 条');
   }else{
-    html+='<div class="empty-sm">这个主题没有词表命中的研报清单'+(r?'（打分依据的证据计数见上）':'')+'</div>';
+    var ee=(w&&w.evidence_error)||'';
+    html+=ee
+      ? '<div class="empty-sm" style="color:var(--color-feedback-warning-text)">词表命中清单这次没取出来——不是这个主题没有研报。服务端报的原因：'+esc(ee)+'</div>'
+      : '<div class="empty-sm">这个主题没有词表命中的研报清单'+(r?'（打分依据的证据计数见上）':'')+'</div>';
   }
   /* 追问是「证据」这一组的最后一格：读完分数和研报还是不服气，就问它本人。
    * 它从前单占一行浮在两段中间，看着像个和上下文无关的功能按钮。 */

@@ -5126,6 +5126,24 @@ function sharpeIntervalRow(label,pt,ci,isBench,lo,hi){
     +'</div>'
     +'<div class="ts-v num">'+Number(pt).toFixed(2)+'</div></div>';
 }
+/* 业绩表这一屏会同时出现三个条数，三个都对，但分母不同：
+ *   n_trials    —— 折减用的试验次数：算得出夏普的组合 + 当初挑排序规则时
+ *                  试过又弃掉的那几种（不算进去，冠军那条就被高估）
+ *   n_measurable —— 算得出夏普置信区间、能参与「分不分得开」的组合
+ *   fdr.m        —— 算得出 p 值、进这一族同时检验的组合
+ * 三个数都从数据里取，别写死——它们会随可计价的组合数变。 */
+function countsNote(fd,fdr,sep){
+  var nT=Number(fd&&fd.n_trials)||0, nM=Number(sep&&sep.n_measurable)||0,
+      nP=Number(fdr&&fdr.m)||0;
+  if(!(nT&&nM&&nP))return '';
+  var extra=nT-nM;
+  return '<div class="card-note">这一屏有三个条数，它们不是同一批：<b>'+fmtInt(nT)
+    +'</b> 是折减用的试验次数（'+fmtInt(nM)+' 条算得出夏普的组合'
+    +(extra>0?('，加 '+fmtInt(extra)+' 种当初挑排序规则时试过又弃掉的排法——'
+               +'不把它们算进去，冠军那条就被高估'):'')
+    +'）；<b>'+fmtInt(nM)+'</b> 是能参与「分不分得开」判断的组合；<b>'+fmtInt(nP)
+    +'</b> 是算得出 p 值、进这一族同时检验的组合。</div>';
+}
 function tearsheetCard(){
   var ts=(((S||{}).backtest||{}).summary||{}).tearsheet;
   if(!ts||!ts.arms||!Object.keys(ts.arms).length)return '';
@@ -5253,6 +5271,9 @@ function tearsheetCard(){
       '折减后的夏普 '+(fd.deflated_sharpe==null?'—':Number(fd.deflated_sharpe).toFixed(3)),
       '<p class="p">'+esc(humanizeKeys(fd.message))+'</p>'
       +(fdr.m?'<p class="p">'+esc(humanizeKeys(fdr.note||''))+'</p>'
+        /* 这一屏出现三个条数（本例 14 / 11 / 10），三个都是对的，但它们是
+           三个不同的分母。不说清楚，读者只能读成自相矛盾或者哪里算错了。 */
+        +countsNote(fd,fdr,sep)
         +'<div class="card-note">BH 判为发现：<b>'
         +esc((fdr.rejected||[]).map(backtestArmName).join('、')||'无')
         +'</b>；Bonferroni 判为发现：<b>'

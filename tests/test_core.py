@@ -2999,7 +2999,12 @@ class TestAReadFailureNeverReadsAsAnAbsence(unittest.TestCase):
         run = {"run_id": "r1", "as_of": "2026-09-02"}
         idx, unread = review._proposal_index(P(), run)
         self.assertEqual(idx, {})
-        self.assertEqual(len(unread), 4)
+        # 条数对着注册表算，不写死。写死 4 的那一版在 lookthrough 注册进来的
+        # 当天就红了——而它守的是「读不到要说出来」，和生成方式有几种无关。
+        from ideagen import strategy
+        import ideagen.strategies                    # noqa: F401  触发注册
+        self.assertEqual(len(unread),
+                         len(strategy.available("idea_generator")))
         self.assertIn("读不到产物存储", unread[0])
         # And it must not be cached: the store coming back has to change the
         # answer, or the page keeps saying "no proposals" for the rest of the

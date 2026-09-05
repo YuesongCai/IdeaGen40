@@ -59,3 +59,12 @@ data/ask_log.jsonl
 # PM 准则卡账本：他自己的话 + 本机运行状态，跟 ask_log 同一性质。
 # 它是复现一次运行的一部分，所以归审计包带走，不归仓库。
 data/philosophy/
+
+# 云端同步腿的本机运行状态：指纹、闸门裁决、上次推送结果。它描述的是「这台机器
+# 推到哪儿了」，不是仓库内容——两台机器各有各的一份，提交它只会互相覆盖。
+data/cloud_sync_state.json
+data/.last_push_fingerprint
+data/.last_runtime_env_key
+# 迁移前的库备份。data/ideagen.db 已被忽略，而它的备份带别的后缀，
+# 于是一个 `git add -A` 就能把 64MB 的实盘数据永久写进这个公开仓。
+data/*.db.bak*

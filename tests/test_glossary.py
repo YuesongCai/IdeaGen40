@@ -262,6 +262,33 @@ class GlossaryGate(unittest.TestCase):
             + "\n往 web/dash.html 的 SEL_META 里加一行："
               "[键名, 中文名, 主策略/常驻探索/对照, 短说明, 长说明]")
 
+    def test_every_registered_method_has_an_execution_path_on_the_panel(self):
+        """漏一条不会报错——只会让「执行路径 纯代码 9 种」这排数字悄悄少数。
+
+        `GEN_PATH` / `SEL_PATH` 和 `SEL_META` 一样是注册表的手工镜像。
+        2026-09-05 一次漏了三条：`lookthrough`（新的第五种生成方式）、
+        `mom_21`、`ev_rank`。前两个是刚加的，`ev_rank` 是一直就漏着的——
+        也就是说那排数字**在这之前就已经是错的**，而没有任何东西会红。
+        """
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from ideagen import strategy
+        import ideagen.strategies                      # noqa: F401
+        html = (ROOT / "web" / "dash.html").read_text(encoding="utf-8")
+        for kind, var in (("idea_generator", "GEN_PATH"),
+                          ("idea_selector", "SEL_PATH")):
+            block = re.search(rf"var {var}=\{{.*?\}};", html, re.S)
+            self.assertIsNotNone(block, f"dash.html 里找不到 {var}")
+            mapped = set(re.findall(r"([a-z0-9_]+):'", block.group()))
+            registered = {m["name"] for m in strategy.available(kind)}
+            missing = sorted(registered - mapped)
+            self.assertFalse(
+                missing,
+                f"这些 {kind} 注册了但 {var} 里没有，「执行路径」那排数字会少数：\n  "
+                + "\n  ".join(missing)
+                + f"\n往 web/dash.html 的 {var} 里加 <名字>:'ai'|'frame'|'code'"
+                  "（needs_model=False 的一定是 code）")
+
     def test_every_exemption_names_a_file_that_exists(self):
         """豁免清单会烂掉——文件改名之后那条豁免就在悄悄免掉一个不存在的东西。"""
         for rel, why in EXEMPT.items():

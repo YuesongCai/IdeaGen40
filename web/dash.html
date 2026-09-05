@@ -6861,10 +6861,17 @@ var PATH_META={
   frame:['约束边界','模型在人工规定的推理框架内作答（约束条件 / 因果链 / 定价背离），输出须通过框架校验，不满足即作废。'],
   code:['纯代码','确定性规则计算，无模型调用。同一输入必得同一输出，可离线复算与审计。']
 };
-var GEN_PATH={ai_native:'ai',carl_constraint:'frame',chain:'frame',gap:'frame'};
+/* 这三张表是注册表的手工镜像，漏一条不会报错——只会让「执行路径」那排数字
+   悄悄少数。2026-09-05 就漏了三条：新加的 lookthrough / mom_21 / ev_rank。
+   `tests/test_glossary.py` 现在对着注册表核它们。
+   lookthrough 归 frame：模型做的是「说出公司」这一段语义活，选哪只标的交给
+   持仓数据——是分工，不是 ai_native 那种不设骨架的基线。 */
+var GEN_PATH={ai_native:'ai',carl_constraint:'frame',chain:'frame',gap:'frame',
+  lookthrough:'frame'};
 var SEL_PATH={ai_native:'ai',omega_loose:'code',omega_strict:'code',spread:'code',calib:'code',
   left_tail:'code',buy_all:'code',random_pick:'code',
-  generated_ai_native:'code',generated_carl_constraint:'code'};
+  generated_ai_native:'code',generated_carl_constraint:'code',
+  ev_rank:'code',mom_21:'code'};
 function pathTag(k){
   var m=PATH_META[k];if(!m)return '';
   return '<span class="ptag ptag-'+k+'" title="'+esc(m[0]+'——'+m[1])+'">'+esc(m[0])+'</span>';
@@ -6872,7 +6879,7 @@ function pathTag(k){
 function pathLegend(map,keys){
   var n={};keys.forEach(function(k){var t=map[k];if(t)n[t]=(n[t]||0)+1});
   var out=['ai','frame','code'].filter(function(t){return n[t]}).map(function(t){
-    return '<span class="ptag ptag-'+t+'" title="'+esc(PATH_META[t][0]+'——'+PATH_META[t][1])+'">'+esc(PATH_META[t][0])+' '+n[t]+'</span>';
+    return '<span class="ptag ptag-'+t+'" title="'+esc(PATH_META[t][0]+'——'+PATH_META[t][1])+'">'+esc(PATH_META[t][0])+' '+n[t]+' 种</span>';
   });
   return out.length?'<div class="ptag-row"><span class="card-note">执行路径</span>'+out.join('')+'</div>':'';
 }

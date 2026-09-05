@@ -89,8 +89,12 @@ def main() -> int:
     print(f"本地      HEAD={head}  未推={ahead}  账本计价到 {mark}")
     print(f"origin/main = {origin}")
 
-    # The node reports a fingerprint of its own source, not a sha, so the honest
-    # comparison is node-against-node plus "did it change since we pushed".
+    # `healthz` reports a fingerprint of the node's own source, not a commit, so
+    # a matching fingerprint is evidence and not proof. Where a node can say
+    # which commit it deployed — the production node's updater does, via
+    # /api/deploy — ask it, and print the answer as an answer. Where it cannot,
+    # say "指纹" and leave it as the weaker claim it is, rather than dressing
+    # inference up as confirmation.
     ok = ahead == "0"
     for label, base in NODES:
         try:
@@ -101,6 +105,21 @@ def main() -> int:
             print(f"{label:22s} 不可达: {type(e).__name__}")
             ok = False
             continue
+        sha = None
+        try:
+            up = (get(base + "/api/deploy", key, timeout=15) or {}).get("updater")
+            sha = (up or {}).get("deployed_sha")
+        except Exception:  # noqa: BLE001 — only one node runs an updater
+            pass
+        if sha:
+            # Against origin/main, not HEAD. The node follows the branch, so a
+            # commit sitting unpushed on this laptop is already reported once
+            # as 未推 — charging the node for it too would report one problem
+            # as two and make the node look broken when it is perfectly current.
+            match = "✅ 已跟上 origin/main" if sha == origin else f"⚠️ 落后于 {origin}"
+            print(f"{label:22s} 已部署 {sha} {match}")
+            if sha != origin:
+                ok = False
         try:
             st = get(base + "/api/state", key)
             n_books = len(st.get("books") or [])
@@ -114,10 +133,11 @@ def main() -> int:
             # candidates but not the ledger tables. That is a known gap waiting
             # on a decision, not a sync failure — calling it one every tick
             # would bury the failures that are real.
-            print(f"{label:22s} 代码指纹={fp}  无账本（RDS 未迁账本表，非同步问题）")
+            print(f"{label:22s} 指纹={fp} ({files}文件)  "
+                  "无账本（RDS 未迁账本表，非同步问题）")
             continue
         same = "✅" if d == mark else "⚠️ 落后"
-        print(f"{label:22s} 代码指纹={fp}  账本={d} {same}")
+        print(f"{label:22s} 指纹={fp} ({files}文件)  账本={d} {same}")
         if d != mark:
             ok = False
     return 0 if ok else 1

@@ -3842,7 +3842,7 @@ function ledgerCard(ag){
       +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'
         +(ret===null?'—':fmtPct(ret))+'</span>'
       +(dep!==null?'<span style="font:400 13px/18px var(--font-sans);color:var(--color-feedback-warning-text)">'
-        +'已投出 '+dep.toFixed(0)+'%</span>':'')
+        +'已投出 '+dep.toFixed(0)+'%'+overDeployed()+'</span>':'')
       +(md!==null?'<span style="font:400 13px/18px var(--font-sans);color:'
         +(md<=1?'var(--color-feedback-warning-strong)':'var(--color-text-tertiary)')+'">'
         +'本期持仓持有 '+fmtInt(md)+' 天</span>':'')
@@ -6969,6 +6969,35 @@ function riskLevelGap(){
    发生在撮合当天——两个价不是同一个。差一旦超过带宽，风控线就落在成交价的
    错误一侧：1368 笔里 25 笔如此，逐笔见 scripts/check_risk_levels.py。
    不改执行层，但这句话不能替它把话说满。 */
+/* 「已投出 83%」是十个组合的平均，而平均把越界盖住了：2026-09-05 实测
+ * omega_strict 在场成本占自己本金 106.3%、spread 102.6%——纸面账户买了它没有
+ * 的钱。补跑把五期订单挤在撮合当天，每期 25% 一次性开出 125%，平掉一部分后
+ * 停在 100% 之上；每周 25% 那条上限本身是守住的（48/48 批都在），没守住的是
+ * 「加起来不许超过本金」。
+ *
+ * 这里不改建仓逻辑，只是不让平均数替它把话说圆。 */
+function overDeployed(){
+  var out=[];
+  ((typeof currentBooks==='function'?currentBooks():[])||[]).forEach(function(b){
+    var cap=Number(b.capital)||0; if(!cap)return;
+    var cost=0;
+    (b.open_positions||[]).forEach(function(p){cost+=(p.qty||0)*(p.entry_px||0)});
+    if(cost>cap)out.push([b.selector||b.book_id, cost/cap*100]);
+  });
+  if(!out.length)return '';
+  out.sort(function(x,y){return y[1]-x[1]});
+  var names=out.map(function(o){
+    return (typeof backtestArmName==='function'?backtestArmName(o[0]):o[0])
+      +' '+o[1].toFixed(0)+'%';
+  });
+  return '<span class="gloss gm" style="font:400 13px/18px var(--font-sans);'
+    +'color:var(--color-feedback-warning-text)" title="'
+    +esc('这个百分比是十个组合的平均。单看每一个，有 '+out.length+' 个的在场成本'
+        +'超过了它自己的本金：'+names.join('、')+'。'
+        +'每周至多投出本金 25% 那条上限是守住的；没守住的是「几期加起来不许超过'
+        +'本金」——补跑把五期订单挤在撮合当天开出，平掉一部分后停在 100% 之上。')
+    +'"> · 其中 '+out.length+' 个组合超过自己的本金 ⚠</span>';
+}
 var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。两条线按想法成文那一期的参考价算，不是按实际成交价——成交离参考越远，它们相对成交价越偏。触发后自动执行。';
 var ARM_GLOSS='正式比较组合 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索组合不参与结论判定。';
 var RULER_GLOSS='基准 = 不作判断的对照组合（全量 / 随机）。跑不赢全量基准即选取环节无增量，跑不赢随机基准即排序为噪声。';

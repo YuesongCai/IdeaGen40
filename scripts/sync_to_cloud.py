@@ -51,6 +51,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -71,12 +72,36 @@ def now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
+#: Git operations that cross the network. This laptop reaches github.com
+#: through a local tunnel that fails roughly one attempt in three — measured,
+#: not guessed: three consecutive `git fetch` calls gave ❌ ✅ ✅, the failure
+#: being `SSL_ERROR_SYSCALL`, which is the connection dying rather than
+#: anything git disagrees with. One dropped packet was abandoning the whole
+#: code leg for that tick and raising an alert, so the pusher looked broken
+#: while the only thing wrong was a retry it never attempted.
+#:
+#: Retrying both is safe. `fetch` is read-only. `push` is idempotent — if the
+#: attempt that reported failure had in fact landed, the retry answers
+#: "Everything up-to-date" — and the caller re-fetches afterwards to confirm
+#: what the remote actually holds, so a lie in either direction is caught.
+NET_OPS = ("fetch", "push", "ls-remote", "pull")
+NET_TRIES = 3
+
+
 def git(*args: str, check: bool = True) -> str:
-    r = subprocess.run(("git", *args), cwd=ROOT, capture_output=True, text=True)
-    if check and r.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} -> {r.returncode}: "
-                           f"{(r.stderr or r.stdout).strip()[:400]}")
-    return (r.stdout or "").strip()
+    tries = NET_TRIES if args and args[0] in NET_OPS else 1
+    last = ""
+    for attempt in range(tries):
+        r = subprocess.run(("git", *args), cwd=ROOT, capture_output=True,
+                           text=True)
+        if r.returncode == 0:
+            return (r.stdout or "").strip()
+        last = (r.stderr or r.stdout).strip()[:400]
+        if attempt + 1 < tries:
+            time.sleep(3)
+    if check:
+        raise RuntimeError(f"git {' '.join(args)} 失败 {tries} 次: {last}")
+    return ""
 
 
 def load_state() -> dict:

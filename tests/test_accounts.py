@@ -201,6 +201,62 @@ class WhereTheAccountsLive(unittest.TestCase):
         self.assertFalse(st["durable"])
         self.assertIn("换容器", st["why"])
 
+    def test_a_directory_it_cannot_look_inside_is_a_no_not_a_crash(self):
+        """The production node found this one within minutes of deploying.
+
+        `/run/ideagen-oauth` is 0700 and the container is not its owner, so
+        stat-ing a file inside it raises EACCES — which `Path.exists()` does NOT
+        swallow, unlike ENOENT and its neighbours. The probe raised out of
+        `store_status()`, `/healthz` answered 500, and the container healthcheck
+        reads `/healthz`. A yes/no question must come back yes or no.
+        """
+        locked = Path(self._tmp.name) / "locked"
+        locked.mkdir()
+        (locked / "accounts.json").write_text("{}", encoding="utf-8")
+        locked.chmod(0o000)
+        try:
+            if os.access(locked / "accounts.json", os.F_OK):
+                self.skipTest("以 root 运行时权限位不起作用")
+            os.environ["IDEAGEN_ACCOUNTS_FILE"] = str(locked / "accounts.json")
+            st = self.a.store_status()      # must not raise
+        finally:
+            # Restored here, not in addCleanup: cleanups run *after* tearDown,
+            # and tearDown removes the temporary directory — so the restore
+            # would arrive at a path that no longer exists and fail the test
+            # for a reason with nothing to do with what it checks.
+            locked.chmod(0o700)
+        self.assertNotEqual(st["path"], str(locked / "accounts.json"),
+                            "entrusted the account list to a directory it "
+                            "cannot even look inside")
+
+    def test_a_mirrored_store_counts_as_surviving_even_inside_the_container(self):
+        """Two different mechanisms, one honest answer.
+
+        The production node has no writable host mount, so its accounts do live
+        in the container — but every write is mirrored to object storage and the
+        next container reads it back before it will mint anything. Reporting
+        that as "will be lost" would send an operator chasing a problem that is
+        already solved; reporting it as plain "durable" would hide which
+        mechanism is holding it up. Both are said.
+        """
+        from unittest import mock
+        from ideagen import config
+        prev = os.environ.get("IDEAGEN_ACCOUNTS_MIRROR")
+        os.environ["IDEAGEN_ACCOUNTS_MIRROR"] = "1"
+        try:
+            with mock.patch.multiple(config, ROOT=Path("/app"),
+                                     DATA=Path(self._tmp.name) / "in-image",
+                                     DB_PATH=Path("/app/data/ideagen.db")):
+                st = self.a.store_status()
+        finally:
+            if prev is None:
+                os.environ.pop("IDEAGEN_ACCOUNTS_MIRROR", None)
+            else:
+                os.environ["IDEAGEN_ACCOUNTS_MIRROR"] = prev
+        self.assertTrue(st["durable"])
+        self.assertFalse(st["local_durable"])
+        self.assertTrue(st["mirror"])
+
     def test_an_explicit_setting_beats_every_guess(self):
         want = Path(self._tmp.name) / "explicit" / "accounts.json"
         os.environ["IDEAGEN_ACCOUNTS_FILE"] = str(want)

@@ -150,6 +150,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                    store=accounts.store_status()),
             "text/html; charset=utf-8")
 
+    def _no_accounts_yet(self) -> str | None:
+        """A login page nobody can pass has to say so, and try again first.
+
+        `bootstrap()` runs once, at startup. It refuses to mint an operator when
+        the account mirror is unreadable — correctly, because minting one there
+        would look like a working instance while the real accounts sit unread in
+        the store, and the next save would overwrite them with the single
+        bootstrap user. But a transient object-store hiccup during boot then
+        leaves a container serving a perfectly ordinary login form that no
+        password on earth will get through, and nothing on screen says why.
+
+        So: retry here, where a person is actually looking, and if it still
+        cannot be done, say what is wrong instead of pretending to be a form.
+        """
+        accounts = self._acct()
+        try:
+            if accounts.list_users():
+                return None
+            accounts.bootstrap()
+            if accounts.list_users():
+                return None
+            return ("这台机器上一个账号也没有，而部署配置里也没有可以自举的"
+                    "用户名口令（IDEAGEN_DASH_USER / IDEAGEN_DASH_PASSWORD）。"
+                    "在这之前，没有任何口令能通过这个表单。")
+        except Exception as e:  # noqa: BLE001 — the login page must still render
+            return (f"账号初始化没做完，所以现在谁也登不进来：{type(e).__name__}: "
+                    f"{e}"[:300])
+
     def _authorized(self) -> bool:
         """Remote requests need the shared key; localhost stays open.
 
@@ -261,7 +289,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if self._session_user():
                 return self._redirect("/review")
             return self._raw(authpages.login_page(
-                nxt=(q.get("next") or ["/review"])[0]),
+                nxt=(q.get("next") or ["/review"])[0],
+                error=self._no_accounts_yet()),
                 "text/html; charset=utf-8")
         if path == "/account":
             return self._account_page()

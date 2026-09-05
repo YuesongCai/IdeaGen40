@@ -97,10 +97,13 @@ def account_page(user: str, *, admin: bool, users: list[dict],
     store_note = ""
     if store:
         if store.get("durable"):
+            how = ("重新部署不会丢。" if store.get("local_durable", True) else
+                   "这个位置在容器里，但每次写入都会镜像到对象存储，"
+                   "换容器时新实例先把它读回来——所以不会丢，"
+                   "但依赖的是镜像那条腿。")
             store_note = (f"<p class=sub style='margin:-14px 0 18px'>账号存放于 "
                           f"<code>{html.escape(str(store.get('path')))}</code>"
-                          f"（{html.escape(str(store.get('why')))}），"
-                          f"重新部署不会丢。</p>")
+                          f"（{html.escape(str(store.get('why')))}），{how}</p>")
         else:
             store_note = ("<div class=msg>⚠ 这台机器上的账号存在容器里"
                           f"（{html.escape(str(store.get('path')))}）——"

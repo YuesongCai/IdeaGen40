@@ -90,15 +90,34 @@ def _candidates() -> list[tuple[Path, bool, str]]:
 
 
 def _writable(path: Path) -> bool:
-    """Can this process actually create and rewrite `path`?"""
+    """Can this process actually create and rewrite `path`? Never raises.
+
+    The first version opened with `path.exists()`, which looks like the safest
+    call in the standard library and is not: `Path.exists()` swallows ENOENT,
+    ENOTDIR, EBADF and ELOOP, and lets **EACCES through**. The production node's
+    `/run/ideagen-oauth` is 0700 and the container is not its owner, so stat-ing
+    a file inside it raised PermissionError — out of a function whose entire job
+    is to answer a yes/no question, on the one endpoint that must never fail,
+    and `/healthz` started returning 500. The container healthcheck reads that
+    endpoint.
+
+    "I could not find out" is not "no", but here it has to be *treated* as no:
+    a candidate we cannot even ask about is not one to entrust the account list
+    to. What must not happen is the question itself throwing.
+    """
     parent = path.parent
-    if path.exists():
-        return os.access(path, os.W_OK) and os.access(parent, os.W_OK)
     try:
-        parent.mkdir(parents=True, exist_ok=True)
-    except Exception:  # noqa: BLE001
+        # os.access never raises for a permission answer — it returns False.
+        # Everything below is chosen for that property.
+        if os.access(path, os.F_OK):
+            return os.access(path, os.W_OK) and os.access(parent, os.W_OK)
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+        except Exception:  # noqa: BLE001
+            return False
+        return os.path.isdir(parent) and os.access(parent, os.W_OK)
+    except Exception:  # noqa: BLE001 — a probe that raises is worse than a no
         return False
-    return parent.is_dir() and os.access(parent, os.W_OK)
 
 
 def store_status() -> dict[str, Any]:
@@ -108,13 +127,21 @@ def store_status() -> dict[str, Any]:
     not an error at the moment it is chosen — it only becomes one later, when a
     deploy quietly empties it — so it has to be visible before then.
     """
-    for path, durable, why in _candidates():
+    mirror = _mirror_on()
+    cands = _candidates()
+    for path, durable, why in cands:
         if _writable(path):
-            return {"path": str(path), "durable": durable, "why": why,
-                    "mirror": _mirror_on()}
-    last = _candidates()[-1]
-    return {"path": str(last[0]), "durable": False,
-            "why": "所有候选路径都不可写", "mirror": _mirror_on()}
+            return {"path": str(path),
+                    # A store the container will lose is still recoverable when
+                    # every write is mirrored to object storage — the next
+                    # container reads it back before it will mint anything. So
+                    # the honest answer is "survives", with how it survives said
+                    # out loud rather than collapsed into a boolean.
+                    "durable": durable or mirror,
+                    "why": why if durable else f"{why}；靠对象存储镜像找回",
+                    "local_durable": durable, "mirror": mirror}
+    return {"path": str(cands[-1][0]), "durable": False, "local_durable": False,
+            "why": "所有候选路径都不可写", "mirror": mirror}
 
 
 def _store_path() -> Path:

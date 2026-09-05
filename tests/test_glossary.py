@@ -39,6 +39,18 @@ BANNED = {
     "挑法": "选取策略（用户 2026-09-04 拍板：术语化优于口语化）",
 }
 
+#: 裸英文：后端字段名漏进中文句子。同一个毛病的另一半——「账本」是内部比喻，
+#: 这些是内部标识符，读者两样都不认识。
+#:
+#: 判据和中文词不同：**只有紧挨着中文时才算**。`live` 在 `class="pchip live"`
+#: 里是 CSS 类名、在 `alive` 里是别的词、在 `SELECT as_of FROM` 里是列名——
+#: 一律拦就只剩噪音。挨着中文（中间至多一个空格）才是漏进了句子：
+#: 「结论以 live 期为准」拦，`licensed-live-` 不拦。
+BANNED_EN = {
+    "live": "实跑 / 当期实跑（和「补跑」对称，别一半中文一半英文）",
+    "as_of": "该期日期 / 该期起（as_of 是字段名，不是说给人听的词）",
+}
+
 #: 读者看得到的串所在的文件。加新的展示面时把它加进来。
 SURFACES = [
     "web/dash.html",
@@ -62,6 +74,26 @@ def _strip_comments(html: str) -> str:
     """去掉 /* … */ 与整行 // 注释。行内 // 不动（URL 里就有 //）。"""
     html = re.sub(r"/\*.*?\*/", " ", html, flags=re.S)
     return "\n".join(l for l in html.split("\n") if not l.lstrip().startswith("//"))
+
+
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+_LITERAL = re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")
+
+
+def _html_display_strings(html: str) -> list[str]:
+    """dash.html 里**含中文的**字符串字面量 —— 也就是读者会读到的那些。
+
+    只看字面量而不是整份正文，是为了能把 `live` / `as_of` 这类裸英文也纳入
+    禁用：整份正文里 `d.as_of` 和 `'/api/journal'` 到处都是，一律拦就只剩噪音。
+    含中文 = 是写给人看的句子，这是这份文件里最可靠的一条界线。
+    """
+    body = _strip_comments(html)
+    out = []
+    for m in _LITERAL.finditer(body):
+        t = m.group(1) if m.group(1) is not None else m.group(2)
+        if t and _CJK.search(t):
+            out.append(t)
+    return out
 
 
 def _py_display_strings(src: str) -> list[str]:
@@ -102,6 +134,13 @@ def _allowed(text: str) -> bool:
     return any(a in text for a in ALLOW)
 
 
+def _en_leaks(text: str) -> list[str]:
+    """紧挨着中文出现的英文标识符。"""
+    return [w for w in BANNED_EN
+            if re.search(rf"[\u4e00-\u9fff][ 　]?\b{w}\b"
+                         rf"|\b{w}\b[ 　]?[\u4e00-\u9fff]", text)]
+
+
 class GlossaryGate(unittest.TestCase):
 
     def test_no_banned_word_reaches_the_reader(self):
@@ -110,15 +149,13 @@ class GlossaryGate(unittest.TestCase):
             p = ROOT / rel
             self.assertTrue(p.exists(), f"{rel} 不在了——SURFACES 该更新")
             src = p.read_text(encoding="utf-8")
-            if p.suffix == ".html":
-                body = _strip_comments(src)
-                chunks = [l for l in body.split("\n")]
-            else:
-                chunks = _py_display_strings(src)
+            chunks = (_html_display_strings(src) if p.suffix == ".html"
+                      else [c for c in _py_display_strings(src) if _CJK.search(c)])
             for chunk in chunks:
                 if _allowed(chunk):
                     continue
-                for word, instead in BANNED.items():
+                for word, instead in list(BANNED.items()) + [
+                        (w, BANNED_EN[w]) for w in _en_leaks(chunk)]:
                     if word in chunk:
                         bad.append(f"  {rel}\n"
                                    f"    「{word}」→ {instead}\n"
@@ -139,6 +176,21 @@ class GlossaryGate(unittest.TestCase):
         self.assertNotIn("臂", _strip_comments("  // 九条臂\n<div>组合</div>"))
         self.assertEqual(_py_display_strings('"""模块讲的是臂"""\nx = "组合"'),
                          ["组合"])
+
+    def test_code_that_merely_mentions_a_field_name_is_not_prose(self):
+        """`d.as_of` 和 `'/api/journal'` 是代码，不是说给人听的话。"""
+        got = _html_display_strings(
+            "var x=d.as_of; f('/api/journal'); h('第 '+n+' 期 as_of 之前');")
+        self.assertEqual(got, ["第 ", " 期 as_of 之前"])
+        self.assertTrue(any("as_of" in g for g in got),
+                        "中文句子里的 as_of 必须被看见")
+
+    def test_an_english_token_only_counts_when_it_touches_chinese(self):
+        self.assertEqual(_en_leaks('结论以 live 期为准'), ["live"])
+        self.assertEqual(_en_leaks('第 3 期 as_of 之前'), ["as_of"])
+        self.assertEqual(_en_leaks('<span class="pchip live">在场</span>'), [])
+        self.assertEqual(_en_leaks('心跳 alive 了'), [])
+        self.assertEqual(_en_leaks('SELECT as_of FROM orch_runs 的结果'), [])
 
 
 if __name__ == "__main__":

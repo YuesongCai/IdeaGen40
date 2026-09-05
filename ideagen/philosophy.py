@@ -296,7 +296,7 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
     try:
         date.fromisoformat(str(card.get("as_of")))
     except (TypeError, ValueError):
-        bad.append("as_of 缺失或不是 YYYY-MM-DD")
+        bad.append("生效日期（as_of）缺失或不是 YYYY-MM-DD")
 
     if not str(card.get("source_utterance") or "").strip():
         bad.append("没有留下 PM 的原话——蒸馏结果必须能追回到那一句")

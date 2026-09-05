@@ -290,7 +290,7 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
             f"（各组合 {min(fracs) * 100:.0f}–{max(fracs) * 100:.0f}%，并不一致），"
             "未满窗口的收益与满窗口的混在同一列；只用跑满部分重算的结果见 "
             "horizon_completeness。")
-        parts.append("结论性判断以 live 期为准。")
+        parts.append("结论性判断以实跑的那几期为准。")
     regimes = (provenance or {}).get("periods_by_regime") or {}
     if len({r for r in regimes if r != "none"}) > 1:
         shown = "、".join(f"{k} {v} 期" for k, v in sorted(regimes.items()))
@@ -357,10 +357,10 @@ def _live_vs_backfill(positions: list[dict], classes: dict[str, str]) -> dict:
         "periods_needed": max(0, LIVE_PERIODS_BEFORE_READING - n_live_periods),
         "arms": arms,
         "note": (
-            f"按期次是否为当期实跑拆开。{LIVE_PERIODS_BEFORE_READING} 期以下的 live "
+            f"按期次是否为当期实跑拆开。{LIVE_PERIODS_BEFORE_READING} 期以下的实跑"
             f"列不作数——一期就是一个月一个市场里的几条持仓，它的胜率是关于那个月的"
-            f"事实。对按 exploratory 注册的组合（如 ev_rank），合并列跨越了挑出这条规则时"
-            f"看过的期次，只有 live 列才是检验；对 control 与原有的组合，合并列本身就是"
+            f"事实。对按探索类（exploratory）注册的组合（如 ev_rank），合并列跨越了挑出这条规则时"
+            f"看过的期次，只有实跑列才是检验；对照组与原有的组合，合并列本身就是"
             f"它们的记录。"),
     }
 
@@ -601,11 +601,12 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
             "供出大半个顶格分位，那张表报的就成了日历。顶格分位与同期基准并列，"
             "因为「排序有效」和「跑赢指数」是两个结论，合成一个数会把它们混掉。"),
         "provenance_warning": (
-            "这条排序是在看过这些期次的结果之后才被挑出来检验的（试过 grade 与"
-            "期望值两种，grade 不排序）。因此上表对这次搜索是样本内的，只够支持"
-            "「值得往前跑一段看看」，不足以支持「已确认有效」——这正是 Jon "
-            "2026-08-18 提的 multiple testing。ev_rank 按 exploratory 注册，"
-            "它的 live 期次才是证据。"),
+            "这条排序是在看过这些期次的结果之后才被挑出来检验的（试过两种排法："
+            "按评级（grade）和按期望值，评级那种排不出结果）。因此上表对这次搜索"
+            "是样本内的，只够支持「值得往前跑一段看看」，不足以支持「已确认有效」"
+            "——试的次数一多，总会有一种看起来赢了，这就是多重检验"
+            "（multiple testing）。期望值排序按探索类注册，"
+            "只有它当期实跑的那几期才算证据。"),
     }
 
 
@@ -750,13 +751,14 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
             "——近几期还没有那么长的后续行情。未满窗口的收益被算进同一列，"
             "所以那一列不是一个 30 天收益。各组合的满窗口占比还不相同，"
             "因此「两个组合被同样截断、截断会抵消」这个前提在本次并不成立。"
-            "mean_return_full_horizon_pct 是只用跑满的那部分重算的结果——"
+            "另给一列只用跑满的那部分重算（mean_return_full_horizon_pct）——"
             "它与表中那一列分歧很大（有的组合从正翻到负、名次几乎倒转），"
             "但它的样本是原本就不大的样本的两成，所以这不是「真正的排名」，"
             "是这张表按当前样本无法定夺。两个数都给，判定各自带自己的下界。"
             "要排名就是在做比较，所以面板实际会做的那个比较——相对对照组合 "
-            f"{CONTROL}——单独给出 vs_control_full_horizon_pct 及其合并下界；"
-            "顶层 full_horizon_verdict 说的只是该均值与零的关系，不可拿来排名。"),
+            f"{CONTROL}——单独给出一列及其合并下界（vs_control_full_horizon_pct）；"
+            "顶层那个判定（full_horizon_verdict）说的只是该均值与零的关系，"
+            "不可拿来排名。"),
     }
 
 
@@ -918,16 +920,17 @@ def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
             "把每笔持仓与其主题的指示 ETF 在同一持有窗口内比较。"
             f"对照组合 {CONTROL} 不做任何挑选，所以它相对指示标的的超额是"
             "「候选池」带来的；各组合的超额都含有这一部分，挑选本身只能记在"
-            "excess_over_control_pct 上——那一列有它自己的下界与判定"
-            "（mde_over_control_pct / verdict_over_control），顶层 verdict "
-            "说的是相对指示标的那一列，两者不可混用。"
-            "verdict_over_control 有三态：not_ruled_out（变动越过下界，值得盯）、"
-            "no_edge_detected（样本已够检出预注册的 2 个百分点优势，而它没有出现"
-            "——这是「没看出优势」，不是「还看不出来」）、underpowered"
-            "（样本还不够，n_needed_for_edge 给出需要多少笔）。"
-            "no_edge_detected 额外要求配对检验也判定该组合 powered："
+            "「相对对照」那一列上（excess_over_control_pct）——它有自己的下界"
+            "与判定（mde_over_control_pct / verdict_over_control），顶层判定说的"
+            "是相对指示标的那一列，两者不可混用。"
+            "「相对对照」的判定就是表里那三个徽标："
+            "「未被排除」（not_ruled_out，变动越过下界，值得盯）、"
+            "「没看出优势」（no_edge_detected，样本已够检出预注册的 2 个百分点"
+            "优势，而它没有出现——是「没看出优势」，不是「还看不出来」）、"
+            "「样本不足」（underpowered，还需多少笔见 n_needed_for_edge）。"
+            "判成「没看出优势」还额外要求配对检验也认为这个组合的样本够了："
             "本层的下界把持仓当独立样本，而它们共享期次与持有窗口，"
-            "只能用来否定；肯定「本该看见」需要配对检验按 n_eff 折算后的判断。"
+            "只能用来否定；肯定「本该看见」需要配对检验按有效独立样本折算后的判断。"
             + _layers_note()),
     }
 

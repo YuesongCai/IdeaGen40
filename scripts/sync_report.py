@@ -86,7 +86,7 @@ def main() -> int:
                            cwd=ROOT, capture_output=True, text=True).stdout.strip()
     mark = local_mark_date()
 
-    print(f"本地      HEAD={head}  未推={ahead}  账本计价到 {mark}")
+    print(f"本地      HEAD={head}  未推={ahead}  组合计价到 {mark}")
     print(f"origin/main = {origin}")
 
     # `healthz` reports a fingerprint of the node's own source, not a commit, so
@@ -125,7 +125,7 @@ def main() -> int:
             n_books = len(st.get("books") or [])
             d = book_date(st)
         except Exception as e:  # noqa: BLE001 — see above
-            print(f"{label:22s} 代码指纹={fp}  账本读不到({type(e).__name__})")
+            print(f"{label:22s} 代码指纹={fp}  组合读不到({type(e).__name__})")
             ok = False
             continue
         if n_books == 0:
@@ -134,10 +134,10 @@ def main() -> int:
             # on a decision, not a sync failure — calling it one every tick
             # would bury the failures that are real.
             print(f"{label:22s} 指纹={fp} ({files}文件)  "
-                  "无账本（RDS 未迁账本表，非同步问题）")
+                  "无组合（RDS 未迁组合表，非同步问题）")
             continue
         same = "✅" if d == mark else "⚠️ 落后"
-        print(f"{label:22s} 指纹={fp} ({files}文件)  账本={d} {same}")
+        print(f"{label:22s} 指纹={fp} ({files}文件)  组合={d} {same}")
         if d != mark:
             ok = False
     return 0 if ok else 1

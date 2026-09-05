@@ -292,7 +292,7 @@ def data_leg(st: dict, dry_run: bool, force: bool) -> dict:
     fp = content_fingerprint()
     out["fingerprint"] = fp
     if not force and st.get("data_fingerprint") == fp:
-        out.update(action="none", ok=True, detail="账本与运行记录都没变")
+        out.update(action="none", ok=True, detail="组合与运行记录都没变")
         return out
     if dry_run:
         out.update(action="would-publish", ok=True, detail="内容有变，会发布快照")

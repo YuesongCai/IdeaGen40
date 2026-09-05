@@ -175,6 +175,19 @@ def main(argv: list[str]) -> int:
         time.sleep(8)
     eip = ve("vpc", "AllocateEipAddress", "--BillingType", "3",
              "--Bandwidth", "5", "--Name", f"{args.name}-eip")["Result"]
+    # A freshly allocated address is not yet associable. Going straight to
+    # Associate returns InvalidEip.InvalidStatus and leaves an instance built
+    # and unreachable, with the address orphaned — the deploy reports failure
+    # after the expensive part already succeeded.
+    for _ in range(30):
+        got = ve("vpc", "DescribeEipAddresses", "--AllocationIds.1",
+                 eip["AllocationId"])["Result"]["EipAddresses"]
+        if got and got[0].get("Status") == "Available":
+            break
+        time.sleep(4)
+    else:
+        raise SystemExit(f"公网地址 {eip['EipAddress']} 迟迟不可用，"
+                         f"实例 {iid} 已建好，手动绑定即可")
     ve("vpc", "AssociateEipAddress", "--AllocationId", eip["AllocationId"],
        "--InstanceId", iid, "--InstanceType", "EcsInstance")
     print(f"  公网 {eip['EipAddress']}")

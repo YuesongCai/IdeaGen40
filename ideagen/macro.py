@@ -701,6 +701,75 @@ def band_sigma_pct(con, code: str, as_of: str, months: float,
     return max(implied, realised_pct), meta
 
 
+def state_block(con, as_of: str) -> dict[str, Any]:
+    """The macro layer, as numbers a page can render.
+
+    It is here rather than in the panel because `web/dash.html` is edited by
+    several sessions at once and a display-only change is not worth the risk of
+    landing on top of someone's unfinished work. Putting the block in the state
+    means whoever renders next can pick it up without anyone touching that file.
+
+    Deliberately without verdicts. `regime` returns legs and no score for the
+    reason stated in `regime`; the positioning column reports the *link*
+    beside every number because a beta relationship and an identity are not the
+    same claim; and both the applied and the counterfactual crowding score are
+    carried, because "would this switch change anything" is the question this
+    block exists to let someone answer from data.
+    """
+    # No DDL here. `state_block` is on the read path — `/api/state` is polled
+    # every minute by every open tab — and `ensure_schema` issues CREATE TABLE,
+    # which takes a write lock on a WAL database that several processes are
+    # already writing. Making the panel's own document contend for a write lock
+    # to answer a read is how a page becomes intermittently slow for reasons
+    # nobody can reproduce. Creating the table belongs to `refresh` and the CLI;
+    # a reader that finds it missing says so and moves on.
+    try:
+        con.execute("SELECT 1 FROM macro_surprise_stats LIMIT 1").fetchone()
+    except Exception:                            # noqa: BLE001
+        return {"available": False,
+                "why": "还没有拟合过误差分布——先跑 ideagen macro refresh"}
+
+    d = as_of
+    window = [(date.fromisoformat(d) - timedelta(days=i)).isoformat()
+              for i in range(13, -1, -1)]
+
+    releases = []
+    for r in window_surprises(con, window):
+        releases.append({"date": r["date"], "label": r["label"],
+                         "kind": r["kind"], "actual": r["actual"],
+                         "estimate": r["estimate"], "z": r["z"],
+                         "why": r["why"], "impact": r.get("impact")})
+
+    positioning = []
+    for code in sorted(set(COT_DIRECT) | set(COT_PROXY)):
+        v, meta = positioning_crowding(con, code, d)
+        positioning.append({"code": code, "crowding": v,
+                            "contract": meta.get("contract"),
+                            "link": meta.get("link"),
+                            "as_of": meta.get("cot_date"),
+                            "lag_days": meta.get("lag_days"),
+                            "note": meta.get("note")})
+
+    fits = {r["status"]: r["n"] for r in db.q(
+        con, "SELECT status, COUNT(*) n FROM macro_surprise_stats"
+             " WHERE upto=(SELECT MAX(upto) FROM macro_surprise_stats)"
+             " GROUP BY status")}
+
+    return {
+        "available": True,
+        "as_of": d,
+        "flags": flags(),
+        "flags_note": ("三个都是打分/模型输入，默认关；关着的时候仍然记录反事实，"
+                       "所以开关什么时候拍都有数可看。"),
+        "regime": regime(con, d),
+        "releases": releases,
+        "settled_with_z": sum(1 for r in releases if r["z"] is not None),
+        "positioning": positioning,
+        "surprise_fit": {"series": fits, "min_obs": MIN_OBS,
+                         "min_reaction_z": MIN_REACTION_Z},
+    }
+
+
 # ---------------------------------------------------------------- regime record
 #: Each leg is (event_id prefix, label, direction). `direction` is +1 when a
 #: higher reading means a friendlier tape and -1 when it means a rougher one, so

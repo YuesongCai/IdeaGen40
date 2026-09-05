@@ -1031,6 +1031,19 @@ def state(con=None, p=None) -> dict[str, Any]:
         ") recent) "
         "ORDER BY as_of DESC, run_id DESC, feed ASC")]
 
+    # -- the macro layer ---------------------------------------------------
+    # Here rather than only in `payload.build`: that one feeds the legacy report
+    # at /legacy, not this document, so a block added there reaches a page
+    # nobody opens while the panel's own state does not have it. Both call
+    # `macro.state_block`, so there is one implementation to keep true.
+    try:
+        from . import macro as _macro
+        _as_of = ((out.get("weekly") or {}).get("as_of")
+                  or config.today_hkt().isoformat())
+        out["macro"] = _macro.state_block(con, _as_of)
+    except Exception as e:  # noqa: BLE001 — a new block must not take the page down
+        out["macro"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
+
     # -- which periods have a browsable corpus ----------------------------
     # feed_runs only records a *fetch*. A week that reused an already-ingested
     # corpus (2026-08-26) registers no corpus row at all, yet its documents are

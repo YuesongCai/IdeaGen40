@@ -38,8 +38,6 @@ ALLOW = {
     "GEN_PATH": "生成方式 → 执行路径；test_glossary 对着注册表核它",
     "GEN_ORDER": "生成方式的展示顺序与说明，必须手写（中文名和例子推不出来）；"
                  "test_glossary 对着注册表核它，缺一条会被画成「PM 注入」",
-    "CTL": "对照组名单，面板据此区分基准与主策略；"
-           "它是 role=='control' 的镜像，随 SEL_META 一起核",
 }
 
 

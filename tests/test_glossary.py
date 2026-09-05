@@ -301,6 +301,51 @@ class GlossaryGate(unittest.TestCase):
             + "\n往 web/dash.html 的 SEL_META 里加一行："
               "[键名, 中文名, 主策略/常驻探索/对照, 短说明, 长说明]")
 
+    def test_panel_and_registry_agree_on_what_each_selector_is_for(self):
+        """前面几条只查「在不在」，查不出**两边都在、但说的不是一回事**。
+
+        2026-09-05 就有一条：`generated_carl_constraint` 在后端注册成
+        `role="primary"`，而面板 `SEL_META` 一直标着「对照」。它和紧挨着定义的
+        `generated_ai_native`（`control`）走同一个 `_pick`，`_pick` 的注释自己
+        写着这两条是配对量尺、唯一差异是想法来源——复制粘贴笔误。十二条臂就
+        这一条两个来源对不上，而在此之前没有任何东西对拉过它们。
+
+        后果不是显示错字：**任何按 role 分组的地方，都把一把尺子算进了被量的
+        东西里**——拿对照组当主策略，等于用尺子去证明尺子。
+
+        「从注册表取」只能解决镜像跟不上，解决不了注册表自己写错；那需要第二个
+        来源。这里就是那第二个来源。
+        """
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from ideagen import strategy
+        import ideagen.strategies                      # noqa: F401
+        html = (ROOT / "web" / "dash.html").read_text(encoding="utf-8")
+        block = re.search(r"var SEL_META=\[.*?\n\];", html, re.S)
+        self.assertIsNotNone(block, "dash.html 里找不到 SEL_META")
+        # SEL_META 每行：[键名, 中文名, 主策略/常驻探索/对照, ...]
+        meta = dict(re.findall(r"\['([a-z0-9_]+)','[^']*','([^']*)'", block.group()))
+        ROLE_ZH = {"control": "对照", "baseline": "对照",
+                   "primary": "主策略", "exploratory": "常驻探索"}
+        arms = strategy.available("idea_selector")
+        self.assertTrue(arms, "读不到任何 idea_selector——这条检查作废，不是通过")
+        bad = []
+        for a in sorted(arms, key=lambda x: x["name"]):
+            name, role = a["name"], a.get("role")
+            zh = meta.get(name)
+            if zh is None:
+                continue            # 缺失由上面那条「有没有中文名」负责
+            want = ROLE_ZH.get(role)
+            if want is not None and zh != want:
+                bad.append(f"{name}: 注册表 role={role}（应显示「{want}」）"
+                           f"，面板 SEL_META 写的是「{zh}」")
+        self.assertFalse(
+            bad,
+            "同一条策略在两个来源里身份不同，按 role 分组的地方会把对照组"
+            "当成主策略（用尺子证明尺子）：\n  " + "\n  ".join(bad)
+            + "\n改哪一边取决于它到底是什么："
+              "配对量尺（generated_*、buy_all、random_pick、mom_21）应是 control。")
+
     def test_every_registered_method_has_an_execution_path_on_the_panel(self):
         """漏一条不会报错——只会让「执行路径 纯代码 9 种」这排数字悄悄少数。
 

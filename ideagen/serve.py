@@ -728,11 +728,26 @@ a{{display:inline-block;margin-top:18px;color:#174b35;font-weight:600}}
         "frame-ancestors 'none'"
     )
 
+    #: `same-origin`, not `no-referrer`. `no-referrer` looks like the stricter
+    #: choice and is the reason the login form could not be used at all from
+    #: outside this machine. Per Fetch, a form POST under `no-referrer` is sent
+    #: with `Origin: null` and no `Referer` at all — so the app destroyed both
+    #: of the strong signals `_same_origin` checks first, and the whole
+    #: same-origin decision came to rest on `Sec-Fetch-Site`, the one header of
+    #: the three that an intermediary is free to drop. It survives the hop to
+    #: 127.0.0.1 and did not survive the hop to the public IP: the same browser
+    #: with the same password got 401 locally and 403 on the cloud node, and
+    #: the 403 read `cross-origin request rejected`, which describes the
+    #: symptom and hides the cause. `same-origin` sends a real Origin and
+    #: Referer to ourselves and still sends nothing to anyone else, so the
+    #: check rests on headers the browser guarantees rather than on one a
+    #: middlebox may strip. The Olive OAuth callback keeps `no-referrer` — an
+    #: authorization code in a URL is exactly what a referrer must not carry.
     def _security_headers(self) -> None:
         self.send_header("Content-Security-Policy", self.CSP)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.send_header(

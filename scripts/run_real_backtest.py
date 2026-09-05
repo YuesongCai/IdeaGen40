@@ -394,6 +394,26 @@ def _benchmark_series(con, points: list[dict]) -> tuple[float | None, float | No
     return (px[-1] / px[0] - 1) * 100, backtest.realized_vol_pct(px)
 
 
+SHELF_BENCHMARK = "SHELF_EW"
+
+
+def _shelf_series(con, points: list[dict]) -> dict:
+    """The book's own shelf, equal-weighted, over exactly the curve's span.
+
+    The second sin this repository was still carrying: every excess number was
+    computed against SPY, and SPY is not the control group for a shelf of
+    sector, commodity, rates and currency ETFs. Beating it can be had by holding
+    a calmer universe in a rising tape; only beating the shelf is evidence that
+    selection did anything. Both are kept — the client's alternative and the
+    picker's control are different questions — but the second one had no number
+    at all until now.
+    """
+    if not points:
+        return {}
+    ds = [p["d"] for p in points]
+    return backtest.shelf_equal_weight_series(con, min(ds), max(ds))
+
+
 def _ev_bucket_of(con, days: list):
     """Map a backtest position to the expectation quintile of its own period."""
     import bisect as _b
@@ -439,7 +459,8 @@ def _posthoc_arms() -> list[str]:
 
 
 def _tearsheet(con, points: list[dict], positions: list[dict],
-               paired: dict, horizon_days: int) -> dict:
+               paired: dict, horizon_days: int,
+               shelf: dict | None = None) -> dict:
     """The institutional performance record, built from the same daily curve.
 
     Everything above this line answers "did arm A pick better than arm B".
@@ -476,6 +497,7 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
                      "ORDER BY d", (BENCHMARK, lo, hi))
     bd = [r["d"] for r in rows]
     bc = [r["close"] for r in rows]
+    shelf = shelf or backtest.shelf_equal_weight_series(con, lo, hi)
 
     paired_t = {name: (blk.get("t_eff"), max(1, int(blk.get("n_pairs") or 1) - 1))
                 for name, blk in (paired or {}).items()
@@ -497,6 +519,9 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
     rep = perf.compare_arms(
         curves, bench_dates=bd, bench_closes=bc,
         benchmark=BENCHMARK.split(".")[-1],
+        alt_bench_dates=shelf.get("dates"),
+        alt_bench_closes=shelf.get("closes"),
+        alt_benchmark=SHELF_BENCHMARK,
         rf_annual=config.RISK_FREE_ANNUAL,
         paired_t=paired_t or None,
         positions=positions, horizon_days=horizon_days,
@@ -554,7 +579,8 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
 
 
 def _exposure(points: list[dict], gap_days: float, horizon_days: int,
-              bench_pct: float | None, bench_vol: float | None = None) -> dict:
+              bench_pct: float | None, bench_vol: float | None = None,
+              shelf: dict | None = None) -> dict:
     """How much of the book was at risk, and what the curve means given that.
 
     A tranche portfolio ramps: the first period commits one slot of four, so the
@@ -582,6 +608,15 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
                else mean_inv * bench_pct)
     bench_ratio = (None if (bench_vol is None or not bench_vol or bench_pct is None)
                    else bench_pct / bench_vol)
+    # The shelf itself, equal-weighted: the control group for "did picking add
+    # anything". SPY answers a different question and cannot stand in for this
+    # one — see `_shelf_series`.
+    shelf_closes = (shelf or {}).get("closes") or []
+    shelf_pct = (round(shelf_closes[-1] - shelf_closes[0], 4)
+                 if len(shelf_closes) >= 3 else None)
+    shelf_vol = backtest.realized_vol_pct(shelf_closes) if shelf_closes else None
+    shelf_ratio = (None if (not shelf_vol or shelf_pct is None)
+                   else shelf_pct / shelf_vol)
     arms = {}
     for name, rows in sorted(by_arm.items()):
         ret = rows[-1]["equity"] - 100.0
@@ -596,6 +631,11 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
                 else round(ret / vol - bench_ratio, 4)),
             "excess_over_benchmark_pct": (None if bench_pct is None
                                           else round(ret - bench_pct, 4)),
+            "excess_over_shelf_pct": (None if shelf_pct is None
+                                      else round(ret - shelf_pct, 4)),
+            "return_per_vol_vs_shelf": (
+                None if not (vol and shelf_ratio is not None)
+                else round(ret / vol - shelf_ratio, 4)),
             "excess_over_exposure_pct": (None if beta_eq is None
                                          else round(ret - beta_eq, 4)),
             "max_drawdown_pct": round(min(r["drawdown"] for r in rows), 4)}
@@ -613,6 +653,12 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
         "benchmark_return_per_vol": (None if bench_ratio is None
                                      else round(bench_ratio, 4)),
         "beta_equivalent_pct": None if beta_eq is None else round(beta_eq, 4),
+        "shelf_benchmark": SHELF_BENCHMARK,
+        "shelf_pct": shelf_pct,
+        "shelf_vol_pct": None if shelf_vol is None else round(shelf_vol, 4),
+        "shelf_return_per_vol": (None if shelf_ratio is None
+                                 else round(shelf_ratio, 4)),
+        "shelf_coverage": (shelf or {}).get("coverage"),
         "arms": arms,
         "instruments_without_daily_series": no_series,
         "note": (
@@ -629,7 +675,11 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
             "波动大不等于 beta 大，这两件事在这里正好指向相反方向，实测的那个才算数。）"
             "要判断有没有超额，优先看 tearsheet 的 alpha / information_ratio；"
             "其次 return_per_vol_vs_benchmark——它拿每个组合自己实现的净值波动做分母，"
-            "不假设任何 beta。"),
+            "不假设任何 beta。"
+            "另：2026-09-05 起同时给出货架等权对照（shelf_*）。SPY 回答的是"
+            "「客户不如去买股票指数」，而这些组合声称的是「选得比不选好」——"
+            "后者的对照组只能是同一张货架自己。两者都留着，因为它们是两个问题；"
+            "但判断选择力时以 excess_over_shelf_pct / return_per_vol_vs_shelf 为准。"),
     }
 
 
@@ -1309,14 +1359,15 @@ def main(argv: list[str]) -> int:
     ranking_power = _ranking_power(con, days, args.horizon_days)
     live_split = _live_vs_backfill(positions, classes)
     bench = _benchmark_series(con, points)
+    shelf_series = _shelf_series(con, points)
     exposure = _exposure(points, rep.gap_days, args.horizon_days,
-                         bench[0], bench[1])
+                         bench[0], bench[1], shelf=shelf_series)
     ranking_power["volatility_control"] = backtest.instrument_vol_gradient(
         con, positions, _ev_bucket_of(con, days))
     tear = _tearsheet(
         con, points, positions,
         {k: {kk: vv for kk, vv in vars(v).items()} for k, v in rep.paired.items()},
-        args.horizon_days)
+        args.horizon_days, shelf=shelf_series)
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",

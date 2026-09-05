@@ -45,6 +45,18 @@ reason:
      equals the replayed date. A pool assembled from any later batch would be
      hindsight wearing a stage-B costume.
 
+  5. *The tradable universe.* `universe.eligible(as_of=)` has existed for a while
+     to stop a July thesis being expressed through a product that arrived in
+     August, and the live runs call it. This module did not: `context_for` handed
+     generators the whole registry, and the rows it handed them did not even
+     carry `first_seen_d`, so calling the gate would have changed nothing — every
+     row was undated and undated rows are admitted by design. Two halves of one
+     mechanism, each correct, never connected. Now the rows carry the column and
+     the gate runs here too, with the admitted/excluded/undated counts on the
+     audit. This is the first sin ("survivorship") and the second ("look-ahead")
+     meeting in the same place: whether an instrument was on the shelf yet is
+     exactly the thing a backtest cannot be allowed to know.
+
 **One door in.** `context_for` is the only function that reads inputs, and every
 `RunContext` it builds is stamped so `run_period` can refuse one that came from
 anywhere else. Strategies get a frozen context with no database handle, exactly as
@@ -79,7 +91,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Sequence
 
-from . import config, db, ideas as ideas_mod, lexicon, strategy as strat
+from . import (config, db, ideas as ideas_mod, lexicon,
+               strategy as strat, universe as uni)
 from .sources import futu_px
 
 # ---------------------------------------------------------------------------
@@ -148,10 +161,16 @@ def _universe(con) -> list[dict[str, Any]]:
     `priceable` is carried through because an instrument that cannot be marked
     must never reach a book: marking it at cost inserts a free 0% return, which
     flatters whichever arm picked it.
+
+    `first_seen_d` is carried for the same class of reason and was missing for
+    longer: without it `universe.eligible(as_of=)` cannot exclude anything, so a
+    replayed period could express its thesis through a product that did not exist
+    that week. The gate reads this key by name; a row without it is admitted.
     """
     out: list[dict[str, Any]] = []
     for r in db.q(con, "SELECT key, name, kind, futu_code, olive_key, currency, "
-                       "       COALESCE(priceable,0) AS priceable, meta "
+                       "       COALESCE(priceable,0) AS priceable, meta, "
+                       "       first_seen_d "
                        "FROM instruments ORDER BY kind, key"):
         meta = db.jl(r["meta"], {}) or {}
         out.append({
@@ -159,6 +178,7 @@ def _universe(con) -> list[dict[str, Any]]:
             "kind": r["kind"] or "listed", "priceable": bool(r["priceable"]),
             "currency": r["currency"], "exposure": meta.get("exposure"),
             "vehicle": meta.get("vehicle"),
+            "first_seen_d": r["first_seen_d"],
             "futu_code": r["futu_code"], "olive_key": r["olive_key"],
         })
     return out
@@ -345,6 +365,11 @@ class Audit:
     topics_dropped: list[str] = field(default_factory=list)
     candidates_n: int = 0
     candidates_max_as_of: str | None = None
+    universe_n: int = 0
+    universe_excluded: int = 0
+    universe_undated: int = 0
+    universe_dropped_as_unlisted: int = 0
+    universe_max_first_seen: str | None = None
     calendar_n: int = 0
     calendar_actuals_stripped: int = 0
     model_port: bool = False
@@ -359,6 +384,10 @@ class Audit:
             bad.append(f"行情含 {self.price_max_d} 的收盘，晚于收盘钳制 {self.clamp}")
         if self.candidates_max_as_of and self.candidates_max_as_of > self.as_of:
             bad.append(f"候选含 {self.candidates_max_as_of} 的想法，晚于 {self.as_of}")
+        if (self.universe_max_first_seen
+                and self.universe_max_first_seen > self.as_of):
+            bad.append(f"可选标的里有 {self.universe_max_first_seen} 才上架的产品，"
+                       f"晚于 {self.as_of}")
         if self.topics_dropped:
             # Not a leak — a leak *caught*. Recorded so the count is visible.
             pass
@@ -394,7 +423,15 @@ def context_for(con, as_of: date, *,
     clamp = clamp_dates(as_of)
 
     corpus = _corpus(con, as_of, window)
-    universe = _universe(con)
+    # The universe is dated here, not left to the caller. The live path filters
+    # through `universe.eligible` before generation; a replay that skipped it was
+    # not replaying the live pipeline but a wider one, and the difference is a
+    # product that had not launched yet.
+    universe_all = _universe(con)
+    universe, universe_excluded = uni.eligible(universe_all, as_of=as_of)
+    universe_dating = uni.shelf_asof_coverage(universe)
+    dropped_unlisted = sum(1 for reason in universe_excluded.values()
+                           if "当期不存在" in str(reason))
     topic_rows, dropped = ((topics, []) if topics is not None
                            else _topics(con, as_of, top_n))
     cands = _candidates(con, as_of) if candidates is None else candidates
@@ -436,6 +473,15 @@ def context_for(con, as_of: date, *,
         candidates_n=len(cands),
         candidates_max_as_of=max((str(c.get("as_of") or "") for c in cands),
                                  default=None) or None,
+        universe_n=len(universe),
+        universe_excluded=len(universe_excluded),
+        universe_undated=universe_dating["undated"],
+        universe_dropped_as_unlisted=dropped_unlisted,
+        # Of what survived the gate. Anything later than `as_of` here means the
+        # gate did not fire, which `check()` treats as a leak rather than a note.
+        universe_max_first_seen=max(
+            (str(u.get("first_seen_d") or "") for u in universe),
+            default="") or None,
         calendar_n=len(cal), calendar_actuals_stripped=stripped,
         model_port=bool(allow_model and infer is not None))
     leaks = audit.check()
@@ -1152,6 +1198,90 @@ def realized_vol_pct(equities: Sequence[float], periods_per_year: int = 252
     if len(rets) < 2:
         return None
     return st.pstdev(rets) * (periods_per_year ** 0.5) * 100.0
+
+
+def shelf_equal_weight_series(con, start: str, end: str, *,
+                             codes: Sequence[str] | None = None,
+                             min_codes: int = 5) -> dict[str, Any]:
+    """A daily-rebalanced equal-weight index of the shelf itself, as a benchmark.
+
+    SPY is the wrong control for this book and always was. The shelf is sector,
+    commodity, rates and currency ETFs; an index of US large-cap equity answers
+    "would the client have been better off in stocks", which is a real question,
+    but it cannot answer the only question the arms are making a claim about —
+    **did picking beat not picking, inside the same universe**. Deutsche Bank's
+    "Seven Sins" makes the point with a dividend event study: benchmarked to the
+    broad market, dividend payers appear to drift up before the announcement;
+    benchmarked to dividend payers, the drift disappears. The drift was the
+    benchmark, not the event.
+
+    Measured on this repository's own data, the difference is not cosmetic. Over
+    the replay window (2024-08-07 → 2026-09-04) this index returned 23.6% a year
+    at 11.1% realised vol against SPY's 21.9% at 16.5%. An arm that clears SPY on
+    return can still be losing to its own shelf per unit of risk, and until this
+    series existed nothing in the report could say so.
+
+    Equal weight, rebalanced daily, over every code priced on both of a pair of
+    adjacent days — so a name that starts or stops being priced changes the
+    membership of the next step instead of injecting a fabricated jump. Days
+    carrying fewer than `min_codes` names are dropped rather than published: a
+    three-name average is not an index, and the failure mode worth preventing is
+    a thin day passing silently as a market observation.
+
+    One honest limit, which is the first sin rather than the sixth: the code list
+    is *today's* shelf. Anything delisted or dropped from the shelf is not in
+    `prices` at all, so this control is survivorship-flattered exactly the way
+    the paper's "survivor universe" is. The direction is knowable — departures
+    skew to poor performers, so the true past shelf returned less than this —
+    which makes this the *conservative* control to judge an arm against, and
+    makes the flattery an argument for the arm's honesty rather than against it.
+    `coverage` carries the counts so the caveat travels with the number.
+    """
+    args: list[Any] = [start, end]
+    sql = "SELECT d, code, close FROM prices WHERE close>0 AND d>=? AND d<=?"
+    if codes is not None:
+        keep = list(dict.fromkeys(codes))
+        if not keep:
+            return {"dates": [], "closes": [], "coverage": {"codes": 0}}
+        sql += " AND code IN (%s)" % ",".join("?" * len(keep))
+        args += keep
+    by_day: dict[str, dict[str, float]] = {}
+    for r in db.q(con, sql + " ORDER BY d", args):
+        by_day.setdefault(str(r["d"]), {})[str(r["code"])] = float(r["close"])
+    days = sorted(d for d, px in by_day.items() if len(px) >= min_codes)
+    if len(days) < 3:
+        return {"dates": [], "closes": [], "coverage": {
+            "codes": len({c for px in by_day.values() for c in px}),
+            "days_priced": len(by_day), "days_used": len(days),
+            "min_codes": min_codes}}
+    dates, closes = [days[0]], [100.0]
+    members: list[int] = []
+    for i in range(1, len(days)):
+        prev, cur = by_day[days[i - 1]], by_day[days[i]]
+        both = prev.keys() & cur.keys()
+        if len(both) < min_codes:
+            continue
+        step = sum(cur[c] / prev[c] - 1.0 for c in both) / len(both)
+        dates.append(days[i])
+        closes.append(closes[-1] * (1.0 + step))
+        members.append(len(both))
+    all_codes = {c for px in by_day.values() for c in px}
+    return {
+        "dates": dates,
+        "closes": [round(x, 6) for x in closes],
+        "coverage": {
+            "codes": len(all_codes),
+            "days_priced": len(by_day),
+            "days_used": len(dates),
+            "members_min": min(members) if members else 0,
+            "members_max": max(members) if members else 0,
+            "min_codes": min_codes,
+            "survivorship": (
+                "成分是今天仍在货架上的标的。已摘牌/已下架的名字根本不在 prices 里，"
+                "所以这条对照本身带幸存者偏差——方向已知：退出的名字通常更差，"
+                "真实的历史货架收益低于这条线，因此它是一条偏严的对照。"),
+        },
+    }
 
 
 def instrument_vol_gradient(con, positions: Sequence[dict[str, Any]],

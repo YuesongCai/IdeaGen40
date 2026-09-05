@@ -879,6 +879,9 @@ def tearsheet(dates: Sequence[str], equities: Sequence[float], *,
               bench_dates: Sequence[str] | None = None,
               bench_closes: Sequence[float] | None = None,
               benchmark: str = "SPY",
+              alt_bench_dates: Sequence[str] | None = None,
+              alt_bench_closes: Sequence[float] | None = None,
+              alt_benchmark: str = "",
               rf_annual: float = 0.0,
               periods_per_year: int = TRADING_DAYS) -> dict[str, Any]:
     """One arm's full record: absolute, relative, monthly grid.
@@ -887,6 +890,16 @@ def tearsheet(dates: Sequence[str], equities: Sequence[float], *,
     zipped by index silently pair a portfolio Tuesday with a benchmark Wednesday
     the first time one market has a holiday the other does not, and the resulting
     beta is wrong in a way no summary statistic reveals.
+
+    A second, optional benchmark is carried in `relative_alt` for one specific
+    reason: an index of US large-cap equity and an equal-weight index of this
+    book's own shelf answer different questions, and only the second one is about
+    picking. Against SPY an arm can look like alpha while it is merely holding a
+    lower-beta shelf in a rising market; against the shelf that story has to
+    survive its own universe. Both are reported rather than one being chosen,
+    because "would the client rather have held stocks" and "did selection add
+    anything" are both real questions and neither answer substitutes for the
+    other.
     """
     perf = performance(dates, equities, rf_annual=rf_annual,
                        periods_per_year=periods_per_year)
@@ -895,18 +908,32 @@ def tearsheet(dates: Sequence[str], equities: Sequence[float], *,
         "monthly": monthly_table(dates, equities),
         "relative": None,
     }
-    if bench_dates and bench_closes:
-        bmap = dict(zip(bench_dates, bench_closes))
+
+    def _against(bd: Sequence[str] | None, bc: Sequence[float] | None,
+                 name: str) -> tuple[dict[str, Any] | None, int]:
+        if not (bd and bc):
+            return None, 0
+        bmap = dict(zip(bd, bc))
         common = [d for d in dates if d in bmap]
-        if len(common) >= 4:
-            pe = {d: e for d, e in zip(dates, equities)}
-            pr = to_returns([pe[d] for d in common])
-            br = to_returns([bmap[d] for d in common])
-            rel = relative(pr, br, benchmark=benchmark, rf_annual=rf_annual,
-                           periods_per_year=periods_per_year)
-            out["relative"] = _clean(asdict(rel))
-            out["aligned_days"] = len(common)
-            out["unaligned_days"] = len(dates) - len(common)
+        if len(common) < 4:
+            return None, len(common)
+        pe = {d: e for d, e in zip(dates, equities)}
+        rel = relative(to_returns([pe[d] for d in common]),
+                       to_returns([bmap[d] for d in common]),
+                       benchmark=name, rf_annual=rf_annual,
+                       periods_per_year=periods_per_year)
+        return _clean(asdict(rel)), len(common)
+
+    rel_main, aligned = _against(bench_dates, bench_closes, benchmark)
+    if rel_main is not None:
+        out["relative"] = rel_main
+        out["aligned_days"] = aligned
+        out["unaligned_days"] = len(dates) - aligned
+    rel_alt, aligned_alt = _against(alt_bench_dates, alt_bench_closes,
+                                    alt_benchmark or "alt")
+    if rel_alt is not None:
+        out["relative_alt"] = rel_alt
+        out["aligned_days_alt"] = aligned_alt
     return out
 
 
@@ -930,6 +957,9 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
                  bench_dates: Sequence[str] | None = None,
                  bench_closes: Sequence[float] | None = None,
                  benchmark: str = "SPY",
+                 alt_bench_dates: Sequence[str] | None = None,
+                 alt_bench_closes: Sequence[float] | None = None,
+                 alt_benchmark: str = "",
                  rf_annual: float = 0.0,
                  paired_t: dict[str, tuple[float | None, int]] | None = None,
                  positions: Sequence[dict[str, Any]] | None = None,
@@ -955,13 +985,20 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
     for name, (ds, eq) in sorted(curves.items()):
         out["arms"][name] = tearsheet(
             ds, eq, bench_dates=bench_dates, bench_closes=bench_closes,
-            benchmark=benchmark, rf_annual=rf_annual,
-            periods_per_year=periods_per_year)
+            benchmark=benchmark,
+            alt_bench_dates=alt_bench_dates, alt_bench_closes=alt_bench_closes,
+            alt_benchmark=alt_benchmark,
+            rf_annual=rf_annual, periods_per_year=periods_per_year)
 
     if bench_dates and bench_closes:
         bp = performance(list(bench_dates), list(bench_closes),
                          rf_annual=rf_annual, periods_per_year=periods_per_year)
         out["benchmark_performance"] = _clean(asdict(bp))
+    if alt_bench_dates and alt_bench_closes:
+        out["alt_benchmark"] = alt_benchmark or "alt"
+        out["alt_benchmark_performance"] = _clean(asdict(performance(
+            list(alt_bench_dates), list(alt_bench_closes),
+            rf_annual=rf_annual, periods_per_year=periods_per_year)))
 
     sharpes = {n: (t["performance"] or {}).get("sharpe")
                for n, t in out["arms"].items()}
@@ -1020,18 +1057,41 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
 
     # The single most important sentence in the object, computed rather than
     # written: when every arm's Sharpe interval contains the benchmark's Sharpe,
-    # the table cannot rank anything and must say so before it is read.
-    # Separability has a direction, and collapsing it loses the only reading a
-    # PM cares about. Seen on the 2026-09-04 data: `mom_21`'s interval clears
-    # the benchmark's Sharpe — from *below*. A single "can_rank" flag went True
-    # on that, and the panel would have printed permission to rank on the
-    # strength of one arm being provably worse. Above and below are counted
-    # separately, and the headline is keyed to `beats_benchmark`, because
-    # "nothing here is shown to beat the index" is the sentence that survives
-    # being read in a hurry.
-    bs = (out.get("benchmark_performance") or {}).get("sharpe")
+    # the table cannot rank anything and must say so before it is read. The
+    # direction of that verdict, and why it is not one flag, is in `_separability`.
+    out["separability"] = _separability(
+        out["arms"], (out.get("benchmark_performance") or {}).get("sharpe"),
+        n_obs, benchmark)
+    # The same verdict against the book's own shelf. This is the one that speaks
+    # to selection: clearing SPY can be had by holding a calmer shelf in a rising
+    # tape, and an arm that clears SPY while its interval sits below the shelf's
+    # Sharpe has not been shown to have picked anything. Reported beside the
+    # first rather than replacing it — see `tearsheet`.
+    if out.get("alt_benchmark_performance"):
+        out["separability_vs_alt"] = _separability(
+            out["arms"], out["alt_benchmark_performance"].get("sharpe"),
+            n_obs, out.get("alt_benchmark") or "alt", alt=True)
+    return out
+
+
+def _separability(arms: dict[str, Any], bs: float | None, n_obs: int,
+                  label: str, *, alt: bool = False) -> dict[str, Any]:
+    """Which arms are separable from a benchmark, and in which direction.
+
+    Separability has a direction, and collapsing it loses the only reading a PM
+    cares about. Seen on the 2026-09-04 data: `mom_21`'s interval clears the
+    benchmark's Sharpe — from *below*. A single `can_rank` flag went True on
+    that, and the panel would have printed permission to rank on the strength of
+    one arm being provably worse. Above and below are counted separately, and
+    the headline is keyed to `beats_benchmark`, because "nothing here is shown
+    to beat the index" is the sentence that survives being read in a hurry.
+
+    One function rather than two because a second benchmark whose verdict is
+    computed by a copy of this loop is a verdict that will disagree with the
+    first one the day somebody edits a comparison in only one of them.
+    """
     overlap, above, below, measurable = [], [], [], []
-    for n, t in out["arms"].items():
+    for n, t in arms.items():
         ci = (t["performance"] or {}).get("sharpe_ci95")
         if not ci or bs is None:
             continue
@@ -1042,22 +1102,24 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
             below.append(n)
         else:
             overlap.append(n)
+    who = f"基准（{label}）" if alt else "基准"
     if not measurable:
         note = ("没有任何组合算得出夏普置信区间（样本过短或波动为 0），"
                 "可分性无从判断——这不等于可以排名。")
     else:
         note = (f"{len(overlap)}/{len(measurable)} 条可测组合的夏普 95% 置信区间"
-                f"覆盖了基准的夏普（{bs:+.2f}）——覆盖就意味着这段样本分不开它和基准。"
-                f"被分开的有 {len(above)} 条在基准之上、{len(below)} 条在基准之下。")
+                f"覆盖了{who}的夏普（{bs:+.2f}）——覆盖就意味着这段样本分不开它和{who}。"
+                f"被分开的有 {len(above)} 条在{who}之上、{len(below)} 条在{who}之下。")
         if not above:
-            note += "没有任何一条被证明跑赢基准。"
-        if len(measurable) < len(out["arms"]):
-            note += (f" 另有 {len(out['arms']) - len(measurable)} 条算不出区间，"
+            note += f"没有任何一条被证明跑赢{who}。"
+        if len(measurable) < len(arms):
+            note += (f" 另有 {len(arms) - len(measurable)} 条算不出区间，"
                      f"未计入判断。")
-    out["separability"] = {
-        "n_arms": len(out["arms"]),
+    return {
+        "n_arms": len(arms),
         "n_measurable": len(measurable),
         "n_days": n_obs,
+        "benchmark": label,
         "benchmark_sharpe": bs,
         "arms_whose_ci_contains_benchmark": sorted(overlap),
         "arms_above_benchmark": sorted(above),
@@ -1069,7 +1131,6 @@ def compare_arms(curves: dict[str, tuple[Sequence[str], Sequence[float]]], *,
         "can_rank": bool(above),
         "note": note,
     }
-    return out
 
 
 def _dw(s: str) -> int:
@@ -1114,14 +1175,24 @@ def print_comparison(rep: dict[str, Any]) -> None:
     bp = rep.get("benchmark_performance") or {}
     any_perf = next(iter(arms.values()))["performance"]
     print("\n" + "=" * 100)
+    alt_sep = rep.get("separability_vs_alt") or {}
+    alt_bench = rep.get("alt_benchmark") or ""
     print(f"组合业绩表 · {any_perf.get('from_d')} → {any_perf.get('to_d')} · "
-          f"{sep.get('n_days', '?')} 个交易日 · 基准 {bench} · "
-          f"无风险 {rep.get('rf_annual', 0)*100:.2f}%")
+          f"{sep.get('n_days', '?')} 个交易日 · 基准 {bench}"
+          + (f" / {alt_bench}（货架等权）" if alt_bench else "")
+          + f" · 无风险 {rep.get('rf_annual', 0)*100:.2f}%")
     print("=" * 100)
     if not sep.get("beats_benchmark", sep.get("can_rank", True)):
         print(f"⚠ 本表不能用来排名——没有任何一条被证明跑赢基准。{sep.get('note','')}")
     else:
         print(f"  {sep.get('note','')}")
+    # The second verdict is printed, not merely stored. SPY answers "should the
+    # client have bought stocks instead"; the shelf answers "did picking beat not
+    # picking", and only the second one is a claim these arms are making. A
+    # number computed into a payload nobody prints is a number nobody has.
+    if alt_sep:
+        mark = ("⚠ " if not alt_sep.get("beats_benchmark") else "  ")
+        print(f"{mark}对照自己的货架（{alt_bench}，等权）：{alt_sep.get('note','')}")
     if any_perf.get("ann_return_blocked"):
         print(f"⚠ {any_perf['ann_return_blocked']}")
 
@@ -1131,13 +1202,18 @@ def print_comparison(rep: dict[str, Any]) -> None:
           + _pad("水下占比%", 10) + _pad("最差单日%", 10) + _pad("胜日率%", 9))
     rows = sorted(arms.items(),
                   key=lambda kv: -(kv[1]["performance"].get("cum_return") or -9))
+    def _bench_row(label: str, b: dict[str, Any]) -> None:
+        print("  " + _pad(label, 26, False)
+              + _f(b.get('cum_return'),10,100) + _f(b.get('ann_vol'),10,100,sign=False)
+              + _f(b.get('max_drawdown'),10,100)
+              + _f(b.get('frac_underwater'),10,100,dp=0,sign=False)
+              + _f(b.get('worst_day'),10,100)
+              + _f(b.get('pct_positive_days'),9,100,dp=0,sign=False))
+
     if bp:
-        print("  " + _pad(f"{bench}（基准）", 26, False)
-              + _f(bp.get('cum_return'),10,100) + _f(bp.get('ann_vol'),10,100,sign=False)
-              + _f(bp.get('max_drawdown'),10,100)
-              + _f(bp.get('frac_underwater'),10,100,dp=0,sign=False)
-              + _f(bp.get('worst_day'),10,100)
-              + _f(bp.get('pct_positive_days'),9,100,dp=0,sign=False))
+        _bench_row(f"{bench}（基准）", bp)
+    if rep.get("alt_benchmark_performance"):
+        _bench_row(f"{alt_bench}（货架等权）", rep["alt_benchmark_performance"])
     for n, t in rows:
         p = t["performance"]
         print("  " + _pad(n, 26, False) + _f(p.get('cum_return'),10,100)

@@ -731,10 +731,35 @@ class ArmScore:
     error: str | None = None
     window_complete_frac: float | None = None
     bias_if_zero_filled: float | None = None
+    #: The same picks counted once per instrument per period instead of once per
+    #: idea row. `n_scored` counts rows, and four generators proposing GLD is
+    #: four rows carrying one price series — so the row count is not a count of
+    #: observations, and every t-statistic built on it is overstated by roughly
+    #: its square root. Both numbers are kept because they answer different
+    #: questions: row-weighted is what the book earns when duplicates are let to
+    #: vote on size, instrument-weighted is what an equal-weight basket of the
+    #: distinct names earns, and it is the one the statistics have to use.
+    n_instrument_periods: int = 0
+    hit_rate_by_instrument: float | None = None
+    mean_by_instrument: float | None = None
 
     @property
     def coverage(self) -> float | None:
         return None if not self.n_chosen else round(self.n_scored / self.n_chosen, 3)
+
+    @property
+    def duplication(self) -> float | None:
+        """Rows per distinct instrument-period. 1.0 means no duplicates.
+
+        It is not noise that this differs per arm: a control drawing uniformly
+        from the pool lands near 1.0 while a hard ranker concentrates on the few
+        names every generator proposed, so the arms with the *largest* apparent
+        n have the *smallest* effective one — the opposite of how the numbers
+        read side by side.
+        """
+        if not self.n_instrument_periods:
+            return None
+        return round(self.n_scored / self.n_instrument_periods, 2)
 
 
 def _score_arm(name: str, spec: dict[str, Any],
@@ -749,6 +774,7 @@ def _score_arm(name: str, spec: dict[str, Any],
     a = ArmScore(name=name, version=str(spec.get("version") or "?"),
                  role=str(spec.get("role") or "?"))
     rets: list[float] = []
+    by_instrument: list[float] = []
     complete = 0
     for as_of, v, outs in periods:
         a.calls += v.calls
@@ -768,11 +794,28 @@ def _score_arm(name: str, spec: dict[str, Any],
                 complete += 1 if o.window_complete else 0
             else:
                 a.unknown[o.status] = a.unknown.get(o.status, 0) + 1
+        # One observation per instrument, not per row: duplicates of the same
+        # name share a price series, so averaging them first is what stops the
+        # count from claiming independence it does not have.
+        per_code: dict[str, list[float]] = {}
+        for i in chosen:
+            o = outs.get(i)
+            if o is not None and o.ok:
+                per_code.setdefault(str(o.code or i), []).append(o.ret)  # type: ignore[arg-type]
+        dedup = [st.mean(v) for v in per_code.values()]
+        by_instrument.extend(dedup)
         a.per_period[as_of] = {
             "n_chosen": len(chosen), "n_scored": len(pr),
+            "n_instruments": len(dedup),
             "mean": (round(st.mean(pr), 6) if pr else None),
+            "mean_by_instrument": (round(st.mean(dedup), 6) if dedup else None),
         }
     a.n_scored = len(rets)
+    a.n_instrument_periods = len(by_instrument)
+    if by_instrument:
+        a.mean_by_instrument = round(st.mean(by_instrument), 6)
+        a.hit_rate_by_instrument = round(
+            sum(1 for x in by_instrument if x > 0) / len(by_instrument), 3)
     if rets:
         a.mean = round(st.mean(rets), 6)
         a.median = round(st.median(rets), 6)
@@ -1324,14 +1367,22 @@ def print_sweep(rep: Sweep) -> Sweep:
         print(f"  inputs_sha {a0.inputs_sha}   越界项 {a0.leaks or '无'}")
 
     print(f"\n【各组表现】控制组 = {rep.control}")
-    print(f"  {'策略':<14}{'角色':<12}{'选中':>5}{'可评分':>6}{'覆盖':>7}"
-          f"{'胜率':>7}{'均值':>10}{'中位':>10}{'调用':>5}")
+    print("  「想法行」是被选中的候选条数，「标的×期」是其中不重复的标的数——"
+          "四种生成方式提同一只标的就是四行、一条价格序列。")
+    print("  统计要用后者：胜率与均值按标的×期给，重复倍数越大，"
+          "前面那个 n 越虚。")
+    print(f"  {'策略':<14}{'角色':<12}{'想法行':>6}{'可评分':>6}"
+          f"{'标的×期':>8}{'重复':>6}{'胜率':>7}{'均值':>10}"
+          f"{'行加权均值':>11}{'调用':>5}")
     for name, a in sorted(rep.arms.items(),
                           key=lambda kv: (kv[0] != rep.control, kv[0])):
-        print(f"  {name:<14}{a.role:<12}{a.n_chosen:>5}{a.n_scored:>6}"
-              f"{(f'{a.coverage*100:.0f}%' if a.coverage is not None else '—'):>7}"
-              f"{(f'{a.hit_rate*100:.0f}%' if a.hit_rate is not None else '—'):>7}"
-              f"{_pct(a.mean):>10}{_pct(a.median):>10}{a.calls:>5}")
+        dup = a.duplication
+        print(f"  {name:<14}{a.role:<12}{a.n_chosen:>6}{a.n_scored:>6}"
+              f"{a.n_instrument_periods:>8}"
+              f"{(f'{dup:.1f}x' if dup is not None else '—'):>6}"
+              f"{(f'{a.hit_rate_by_instrument*100:.0f}%'
+                  if a.hit_rate_by_instrument is not None else '—'):>7}"
+              f"{_pct(a.mean_by_instrument):>10}{_pct(a.mean):>11}{a.calls:>5}")
         if a.error:
             print(f"    ! {a.error[:70]}")
 

@@ -1223,6 +1223,22 @@ def main(argv: list[str]) -> int:
                                 else round(a.mean * 100.0, 4)),
             "median_return_pct": (None if a.median is None
                                   else round(a.median * 100.0, 4)),
+            # `n_scored` counts idea rows, and four generators proposing GLD
+            # is four rows over one price series — so it is not a count of
+            # observations, and every t-statistic resting on it is overstated
+            # by about its square root. On the six real periods `ev_rank`'s 48
+            # rows are 16 instrument-periods (two names in four of the six),
+            # while `random_pick` is 1.1x because a uniform draw does not
+            # concentrate on the names every generator liked: the arms with the
+            # largest apparent n have the smallest effective one. Deduping also
+            # moves the ranking — `omega_strict` goes +1.74% to +0.25% — so
+            # this is not a precision footnote.
+            "n_instrument_periods": a.n_instrument_periods,
+            "duplication": a.duplication,
+            "hit_rate_by_instrument": a.hit_rate_by_instrument,
+            "mean_return_by_instrument_pct": (
+                None if a.mean_by_instrument is None
+                else round(a.mean_by_instrument * 100.0, 4)),
             "window_complete_frac": a.window_complete_frac,
             "unknown": a.unknown,
         } for name, a in rep.arms.items()},
@@ -1274,12 +1290,18 @@ def main(argv: list[str]) -> int:
     print(f"\n回测已落库 {backtest_id}")
     print(f"  {len(points)} 个净值点 · {len(positions)} 条持仓 · "
           f"{rep.calls} 次模型调用（必须是 0）")
+    print("  胜率与均值按【标的×期】给：同一只标的被多个生成臂提出就是多条想法行，"
+          "但只有一条价格序列。")
     for name, a in sorted(rep.arms.items(),
-                          key=lambda kv: -(kv[1].mean or -9)):
-        hit = "—" if a.hit_rate is None else f"{a.hit_rate * 100:.0f}%"
-        mean = "—" if a.mean is None else f"{a.mean * 100:+.2f}%"
+                          key=lambda kv: -(kv[1].mean_by_instrument or -9)):
+        hit = ("—" if a.hit_rate_by_instrument is None
+               else f"{a.hit_rate_by_instrument * 100:.0f}%")
+        mean = ("—" if a.mean_by_instrument is None
+                else f"{a.mean_by_instrument * 100:+.2f}%")
+        dup = "—" if a.duplication is None else f"{a.duplication:.1f}x"
         print(f"  {name:<26} 胜率 {hit:>5}  均值 {mean:>8}  "
-              f"选中 {a.n_chosen} 已计价 {a.n_scored}")
+              f"标的×期 {a.n_instrument_periods:>4}  "
+              f"（想法行 {a.n_scored}，重复 {dup}）")
     return 0
 
 

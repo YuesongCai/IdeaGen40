@@ -455,6 +455,25 @@ def data_leg(st: dict, dry_run: bool, force: bool) -> dict:
 
 # ----------------------------------------------------------------------- main
 
+def holder_alive() -> bool:
+    """Is the pid written in the lock file still running?
+
+    A missing or unreadable pid counts as gone: a lock we cannot attribute to a
+    live process is not protecting anything.
+    """
+    try:
+        pid = int(LOCK.read_text().strip())
+    except Exception:  # noqa: BLE001 — see docstring
+        return False
+    try:
+        os.kill(pid, 0)          # signal 0 only asks; it does not deliver
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True              # someone else's process: alive, not ours to judge
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="把本地状态与代码同步到云端")
     ap.add_argument("--dry-run", action="store_true", help="只判断，不推送")
@@ -480,10 +499,23 @@ def main(argv: list[str]) -> int:
             age = dt.datetime.now().timestamp() - LOCK.stat().st_mtime
         except OSError:
             pass
-        if age < 3600:
+        # Ask whether the holder is alive, not just how old the file is. Age
+        # alone meant a crashed or killed run — a `kill`, an OOM, the machine
+        # losing power mid-upload — blocked every later tick for a full hour,
+        # and the only symptom would be a sync that quietly stopped happening
+        # while every process and timer looked healthy. That is precisely the
+        # shape of failure this whole script exists to end.
+        if not holder_alive():
+            print(f"锁的持有者已不在（{int(age)}s），接手")
+            LOCK.unlink(missing_ok=True)
+        elif age < 3600:
             print(f"另一次同步正在跑（锁 {int(age)}s）")
             return 0
-        LOCK.unlink(missing_ok=True)  # a lock older than any real run is debris
+        else:
+            # Alive but past any plausible run: leave it and say so rather than
+            # start a second pusher on the same branch and bucket.
+            print(f"⚠️ 锁已持有 {int(age)}s 且持有者仍在运行，本次跳过")
+            return 0
         fd = os.open(str(LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     os.write(fd, str(os.getpid()).encode())
     os.close(fd)

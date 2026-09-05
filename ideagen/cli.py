@@ -388,7 +388,7 @@ def cmd_platform(args) -> int:
         print(f"  {h.name:<11}{flag}  {h.detail}")
     print()
     print(f"  ready: {p.ready()}   (events 不计入 ready：丢监控只是少看见，"
-          f"拒绝运行会丢掉这一周的语料)")
+          f"拒绝运行会丢掉这一周的研报)")
 
     if args.env:
         print("\n环境变量（只显示是否设置，不打印值）")
@@ -849,7 +849,7 @@ def cmd_sources(args) -> int:
     a = wisburg.source_audit(con)
     d, ast, c = a["documents"], a["assets"], a["citations"]
     print("溯源审计")
-    print(f"  语料      {d['n']:,} 条")
+    print(f"  研报      {d['n']:,} 条")
     print(f"    可复现检索式 {d['receipt']:,} ({d['receipt']/max(d['n'],1)*100:.0f}%)"
           f"   内容哈希 {d['hash']:,} (100%)"
           f"   发布时间 {d['ts']:,} (100%)")
@@ -868,10 +868,10 @@ def cmd_sources(args) -> int:
     print(f"  资产      {ast['n']} 个图表/插图，覆盖 {ast['docs']} 篇")
     print(f"    已验证可达   {ast['ok']}   不可达 {ast['bad']}   未验证 {ast['unchecked']}")
     print(f"  引用      共 {c['total']} 条")
-    print(f"    可解析到语料 {c['resolved']}   散文式归属 {c['prose']}"
+    print(f"    可解析到研报 {c['resolved']}   散文式归属 {c['prose']}"
           f"   悬空引用 {c['dangling']}")
     if c["dangling"]:
-        print(f"    ⚠ {c['dangling']} 条引用有 doc_id 形状但不在语料库里——这是真缺陷")
+        print(f"    ⚠ {c['dangling']} 条引用有 doc_id 形状但不在研报库里——这是真缺陷")
     for b, v in c["by_batch"].items():
         print(f"      {b}: resolved={v['resolved']} prose={v['prose']} "
               f"dangling={v['dangling']}")
@@ -999,7 +999,7 @@ def cmd_weekly(args) -> int:
         print(f"\n失败：{res.error}")
         return 1
     print(f"\n完成  主题 {len(res.topics)} · 候选 {res.n_candidates} · "
-          f"账本 {len(res.selectors)} · 产物 {len(res.artifacts)} · "
+          f"组合 {len(res.selectors)} · 产物 {len(res.artifacts)} · "
           f"模型调用 {res.calls}")
     if args.trade and res.completed:
         from . import booking, platform as plat
@@ -1087,7 +1087,7 @@ def cmd_philosophy(args) -> int:
                        encoding="utf-8")
         print(f"\n已存为待确认：{out.relative_to(config.ROOT)}")
         print(f"确认生效：ideagen philosophy activate {card['card_id']}")
-        print(f"生效后会新增一条臂 {philosophy.arm_name(card)}，"
+        print(f"生效后会新增一种生成方式 {philosophy.arm_name(card)}，"
               f"与 {args.arm} 同批同料并跑；{args.arm} 本身不动。")
         return 0
 
@@ -1101,13 +1101,13 @@ def cmd_philosophy(args) -> int:
                             accept_translations=args.accept_translation)
         f.unlink()
         print(f"已生效：{philosophy.arm_name(card)}（{card['as_of']} 起）")
-        print("下一次周跑会多出这条臂。原臂保持冻结，作为对照。")
+        print("下一次周跑会多出这一种生成方式。原来那种一字不改继续跑，作为对照。")
         return 0
 
     if args.action == "retire":
         philosophy.retire(args.card_id, as_of, args.reason or "")
         print(f"{args.card_id} 自 {as_of.isoformat()} 起停用；"
-              "它已经写下的持仓与业绩留在账本里。")
+              "它已经写下的持仓与业绩留在组合里。")
         return 0
 
     print(f"未知动作 {args.action!r}", file=sys.stderr)
@@ -1172,12 +1172,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--force", action="store_true",
                    help="re-score even if a batch was already traded against this date")
     s = add("philosophy", cmd_philosophy,
-            "PM 一句话注入：蒸馏成准则卡，派生一条与原臂并跑的新臂")
+            "PM 一句话注入：蒸馏成准则卡，派生一种与原方式并跑的新生成方式")
     s.add_argument("action", choices=["list", "propose", "activate", "retire"])
     s.add_argument("card_id", nargs="?", help="activate / retire 的卡号")
     s.add_argument("--say", help="PM 的原话，一句就够")
     s.add_argument("--arm", default="carl_constraint",
-                   help="注入哪条生成臂（默认 carl_constraint）")
+                   help="注入到哪种生成方式上（默认 carl_constraint）")
     s.add_argument("--reason", help="retire 的原因")
     s.add_argument("--accept-translation", action="store_true",
                    help="确认蒸馏对硬边界处的改写就是你的意思")

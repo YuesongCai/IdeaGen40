@@ -324,7 +324,7 @@ COHORT_SPEC = {
 #: matches the cohort books so cross-book returns are comparable at equal scale.
 SELECTOR_PREFIX = "sel-"
 SELECTOR_SPEC = {
-    "label": "挑法组合", "desc": "筛选C 单一挑法：每周选中的想法等权买入，滚动持有一个月",
+    "label": "策略组合", "desc": "一个选取策略管一个组合：每周选中的想法等权买入，滚动持有一个月",
     "capital": COHORT_CAPITAL, "sizing": "equal", "entry": "market_close",
     # Enters at the close like the naive book, but carries the spec's full risk
     # rules: σ-multiple stops and takes fixed at booking, plus the event exit.

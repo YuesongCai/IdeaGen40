@@ -439,7 +439,7 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
                              {"run_id": res.run_id, "error": str(e)[:300]})
 
     _notify(f"✅ IdeaGen 周跑完成 {as_of.isoformat()}：主题 {len(res.topics)} · "
-            f"候选 {res.n_candidates} · 账本 {len(res.selectors)} · "
+            f"候选 {res.n_candidates} · 组合 {len(res.selectors)} · "
             f"模型调用 {res.calls}。建仓结果见复盘板 http://localhost:8765/review")
     log(f"  周策略  完成 run_id={res.run_id} artifacts={len(res.artifacts)}")
     p.events.publish("scheduler.weekly.ran",
@@ -532,7 +532,7 @@ def _ingest_corpus(p: plat.Platform, as_of: date, *,
                 "errors": len(rep.get("errors") or {}),
                 "tool_drift": rep.get("tool_drift")}
     except Exception as e:  # noqa: BLE001 — see docstring
-        log(f"  ! ingest 失败（继续跑，用库里已有语料）：{type(e).__name__}: {e}")
+        log(f"  ! ingest 失败（继续跑，用库里已有研报）：{type(e).__name__}: {e}")
         return {"failed": f"{type(e).__name__}: {e}"}
 
 
@@ -564,31 +564,31 @@ def _ingest_incremental(p: plat.Platform, con: Any, problems: list[str], *,
             rep = cloud_corpus.ingest_incremental(
                 p, as_of=config.today_hkt(), detail_limit=3)
             n, m = rep.get("new", 0), rep.get("deep", 0)
-            log(f"  增量语料 +{n} 条（深抓 {m}）" if n else "  增量语料 无新增")
+            log(f"  增量研报 +{n} 条（深抓 {m}）" if n else "  增量研报 无新增")
             if rep.get("errors"):
                 problems.append(
-                    f"增量语料部分线路失败：{', '.join(rep['errors'])}")
+                    f"增量研报部分线路失败：{', '.join(rep['errors'])}")
             return rep
         except Exception as e:  # noqa: BLE001
-            problems.append(f"增量语料失败：{type(e).__name__}: {e}")
+            problems.append(f"增量研报失败：{type(e).__name__}: {e}")
             return {"failed": f"{type(e).__name__}: {e}"}
     if not config.wisburg_configured():
         # An expected local condition, not a degradation: recorded so the report
         # says why nothing was pulled, but the pass stays healthy.
-        return {"skipped": "Wisburg MCP key 未设置，跳过增量语料"}
+        return {"skipped": "Wisburg MCP key 未设置，跳过增量研报"}
     try:
         from .sources import wisburg
         rep = wisburg.ingest_incremental(con, budget_details=3, blobs=p.blobs,
                                          verbose=False)
         n, m = rep.get("new", 0), rep.get("deep", 0)
-        log(f"  增量语料 +{n} 条（深抓 {m}）" if n else "  增量语料 无新增")
+        log(f"  增量研报 +{n} 条（深抓 {m}）" if n else "  增量研报 无新增")
         if rep.get("errors"):
-            problems.append(f"增量语料部分线路失败：{', '.join(rep['errors'])}")
+            problems.append(f"增量研报部分线路失败：{', '.join(rep['errors'])}")
         return {"new": n, "deep": m, "lines": rep.get("lines"),
                 "errors": rep.get("errors") or None}
     except Exception as e:  # noqa: BLE001 — degrade the pass, never fail the tick
-        problems.append(f"增量语料失败：{type(e).__name__}: {e}")
-        log(f"  ! 增量语料失败（继续盯市）：{type(e).__name__}: {e}")
+        problems.append(f"增量研报失败：{type(e).__name__}: {e}")
+        log(f"  ! 增量研报失败（继续盯市）：{type(e).__name__}: {e}")
         return {"failed": f"{type(e).__name__}: {e}"}
 
 
@@ -1362,7 +1362,7 @@ def catch_up(since: date | datetime, *, now_utc: datetime,
         elif now_hkt - trig <= LATE_START_GRACE:
             item.update(status="recoverable", recoverable=True,
                         reason=f"仍在 {LATE_START_GRACE.total_seconds() / 3600:.0f}h "
-                               f"补跑窗口内（迟 {late_h:.1f}h），语料深度与订单前瞻性都还成立")
+                               f"补跑窗口内（迟 {late_h:.1f}h），研报深度与订单前瞻性都还成立")
             if run_recoverable:
                 out = _run_weekly(p, now_hkt, now_utc, as_of=as_of, dry_run=dry_run,
                                   ingest=ingest, weekly_kwargs=weekly_kwargs, log=log)
@@ -1372,7 +1372,7 @@ def catch_up(since: date | datetime, *, now_utc: datetime,
             item.update(status="permanently_missed", recoverable=False,
                         reason=(f"迟 {late_h:.1f}h，超过 "
                                 f"{LATE_START_GRACE.total_seconds() / 3600:.0f}h："
-                                f"当时的语料已无法按同等深度取回，且此时补跑会用"
+                                f"当时的研报已无法按同等深度取回，且此时补跑会用"
                                 f"已经印出来的 K 线去成交进场区间——那是带后见之明的运行，"
                                 f"不是迟到的运行"))
             item["recorded"] = _record_gap(p, as_of, item["reason"],

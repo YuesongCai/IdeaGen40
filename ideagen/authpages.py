@@ -68,7 +68,7 @@ def login_page(*, error: str | None = None, nxt: str = "/review") -> bytes:
     err = f"<div class=msg>{html.escape(error)}</div>" if error else ""
     return _page("登录 · IdeaGen40", f"""
       <h1>IdeaGen40 运行台</h1>
-      <p class=sub>这台机器每周自己跑一次选题与建仓，页面是它的账本。</p>
+      <p class=sub>这台机器每周自己跑一次选题与建仓，页面是它这些纸面组合的实时账。</p>
       <form method=post action=/login>
         <input type=hidden name=next value="{html.escape(nxt)}">
         <label for=u>用户名</label>

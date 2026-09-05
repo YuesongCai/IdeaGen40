@@ -5778,6 +5778,11 @@ function tearsheetCard(){
         +'<td class="r num dim">'+fmtInt(Math.round(v.position_usd/1000))+'k</td>'
         +'<td class="r num dim">'+(v.participation_median*100).toFixed(3)+'%</td>'
         +'<td class="r num">'+(v.participation_p90*100).toFixed(3)+'%</td>'
+        +'<td class="r num'+((v.n_over_cap||0)?' down':'')+'"'
+          +((v.n_over_cap||0)&&v.participation_max!=null
+              ?' title="'+esc('最大一笔的参与度 '+(v.participation_max*100).toFixed(1)
+                  +'%——超过 100% 就是说这一笔比该标的一整天的成交额还大。')+'"':'')
+          +'>'+((v.n_over_cap||0)?fmtInt(v.n_over_cap)+' 笔':'—')+'</td>'
         +'<td class="r num">'+(v.capacity_usd==null?'—':fmtInt(Math.round(v.capacity_usd/1e6))+'M')+'</td></tr>';
     }).join('');
   var costRows=Object.keys(cost).filter(function(n){return cost[n].n_positions}).sort(function(x,y){
@@ -5861,6 +5866,12 @@ function tearsheetCard(){
         +'<thead><tr><th>组合</th><th class="r">每期开仓</th><th class="r">单笔金额</th>'
         +'<th class="r">参与度中位</th>'
         +'<th class="r">参与度 p90<span class="gloss gm" title="取 90 分位而不是中位数：容量由这个策略伸手去够的最薄那个标的定，不由典型标的定。">ⓘ</span></th>'
+        /* p90 会盖住尾巴：buy_all 的 p90 只有 0.156%、容量报 641M，而同一批数据里
+           有 6 笔已经超过 10% 上限；一月动量最大一笔的参与度是 1893%——单笔比那只
+           标的十九天的成交量还大，而它的 p90 只有 1.05%。这两个数后端本来就算好了
+           （n_over_cap / participation_max），只是没印。和「已投出 83%」是同一个
+           毛病：分位数把越界的那几笔藏起来了。 */
+        +'<th class="r">已超上限<span class="gloss gm" title="单笔参与度超过 10% 日均成交额的笔数——这些单子按这个规模下不出去，或者下出去就会自己推动价格。容量那一列按 p90 算，看不见它们。">ⓘ</span></th>'
         +'<th class="r">容量<span class="gloss gm" title="让第 90 百分位的那笔达到 10% 日均成交额时的资本量。只报参与度、不套冲击成本模型——参与度是所有冲击模型的输入，如实报它好过报一个用没人拟合过的系数算出来的美元数。">ⓘ</span></th></tr></thead>'
         +'<tbody>'+capRows+'</tbody></table></div>'
       +'<div class="card-note">'+esc(cap.note||'')

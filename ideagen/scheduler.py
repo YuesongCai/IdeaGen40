@@ -1092,10 +1092,24 @@ def tick(now_utc: datetime, *, p: plat.Platform | None = None,
                         # decision.
                         log(f"  {job.name:<7} ⚠ 角色冲突：{resolved['why']}")
                     if role == "observer":
-                        why = "本机为观察节点：只盯市与服务面板，周产由生产实例承担"
+                        # "Delegated" is a statement about this machine, not
+                        # about the other one. This node cannot see the runner's
+                        # database, so it cannot know the period was produced —
+                        # and a word that sounds like "handled" attached to
+                        # something unverified is the shape of every quiet
+                        # failure in this system. It is said as an assumption,
+                        # with the date it stops being one: `catch_up` records a
+                        # permanent gap once the grace window closes, so an
+                        # unmet delegation surfaces then rather than never.
+                        deadline = (now_hkt + LATE_START_GRACE).strftime(
+                            "%m-%d %H:%M")
+                        why = ("本机为观察节点：只盯市与服务面板。周产**假定**由生产"
+                               f"实例承担——本机看不到对方的库，无法核实；若到 "
+                               f"{deadline} 仍无人产出，catch_up 会把这一期记为"
+                               f"永久错过")
                         rep.outcomes.append(JobOutcome(
                             job.name, as_of.isoformat(), "delegated", why))
-                        log(f"  {job.name:<7} 移交：{why}")
+                        log(f"  {job.name:<7} 移交（未核实）：{why}")
                         continue
                     rep.outcomes.append(_run_weekly(
                         p, now_hkt, now_utc, as_of=as_of, dry_run=dry_run,

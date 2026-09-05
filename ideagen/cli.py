@@ -1003,6 +1003,81 @@ def cmd_lookthrough(args) -> int:
     return 2
 
 
+def cmd_macro(args) -> int:
+    """The macro layer: what was ingested, what it is attached to, what is off.
+
+    Five actions rather than one report because the four attachments fail
+    independently and are decided independently. `status` is the one to run
+    first: it says which switches are set, and a reader who does not know that
+    cannot interpret any of the others.
+    """
+    from . import macro
+    con = db.init()
+    macro.ensure_schema(con)      # every action below reads the fit cache
+    as_of = _as_of(args)
+
+    if args.action == "refresh":
+        rep = macro.refresh(con, as_of, force_stats=args.force, verbose=True)
+        print(json.dumps(rep, ensure_ascii=False, indent=2))
+        return 0 if not rep["problems"] else 1
+
+    if args.action == "status":
+        f = macro.flags()
+        print("开关（默认全关，因为它们都是打分/模型输入，中途开会让期次不可比）")
+        for k, v in f.items():
+            print(f"  {k:26s} {'ON' if v else 'off'}")
+        rows = db.q(con, "SELECT kind, COUNT(*) n, MAX(date) last FROM events"
+                         " GROUP BY kind ORDER BY n DESC")
+        print("\nevents 表")
+        for r in rows:
+            print(f"  {str(r['kind']):16s} {r['n']:5d}  最新 {r['last']}")
+        st = db.q(con, "SELECT status, COUNT(*) n, MAX(upto) u FROM"
+                       " macro_surprise_stats GROUP BY status")
+        print("\n误差分布拟合")
+        if not st:
+            print("  还没有拟合过。先跑 ideagen macro refresh")
+        for r in st:
+            print(f"  {r['status']:14s} {r['n']:5d} 条序列  (upto {r['u']})")
+        return 0
+
+    if args.action == "surprises":
+        days = [(as_of - timedelta(days=i)).isoformat()
+                for i in range(args.days, -1, -1)]
+        rows = macro.window_surprises(con, days)
+        if not rows:
+            print(f"近 {args.days} 天没有已入库的宏观发布。先跑 ideagen macro refresh")
+            return 1
+        for r in rows:
+            z = f"z={r['z']:+.2f}" if r["z"] is not None else f"z=—（{r['why']}）"
+            act = "—" if r["actual"] is None else r["actual"]
+            est = "—" if r["estimate"] is None else r["estimate"]
+            print(f"{r['date']}  {str(r['label'])[:38]:38s} "
+                  f"实际 {act!s:>8}  预期 {est!s:>8}  {z}")
+        return 0
+
+    if args.action == "positioning":
+        codes = ([c.strip() for c in args.symbols.split(",") if c.strip()]
+                 if args.symbols
+                 else sorted(set(macro.COT_DIRECT) | set(macro.COT_PROXY)))
+        for code in codes:
+            v, meta = macro.positioning_crowding(con, code, as_of.isoformat())
+            if v is None:
+                print(f"{code:10s}  —      {meta.get('note') or meta.get('link')}")
+            else:
+                print(f"{code:10s}  {v:5.1f}  {meta['contract']:>3s}"
+                      f"（{meta['link']}）  {meta['cot_date']}"
+                      f"  滞后 {meta['lag_days']} 天")
+        return 0
+
+    if args.action == "regime":
+        print(json.dumps(macro.regime(con, as_of.isoformat()),
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"未知动作 {args.action!r}", file=sys.stderr)
+    return 2
+
+
 def cmd_serve(args) -> int:
     serve_mod.serve(port=args.port, open_browser=args.open)
     return 0
@@ -1034,7 +1109,7 @@ def cmd_daily(args) -> int:
         return st == "ok"
 
     print(f"=== ideagen daily {as_of} run={run_id} ===")
-    print("[1/9] wisburg ingest")
+    print("[1/10] wisburg ingest")
 
     def _ingest():
         try:
@@ -1047,11 +1122,11 @@ def cmd_daily(args) -> int:
                                   fetch_bodies=args.bodies)
 
     stage("ingest", _ingest)
-    print("[2/9] prices")
+    print("[2/10] prices")
     stage("prices", lambda: futu_px.sync(
         con, universe.priceable_codes(lexicon.all_indicators()),
         as_of - timedelta(days=400), as_of))
-    print("[3/9] ETF 穿透快照")
+    print("[3/10] ETF 穿透快照")
 
     def _lookthrough():
         # Holdings move on the funds' own rebalance calendar, not daily, so this
@@ -1066,17 +1141,35 @@ def cmd_daily(args) -> int:
         print(f"      {ok}/{len(funds)} 只可穿透")
 
     stage("lookthrough", _lookthrough)
-    print("[4/9] score themes")
+    print("[4/10] 宏观日历 · 波动率 · 持仓")
+
+    def _macro():
+        # Before scoring, not after. `factor_N`'s consensus surprise and
+        # `factor_C`'s positioning leg both read `events`, and a factor that
+        # reads a table nothing filled this morning is not degraded — it is
+        # silently answering from last week. Same reason the look-through
+        # snapshot sits above `score` rather than beside it.
+        from . import macro as _macro_mod
+        rep = _macro_mod.refresh(con, as_of)
+        print(f"      日历 {rep['events_upserted']} 行"
+              f"（{rep['feeds_ok']}/{rep['feeds_tried']} 个源）"
+              f"　误差分布 {rep['stats']['ok']} 条序列可用")
+        if rep["problems"]:
+            for line in rep["problems"][:4]:
+                print(f"      ! {line}")
+
+    stage("macro", _macro)
+    print("[5/10] score themes")
     stage("score", lambda: scoring.score_day(con, as_of))   # skips a traded date
-    print("[5/9] briefing pack")
+    print("[6/10] briefing pack")
     stage("brief", lambda: briefing.build(con, as_of))
-    print("[6/9] mark books (含每日组合)")
+    print("[7/10] mark books (含每日组合)")
     stage("mark", lambda: cmd_mark(argparse.Namespace(since=None, to=None)))
-    print("[7/9] monitor")
+    print("[8/10] monitor")
     stage("monitor", lambda: monitor.run(con))
-    print("[8/9] verify source assets")
+    print("[9/10] verify source assets")
     stage("verify-assets", lambda: wisburg.verify_assets(con, limit=120))
-    print("[9/9] settle + dashboard")
+    print("[10/10] settle + dashboard")
     stage("settle", lambda: analytics.settle(con, book_id="naive", verbose=False))
     stage("dashboard", lambda: report_mod.build(con))
 
@@ -1303,6 +1396,17 @@ def main(argv: list[str] | None = None) -> int:
                                      "portfolio 时是要穿透的那组持仓")
     s.add_argument("--names", help="theme 动作的底层名单，逗号分隔")
     s.add_argument("--limit", type=int, default=15)
+
+    s = add("macro", cmd_macro,
+            "宏观层：日历一致预期 · 隐含波动率 · CFTC 持仓 · 状态记录")
+    s.add_argument("action",
+                   choices=["status", "refresh", "surprises", "positioning",
+                            "regime"])
+    s.add_argument("--days", type=int, default=14,
+                   help="surprises 回看多少天")
+    s.add_argument("--symbols", help="positioning 限定标的，逗号分隔")
+    s.add_argument("--force", action="store_true",
+                   help="refresh 时强制重拟合误差分布（9 次调用）")
 
     s = add("prices", cmd_prices, "sync Futu daily bars")
     s.add_argument("--days", type=int, default=400)

@@ -5794,20 +5794,6 @@ function tearsheetCard(){
   /* 关键在方向：有组合和基准分开了，不等于有组合跑赢了基准。2026-09-04 的
      实况就是 mom_21 从下方越出区间——只看「分开没分开」会把它读成可以排名。 */
   var beats=(sep.beats_benchmark!==undefined)?sep.beats_benchmark:sep.can_rank;
-  var costRows=Object.keys(cost).filter(function(n){return cost[n].n_positions}).sort(function(x,y){
-      return (cost[y].breakeven_round_trip_pct||-99)-(cost[x].breakeven_round_trip_pct||-99);
-    }).map(function(n){
-      var c=cost[n],bad=c.breakeven_round_trip_pct<=c.applied_round_trip_pct;
-      return '<tr><td class="primary">'+esc(backtestArmName(n))+'</td>'
-        +'<td class="r num">'+Number(c.positions_per_period).toFixed(1)+'</td>'
-        +'<td class="r num dim">'+Number(c.round_trips_per_year).toFixed(1)+'</td>'
-        +'<td class="r num dim">'+Number(c.applied_round_trip_pct).toFixed(2)+'%</td>'
-        +'<td class="r num '+(bad?'down':'')+'">'+Number(c.breakeven_round_trip_pct).toFixed(2)+'%</td></tr>';
-    }).join('');
-
-  /* 关键在方向：有组合和基准分开了，不等于有组合跑赢了基准。2026-09-04 的
-     实况就是 mom_21 从下方越出区间——只看「分开没分开」会把它读成可以排名。 */
-  var beats=(sep.beats_benchmark!==undefined)?sep.beats_benchmark:sep.can_rank;
   var banner=beats
     ? '<div class="card-note">'+esc(sep.note||'')+'</div>'
     : '<div class="ls-note"><b>这张表不能用来排名——没有任何一条被证明跑赢基准。</b>'

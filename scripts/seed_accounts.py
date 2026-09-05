@@ -134,11 +134,26 @@ def seed_local(reset: set[str], vault: Vault) -> list[tuple[str, str, str]]:
 # transport: through the login form, for a node with no shell
 # --------------------------------------------------------------------------
 class Session:
-    def __init__(self, base: str):
+    def __init__(self, base: str, *, insecure: bool = False):
         self.base = base.rstrip("/")
         import http.cookiejar
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        handlers = [urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())]
+        if insecure:
+            # The production node serves a Caddy `internal` certificate: the
+            # Let's Encrypt quota for bare IPs is tight and it burned through
+            # it, so the fallback issuer is a self-signed one. Refusing to talk
+            # to it would mean the only node that has real portfolios is also
+            # the one that cannot be administered. `--insecure` is opt-in and
+            # only ever pointed at an IP the operator typed.
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            handlers.append(urllib.request.HTTPSHandler(context=ctx))
+        # ProxyHandler is included by default and reads http_proxy/https_proxy,
+        # which is how this reaches the cloud from a laptop whose direct TLS is
+        # blocked. Nothing to configure here beyond exporting them.
+        self.opener = urllib.request.build_opener(*handlers)
 
     def post(self, path: str, form: dict) -> tuple[int, str]:
         req = urllib.request.Request(
@@ -168,8 +183,9 @@ class Session:
 
 
 def seed_http(base: str, admin: str, password: str,
-              reset: set[str], vault: Vault) -> list[tuple[str, str, str]]:
-    s = Session(base)
+              reset: set[str], vault: Vault,
+              insecure: bool = False) -> list[tuple[str, str, str]]:
+    s = Session(base, insecure=insecure)
     code, body = s.post("/login", {"username": admin, "password": password,
                                    "next": "/account"})
     if code != 200:
@@ -220,6 +236,8 @@ def main() -> int:
     ap.add_argument("--password", help="--http 时该管理员的口令")
     ap.add_argument("--reset", action="append", default=[],
                     help="对这个人重新生成口令（可重复）")
+    ap.add_argument("--insecure", action="store_true",
+                    help="不校验证书（生产节点用的是 Caddy 自签兜底证书）")
     ap.add_argument("--passwords", metavar="FILE",
                     help="本地口令记事本：有就沿用，没有就生成后写进去。"
                          "两台节点用同一份，凭证才是一套。")
@@ -232,7 +250,8 @@ def main() -> int:
     else:
         if not a.admin or not a.password:
             raise SystemExit("--http 需要 --admin 和 --password")
-        made = seed_http(a.http, a.admin, a.password, reset, vault)
+        made = seed_http(a.http, a.admin, a.password, reset, vault,
+                         insecure=a.insecure)
     vault.flush()
 
     if made:

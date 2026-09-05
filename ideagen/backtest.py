@@ -460,7 +460,7 @@ UNKNOWN_REASONS = {
     "NO_INSTRUMENT": "没有可定价的标的标识",
     "NAV_ONLY": "基金按 NAV 披露，缺少可用的前后两个净值点",
     "NO_PRICE_SERIES": "该代码在本地行情库中没有任何 K 线",
-    "NO_ENTRY_BAR": "as_of 之后没有可成交的收盘价",
+    "NO_ENTRY_BAR": "该期之后没有可成交的收盘价",
     "SHORT_WINDOW": "持有期内没有足够的交易日",
     "HORIZON_INCOMPLETE": "行情尚未覆盖到期日，1 个月窗口没走完",
 }
@@ -788,6 +788,10 @@ class Paired:
     t_eff: float | None = None
     required_pairs: int | None = None
     required_unpaired: int | None = None
+    #: What `n_eff` takes for granted, stated where the number is read. Without
+    #: it the discount looks like a measurement; it is a model of the overlap,
+    #: and its assumption is violated by any period the price series cut short.
+    n_eff_assumes: str | None = None
     sd_source: str = "reference"
     #: Enough effective samples to detect the pre-registered edge. Powered is
     #: not the same as won: an arm that mirrors the control has a tiny sd, so
@@ -841,7 +845,20 @@ def paired_difference(arm: ArmScore, control: ArmScore, *,
     # Two arms that disagree on inputs_sha were not looking at the same pool, so
     # the difference between them is not attributable to selection at all.
     p.sha_mismatch = sorted(sha.keys()) if sha and len(set(sha.values())) > 1 else []
+    # The discount charges every period the *nominal* horizon. Periods whose
+    # window was cut short by the last available close overlap their neighbours
+    # by less than the formula assumes, so for those the figure understates the
+    # independence rather than overstating it — while their returns are, at the
+    # same time, short readings inside a table labelled with the full horizon.
+    # The two errors run in opposite directions and netting them out would need
+    # the realised overlap of every pair, which this does not compute. So the
+    # assumption is named and left standing: `horizon_completeness` in the
+    # summary says how many positions reached the mark.
     p.n_eff = round(p.n_pairs * min(1.0, gap_days / max(1, horizon_days)), 3)
+    p.n_eff_assumes = (
+        f"每期都持满 {horizon_days} 天。被最新收盘截断的期次实际重叠更少，"
+        f"这一项对它们是低估而非高估；同时它们的收益是短读数。两个方向相反，"
+        f"净效应未计算——跑满比例见 horizon_completeness")
 
     if diffs:
         p.mean_diff = round(st.mean(diffs), 6)
@@ -1292,7 +1309,7 @@ def print_sweep(rep: Sweep) -> Sweep:
         print(f"  主题 {a0.topics_n} 个"
               + (f"，按注册日剔除 {len(a0.topics_dropped)} 个：{a0.topics_dropped}"
                  if a0.topics_dropped else "，无越界主题"))
-        print(f"  候选 {a0.candidates_n} 条（最新 as_of {a0.candidates_max_as_of}）"
+        print(f"  候选 {a0.candidates_n} 条（最新一期 {a0.candidates_max_as_of}）"
               f"，日历 {a0.calendar_n} 条（抹掉未公布 actual {a0.calendar_actuals_stripped} 个）")
         print(f"  inputs_sha {a0.inputs_sha}   越界项 {a0.leaks or '无'}")
 

@@ -11,8 +11,11 @@ poll path does not pay for a probe it did not need.
 from __future__ import annotations
 
 import os
+import pathlib
+import tempfile
 import time
 import unittest
+from unittest import mock
 
 os.environ.setdefault("WISBURG_MCP_URL", "https://research.example/mcp")
 os.environ.setdefault("OLIVE_MCP_URL", "https://catalog.example/mcp")
@@ -121,6 +124,50 @@ class TestPortHealth(unittest.TestCase):
         self.assertEqual(len(out["ports"]), 2)
         self.assertFalse(review._health_running)
 
+
+class SnapshotFreshness(unittest.TestCase):
+    """`generated_at` cannot answer "is this data current".
+
+    It is computed per request, so a display node whose feed stopped days ago
+    still stamps the page with the current time. `snapshot` reports the moment
+    the node's database was actually installed, which is the only thing on the
+    page that can go stale — and the question "is it in sync?" had to be asked
+    a person instead of read off the page precisely because nothing carried it.
+    """
+
+    def _marker(self, text="6eafe968df07\n"):
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / ".state-sha").write_text(text)
+        return d
+
+    def test_reports_when_the_database_was_installed(self):
+        d = self._marker()
+        os.utime(d / ".state-sha", (1_760_000_000, 1_760_000_000))
+        with mock.patch.dict(os.environ, {"IDEAGEN_DB": str(d / "ideagen.db")}):
+            got = review._snapshot_state()
+        self.assertIsNotNone(got)
+        self.assertEqual(got["sha"], "6eafe968df07")
+        self.assertGreater(got["age_s"], 0)
+        self.assertIn("installed_at", got)
+
+    def test_says_nothing_rather_than_inventing_a_time(self):
+        """The laptop writes its own database continuously; there is no install
+        moment to report, and a fabricated one would read as freshness."""
+        d = pathlib.Path(tempfile.mkdtemp())
+        with mock.patch.dict(os.environ, {"IDEAGEN_DB": str(d / "ideagen.db")}):
+            self.assertIsNone(review._snapshot_state())
+
+    def test_an_unreadable_marker_is_not_a_crash(self):
+        """`Path.is_file()` raises on EACCES rather than returning False, and
+        this runs inside the endpoint that would have reported the problem."""
+        d = self._marker()
+        (d / ".state-sha").chmod(0o000)
+        try:
+            with mock.patch.dict(os.environ,
+                                 {"IDEAGEN_DB": str(d / "ideagen.db")}):
+                self.assertIsNone(review._snapshot_state())
+        finally:
+            (d / ".state-sha").chmod(0o644)
 
 if __name__ == "__main__":
     unittest.main()

@@ -3670,7 +3670,7 @@ function backtestMaturity(){
   return {periods:ks,byPeriod:byPeriod,min:Math.min.apply(null,ds),max:Math.max.apply(null,ds),
           full:full,n:ks.length,target:target};
 }
-var VERDICT_GLOSS='各组合使用同一候选池，净值差异仅来自选取策略。所需样本按各臂实测标准差算，并按窗口重叠折算：每周开一期、持有 30 天，一期只值 7/30 个有效独立样本，所以周数是要求数的约 4.3 倍。按 2 个百分点/月的可检出目标，当前主策略里最苛刻的一条需要数年而不是数月——这是这套设计的真实代价，不是可以绕过的估计误差。要缩短只有两条路：放宽可检出目标（所需样本按 1/差距² 缩小，5pp 时约一年），或降低窗口重叠（缩短持有期，或拉开期次间隔）。此前的排名不构成结论。';
+var VERDICT_GLOSS='各组合使用同一候选池，净值差异仅来自选取策略。所需样本按各组合实测标准差算，并按窗口重叠折算：每周开一期、持有 30 天，一期只值 7/30 个有效独立样本，所以周数是要求数的约 4.3 倍。按 2 个百分点/月的可检出目标，当前主策略里最苛刻的一条需要数年而不是数月——这是这套设计的真实代价，不是可以绕过的估计误差。要缩短只有两条路：放宽可检出目标（所需样本按 1/差距² 缩小，5pp 时约一年），或降低窗口重叠（缩短持有期，或拉开期次间隔）。此前的排名不构成结论。';
 var BAND_GLOSS='±2 个百分点为预注册的可检出差距。当前样本量下，小于该幅度的领先无法与随机波动区分，带内排名不构成结论。';
 function bookColor(name){
   var i=SEL_META.findIndex(function(m){return m[0]===name});
@@ -5151,8 +5151,8 @@ function liveSplitBlock(){
   }).join('');
   var head=[
     ['选取策略','',''],
-    ['live 条数','r','当期实跑的期次里，这条臂可计价的持仓条数。'],
-    ['live 胜率','r','只算当期实跑期次。对 exploratory 臂，这是唯一能当证据的一列。'],
+    ['live 条数','r','当期实跑的期次里，这个组合可计价的持仓条数。'],
+    ['live 胜率','r','只算当期实跑期次。对常驻探索的组合，这是唯一能当证据的一列。'],
     ['live 均值','r','只算当期实跑期次的单笔平均收益。'],
     ['补跑 条数','r','事后补跑期次的条数。文档输入卡死在当期，但模型权重见过之后的世界。'],
     ['补跑 胜率','r','补跑期次的胜率。合并口径的数字主要由它撑起来。'],
@@ -6053,7 +6053,7 @@ function corpusSourceCard(){
    * 一直在库里，缺的只是入口——补在同一张卡里，和抽屉里是同一份清单。 */
   var curN2=corpusPeriodN(w.as_of);
   if(!keys.length&&curN2){
-    tbl='<div class="card-note">本期没有新的抓取记录——这一期复用了已入库的语料。'
+    tbl='<div class="card-note">本期没有新的抓取记录——这一期复用了已入库的研报。'
       +'<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of)+'\')">浏览这 '+fmtInt(curN2)+' 篇 ›</button></div>';
   }
   return tbl+pastCorpusList(w.as_of);
@@ -6782,7 +6782,7 @@ function stageCorpusBody(){
   var curN=corpusPeriodN(w.as_of);
   if(!rows.length&&curN){
     feedTable='<div class="card-note" style="margin-top:var(--space-4)">'
-      +'本期没有新的抓取记录——这一期复用了已入库的语料。'
+      +'本期没有新的抓取记录——这一期复用了已入库的研报。'
       +'<button type="button" class="exp-btn" onclick="openCorpus(\''+jss(w.as_of)+'\')">浏览这 '+fmtInt(curN)+' 篇 ›</button></div>';
   }
   return body+breakdown+topicChips+feedTable+pastCorpusList(w.as_of)
@@ -6803,7 +6803,7 @@ function pastCorpusList(curAsOf){
   if(!past.length)return '';
   return '<div style="margin-top:var(--space-5)">'
     +'<div class="card-note" style="margin-bottom:6px">往期研报 · 共 '+fmtInt(past.length)+' 期'
-    +'<span class="gloss gm" title="每一期的语料 = 截至该期 as_of 的 3 天窗口内入库的全部研报，与本期同一口径。历史各期一直存着，点开就是当时读到的那一份。">ⓘ</span>：</div>'
+    +'<span class="gloss gm" title="每一期读到的 = 截至该期 as_of 的 3 天窗口内入库的全部研报，与本期同一口径。历史各期一直存着，点开就是当时读到的那一份。">ⓘ</span>：</div>'
     +'<div class="table-wrap"><table>'
     +'<thead><tr><th>期次</th><th class="r">条数</th><th>窗口</th></tr></thead><tbody>'
     +past.map(function(x){

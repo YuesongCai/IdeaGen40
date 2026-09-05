@@ -344,7 +344,7 @@ class Audit:
         """Anything here means the context can see past its own date."""
         bad: list[str] = []
         if self.corpus_max_published_d and self.corpus_max_published_d > self.as_of:
-            bad.append(f"语料含 {self.corpus_max_published_d} 的文档，晚于 {self.as_of}")
+            bad.append(f"研报里有 {self.corpus_max_published_d} 的文档，晚于 {self.as_of}")
         if self.price_max_d and self.price_max_d > max(self.clamp.values() or [""]):
             bad.append(f"行情含 {self.price_max_d} 的收盘，晚于收盘钳制 {self.clamp}")
         if self.candidates_max_as_of and self.candidates_max_as_of > self.as_of:
@@ -1284,7 +1284,7 @@ def print_sweep(rep: Sweep) -> Sweep:
     a0 = rep.audits[0] if rep.audits else None
     if a0:
         print(f"\n【as-of 审计（首个周期 {a0.as_of}）】")
-        print(f"  语料 {a0.corpus_n} 条，{a0.corpus_from} → "
+        print(f"  研报 {a0.corpus_n} 条，{a0.corpus_from} → "
               f"{a0.corpus_max_published_d}（≤ {a0.as_of}）"
               f"；其中 {a0.corpus_retrieved_later} 条是当日之后才抓回本地的"
               f"（发布日仍在窗口内，属于「读得更深」而非读到未来）")
@@ -1331,7 +1331,7 @@ def print_sweep(rep: Sweep) -> Sweep:
 
 
 def print_periods(rows: list[dict[str, Any]]) -> None:
-    print(f"\n{'as_of':<12}{'候选':>5}{'语料窗口':>9}{'已存主题':>9}"
+    print(f"\n{'as_of':<12}{'候选':>5}{'研报窗口':>9}{'已存主题':>9}"
           f"{'收盘钳制':>12}{'实际用到':>12}")
     for r in rows:
         print(f"{r['as_of']:<12}{r['candidates']:>5}{r['corpus_window']:>9}"

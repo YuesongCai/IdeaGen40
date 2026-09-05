@@ -359,8 +359,8 @@ def _live_vs_backfill(positions: list[dict], classes: dict[str, str]) -> dict:
         "note": (
             f"按期次是否为当期实跑拆开。{LIVE_PERIODS_BEFORE_READING} 期以下的 live "
             f"列不作数——一期就是一个月一个市场里的几条持仓，它的胜率是关于那个月的"
-            f"事实。对 exploratory 注册的臂（如 ev_rank），合并列跨越了挑出这条规则时"
-            f"看过的期次，只有 live 列才是检验；对 control 与既有臂，合并列本身就是"
+            f"事实。对按 exploratory 注册的组合（如 ev_rank），合并列跨越了挑出这条规则时"
+            f"看过的期次，只有 live 列才是检验；对 control 与原有的组合，合并列本身就是"
             f"它们的记录。"),
     }
 
@@ -1097,7 +1097,7 @@ def main(argv: list[str]) -> int:
 
     print(f"期数 {len(days)}：{', '.join(d.isoformat() for d in days)}")
     print(f"分类：{json.dumps(classes, ensure_ascii=False)}")
-    print(f"参赛挑法 {len(arms)}：{', '.join(arms)}")
+    print(f"参赛的选取策略 {len(arms)}：{', '.join(arms)}")
     if excluded:
         print(f"排除（需要模型，放进复算式回测会让结果不可复现）：{', '.join(excluded)}")
 

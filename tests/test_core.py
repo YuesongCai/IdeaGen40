@@ -3045,7 +3045,7 @@ class TestAsOfAuditRefusesFutureData(unittest.TestCase):
     def test_a_document_published_after_the_replayed_day_is_a_leak(self):
         a = self._audit(corpus_max_published_d="2026-08-20")
         self.assertTrue(a.check())
-        self.assertIn("语料", a.check()[0])
+        self.assertIn("研报", a.check()[0])
 
     def test_a_close_after_the_clamp_is_a_leak(self):
         a = self._audit(price_max_d="2026-08-20")

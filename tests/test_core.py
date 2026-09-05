@@ -2794,9 +2794,11 @@ class TestFrozenInputsSurviveMutableTables(unittest.TestCase):
             {"step": "inputs", "corpus": 2, "sha": "abc",
              "doc_ids": ["d1", "d2"], "event_ids": ["e9"]},
         ]}
-        with mock.patch.object(ask, "_journal", return_value=journal):
-            got = ask._frozen_inputs(None, {"as_of": "2026-09-02",
-                                            "run_id": "r"})
+        with mock.patch.object(ask, "journal_or_reason",
+                               return_value=(journal, None)):
+            got, why = ask._frozen_inputs(None, {"as_of": "2026-09-02",
+                                                 "run_id": "r"})
+        self.assertIsNone(why)
         self.assertEqual(got["event_ids"], ["e9"])
         self.assertEqual(got["doc_ids"], ["d1", "d2"])
 
@@ -2804,10 +2806,98 @@ class TestFrozenInputsSurviveMutableTables(unittest.TestCase):
         from ideagen import ask
         from unittest import mock
         for journal in ({"steps": [{"step": "inputs", "corpus": 2}]},
-                        {"steps": []}, None):
-            with mock.patch.object(ask, "_journal", return_value=journal):
-                self.assertIsNone(ask._frozen_inputs(
-                    None, {"as_of": "2026-08-26", "run_id": "r"}))
+                        {"steps": []}):
+            with mock.patch.object(ask, "journal_or_reason",
+                                   return_value=(journal, None)):
+                got, why = ask._frozen_inputs(
+                    None, {"as_of": "2026-08-26", "run_id": "r"})
+            self.assertIsNone(got)
+            # A journal that read fine and has no inputs step is a real fact
+            # about that old run — there is nothing to report about this node.
+            self.assertIsNone(why)
+
+    def test_an_unreadable_journal_is_not_reported_as_an_old_run(self):
+        """The distinction the dashboard renders as two different sentences.
+
+        A node that cannot reach the artifact store has no frozen list either,
+        but "this run predates frozen inputs" would be a claim about the run —
+        and false. `_frozen_inputs` has to hand the caller the reason so the
+        page can say whose problem it is.
+        """
+        from ideagen import ask
+        from unittest import mock
+        with mock.patch.object(ask, "journal_or_reason",
+                               return_value=(None, "这台机器读不到产物存储")):
+            got, why = ask._frozen_inputs(
+                None, {"as_of": "2026-08-26", "run_id": "r"})
+        self.assertIsNone(got)
+        self.assertEqual(why, "这台机器读不到产物存储")
+
+
+class TestJournalStepKeepsItsSkeleton(unittest.TestCase):
+    """The step ordinal must survive a payload that also calls something `n`.
+
+    This is not hypothetical: `pool` reports `n` as a row count, and the real
+    weekly journal for 2026-09-02 came out numbered 1, 858, 5, 9, 156, 6, 7, 8,
+    9, 4, 10 — the corpus size sitting where the step number belonged. Nothing
+    raised; the run log simply read as though the steps were shuffled.
+    """
+
+    def test_a_payload_n_becomes_count_and_leaves_the_ordinal_alone(self):
+        from ideagen import platform as plat
+        rec = plat.journal_step(3, "alerts", n=21, d="2026-09-04")
+        self.assertEqual(rec["n"], 3)
+        self.assertEqual(rec["count"], 21)
+        self.assertEqual(rec["step"], "alerts")
+        self.assertEqual(rec["d"], "2026-09-04")
+
+    def test_step_and_at_collisions_are_namespaced_not_dropped(self):
+        from ideagen import platform as plat
+        rec = plat.journal_step(1, "feeds", step="wisburg", at="whenever")
+        self.assertEqual(rec["step"], "feeds")
+        self.assertEqual(rec["step_detail"], "wisburg")
+        self.assertEqual(rec["at_detail"], "whenever")
+        self.assertNotEqual(rec["at"], "whenever")
+
+
+class TestAMissingArtifactIsNotAnUnreachableOne(unittest.TestCase):
+    """The distinction the whole run-log fix rests on.
+
+    A store that answers "no such key" and a store this node cannot reach are
+    opposite facts about where the evidence is, and the dashboard says different
+    things about them. Collapsing both into PlatformError is what let the page
+    tell a reader an artifact was never written while it sat in another bucket.
+    """
+
+    def test_a_local_store_reports_absence_as_blob_missing(self):
+        import tempfile
+        from ideagen import platform as plat
+        from ideagen.platform.local import LocalBlobStore
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(plat.BlobMissing):
+                LocalBlobStore(d).get("runs/2026-09-02/nope/journal.json")
+
+    def test_blob_missing_is_still_a_platform_error(self):
+        # Callers that only care that a port failed keep working unchanged.
+        from ideagen import platform as plat
+        self.assertTrue(issubclass(plat.BlobMissing, plat.PlatformError))
+
+    def test_a_store_outage_says_it_is_this_machine(self):
+        """`artifact_or_reason` must not describe a read failure as a gap."""
+        from ideagen import ask, platform as plat
+
+        class Unreachable:
+            def get(self, key):
+                raise plat.PlatformError("tos get failed: connection refused")
+
+        class P:
+            blobs = Unreachable()
+
+        run = {"as_of": "2026-09-02", "run_id": "r", "kind": "weekly"}
+        got, why = ask.artifact_or_reason(P(), run, "B_pool.json")
+        self.assertIsNone(got)
+        self.assertIn("读不到产物存储", why)
+        self.assertIn("不是记录的空缺", why)
 
 
 class TestBookingSkipsUnpricedRatherThanFailingTheBatch(unittest.TestCase):

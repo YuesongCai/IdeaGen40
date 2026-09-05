@@ -67,6 +67,11 @@ LARK_USER = "ou_8d0e4064f46c1d0de14c501c1f5db808"
 #: success. Only *entering* a failure state notifies immediately.
 RENOTIFY_HOURS = 6
 
+#: Consecutive failing ticks before the first alert. Three ticks is ~30 minutes
+#: — longer than every outage measured here, short enough that a real stoppage
+#: is still caught the same morning.
+FAIL_TICKS_BEFORE_ALERT = 3
+
 
 def now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
@@ -84,12 +89,18 @@ def now() -> str:
 #: attempt that reported failure had in fact landed, the retry answers
 #: "Everything up-to-date" — and the caller re-fetches afterwards to confirm
 #: what the remote actually holds, so a lie in either direction is caught.
+#: Spacing matters more than the count. The tunnel fails in *patches*, not as
+#: independent coin flips: sampled ten times a minute apart it was 9/10, but
+#: three retries three seconds apart all landed inside one bad patch and the
+#: leg gave up anyway. These waits make three attempts span ~45s instead of
+#: ~6s, which is wide enough to straddle the short outages actually observed.
 NET_OPS = ("fetch", "push", "ls-remote", "pull")
-NET_TRIES = 3
+NET_BACKOFF = (3, 10, 30)
 
 
 def git(*args: str, check: bool = True) -> str:
-    tries = NET_TRIES if args and args[0] in NET_OPS else 1
+    waits = NET_BACKOFF if args and args[0] in NET_OPS else ()
+    tries = len(waits) + 1 if waits else 1
     last = ""
     for attempt in range(tries):
         r = subprocess.run(("git", *args), cwd=ROOT, capture_output=True,
@@ -97,8 +108,8 @@ def git(*args: str, check: bool = True) -> str:
         if r.returncode == 0:
             return (r.stdout or "").strip()
         last = (r.stderr or r.stdout).strip()[:400]
-        if attempt + 1 < tries:
-            time.sleep(3)
+        if attempt < len(waits):
+            time.sleep(waits[attempt])
     if check:
         raise RuntimeError(f"git {' '.join(args)} 失败 {tries} 次: {last}")
     return ""
@@ -135,16 +146,26 @@ def notify(text: str) -> bool:
 
 
 def maybe_notify(st: dict, key: str, failing: bool, text: str) -> None:
-    """Notify on the way into trouble, and only every RENOTIFY_HOURS after.
+    """Notify once trouble has actually persisted, then every RENOTIFY_HOURS.
 
-    The interesting event is the transition. A timer that says "still broken"
-    every ten minutes trains you to stop reading it, which is how the two
-    failures at the top of this file survived as long as they did.
+    Two thresholds, and both were learned rather than chosen. A timer that says
+    "still broken" every ten minutes trains you to stop reading it, which is
+    how the failures at the top of this file survived three days — hence
+    RENOTIFY_HOURS. And a single failed tick is not trouble: the network here
+    fails in patches, the next tick is ten minutes later, and the first version
+    of this alerted on a blip that had already healed by the time anyone read
+    the message. Crying wolf and staying silent are the same failure wearing
+    different clothes.
     """
     marks = st.setdefault("notified", {})
+    runs = st.setdefault("fail_runs", {})
     last = marks.get(key)
     if not failing:
         marks.pop(key, None)
+        runs.pop(key, None)
+        return
+    runs[key] = int(runs.get(key) or 0) + 1
+    if runs[key] < FAIL_TICKS_BEFORE_ALERT:
         return
     if last:
         try:

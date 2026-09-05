@@ -4806,11 +4806,26 @@ function backtestReceiptLine(){
   if(!b.backtest_id)return '';
   var span=(b.window_start&&b.window_end)?('　窗口 '+esc(b.window_start)+' → '+esc(b.window_end)):'';
   var sm=b.summary||{};
+  /* 什么时候跑的、以及有没有落下新一期——这两件事此前一件都没写。
+     2026-09-06 我自己制造过一次：回测在 summary 建好之后、落库之前崩掉，
+     面板照旧显示上一次的结果，**「回测没变化」和「回测崩了」长得一模一样**。
+     时钟年龄只能说明「有点旧」，真正有判定力的是「已经有新一期的候选池了，
+     而这次回测的窗口还停在上一期」——那是「这张表没算上最近那一期」。 */
+  /* 时间戳走 hktFmt、年龄走 ageWord：全站其它地方都是港时和同一套年龄措辞，
+     这里自己写一套，会让「18:25」和「刚刚」看起来自相矛盾。 */
+  var when=b.ended_at||b.started_at,age='';
+  if(when){
+    age='　产出于 '+esc(hktFmt(when,true))
+      +'（'+ageWord((Date.now()-new Date(when).getTime())/1000)+'）';
+  }
+  var stale=(b.latest_period&&b.window_end&&String(b.latest_period)>String(b.window_end));
   return receiptWhich('第二套证据 · 历史回测')
     +'<div class="rr-row section"><button type="button" class="run-receipt"'
     +' onclick="gotoSection(\'evidence\',\'backtest\')" title="回到这次回测的口径与局限">'
-    +'<span class="dot"></span><span class="rr-main">● 完成 · '+esc(b.backtest_id)
-    +span+'　'+fmtInt(sm.periods||0)+' 期 · '+fmtInt(sm.model_calls||0)+' 次模型调用'
+    +'<span class="dot"></span><span class="rr-main">'
+    +(stale?'⚠ 已落后 · ':'● 完成 · ')+esc(b.backtest_id)
+    +span+age+'　'+fmtInt(sm.periods||0)+' 期 · '+fmtInt(sm.model_calls||0)+' 次模型调用'
+    +(stale?'　<b>最近一期 '+esc(b.latest_period)+' 还没进这次回测</b>':'')
     +'</span><span class="go">口径与局限 →</span></button></div>';
 }
 function grpH(t,sub){

@@ -708,6 +708,11 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
     """
     inst = {r["key"]: r["futu_code"] for r in db.q(
         con, "SELECT key, futu_code FROM instruments WHERE futu_code IS NOT NULL")}
+    family = {r["key"]: backtest.asset_family(
+                  r["key"], (db.jl(r["meta"], {}) or {}).get("tags") or [])
+              for r in db.q(con, "SELECT key, meta FROM instruments "
+                                 "WHERE futu_code IS NOT NULL")}
+    fam_rows: list[tuple[str, str, float, float]] = []
     last = (db.q1(con, "SELECT MAX(d) m FROM prices") or {"m": None})["m"]
 
     def fwd(code: str, start: str) -> float | None:
@@ -745,6 +750,8 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
             ret = fwd(code, d.isoformat())
             if ret is not None:
                 obs.append((ev, ret))
+                fam_rows.append((d.isoformat(),
+                                 family.get(r["instrument_id"], "股票"), ev, ret))
         if len(obs) < 15:
             per_period.append({"as_of": d.isoformat(), "n": len(obs),
                                "skipped": "候选太少，切不出五分位"})
@@ -826,6 +833,10 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
         "periods_top_beats_bottom": sum(1 for x in tb if x > 0),
         "periods_top_beats_benchmark": sum(1 for x in vb if x > 0),
         "asymmetry": asymmetry,
+        # The same rule taken to a different universe, four times over. See
+        # `backtest.rank_within_families` — this is where the pooled correlation
+        # stops looking like a score and starts looking like a risk premium.
+        "within_family": backtest.rank_within_families(fam_rows),
         "note": (
             "分位在每期内部切，不跨期合并——合并会让窗口完整、行情向上的那一期"
             "供出大半个顶格分位，那张表报的就成了日历。顶格分位与同期基准并列，"

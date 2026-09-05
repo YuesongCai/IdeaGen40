@@ -6818,6 +6818,45 @@ function liveSplitBlock(){
    把风险从低到高排一遍，必然得到一条漂亮的收益阶梯。所以入场前波动和收益
    并排放，同一个分桶、同一张表——分开放等于让读者自己去发现它们形状相同。
    这块算出来了却一直没有屏幕指向它，而它是对上面那张图最强的反证。 */
+function withinFamilyBlock(){
+  /* 「同一套规则换一个 universe」——论文对数据窥探开的第四条药。这里没有第二个
+     市场，但有四个风险家族。整体排得动、家族内部排不动，说明排的是那个月的风险
+     溢价，不是标的本身。这条结论和波动率控制是两条独立路径得出的同一件事，
+     所以它挨着放，而不是塞进折叠块。 */
+  var rp=(((S||{}).backtest||{}).summary||{}).ranking_power||{};
+  var wf=rp.within_family;
+  if(!wf||!wf.families||!Object.keys(wf.families).length)return '';
+  var ov=wf.overall||{};
+  var fams=Object.keys(wf.families);
+  var rows=fams.map(function(f){
+    var x=wf.families[f];
+    return '<tr><td class="primary">'+esc(f)+'</td>'
+      +'<td class="r num">'+fmtInt(x.median_names)+'</td>'
+      +'<td class="r num '+pctCls(x.mean_rho)+'">'+(x.mean_rho==null?'—':(x.mean_rho>0?'+':'')+x.mean_rho.toFixed(3))+'</td>'
+      +'<td class="r num dim">'+fmtInt(x.periods_positive)+' / '+fmtInt(x.periods)+' 期</td></tr>';
+  }).join('');
+  var best=fams.reduce(function(a,f){
+    var v=Math.abs(wf.families[f].mean_rho||0);return v>a?v:a},0);
+  return '<div style="margin-top:var(--space-6)">'
+    +'<div class="card-title-row"><h3 class="card-title" style="font-size:15px">'
+    +'再证伪：换一个 universe 再排一次</h3>'
+    +'<span class="card-note">四个风险家族，各排各的</span></div>'
+    +'<div class="card-note">整个货架一起排，秩相关 <b>'
+      +(ov.mean_rho==null?'—':(ov.mean_rho>0?'+':'')+ov.mean_rho.toFixed(3))+'</b>（'
+      +fmtInt(ov.periods_positive)+'/'+fmtInt(ov.periods)+' 期为正）；'
+      +'把比较限制在同一个风险家族内部，最高只剩 <b>'+best.toFixed(3)+'</b>。'
+      +'也就是说这个分数主要在把商品排在股票之上、股票排在国库券之上——'
+      +'<b>那是那个月的风险溢价，不是选股力</b>。'
+      +'<span class="gloss gm" title="'+esc('论文对数据窥探开的第四条药是「同一套规则'
+        +'原样搬到另一个 universe 上跑」。这里没有第二个市场，但货架本身分成四个'
+        +'风险家族。秩相关一律在期内计算，跨期合并会把日历当成分数；家族内不足 '
+        +(wf.min_names||8)+' 只的期次直接跳过，六个点的秩相关是带小数点的噪声。'
+        +'这条结论与波动率控制（分数与入场前 60 日波动的相关 +0.69）是两条独立路径'
+        +'得出的同一件事。')+'">ⓘ</span></div>'
+    +'<div class="table-wrap"><table class="data-table"><thead><tr>'
+      +'<th>风险家族</th><th class="r">每期只数（中位）</th><th class="r">家族内秩相关</th>'
+      +'<th class="r">为正的期数</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
 function volControlBlock(){
   var rp=(((S||{}).backtest||{}).summary||{}).ranking_power||{};
   var vc=rp.volatility_control;
@@ -6970,6 +7009,7 @@ function rankingPowerCard(){
     +meta
     +rankingQuintileBars(pooled,benchMean)
     +volControlBlock()
+    +withinFamilyBlock()
     +warn
     +foldBlock('week.ranking.detail','逐期拆解','每期两端 · 同期基准 · 主题来源',table,scored.length?(scored.length+' 期'):'')
     /* 这张卡的 </div> 一直缺着，靠浏览器在段落末尾替它兜底。只要它后面还什么

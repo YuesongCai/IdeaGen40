@@ -1220,6 +1220,118 @@ def realized_vol_pct(equities: Sequence[float], periods_per_year: int = 252
     return st.pstdev(rets) * (periods_per_year ** 0.5) * 100.0
 
 
+#: Risk families, for asking whether a score ranks *within* a kind of asset or
+#: merely sorts one kind above another. Membership is by what drives the price,
+#: not by legal form: copper miners sit with copper because in a 30-day window
+#: they move with it, and the question this serves is whether the score has
+#: information beyond "risk was rewarded this month".
+_FAMILY_BY_TAG: tuple[tuple[str, frozenset[str]], ...] = (
+    ("债/现金", frozenset({"rates", "credit", "cash", "inflation", "hy",
+                          "duration", "curve", "floating", "spread"})),
+    ("商品", frozenset({"commodity", "energy", "agri", "midstream"})),
+    ("另类", frozenset({"fx", "alternative", "cta", "vol", "carry", "haven"})),
+)
+
+#: Instruments whose tags point at the wrong family. Bank and homebuilder ETFs
+#: carry rate tags because rates drive them, but they are equities and behave
+#: like equities in a month; EM local-currency debt carries a currency tag and
+#: is still a bond. Listed one by one rather than patched into the tag rule,
+#: because every one of these is a judgement someone should be able to dispute.
+_FAMILY_OVERRIDE: dict[str, str] = {
+    "KRE": "股票", "KBE": "股票", "EMLC": "债/现金", "DXJ": "股票",
+}
+
+
+def asset_family(instrument_id: str, tags: Iterable[str]) -> str:
+    """Which risk family an instrument belongs to. Equities are the default."""
+    hit = _FAMILY_OVERRIDE.get(str(instrument_id).upper())
+    if hit:
+        return hit
+    have = {str(t) for t in (tags or ())}
+    for name, group in _FAMILY_BY_TAG:
+        if have & group:
+            return name
+    return "股票"
+
+
+def rank_within_families(rows: Sequence[tuple[str, str, float, float]], *,
+                         min_names: int = 8) -> dict[str, Any]:
+    """Does the score rank inside a risk family, or only across families?
+
+    The paper's fourth prescription against data snooping is to take the rule,
+    unchanged, to a different universe. There is no second market here, but there
+    are four: a shelf of equities, of bonds and cash, of commodities and of
+    alternatives. A score with information should rank inside each of them. A
+    score that is really sorting risk will rank beautifully across the whole
+    shelf in a rising month — commodities over equities over bills — and stop
+    ranking the moment the comparison is confined to one family.
+
+    Measured on the six live periods this is what it does: pooled cross-sectional
+    rank correlation +0.23 (5 of 6 periods positive), and within families +0.09
+    for equities, +0.08 for commodities, +0.10 for bonds and cash. Most of the
+    apparent ranking power is between families, i.e. it is the risk premium of
+    that month, and it agrees with the volatility control (ρ of score against
+    60-day volatility +0.69) reached by a completely different route.
+
+    `rows` are (period, family, score, realised return). Correlations are Spearman
+    and computed **inside a period**, never pooled across them: pooling would let
+    a rising month rank its own names against a falling month's and call the
+    calendar a score. Families with fewer than `min_names` names in a period are
+    skipped rather than reported, because a rank correlation over six points is
+    noise wearing a decimal point.
+    """
+    from . import analytics
+
+    per_period: dict[str, list[tuple[str, float, float]]] = {}
+    for period, family, score, ret in rows:
+        per_period.setdefault(str(period), []).append(
+            (str(family), float(score), float(ret)))
+
+    overall: list[dict[str, Any]] = []
+    fam_rhos: dict[str, list[float]] = {}
+    fam_names: dict[str, list[int]] = {}
+    for period in sorted(per_period):
+        obs = per_period[period]
+        if len(obs) >= min_names * 2:
+            rho = analytics.spearman([o[1] for o in obs], [o[2] for o in obs])
+            if rho is not None:
+                overall.append({"as_of": period, "rho": round(rho, 4),
+                                "n": len(obs)})
+        by_family: dict[str, list[tuple[float, float]]] = {}
+        for family, score, ret in obs:
+            by_family.setdefault(family, []).append((score, ret))
+        for family, vals in by_family.items():
+            if len(vals) < min_names:
+                continue
+            rho = analytics.spearman([v[0] for v in vals], [v[1] for v in vals])
+            if rho is None:
+                continue
+            fam_rhos.setdefault(family, []).append(round(rho, 4))
+            fam_names.setdefault(family, []).append(len(vals))
+
+    def _agg(vals: list[float]) -> dict[str, Any]:
+        return {"periods": len(vals),
+                "mean_rho": round(st.mean(vals), 4) if vals else None,
+                "periods_positive": sum(1 for v in vals if v > 0),
+                "per_period_rho": vals}
+
+    pooled = [o["rho"] for o in overall]
+    return {
+        "estimator": "spearman_within_period",
+        "min_names": min_names,
+        "overall": {**_agg(pooled), "per_period": overall},
+        "families": {f: {**_agg(v),
+                         "median_names": int(st.median(fam_names[f]))}
+                     for f, v in sorted(fam_rhos.items())},
+        "note": (
+            "同一套规则换一个 universe——论文对数据窥探开的第四条药。这里没有第二个"
+            "市场，但有四个：股票、债/现金、商品、另类。有信息的分数应该在每一个"
+            "里面都排得动；只是在排风险的分数，会在整张货架上排得很漂亮"
+            "（涨月里商品在股票之上、股票在国库券之上），一旦把比较限制在同一个"
+            "家族内部就消失。秩相关一律在期内计算，跨期合并会把日历当成分数。"),
+    }
+
+
 def fill_reality(con, *, horizon_days: int = 30,
                  cash_annual: float | None = None) -> dict[str, Any]:
     """What the entry bands cost, and what they bought, measured on real orders.

@@ -5381,7 +5381,7 @@ function rankingQuintileBars(pooled,benchMean){
           +(bpct>0&&bpct<=100?'<i class="rk-bench" style="left:'+bpct.toFixed(1)+'%"></i>':'')
         +'</div>'
         +'<div class="rk-v num '+pctCls(q.mean_return_pct)+'">'+fmtPct(q.mean_return_pct)+'</div>'
-        +'<div class="rk-n">胜率 '+fmtRate((q.hit_rate||0)*100)+' · n='+fmtInt(q.n)+'</div>'
+        +'<div class="rk-n">胜率 '+fmtRate((q.hit_rate||0)*100)+' · '+fmtInt(q.n)+' 条想法</div>'
       +'</div>';
     }).join('')
     +'</div>'
@@ -5515,10 +5515,10 @@ function rankingPowerCard(){
       +'<span class="gloss gm" title="'+esc('顶格分位在多少期高于同期 SPY。「排序有效」（Q5 高于 Q1，'
         +rp.periods_top_beats_bottom+'/'+rp.periods_scored+' 期）与「跑赢指数」是两个结论，分开报。')
       +'">ⓘ</span></div></div>'
-    +(ev.hit_rate!=null?'<div class="meta-kv"><div class="k">已成形 '+esc(backtestArmName('ev_rank'))+'</div><div class="v num '
+    +(ev.hit_rate!=null?'<div class="meta-kv"><div class="k">照这个分数选的组合</div><div class="v num '
       +pctCls(ev.mean_return_pct)+'">'+fmtPct(ev.mean_return_pct)
       +'<span style="font-weight:400;color:var(--color-text-tertiary)"> · 胜率 '
-      +fmtRate((ev.hit_rate||0)*100)+' · n='+fmtInt(ev.n_scored)+'</span></div></div>':'')
+      +fmtRate((ev.hit_rate||0)*100)+' · '+fmtInt(ev.n_scored)+' 条想法</span></div></div>':'')
     +'</div>';
 
   var rows=scored.map(function(x){
@@ -5570,7 +5570,13 @@ function rankingPowerCard(){
 
   return '<div class="card section" id="sec-ranking">'
     +'<div class="card-title-row"><h2 class="card-title">排序力</h2>'
-    +'<span class="card-note">'+esc(rp.score_label||'')+' · 分位按期内部切</span></div>'
+    /* Q1–Q5 在这张卡上出现十几次，而「按什么切的、哪头是高」一次也没说过。
+       读者要先知道这五个格子是什么，那条阶梯才有意思。 */
+    +'<span class="card-note">把每期的想法按「'+esc(rp.score_label||'')
+      +'」从低到高切成五档：<b>Q1 最低、Q5 最高</b>'
+      +'<span class="gloss gm" title="'+esc('每期单独切，不跨期合并——合并会让窗口完整、'
+        +'行情向上的那一期供出大半个 Q5，那张表报的就成了日历。')+'">ⓘ</span>'
+      +' · 只在期内部切</span></div>'
     +lead
     +meta
     +rankingQuintileBars(pooled,benchMean)

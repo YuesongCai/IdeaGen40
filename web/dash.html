@@ -6497,7 +6497,11 @@ function openRulesDrawer(){pushDrawer({t:'rules',p:''})}
 function phReviseFrom(id){
   var c=((PH.data||{}).live||[]).filter(function(x){return x.id===id})[0];
   if(!c)return;
-  PH.say=c.said;PH.arm=c.arm||PH.arm;PH.replaces=id;PH.problems=null;PH.proposal=null;
+  phBlurBox();
+  phDraftSave();          /* 桌上原来那条先落盘：去改另一条不该等于丢一条 */
+  PH.draftId='';PH._lastSaved=null;PH.saved='';PH._seq++;
+  PH.say=c.said;PH.arm=c.arm||PH.arm;PH.replaces=id;PH.problems=null;PH.err='';
+  phDraftSave();          /* 新的这条立刻有自己的草稿位，含「要替换哪一条」 */
   openRulesDrawer();
 }
 function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
@@ -6615,7 +6619,7 @@ function drawerBodyHTML(d){
       case 'props':return proposalsDrawerBody(d);
       case 'cal':return calDrawerBody();
       case 'trust':return trustDrawerBody();
-      case 'rules':return phDefLine()+phTeachCard();
+      case 'rules':return phDefLine()+phTeachCard()+phPendingBlock();
     }
   }catch(e){return '<div class="empty-sm">该视图渲染失败（'+esc(e&&e.message?e.message:String(e))+'），数据可能尚未就位</div>'}
   return '';
@@ -7287,11 +7291,14 @@ function pipeCanvasSVG(){
       slP=pop('你写的准则已生效，还没跑出过想法',
         pendRules.length+' 条 · 下一次周跑（周三）起，这一格会变成一种真的生成方式',
         '原来那种一字不改继续跑；两种生成方式的净值之差即这条准则的净效应');
-    }else if(PH.proposal){
-      slT='你的准则 · 草案待核对';
-      slS=(methodName(PH.proposal.arm||graftArm)||'')+' · 尚未生效';
+    }else if(((PH.data||{}).pending||[]).length){
+      /* 草案可以有好几条同时在等——这一格报的是条数，不是「那一条」。 */
+      var pps=((PH.data||{}).pending)||[];
+      slT='你的准则 · '+pps.length+' 条草案待核对';
+      slS=((pps.length===1?methodName(pps[0].arm||graftArm):'')||'')
+        +(pps.length===1?' · ':'')+'尚未生效';
       slP=pop('草案已生成，等你拍板',null,
-        '确认生效后才会新增这一种生成方式——先在下面核对系统把你那句话听懂成了什么');
+        '确认生效后才会新增这一种生成方式——先核对系统把你那句话听懂成了什么');
     }else{
       slT='＋ 写一条你的准则';
       slS='派生第 '+(GO.length+1)+' 种生成方式';
@@ -10027,12 +10034,42 @@ function tick(){
    +'.ph-grp{display:flex;flex-wrap:wrap;gap:var(--space-5);margin:6px 0 var(--space-3)}'
    +'.ph-grp-b{min-width:0}'
    +'.ph-grp-h{font:600 11px/17px var(--font-sans);color:var(--color-text-metadata);margin-bottom:6px}'
-   +'.ph-grp-n{font:400 11.5px/18px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px;max-width:38ch}';
+   +'.ph-grp-n{font:400 11.5px/18px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px;max-width:38ch}'
+   /* 自动保存的回执：一行小字，不抢地方。它只有一个作用——让人敢把没写完的
+      话留在那儿走开。 */
+   +'.ph-saved{margin-left:10px;font:400 11.5px/18px var(--font-sans);color:var(--color-text-tertiary)}'
+   +'.ph-revise{display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap;'
+   +'font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);'
+   +'background:var(--color-surface-subtle,#f7f7f7);border-radius:var(--radius-sm);'
+   +'padding:10px 14px;margin-bottom:var(--space-3)}'
+   +'.ph-revise-n{color:var(--color-text-tertiary);font-size:11.5px}'
+   +'.ph-draft{border:1px dashed var(--color-border-default,#ddd);border-radius:var(--radius-md);'
+   +'padding:var(--space-4);margin-top:var(--space-3)}'
+   +'.ph-draft-t{font:400 14px/22px var(--font-sans);color:var(--color-text-secondary)}'
+   +'.ph-hist{border:1px solid var(--color-border-subtle,#eee);border-radius:var(--radius-md);'
+   +'padding:var(--space-4);margin-top:var(--space-3)}'
+   +'.ph-badge{display:inline-block;margin-right:8px;padding:1px 7px;border-radius:999px;'
+   +'font:600 11px/17px var(--font-sans);color:var(--color-text-tertiary);'
+   +'background:var(--color-surface-subtle,#f2f2f2);vertical-align:2px}'
+   +'.ph-badge.on{color:var(--color-text-on-brand);background:var(--color-surface-brand)}'
+   /* 勾选框是个 button，不是 label 套 input——见 phReviewCard 里那段注释。 */
+   +'.ph-check{background:none;border:none;text-align:left;padding:0;width:100%}'
+   +'.ph-box{flex:none;width:16px;height:16px;border-radius:3px;margin-top:2px;'
+   +'border:1px solid var(--color-border-default,#ccc);display:inline-flex;'
+   +'align-items:center;justify-content:center;font-size:11px;'
+   +'color:var(--color-text-on-brand)}'
+   +'.ph-box.on{background:var(--color-surface-brand);border-color:var(--color-surface-brand)}';
   document.head.insertAdjacentHTML('beforeend','<style>'+css+'</style>');
 })();
 
-var PH={data:null,say:'',arm:'',busy:false,err:'',proposal:null,accepted:false,
-        out:{},replaces:null,
+/* 一次写一条，但可以有很多条同时在路上：桌上正写着的那条（草稿，自动存在
+   服务端）、蒸馏完等你拍板的若干条（草案）、已经在跑的若干条（准则）。
+   三样都是复数。从前这里只有一个 proposal 槽位——第一条草案一生成，写字的
+   那个框就被它整个顶掉了，于是「再写一条」这件事在界面上根本无从提起，而
+   服务端其实一直支持很多条并行。 */
+var PH={data:null,say:'',arm:'',busy:false,err:'',problems:null,
+        accepted:{},out:{},hist:{},replaces:'',focus:'',
+        draftId:'',saved:'',_seq:0,_save:null,_lastSaved:null,
         loaded:false,bound:false};
 
 var PH_EG=[
@@ -10048,9 +10085,22 @@ function phLoad(force){
     .then(function(r){return r.json()})
     .then(function(b){PH.data=b;
       if(!PH.arm)PH.arm=b.default_arm||'';
-      /* 待确认的提案在服务端留着：换个浏览器、隔一天回来，那句话还在等你拍板。 */
-      if(!PH.proposal&&b.pending&&b.pending.length)PH.proposal=b.pending[0];
-      renderRules()})
+      /* 草案在服务端留着：换个浏览器、隔一天回来，那句话还在等你拍板。
+         现在写了一半的那句话也一样——它从前只活在这个标签页的内存里，刷新
+         一下就没了，而那恰恰是人被打断时留下的状态：想到一半，差三个字。 */
+      if(!PH.draftId&&!(PH.say||'').trim()&&(b.drafts||[]).length){
+        var d0=b.drafts[0];
+        PH.draftId=d0.id;PH.say=d0.say||'';PH._lastSaved=PH.say;
+        if(d0.arm)PH.arm=d0.arm;
+        PH.replaces=d0.replaces||'';
+        /* 时间戳一起带回来。少了这一行，刚回来的人看到的是一句没有落款的话
+           ——它明明存住了，界面却不说，于是「这次会不会又没了」还是要靠猜。 */
+        PH.saved=d0.saved_at||'';
+      }
+      renderRules();
+      if(PH.focus){var f=PH.focus;PH.focus='';
+        setTimeout(function(){var el=$('ph-p-'+f);
+          if(el&&el.scrollIntoView)el.scrollIntoView({block:'center'})},0)}})
     .catch(function(e){PH.err='读不到准则列表：'+(e&&e.message||e);renderRules()});
 }
 
@@ -10061,6 +10111,46 @@ function phPost(op,body,done){
     .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
     .then(function(res){PH.busy=false;done(res.b||{},res.ok)})
     .catch(function(e){PH.busy=false;PH.err=(e&&e.message)||String(e);renderRules()});
+}
+
+/* 草稿自动存：停手 800 毫秒落一次盘。没有「保存」按钮是有意的——一个需要人
+   记得按的保存键，正好会被那件让人丢草稿的事本身一起打断（有人来叫、开会、
+   关掉标签页），于是它只在不需要它的时候有用。 */
+function phDraftTouch(v){
+  PH.say=v;
+  if(PH._save)clearTimeout(PH._save);
+  PH._save=setTimeout(phDraftSave,800);
+}
+function phDraftSave(){
+  if(PH._save){clearTimeout(PH._save);PH._save=null}
+  var say=(PH.say||'').trim();
+  if(!say&&!PH.draftId)return;         /* 空框、也没有草稿：没什么可存 */
+  if(say===PH._lastSaved)return;       /* 一个字没动，不必往返一次 */
+  PH._lastSaved=say;
+  /* 序号是为了「接着写另一条」：切换草稿之后，上一条的回执不能再回来改
+     PH.draftId，否则接着写的字会盖到刚离开的那一条上。 */
+  var mine=++PH._seq;
+  fetch('/api/philosophy/draft',{method:'POST',cache:'no-store',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:PH.draftId||'',say:say,arm:PH.arm,
+                         replaces:PH.replaces||''})})
+    .then(function(r){return r.json()})
+    .then(function(b){
+      if(mine!==PH._seq)return;
+      /* 存不上不该打断正在写的人，但也不能假装存上了：时间戳不动，
+         _lastSaved 清掉，下一次输入自己会重试。 */
+      if(b.error){PH._lastSaved=null;return}
+      PH.draftId=b.id||'';PH.saved=b.saved_at||'';
+      if(PH.data)PH.data.drafts=b.drafts||[];
+      phStamp();
+    })
+    .catch(function(){PH._lastSaved=null});
+}
+/* 只改那一个节点，不整页重画：重画会把光标从人正在写的框里挪走，这个功能
+   里为同一个原因已经加过两道守卫，不该从这儿再破一次。 */
+function phStamp(){
+  var el=$('phSaved');
+  if(el)el.textContent=PH.saved?('已自动存下 '+PH.saved.slice(11,16)):'';
 }
 
 /* 「点开看」以前没有东西可点：面板告诉 PM 这些字段是给他核对用的，却没有
@@ -10124,37 +10214,104 @@ function phTick(){
 }
 
 function phSay(){var el=$('phSay');PH.say=el?el.value:PH.say;return PH.say}
-function phFill(i){PH.say=PH_EG[i];renderRules();var el=$('phSay');if(el){el.focus();
-  el.setSelectionRange(el.value.length,el.value.length)}}
+function phFill(i){
+  phBlurBox();PH.say=PH_EG[i];PH._lastSaved=null;phDraftSave();renderRules();
+  var el=$('phSay');
+  if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}
+}
+
+function phPending(id){
+  return (((PH.data||{}).pending)||[]).filter(function(x){return x.id===id})[0];
+}
 
 function phPropose(){
   var say=(phSay()||'').trim();
   if(!say){PH.err='还没有内容。';return renderRules()}
-  PH.problems=null;PH.t0=Date.now();phTick();
-  phPost('propose',{say:say,arm:PH.arm},function(b){
+  phBlurBox();            /* 下面要把框清空，焦点还在框里时那次重画会被守卫吃掉 */
+  PH.problems=null;PH.err='';PH.t0=Date.now();phTick();
+  phPost('propose',{say:say,arm:PH.arm,replaces:PH.replaces||'',
+                    draft:PH.draftId||''},function(b){
     if(b.error){PH.err=b.error;return renderRules()}
     if(b.ok===false){PH.problems=b;return renderRules()}
-    PH.proposal=b;PH.accepted=false;PH.problems=null;
-    renderRules();setTimeout(function(){scrollToEl($('sec_method_rules'))},0);
-  });
-}
-
-function phActivate(){
-  if(!PH.proposal)return;
-  phPost('activate',{id:PH.proposal.id,accept_rewrites:PH.accepted,
-                     replaces:PH.replaces||''},function(b){
-    if(b.error){PH.err=b.error;return renderRules()}
-    PH.proposal=null;PH.say='';PH.accepted=false;PH.replaces=null;
+    /* 这句话现在以卡片的形式存在服务端了（卡里原样带着它），桌上那份草稿
+       连同它一起清掉——同一条准则不该同时以两种状态出现在两份清单上。
+       框空出来，是因为下一条可以马上开始写。 */
+    PH.draftId='';PH.say='';PH._lastSaved=null;PH.replaces='';PH.saved='';
+    PH._seq++;PH.focus=b.id;
     phLoad(true);
   });
 }
 
-function phDiscard(){
-  if(!PH.proposal)return;
-  var back=PH.proposal.said;
-  phPost('discard',{id:PH.proposal.id},function(){
-    PH.proposal=null;PH.say=back;PH.accepted=false;renderRules();
+function phActivate(id){
+  var p=phPending(id);if(!p)return;
+  phPost('activate',{id:id,accept_rewrites:!!PH.accepted[id],
+                     replaces:p.replaces||''},function(b){
+    if(b.error){PH.err=b.error;return renderRules()}
+    delete PH.accepted[id];
+    phLoad(true);
   });
+}
+
+function phDiscard(id){
+  var p=phPending(id);if(!p)return;
+  phPost('discard',{id:id},function(b){
+    if(b.error){PH.err=b.error;return renderRules()}
+    delete PH.accepted[id];
+    /* 「重写」是重写这句话，不是丢掉它。卡片是机器的读法，可以扔；那句话
+       回到桌上，而且是服务端的一条草稿——刷新也够不着它。框里已经在写别的
+       东西时不覆盖，那一条在清单里等着「接着写」。 */
+    if(b.said&&!(PH.say||'').trim()){
+      phBlurBox();
+      PH.say=b.said;PH._lastSaved=b.said;PH.draftId=b.draft||'';
+      if(b.arm)PH.arm=b.arm;
+      PH.replaces=b.replaces||'';PH._seq++;
+    }
+    phLoad(true);
+  });
+}
+
+function phToggleHist(id){
+  PH.hist[id]=PH.hist[id]||{};PH.hist[id].open=!PH.hist[id].open;renderRules();
+}
+
+/* renderDrawers 有一道守卫：焦点还在输入框里就不重画（否则 60 秒一次的轮询
+   会把打了一半的话连光标一起换掉）。可它也拦下了「换一条来写」——守卫带着框里
+   的旧内容原地返回，点下去像是没反应。所以换内容之前先把焦点挪开：守卫是对的，
+   它只是不知道这一次重画正是为了换掉框里的东西。 */
+function phBlurBox(){
+  var t=$('phSay');
+  if(t&&document.activeElement===t)t.blur();   /* onblur 顺手把这条落了盘 */
+}
+
+/* 桌上另一条没写完的，接着写。先把手里这条落盘——换一条写不该是丢一条。 */
+function phResumeDraft(id){
+  var d=(((PH.data||{}).drafts)||[]).filter(function(x){return x.id===id})[0];
+  if(!d)return;
+  phBlurBox();
+  phDraftSave();
+  PH.draftId=d.id;PH.say=d.say||'';PH._lastSaved=PH.say;
+  PH.arm=d.arm||PH.arm;PH.replaces=d.replaces||'';
+  PH.problems=null;PH.err='';PH.saved=d.saved_at||'';PH._seq++;
+  renderRules();
+  var el=$('phSay');
+  if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}
+}
+
+function phDropDraft(id){
+  if(!window.confirm('删掉这条没写完的准则？它还没有蒸馏，也没有在跑。'))return;
+  if(PH.draftId===id)phBlurBox();   /* 删的正是框里这条，等下要把它清空 */
+  phPost('draft-delete',{id:id},function(b){
+    if(b.error){PH.err=b.error;return renderRules()}
+    if(PH.draftId===id){PH.draftId='';PH.say='';PH._lastSaved=null;
+                        PH.saved='';PH._seq++}
+    if(PH.data)PH.data.drafts=b.drafts||[];
+    renderRules();
+  });
+}
+
+/* 改一版改到一半，改主意了：这句话当成新的一条留下，被改的那条继续跑。 */
+function phUnrevise(){
+  phBlurBox();PH.replaces='';PH._lastSaved=null;phDraftSave();renderRules();
 }
 
 function phRetire(id){
@@ -10165,12 +10322,14 @@ function phRetire(id){
   });
 }
 
-function phToggleAccept(){PH.accepted=!PH.accepted;renderRules()}
+function phToggleAccept(id){PH.accepted[id]=!PH.accepted[id];renderRules()}
 
 /* ── 第一屏：说一句话 ── */
 function phTeachCard(){
   var d=PH.data||{};
-  if(PH.proposal)return phReviewCard();
+  /* 这里从前有一句 `if(PH.proposal)return phReviewCard()`——一条草案生成之后，
+     写字的框就被草案顶掉了。服务端一直支持很多条并行（准则卡是一条一条的臂），
+     可界面上只要有一条在等拍板，第二条就无从写起。草案现在排在表单下面。 */
   var blocked=d.can_propose===false;
   var h='<div class="card section">'
    +'<h2 class="card-title">用一句话写下你判断一笔交易的准则 '
@@ -10180,10 +10339,23 @@ function phTeachCard(){
     h+='<div class="empty">'+esc(d.why_not||'这台机器上说不了新准则。')+'</div></div>';
     return h;
   }
-  h+='<textarea class="ph-say" id="phSay" data-el="rules.say" oninput="PH.say=this.value"'
+  /* 「照这条改一版」是有后果的选择：生效时被改的那条会停用。它从前只存在于
+     这个标签页的内存里——刷新一下，改一版就静悄悄变成了加一条，两条准则同时
+     在跑，谁的数字都不作数了。现在它写在草稿里，并且在框上方说出来。 */
+  if(PH.replaces){
+    var oldc=((d.live||[]).filter(function(x){return x.id===PH.replaces})[0])||{};
+    h+='<div class="ph-revise">正在改写「'+esc(oldc.said||PH.replaces)+'」'
+     +'<span class="ph-revise-n">生效时那一条会停用</span>'
+     +'<button type="button" class="ph-alt" data-ph-unrevise="1">当成新的一条</button>'
+     +'</div>';
+  }
+  h+='<textarea class="ph-say" id="phSay" data-el="rules.say"'
+   +' oninput="phDraftTouch(this.value)" onblur="phDraftSave()"'
    +' placeholder="'+esc('比如：'+PH_EG[0])+'">'+esc(PH.say)+'</textarea>'
    +'<div class="card-note" style="margin-top:8px">越具体越有效 '
-   +'<span class="gloss gm" title="「要谨慎一点」无法执行；「必须指名一个被期限逼着动手的主体」可以。">ⓘ</span></div>'
+   +'<span class="gloss gm" title="「要谨慎一点」无法执行；「必须指名一个被期限逼着动手的主体」可以。">ⓘ</span>'
+   +'<span class="ph-saved" id="phSaved">'
+   +esc(PH.saved?'已自动存下 '+PH.saved.slice(11,16):'')+'</span></div>'
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
           +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';
@@ -10258,14 +10430,57 @@ function phTeachCard(){
         return n?'':'<span class="card-note">还没有准则在跑 · 筛选B 现在跑的是 '
           +GEN_ORDER.length+' 种内置生成方式，图上最下面那一格是空的</span>';})())
    +'</div>';
-  return h+'</div>';
+  return h+'</div>'+phDraftsBlock();
+}
+
+/* 桌上还没写完的其它几条。不是一排遥控上面那个框的按钮——是一份清单，每条
+   自己的动作长在自己那一行上。它们只存在你这台机器的数据里，没有蒸馏、也
+   没有在跑，所以和「草案」「在跑的准则」分开说。 */
+function phDraftsBlock(){
+  var ds=(((PH.data||{}).drafts)||[]).filter(function(x){return x.id!==PH.draftId});
+  if(!ds.length)return '';
+  return '<div class="card section"><div class="card-title-row">'
+   +'<h2 class="card-title" style="margin-bottom:0">还没写完的</h2>'
+   +'<span class="card-note">'+ds.length+' 条</span></div>'
+   +'<div class="card-note" style="margin-bottom:var(--space-3)">'
+   +'写下就自动存着，还没有蒸馏成草案，也没有在跑。</div>'
+   +ds.map(function(x){
+      return '<div class="ph-draft">'
+       +'<div class="ph-draft-t">「'+esc(x.say)+'」</div>'
+       +'<div class="ph-meta">'+esc(String(x.saved_at||'').replace('T',' ').slice(0,16))
+       +' 存下</div>'
+       +'<div class="ph-acts" style="margin-top:var(--space-2)">'
+       +'<button type="button" class="ph-alt" data-el="rules.draft.resume"'
+       +' data-ph-draft="'+esc(x.id)+'"'+(PH.busy?' disabled':'')+'>接着写</button>'
+       +'<button type="button" class="ph-alt" data-el="rules.draft.drop"'
+       +' data-ph-draft-x="'+esc(x.id)+'"'+(PH.busy?' disabled':'')+'>删掉</button>'
+       +'</div></div>';
+    }).join('')+'</div>';
 }
 
 /* ── 第二屏：它听懂成了什么，以及点下去会发生什么 ── */
-function phReviewCard(){
-  var p=PH.proposal||{};
+function phPendingBlock(){
+  var ps=(((PH.data||{}).pending)||[]);
+  if(!ps.length)return '';
+  return ps.map(function(p){return phReviewCard(p)}).join('');
+}
+
+/* 页面上的回执，不是第二个操作台：只说有几条在等你拍板，以及从哪儿进去。
+   拍板这个动作只有一个入口——抽屉里那张卡。 */
+function phPendingReceipt(){
+  var n=(((PH.data||{}).pending)||[]).length;
+  if(!n)return '';
+  return '<div class="card section"><div class="ph-hero">有 <b class="num">'+n
+   +'</b> 条草案蒸馏好了，在等你拍板——确认之后它才开始出手。</div>'
+   +'<div class="ph-acts"><button type="button" class="ph-go" data-el="rules.goreview"'
+   +' onclick="openRulesDrawer()">去核对</button></div></div>';
+}
+
+function phReviewCard(p){
+  p=p||{};
   var rw=p.rewrites||[];
-  var h='<div class="card section">'
+  var on=!!PH.accepted[p.id];
+  var h='<div class="card section" id="ph-p-'+esc(p.id||'')+'">'
    +'<h2 class="card-title">草案已生成，请核对</h2>'
    +'<div class="ph-hero" style="margin-bottom:var(--space-4)">你写的准则：'
    +'<span style="color:var(--color-text-primary)">「'+esc(p.said||'')+'」</span>'
@@ -10296,15 +10511,19 @@ function phReviewCard(){
     h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">3</span>'
      +'你的准则有部分被改写</div><div class="ph-warn"><ul class="ph-list">'
      +rw.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>'
-     +'<label class="ph-check" data-el="rules.accept"><input type="checkbox"'
-     +(PH.accepted?' checked':'')+' onchange="phToggleAccept()">'
-     +'<span>我已核对，改写符合我的原意。</span></label>'
+     /* 一个点击目标，不是 label 套 input：label 会替 input 再合成一次 click，
+        两次冒泡就把勾选切回去了，看起来像点了没反应。而且卡号从此不进 JS
+        字面量——委托拿属性，和停用按钮同一条路。 */
+     +'<button type="button" class="ph-check" data-el="rules.accept"'
+     +' data-ph-ok="'+esc(p.id||'')+'">'
+     +'<span class="ph-box'+(on?' on':'')+'">'+(on?'✓':'')+'</span>'
+     +'<span>我已核对，改写符合我的原意。</span></button>'
      +'<div class="card-note" style="margin-top:6px">改写是否成立只有你能判断。'
      +'不符合原意就换一个说法重写。</div></div>';
   }
 
-  if(PH.replaces){
-    var old0=((PH.data||{}).live||[]).filter(function(x){return x.id===PH.replaces})[0];
+  if(p.replaces){
+    var old0=((PH.data||{}).live||[]).filter(function(x){return x.id===p.replaces})[0];
     if(old0)h+='<div class="ph-step"><div class="card-note">这是在「'+esc(old0.said)
       +'」的基础上改的。生效时那一条会同时停用——两条准则各自派生一种生成方式，'
       +'让它们同时跑，跑赢跑输就归因不到哪一句话上。它已经写下的持仓与业绩留在组合里。</div></div>';
@@ -10319,13 +10538,14 @@ function phReviewCard(){
    +'</ul></div></div>';
 
   if(PH.err)h+='<div class="ph-err" style="margin-top:var(--space-3)">'+esc(PH.err)+'</div>';
-  var lock=rw.length&&!PH.accepted;
+  var lock=rw.length&&!on;
   h+='<div class="ph-acts">'
    +'<button type="button" class="ph-go" data-el="rules.go"'
-   +((PH.busy||lock)?' disabled':'')+' onclick="phActivate()">'
+   +' data-ph-act="'+esc(p.id||'')+'"'
+   +((PH.busy||lock)?' disabled':'')+'>'
    +(PH.busy?'正在生效…':'确认生效')+'</button>'
    +'<button type="button" class="ph-alt" data-el="rules.redo"'
-   +(PH.busy?' disabled':'')+' onclick="phDiscard()">重写</button>'
+   +' data-ph-dis="'+esc(p.id||'')+'"'+(PH.busy?' disabled':'')+'>重写</button>'
    +(lock?'<span class="card-note">需先核对上方改写并勾选，方可生效</span>':'')
    +'</div>';
   return h+'</div>';
@@ -10441,6 +10661,71 @@ function phRunningCard(){
   return h+'</div>';
 }
 
+/* ── 准则记录 ──────────────────
+   「我上个月写的那条，当时到底说了什么」。记录只增不改，可它从前只存在
+   磁盘上的 ledger.jsonl 里：一条准则被停用，界面上就再也找不到它说过什么、
+   蒸馏成了什么、要求每条想法回答什么——而 append-only 这套东西存在的理由，
+   正是不让这件事发生。这一段把那份记录搬到人会看的地方。
+
+   给的是当时那张卡的原样，不是摘要：问的是这条准则当时说了什么，而一条
+   准则的摘要是另一条准则。 */
+function phHistoryCard(){
+  var hs=(((PH.data||{}).history)||[]);
+  if(!hs.length)return '';
+  var gone=hs.filter(function(c){return !c.live}).length;
+  var h='<div class="card section"><div class="card-title-row">'
+   +'<h2 class="card-title" style="margin-bottom:0">准则记录</h2>'
+   +'<span class="card-note">'+hs.length+' 条'
+   +(gone?(' · 其中 '+gone+' 条已停用'):'')+'</span></div>'
+   +'<div class="card-note" style="margin-bottom:var(--space-3)">'
+   +'写下过的都在这儿，停用的也在。按写下的日子倒序；点开一条，看到的是它'
+   +'当时被蒸馏成的原样——记录只增不改，这一份不会随后来的修改而变。</div>';
+  h+=hs.map(function(c){
+    var st=PH.hist[c.id]||{};
+    var line=esc(c.since)+' 写下';
+    if(c.retired_on)line+=' · '+esc(c.retired_on)+' 停用';
+    if(c.arm_label)line+=' · '+esc(c.arm_label);
+    return '<div class="ph-hist" id="ph-h-'+esc(c.id)+'">'
+      +'<div class="ph-rule-said">'
+      +(c.live?'<span class="ph-badge on">在跑</span>'
+              :'<span class="ph-badge">已停用</span>')
+      +'「'+esc(c.said)+'」</div>'
+      +'<div class="ph-meta">'+line+'</div>'
+      +(c.retired_reason
+        ?'<div class="ph-meta">停用原因：'+esc(c.retired_reason)+'</div>':'')
+      +'<div class="ph-acts" style="margin-top:var(--space-2)">'
+      +'<button type="button" class="ph-alt" data-el="rules.hist"'
+      +' data-ph-hist="'+esc(c.id)+'">'
+      +(st.open?'收起':'当时它说了什么')+' ›</button></div>'
+      +(st.open?phHistBody(c):'')
+      +'</div>';
+  }).join('');
+  return h+'</div>';
+}
+
+function phHistBody(c){
+  var ul=function(a){return (a&&a.length)
+    ?'<ul class="ph-list">'+a.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>':''};
+  var blk=function(t,body){return body
+    ?'<div class="ph-step"><div class="ph-step-h">'+t+'</div>'+body+'</div>':''};
+  var rel='';
+  if(c.replaces)rel+='<div class="ph-meta">这一条是照 <code>'+esc(c.replaces)
+    +'</code> 改出来的。</div>';
+  if(c.replaced_by)rel+='<div class="ph-meta">后来被 <code>'+esc(c.replaced_by)
+    +'</code> 接替。</div>';
+  return '<div class="ph-out">'
+   +blk('系统据此执行的要求',ul(c.understood)+ul(c.refuses))
+   +blk('每条想法必须回答',(c.must_answer||[]).map(function(f){
+        return '<div class="ph-field"><code>'+esc(f.field)+'</code><span>'
+          +esc(f.desc)+'</span></div>'}).join(''))
+   +blk('当时被改写的地方',ul(c.rewrites))
+   +blk('为什么这样蒸馏',c.why?'<div class="ph-meta">'+esc(c.why)+'</div>':'')
+   +blk('与初心的对照',c.founding_check
+        ?'<div class="ph-meta">'+esc(c.founding_check)+'</div>':'')
+   +rel
+   +'<div class="ph-meta">卡号 <code>'+esc(c.id)+'</code></div></div>';
+}
+
 /* 停用按钮走事件委托，id 从不进入 JS 字符串字面量。
    内联 `onclick="phRetire('…')"` 是双层上下文——HTML 属性里套一个 JS 字符串——
    而 esc() 在那里不够：HTML 解析器会先把 &#39; 解回单引号再交给 JS，引号原样
@@ -10471,6 +10756,20 @@ function phBind(){
                            dd.getAttribute('data-ph-doc'));
     var rv=t.closest('[data-ph-revise]');
     if(rv&&!rv.disabled)return phReviseFrom(rv.getAttribute('data-ph-revise'));
+    var ac=t.closest('[data-ph-act]');
+    if(ac&&!ac.disabled)return phActivate(ac.getAttribute('data-ph-act'));
+    var ds=t.closest('[data-ph-dis]');
+    if(ds&&!ds.disabled)return phDiscard(ds.getAttribute('data-ph-dis'));
+    var ok=t.closest('[data-ph-ok]');
+    if(ok&&!ok.disabled)return phToggleAccept(ok.getAttribute('data-ph-ok'));
+    var dr=t.closest('[data-ph-draft]');
+    if(dr&&!dr.disabled)return phResumeDraft(dr.getAttribute('data-ph-draft'));
+    var dx=t.closest('[data-ph-draft-x]');
+    if(dx&&!dx.disabled)return phDropDraft(dx.getAttribute('data-ph-draft-x'));
+    var hi=t.closest('[data-ph-hist]');
+    if(hi&&!hi.disabled)return phToggleHist(hi.getAttribute('data-ph-hist'));
+    var un=t.closest('[data-ph-unrevise]');
+    if(un&&!un.disabled)return phUnrevise();
   });
 }
 
@@ -10500,7 +10799,8 @@ function phPendingRules(){
 function phGraftArm(){
   var pend=phPendingRules();
   if(pend.length===1&&pend[0].arm)return pend[0].arm;
-  if(PH.proposal&&PH.proposal.arm)return PH.proposal.arm;
+  var ps=((PH.data||{}).pending)||[];
+  if(ps.length===1&&ps[0].arm)return ps[0].arm;
   return PH.arm||((PH.data||{}).default_arm)||'';
 }
 /* 画布上那一格只在活的面板上画。静态快照没有后端，画一个点了不动的加号，
@@ -10529,7 +10829,7 @@ function phSection(){
   /* phDefLine 是「这功能是什么」的说明，phTeachCard 是表单——两样都进抽屉。
      页面上只留状态：有准则在跑就列出来，没有就什么都不画（那时图上那个
      虚线空格自己会说「这一格是空的」）。 */
-  return phRunningCard();
+  return phPendingReceipt()+phRunningCard()+phHistoryCard();
 }
 
 /* 「重画准则」现在就是「重画方法页」：准则的每一次状态变化都要让上面那张图

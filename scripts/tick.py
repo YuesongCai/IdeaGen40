@@ -39,6 +39,35 @@ def _ark_key() -> str:
     return m.group(1) if m else ""
 
 
+def _declared_role() -> str:
+    """The operator's `IDEAGEN_WEEKLY_ROLE`, read from the file it lives in.
+
+    Without this the declaration has no vote. `setdefault` below only defers to
+    `os.environ`, and this script imports nothing from the package before
+    building the child environment, so a file saying `observer` is simply not
+    present to block it — the node is promoted to `runner` against its own
+    configuration, and nothing says so.
+
+    Two runners do not collide the way a reader expects. They write to different
+    stores, so the uniqueness index guarding one period cannot see the other,
+    and the same week comes out twice with no hand raised. On 2026-09-05 both
+    nodes resolved to `runner` for the 09-09 trigger: this laptop declares
+    `observer` and was being promoted, and the cloud instance declares nothing
+    and takes the default.
+
+    Read with the same tolerance as `_ark_key`, minus one: a commented-out role
+    is not a declaration. Commenting out the key is how inference is switched
+    off, which is why that reader matches either way; commenting out a role
+    means the operator withdrew it.
+    """
+    try:
+        text = ENV_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    m = re.search(r"^\s*IDEAGEN_WEEKLY_ROLE=(\S+)", text, re.M)
+    return (m.group(1).strip().lower() if m else "")
+
+
 def _inference_host(env: dict) -> str:
     """The single hostname inference talks to, for a surgical proxy bypass."""
     from urllib.parse import urlparse
@@ -48,6 +77,12 @@ def _inference_host(env: dict) -> str:
 
 def main() -> int:
     env = dict(os.environ)
+    # The declaration goes into the child environment *before* anything below
+    # calls setdefault, which is the only way a file that says `observer` gets
+    # to outrank a default that says `runner`.
+    declared = _declared_role()
+    if declared and "IDEAGEN_WEEKLY_ROLE" not in os.environ:
+        env["IDEAGEN_WEEKLY_ROLE"] = declared
     key = _ark_key()
     env["ARK_API_KEY"] = key
     env.setdefault("IDEAGEN_ARK_MODEL", "deepseek-v4-pro-260425")
@@ -71,6 +106,9 @@ def main() -> int:
                     env.get(var, ""), _inference_host(env)]))
     else:
         env["IDEAGEN_INFERENCE_MODE"] = "claude"
+        # No key means no model, so this node cannot produce a weekly whatever
+        # it declares. Assignment rather than setdefault on purpose: this is a
+        # capability, not a preference, and a declaration cannot grant it.
         env["IDEAGEN_WEEKLY_ROLE"] = "observer"
     return subprocess.run([PYBIN, "-m", "ideagen.scheduler", "tick"],
                           cwd=ROOT, env=env).returncode

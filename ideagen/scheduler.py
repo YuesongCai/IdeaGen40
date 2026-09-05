@@ -1175,18 +1175,27 @@ def weekly_role() -> dict[str, Any]:
     holds whatever a wrapper decided. The environment wins, by design — that is
     how a wrapper injects a role for one run.
 
-    What is not by design is silence. `scripts/tick.py` promotes a node to
-    `runner` whenever an ARK key is readable, and its key reader matches the line
-    even when it is commented out; `setdefault` then writes `runner` into the
-    child environment because the declaration lives in the file rather than in
-    `os.environ`, and the file's `observer` never gets a vote. Each step is
-    reasonable and the sum is a machine acting against its own configuration.
+    `scripts/tick.py` used to promote a node to `runner` whenever an ARK key was
+    readable — its key reader matches the line even when commented out — and
+    `setdefault` then wrote `runner` into the child environment, because the
+    declaration lives in the file rather than in `os.environ` and so was not
+    present to block it. The file's `observer` never got a vote, and a machine
+    ran against its own configuration with nothing saying so.
 
-    That matters more than it sounds: two runners do not collide. They write to
-    different stores, so the uniqueness index guarding one period cannot see the
-    other, and the result is two versions of the same week with nothing raising
-    a hand. Resolution lives here so the answer has one definition, and the
-    disagreement is returned rather than resolved away.
+    That is not a cosmetic disagreement. Two runners do not collide the way a
+    reader expects: they write to different stores, so the uniqueness index
+    guarding one period cannot see the other, and the same week comes out twice
+    with no hand raised. On 2026-09-05, checked four days before the 09-09
+    trigger, both nodes resolved to `runner` — this laptop declaring `observer`
+    and being promoted, the cloud instance declaring nothing and taking the
+    default.
+
+    `tick.py` now reads the declaration from the same file it reads the key
+    from, so a declaration outranks the default. This function follows it:
+    promotion is reported, because an operator should be able to see that the
+    key is readable, but it no longer decides. What still cannot be declared
+    away is the absence of a key — a node with no model cannot produce a weekly
+    whatever it says about itself, and that stays an assignment in `tick.py`.
     """
     declared = (_declared("IDEAGEN_WEEKLY_ROLE") or "").strip().lower()
     # `scripts/tick.py` promotes to runner whenever the model key is readable,
@@ -1203,7 +1212,11 @@ def weekly_role() -> dict[str, Any]:
     # question it is not measuring.
     promoted = _tick_sees_model_key()
     override = (os.environ.get("IDEAGEN_WEEKLY_ROLE") or "").strip().lower()
-    effective = ("runner" if promoted else override or declared or "runner")
+    # Declaration first, inference last. Importing this package loads the env
+    # file into `os.environ`, so `override` normally already carries `declared`;
+    # the pair is kept because a wrapper setting the variable for one run is a
+    # legitimate override and has to keep winning.
+    effective = override or declared or "runner"
     conflict = bool(declared and effective != declared)
     return {
         "declared": declared or None,
@@ -1211,14 +1224,13 @@ def weekly_role() -> dict[str, Any]:
         "effective": effective,
         "conflict": conflict,
         "why": (
-            f"~/.ideagen.env 写的是 {declared}，但周跑实际以 {effective} 运行"
-            "：tick.py 见到可读的 ARK_API_KEY 便提升为 runner，"
-            "而它的读法连注释掉的那行也算数"
-            if conflict and promoted else
             f"~/.ideagen.env 写的是 {declared}，实际以 {effective} 运行"
+            "（进程环境里的覆盖优先，通常来自某个 wrapper）"
             if conflict else
             f"生效角色 {effective}"
-            + ("（来自 ~/.ideagen.env）" if declared else "（无声明，取默认）")),
+            + ("（来自 ~/.ideagen.env）" if declared else "（无声明，取默认 runner）")
+            + ("；env 文件里有可读的 ARK_API_KEY，但它不再改变角色"
+               if promoted and declared else "")),
     }
 
 

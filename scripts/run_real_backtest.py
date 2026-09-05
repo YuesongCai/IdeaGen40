@@ -258,6 +258,12 @@ def _generation_head_to_head(con, days: list, horizon_days: int) -> dict:
     }
 
 
+#: 主题来源的三种取值，面板图例里本来就叫这三个中文名。摘要 note 是印给读者的，
+#: 印 seed / discovered / mixed 等于让人自己去猜后端枚举。
+REGIME_CN = {"seed": "人工词典", "discovered": "自己发现",
+             "mixed": "混合", "none": "无"}
+
+
 def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
                 horizon_days: int, excluded: list[str],
                 provenance: dict | None = None) -> str:
@@ -288,17 +294,19 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
             f"还不够：持有期表中标注 {horizon_days} 天，但只有 "
             f"{(horizon['complete_frac'] or 0) * 100:.0f}% 的持仓跑满该窗口"
             f"（各组合 {min(fracs) * 100:.0f}–{max(fracs) * 100:.0f}%，并不一致），"
-            "未满窗口的收益与满窗口的混在同一列；只用跑满部分重算的结果见 "
-            "horizon_completeness。")
+            "未满窗口的收益与满窗口的混在同一列；只用跑满部分重算的结果见"
+            "「持有期完整度」（horizon_completeness）。")
         parts.append("结论性判断以实跑的那几期为准。")
     regimes = (provenance or {}).get("periods_by_regime") or {}
     if len({r for r in regimes if r != "none"}) > 1:
-        shown = "、".join(f"{k} {v} 期" for k, v in sorted(regimes.items()))
+        shown = "、".join(f"{REGIME_CN.get(k, k)} {v} 期"
+                         for k, v in sorted(regimes.items()))
         parts.append(
-            f"主题来源并不同质（{shown}）：seed 期打的是人工在 2026-07 撰写的主题"
-            f"词典，discovered 期的主题是该期自己从当周研报里发现并命名的。后者没有"
-            f"任何人工事后选题，前者有；两类不要合成一个胜率读，分列见 "
-            f"theme_provenance。")
+            f"主题来源并不同质（{shown}）：人工词典（seed）那几期打的是 2026-07 "
+            f"人工撰写的主题词典，自己发现（discovered）那几期的主题是该期自己从"
+            f"当周研报里发现并命名的。后者没有任何人工事后选题，前者有；"
+            f"两类不要合成一个胜率读，分列见「排序力」表里的主题来源标注"
+            f"（theme_provenance）。")
     if excluded:
         parts.append(f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。")
     return "".join(parts)
@@ -1138,7 +1146,8 @@ def main(argv: list[str]) -> int:
     head_to_head = _generation_head_to_head(con, days, args.horizon_days)
     robustness["depth_note"] = (
         "顶层字段即 depths['10']，保留是为了不改已有消费方的形状。"
-        "verdict_stable_across_depths 为 false 的组合，其结论取决于剪切多少个"
+        "判定不随剪切深度稳定（verdict_stable_across_depths=false）的组合，"
+        "其结论取决于剪切多少个"
         "标的，不能当成关于该组合的判断——本次 omega_loose 与 left_tail 即如此。")
     dating = _shelf_dating(
         con, {str(r.get("instrument_id")) for r in positions if r.get("instrument_id")},

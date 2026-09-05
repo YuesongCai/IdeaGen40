@@ -658,6 +658,78 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
             weekly["current_corpus_total"] = len(docs)
         except Exception as e:  # noqa: BLE001 — drill-down must not break the API
             weekly["evidence_error"] = f"{type(e).__name__}: {e}"
+    # -- the theme itself, and how it has read in every period so far.
+    #
+    # Until now this payload carried a theme's *scores* and never the theme.
+    # The registry has always held what it asks, which words compose it, which
+    # instrument prices it, the day it was registered and what justified the
+    # registration — none of it reached the page, so a macro theme arrived on
+    # screen as a label and four numbers with nothing behind them.
+    #
+    # Three rules, because this is the surface where invention would be easy:
+    #   * only fields the registry already holds are sent. A theme's stance is
+    #     its key question plus its direction, not a paragraph written later.
+    #   * the arc is rebuilt period by period, and a period before the theme's
+    #     registration day is labelled as such rather than left blank — blank
+    #     reads as "it went quiet", which is the opposite of the truth.
+    #   * a failure names itself. An empty dict here looks exactly like a theme
+    #     that has no vocabulary, and those are not the same fact.
+    if weekly and weekly.get("topics"):
+        try:
+            from datetime import date as _tdate
+            from . import lexicon as _tlex
+            _aof = _tdate.fromisoformat(weekly["as_of"])
+            by_id = {t.id: t for t in _tlex.all_themes(_aof)}
+            scored_ids = {tid for tv in weekly["topics"]
+                          for tid in (tv.get("scores") or {})}
+            # One as-of can have been run more than once; the later run wins.
+            hist: dict[str, dict[str, Any]] = {}
+            for row in p.state.q(
+                    "SELECT r.as_of AS as_of, v.chosen AS chosen, "
+                    "v.scores AS scores FROM verdicts v "
+                    "JOIN orch_runs r ON r.run_id = v.run_id "
+                    "WHERE v.kind='topic_scorer' AND v.strategy='hgep' "
+                    "ORDER BY r.as_of, r.started_at"):
+                hist[row["as_of"]] = {
+                    "chosen": set(json.loads(row["chosen"] or "[]")),
+                    "scores": json.loads(row["scores"] or "{}")}
+            themes: dict[str, Any] = {}
+            for tid in sorted(scored_ids | set(by_id)):
+                th = by_id.get(tid)
+                if th is None:
+                    continue
+                arc = []
+                for d in sorted(hist):
+                    if th.registered_d > d:
+                        arc.append({"as_of": d, "state": "pre-registration"})
+                        continue
+                    sc = hist[d]["scores"].get(tid)
+                    if not sc:
+                        arc.append({"as_of": d, "state": "unscored"})
+                        continue
+                    arc.append({"as_of": d, "state": "scored",
+                                "chosen": tid in hist[d]["chosen"],
+                                **{k: sc.get(k) for k in
+                                   ("H", "G", "E", "P", "score",
+                                    "n_evidence", "n_institutions")}})
+                themes[tid] = {
+                    "label": th.label,
+                    "key_question": th.key_question,
+                    "direction": th.default_direction,
+                    "indicator": th.price_indicator,
+                    "related": list(th.related or ()),
+                    "exposures": list(th.exposures or ()),
+                    "terms": list(th.terms or ()),
+                    "require": list(th.require or ()),
+                    "origin": th.origin,
+                    "registered_d": th.registered_d,
+                    "provenance": list(th.provenance or ()),
+                    "arc": arc,
+                }
+            weekly["themes"] = themes
+        except Exception as e:  # noqa: BLE001 — a missing theme text must not
+            # take the whole API down, but it must not pass for silence either.
+            weekly["themes_error"] = f"{type(e).__name__}: {e}"
     if weekly and weekly.get("corpus_total") is None:
         rows = p.state.q(
             "SELECT n_rows FROM feed_runs WHERE run_id=? AND kind='corpus'",

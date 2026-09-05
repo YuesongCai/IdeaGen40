@@ -238,6 +238,18 @@ def handle_activate(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     except ValueError as e:
         return {"error": str(e)}, 400
     f.unlink()
+    # A revision retires what it revises, in the same action. Editing a card in
+    # place is not on offer: a rule *is* an arm, and an arm whose content
+    # changed while keeping its name turns one track record into a blend of
+    # several different rules. Two events on the ledger instead — the lineage
+    # is queryable and each arm's series stays clean.
+    replaced = str(payload.get("replaces") or "")
+    if replaced and replaced != cid:
+        try:
+            philosophy.retire(replaced, config.now_hkt().date(),
+                              f"被 {cid} 替换")
+        except ValueError:
+            pass  # already retired, or never existed — the new card still stands
     # Registering the derived arm now means the next weekly run picks it up
     # without a restart; a card in force that produces nothing until someone
     # remembers to bounce the service is a card that silently does not exist.
@@ -246,7 +258,8 @@ def handle_activate(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
         gen_pm._install()
     except Exception:  # noqa: BLE001 — it will install at next import regardless
         pass
-    return {"ok": True, "id": cid, "since": card["as_of"]}, 200
+    return {"ok": True, "id": cid, "since": card["as_of"],
+            "replaced": replaced or None}, 200
 
 
 def handle_discard(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:

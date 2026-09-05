@@ -395,6 +395,91 @@ class TheRuleCanBeCheckedAgainstItsSources(unittest.TestCase):
         self.assertIs(obj["live"][0]["counts"]["ran"], False)
 
 
+class ARevisionIsANewRuleThatRetiresTheOld(unittest.TestCase):
+    """改一条准则不能是原地编辑。
+
+    A rule *is* an arm. An arm whose content changed while keeping its name
+    turns one track record into a blend of several different rules, which is the
+    thing this whole design refuses. So 「照这条改一版」 mints a new card and
+    retires the one it revises, in the same action: two events on an append-only
+    ledger, a lineage that can be queried, and two clean series.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._real = philosophy.LEDGER
+        philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+        self.pending = Path(self.tmp.name) / "pending"
+        from ideagen import philosophy_web as pw
+        self._real_pending = pw.PENDING
+        pw.PENDING = self.pending
+        self.pending.mkdir(parents=True, exist_ok=True)
+        # `handle_activate` registers the derived arm so the next weekly run
+        # picks it up without a restart. That is the right behaviour and it
+        # means these tests mutate a global; snapshot it after the lazy plugin
+        # load so tearDown removes only what this class added.
+        from ideagen import strategy as strat
+        strat.available("idea_generator")
+        self._before = set(strat._REGISTRY)
+
+    def tearDown(self):
+        from ideagen import philosophy_web as pw, strategy as strat
+        philosophy.LEDGER = self._real
+        pw.PENDING = self._real_pending
+        for key in set(strat._REGISTRY) - self._before:
+            del strat._REGISTRY[key]
+        self.tmp.cleanup()
+
+    def _stage(self, card):
+        (self.pending / f"{card['card_id']}.json").write_text(
+            json.dumps(card, ensure_ascii=False), encoding="utf-8")
+
+    def test_activating_a_revision_retires_what_it_revises(self):
+        from ideagen import philosophy_web as pw
+        first = a_card()
+        philosophy.activate(first, known_arms={"carl_constraint"})
+        second = a_card(card_id="pm-2026-09-06-d4e5f6", as_of="2026-09-06",
+                        source_utterance="我要的是被条款逼着动手的卖家，写清期限")
+        self._stage(second)
+        obj, status = pw.handle_activate({"id": second["card_id"],
+                                          "replaces": first["card_id"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(obj["replaced"], first["card_id"])
+        live = [c["card_id"] for c in philosophy.cards()]
+        self.assertEqual(live, [second["card_id"]])
+
+    def test_the_old_rule_is_retired_not_erased(self):
+        """Its positions and its record stay; an append-only ledger has no
+        delete, and the reason says what replaced it."""
+        from ideagen import philosophy_web as pw
+        first = a_card()
+        philosophy.activate(first, known_arms={"carl_constraint"})
+        second = a_card(card_id="pm-2026-09-06-d4e5f6", as_of="2026-09-06",
+                        source_utterance="改了的说法")
+        self._stage(second)
+        pw.handle_activate({"id": second["card_id"],
+                            "replaces": first["card_id"]})
+        both = {c["card_id"] for c in philosophy.cards(include_retired=True)}
+        self.assertEqual(both, {first["card_id"], second["card_id"]})
+        events = philosophy.LEDGER.read_text(encoding="utf-8").strip().split("\n")
+        self.assertEqual(len(events), 3)   # activate, activate, retire
+        self.assertIn(second["card_id"],
+                      [json.loads(e).get("reason", "") for e in events
+                       if json.loads(e).get("event") == "retire"][0])
+
+    def test_a_revision_of_something_already_gone_still_stands(self):
+        """The new rule is the point. If the old one was retired in another tab
+        a minute earlier, that must not cost the revision."""
+        from ideagen import philosophy_web as pw
+        second = a_card()
+        self._stage(second)
+        obj, status = pw.handle_activate({"id": second["card_id"],
+                                          "replaces": "pm-2026-01-01-000000"})
+        self.assertEqual(status, 200)
+        self.assertEqual([c["card_id"] for c in philosophy.cards()],
+                         [second["card_id"]])
+
+
 class OneBadLineCannotTakeDownTheRegistry(unittest.TestCase):
     """一行写坏的账本数据，不该让四条原臂一起下线。
 

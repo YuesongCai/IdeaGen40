@@ -731,6 +731,25 @@ tr.ls-ev td{background:var(--color-surface-muted)}
 .book-kv{display:flex;gap:var(--space-5);flex-wrap:wrap;margin-top:var(--space-3)}
 .spark{display:block}
 
+
+/* ── 业绩表：夏普置信区间图 ─────────────────────────────────────
+   十条区间共用一把尺子，全部横跨基准虚线时「分不开」是看出来的，
+   不是读出来的。数字表在它下面，顺序不能反。 */
+.ts-iv{position:relative;margin:var(--space-3) 0 var(--space-2)}
+.ts-axis{position:absolute;left:180px;right:56px;top:0;bottom:0;pointer-events:none}
+.ts-zero{position:absolute;top:0;bottom:0;width:1px;background:var(--color-border-default)}
+.ts-benchline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--color-text-tertiary)}
+.ts-row{display:flex;align-items:center;gap:8px;height:22px}
+.ts-nm{width:172px;flex:none;font:400 12px/16px var(--font-sans);color:var(--color-text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ts-row.ts-bench .ts-nm{font-weight:600;color:var(--color-text-primary)}
+.ts-track{position:relative;flex:1 1 auto;height:22px}
+.ts-bar{position:absolute;top:9px;height:4px;border-radius:2px;background:var(--color-border-default)}
+.ts-row.ts-bench .ts-bar{background:var(--color-text-tertiary)}
+.ts-dot{position:absolute;top:6px;width:10px;height:10px;margin-left:-5px;border-radius:50%;
+  background:var(--color-surface-white);border:2px solid var(--color-text-secondary)}
+.ts-row.ts-bench .ts-dot{border-color:var(--color-text-primary)}
+.ts-v{width:48px;flex:none;text-align:right;font-size:12px;color:var(--color-text-primary)}
 /* ── backtest ─────────────────────────────────────────────────── */
 .bt-meta{display:flex;gap:var(--space-5);flex-wrap:wrap;margin-bottom:var(--space-5)}
 .bt-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;margin-top:var(--space-3)}
@@ -1215,6 +1234,10 @@ button.rr-dl{font:500 12px/16px var(--font-sans);cursor:pointer}
 .rl-uri{color:#c9d2ce;word-break:break-all}
 .rl-note{margin-top:var(--space-3);font:400 12px/17px var(--font-sans);color:#8b948f}
 .rl-empty{font:400 13px/19px var(--font-sans);color:#aeb6b2}
+/* 没有逐步日志时，orch_runs 那一行仍然是真事实——它排在缺口说明之上，
+   因为「这一趟跑过」比「日志没留下」更重要。 */
+.rl-runrow{font:400 12.5px/19px var(--font-sans);color:#d7ddd9;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.rl-runrow .quiet{color:#9aa39e;font-size:11.5px;margin-top:4px}
 .rl-anim .rl-line{opacity:0;animation:rlIn .28s var(--ease-out) forwards}
 @keyframes rlIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.rl-anim .rl-line{animation:none;opacity:1}}
@@ -1710,10 +1733,18 @@ body.drawer-lock{overflow:hidden}
   font:400 13px/20px var(--font-sans);color:var(--color-text-primary);
 }
 .lad-warn b{font-weight:600}
+/* 读法，不是警告——它讲的不是哪里坏了，是这张图怎么看。所以不用警示底色。 */
+.lad-read{
+  margin-top:var(--space-3);padding:11px 14px;border-radius:var(--radius-md);
+  background:var(--color-surface-subtle);border:1px solid var(--color-border-subtle);
+  font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);
+}
+.lad-read b{color:var(--color-text-primary);font-weight:600}
+.lad-obj{display:inline-block;margin-top:6px;color:var(--color-text-tertiary);font-size:12.5px}
 .lad-hint{margin-left:auto;font-family:var(--font-sans);color:var(--color-text-brand)}
 
 .tm-wrap{overflow-x:auto}
-table.tm{border-collapse:collapse;min-width:520px}
+table.tm{border-collapse:collapse;min-width:620px}
 table.tm th,table.tm td{padding:0;text-align:center;width:66px}
 table.tm th.rl,table.tm td.rl{text-align:left;padding-right:20px;white-space:nowrap;width:auto}
 table.tm thead th{
@@ -2555,6 +2586,7 @@ var VIEWS=[
    icon:'<path d="M8 2 2.8 4.1v4c0 3 2.1 4.8 5.2 5.4 3.1-.6 5.2-2.4 5.2-5.4v-4L8 2Z"/>',
    secs:[{s:'strategies',label:'选取策略对比'},
          {s:'backtest',label:'历史回测'},
+         {s:'tearsheet',label:'业绩表'},
          {s:'ranking',label:'排序力'},
          {s:'attribution',label:'价值出在哪一段'},
          {s:'limits',label:'已知局限'},
@@ -3054,6 +3086,29 @@ function ladderCard(){
     : (roll||'当前没有在场的期次。');
 
   /* 这条警告不是附注，它决定上面那些百分比该不该当成结果读。 */
+  /* 重叠是这张图最有价值、也最容易被漏掉的读法：每 7 天开一期、每期名义盖 30 天，
+     所以任意一天都有好几条轨道叠着。统计上「6 期」远不等于「6 个独立样本」，
+     而这件事光看数字看不出来，看这张图一眼就有。峰值从数据现算，不写死。 */
+  var peak=0;
+  L.forEach(function(a){
+    if(!a.horizon_end)return;
+    var n=0;
+    L.forEach(function(b){
+      if(b.horizon_end&&b.as_of<=a.as_of&&b.horizon_end>a.as_of)n++;
+    });
+    if(n>peak)peak=n;
+  });
+  var readNote=peak>1?('<div class="lad-read">'
+      +'<b>怎么读重叠：</b>每 7 天开一期、每期名义覆盖 30 天，所以任意一天都有 '
+      +'<b>'+peak+' 条轨道</b>叠在一起。这就是「'+L.length+' 期」远不等于「'+L.length
+      +' 个独立样本」的原因——统计上一期只值约 7/30 ≈ 0.23 个独立样本，'
+      +'「还需多少期才能判定」必须按这个折算。'
+      +'<span class="gloss gm" title="重叠让相邻各期看的是同一段行情。把期数直接当独立样本数，'
+      +'会把所需样本量少算约 4.3 倍——「再等一个季度」和「再等几年」的差别。">ⓘ</span>'
+      +'<br><span class="lad-obj">这张图量的是<b>那十个模拟组合</b>：空心轨道是名义期次窗口，'
+      +'实心段是它真的被标记过的天数。<b>回测另有自己的持有窗口</b>（它不经过建仓，'
+      +'直接用当期候选池加其后的真实收盘算），两者不是同一个对象，别互相印证。</span>'
+      +'</div>'):'';
   var warn=thin?('<div class="lad-warn">'
       +'<b>这些百分比还不是 30 天的结果。</b>'
       +thin+' 期是事后补跑建的仓（'+esc((L.filter(function(r){return (Number(r.mark_days)||0)<=1})[0]||{}).held_from||'—')
@@ -3077,7 +3132,7 @@ function ladderCard(){
       +'<span><i class="lad-gate"></i>出场：竖闸 = 平仓时点，箭头朝外</span>'
       +'<span class="lad-hint">点任意一期，整站切到那一期</span>'
     +'</div>'
-    +warn
+    +readNote+warn
     +epi('收益率的分母是这一期投出去的钱，不是组合本金——一期只找到两条想法，'
         +'分母就小，它的百分比和满仓那一期不可直接比，所以「投出」一直跟在旁边。')
     +'</div>';
@@ -3113,9 +3168,9 @@ function themeMatrixCard(){
       if(!n)return '<td class="'+(dim?'dim':'')+'"><span class="tm-nil">·</span></td>';
       var d=Math.max(14,Math.round(Math.sqrt(n/maxN)*34));
       var fs=d>=24?10:(d>=18?9:8);
-      return '<td class="'+(dim?'dim':'')+'"><i class="tm-dot" style="width:'+d+'px;height:'+d+'px;font-size:'+fs+'px" title="'+esc(th)+' · '+esc(r.as_of)+' 期 · '+n+' 仓">'+n+'</i></td>';
+      return '<td class="'+(dim?'dim':'')+'"><i class="tm-dot" style="width:'+d+'px;height:'+d+'px;font-size:'+fs+'px" title="'+esc(topicName(th))+' · '+esc(r.as_of)+' 期 · '+n+' 仓">'+n+'</i></td>';
     }).join('');
-    return '<tr><td class="rl">'+esc(th)+'</td>'+cells+'</tr>';
+    return '<tr><td class="rl" title="'+esc(th)+'">'+topicPair(th)+'</td>'+cells+'</tr>';
   }).join('');
 
   var firstP=L[0], lastP=L[L.length-1];
@@ -3124,8 +3179,8 @@ function themeMatrixCard(){
   });
   var fresh=order.filter(function(th){return seen[th].first>=L.length-2});
   var note='共 '+order.length+' 个主题进出过 '+L.length+' 期。'
-    +(kept.length?('<b>'+kept.map(esc).join('、')+'</b> 从第一期一直拿到现在；'):'')
-    +(fresh.length?('<b>'+fresh.map(esc).join('、')+'</b> 是最近两期才起来的。'):'');
+    +(kept.length?('<b>'+kept.map(function(t){return esc(topicName(t))}).join('、')+'</b> 从第一期一直拿到现在；'):'')
+    +(fresh.length?('<b>'+fresh.map(function(t){return esc(topicName(t))}).join('、')+'</b> 是最近两期才起来的。'):'');
 
   /* 阶梯图回答「这六期怎么滚的」，这张矩阵回答「主题怎么换的」——同一批期次的
      第二个读数，不是第一个。收进盖子，但盖子上直接写出结论：折着也读得到
@@ -3422,6 +3477,7 @@ function renderEvidence(){
   root.innerHTML=
      secWrap('evidence','strategies',raceHero(aggBooks()))
     +secWrap('evidence','backtest',backtestCard())
+    +secWrap('evidence','tearsheet',tearsheetCard())
     +secWrap('evidence','ranking',rankingPowerCard()+liveSplitBlock())
     +secWrap('evidence','attribution',attributionCard())
     +secWrap('evidence','limits',limitsCard())
@@ -5028,6 +5084,170 @@ function pairedVerdictLine(sum){
     +'<div class="vd-r"><span class="vk">配对样本</span><span class="vv"><b class="num">'+fmtInt(n)+'</b> 对，远低于预注册门槛</span></div></div>';
 }
 
+/* ════════════════════ 业绩表 — 「拿着它这段时间会怎样」 ══════════════════════ */
+/* 这张卡回答的问题和「历史回测」那张不同，所以是两张卡（一张卡一个问题）：
+   那张问「A 挑得比 B 好吗」——配对、扣掉共同涨跌、看统计功效；
+   这张问「拿着它这一段会怎样、路上有多难受」——净值本身、回撤、和指数比。
+   在它存在之前，第二个问题的全部答案只有净值曲线的最后一点和回撤列的最小值，
+   而机构读者（Jon、FOF 尽调、投委会）先问的恰恰是第二个。
+
+   整张卡的排版只服从一件事：**先让人看见分不开，再让人看数**。
+   区间图放在数字上面，是因为一张按收益排好序的表，读者在读到脚注之前
+   就已经形成结论了——脚注改不动它。 */
+function sharpeIntervalRow(label,pt,ci,isBench,lo,hi){
+  var span=hi-lo||1;
+  var X=function(v){return Math.max(0,Math.min(100,(v-lo)/span*100))};
+  if(ci===null||ci===undefined||pt===null||pt===undefined){
+    return '<div class="ts-row"><div class="ts-nm">'+esc(label)+'</div>'
+      +'<div class="ts-track"><span class="card-note">区间算不出（样本过短或波动为 0）</span></div>'
+      +'<div class="ts-v num">—</div></div>';
+  }
+  var a=X(ci[0]),b=X(ci[1]);
+  return '<div class="ts-row'+(isBench?' ts-bench':'')+'">'
+    +'<div class="ts-nm">'+esc(label)+'</div>'
+    +'<div class="ts-track">'
+      +'<i class="ts-bar" style="left:'+a.toFixed(1)+'%;width:'+Math.max(b-a,0.8).toFixed(1)+'%"></i>'
+      +'<i class="ts-dot" style="left:'+X(pt).toFixed(1)+'%"></i>'
+    +'</div>'
+    +'<div class="ts-v num">'+Number(pt).toFixed(2)+'</div></div>';
+}
+function tearsheetCard(){
+  var ts=(((S||{}).backtest||{}).summary||{}).tearsheet;
+  if(!ts||!ts.arms||!Object.keys(ts.arms).length)return '';
+  var arms=ts.arms,names=Object.keys(arms);
+  var bp=ts.benchmark_performance||{},sep=ts.separability||{};
+  var bench=ts.benchmark||'基准';
+  var p0=(arms[names[0]]||{}).performance||{};
+
+  /* 区间图的横轴：所有组合和基准的区间取并集，一把尺子量所有人。
+     每条各自缩放会让最宽的那条看起来最窄，正好搞反。 */
+  var lo=0,hi=0,any=false;
+  names.concat(['__b']).forEach(function(n){
+    var c=(n==='__b'?bp:(arms[n].performance||{})).sharpe_ci95;
+    if(!c)return;
+    if(!any){lo=c[0];hi=c[1];any=true}
+    lo=Math.min(lo,c[0]);hi=Math.max(hi,c[1]);
+  });
+  if(!any){lo=-1;hi=1}
+  var pad=(hi-lo)*0.04;lo-=pad;hi+=pad;
+  var zeroX=Math.max(0,Math.min(100,(0-lo)/(hi-lo)*100));
+  var benchX=(bp.sharpe==null)?null:Math.max(0,Math.min(100,(bp.sharpe-lo)/(hi-lo)*100));
+
+  var ivRows=[['__b',bench+'（基准）',bp,true]].concat(
+    names.slice().sort(function(x,y){
+      return ((arms[y].performance||{}).sharpe||-99)-((arms[x].performance||{}).sharpe||-99);
+    }).map(function(n){return [n,backtestArmName(n),arms[n].performance||{},false]})
+  ).map(function(r){
+    return sharpeIntervalRow(r[1],r[2].sharpe,r[2].sharpe_ci95,r[3],lo,hi);
+  }).join('');
+
+  var riskRows=[['__b',bench+'（基准）',bp,true]].concat(
+    names.slice().sort(function(x,y){
+      return ((arms[y].performance||{}).cum_return||-9)-((arms[x].performance||{}).cum_return||-9);
+    }).map(function(n){return [n,backtestArmName(n),arms[n].performance||{},false]})
+  ).map(function(r){
+    var p=r[2];
+    return '<tr'+(r[3]?' class="ls-ev"':'')+'><td class="primary">'+esc(r[1])+'</td>'
+      +'<td class="r num '+pctCls((p.cum_return||0)*100)+'">'+fmtPct((p.cum_return==null?null:p.cum_return*100))+'</td>'
+      +'<td class="r num">'+(p.ann_vol==null?'—':fmtRate(p.ann_vol*100))+'</td>'
+      +'<td class="r num down">'+fmtPct((p.max_drawdown==null?null:p.max_drawdown*100))+'</td>'
+      +'<td class="r num dim">'+(p.frac_underwater==null?'—':fmtRate(p.frac_underwater*100))+'</td>'
+      +'<td class="r num dim">'+(p.pct_positive_days==null?'—':fmtRate(p.pct_positive_days*100))+'</td></tr>';
+  }).join('');
+
+  var relRows=names.slice().sort(function(x,y){
+      return ((arms[y].relative||{}).information_ratio||-99)-((arms[x].relative||{}).information_ratio||-99);
+    }).map(function(n){
+      var r=arms[n].relative;if(!r)return '';
+      return '<tr><td class="primary">'+esc(backtestArmName(n))+'</td>'
+        +'<td class="r num">'+(r.beta==null?'—':Number(r.beta).toFixed(2))+'</td>'
+        +'<td class="r num '+pctCls((r.alpha_ann||0)*100)+'">'+fmtPct((r.alpha_ann==null?null:r.alpha_ann*100))
+          +(r.alpha_significant?' *':'')+'</td>'
+        +'<td class="r num dim">'+(r.alpha_t==null?'—':Number(r.alpha_t).toFixed(2))+'</td>'
+        +'<td class="r num dim">'+(r.r2==null?'—':Number(r.r2).toFixed(3))+'</td>'
+        +'<td class="r num">'+(r.information_ratio==null?'—':Number(r.information_ratio).toFixed(2))+'</td>'
+        +'<td class="r num dim">'+(r.up_capture==null?'—':fmtRate(r.up_capture*100))+'</td>'
+        +'<td class="r num dim">'+(r.down_capture==null?'—':fmtRate(r.down_capture*100))+'</td></tr>';
+    }).join('');
+
+  var fd=ts.family_deflation||{},fdr=ts.fdr||{};
+  var cost=ts.cost_reality||{};
+  var costRows=Object.keys(cost).filter(function(n){return cost[n].n_positions}).sort(function(x,y){
+      return (cost[y].breakeven_round_trip_pct||-99)-(cost[x].breakeven_round_trip_pct||-99);
+    }).map(function(n){
+      var c=cost[n],bad=c.breakeven_round_trip_pct<=c.applied_round_trip_pct;
+      return '<tr><td class="primary">'+esc(backtestArmName(n))+'</td>'
+        +'<td class="r num">'+Number(c.positions_per_period).toFixed(1)+'</td>'
+        +'<td class="r num dim">'+Number(c.round_trips_per_year).toFixed(1)+'</td>'
+        +'<td class="r num dim">'+Number(c.applied_round_trip_pct).toFixed(2)+'%</td>'
+        +'<td class="r num '+(bad?'down':'')+'">'+Number(c.breakeven_round_trip_pct).toFixed(2)+'%</td></tr>';
+    }).join('');
+
+  var banner=sep.can_rank
+    ? '<div class="card-note">'+esc(sep.note||'')+'</div>'
+    : '<div class="ls-note"><b>这张表不能用来排名。</b>'+esc(sep.note||'')+'</div>';
+
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">业绩表</h2>'
+    +'<span class="card-note">拿着它这段时间会怎样 · 基准 '+esc(bench)
+    +' · 无风险 '+fmtRate((ts.rf_annual||0)*100)+'</span></div>'
+    +banner
+    +(p0.ann_return_blocked
+      ? '<div class="card-note" style="margin-top:var(--space-2)">'
+        +'<b>不给年化收益。</b><span class="gloss gm" title="'+esc(p0.ann_return_blocked)+'">ⓘ</span> '
+        +'样本 '+fmtInt(sep.n_days)+' 个交易日，复利外推到一年是外推假象，不是业绩。</div>'
+      : '')
+
+    +'<h3 class="sub-h">夏普和它的 95% 置信区间</h3>'
+    +'<div class="ts-iv">'
+      +'<div class="ts-axis">'
+        +'<i class="ts-zero" style="left:'+zeroX.toFixed(1)+'%"></i>'
+        +(benchX===null?'':'<i class="ts-benchline" style="left:'+benchX.toFixed(1)+'%"></i>')
+      +'</div>'
+      +ivRows
+    +'</div>'
+    +'<div class="card-note">竖实线为 0，竖虚线为基准的夏普。'
+      +'<b>区间横跨虚线，就是这段样本分不开它和基准</b>；横跨实线，'
+      +'连「有没有正收益」都没分开。区间宽度来自 Lo(2002) 的估计量，'
+      +'带偏度峰度项——尾巴越肥，区间越宽。</div>'
+
+    +'<h3 class="sub-h">收益与风险</h3>'
+    +'<div class="table-wrap"><table class="data-table">'
+      +'<thead><tr><th>组合</th><th class="r">区间收益</th><th class="r">年化波动</th>'
+      +'<th class="r">最大回撤</th><th class="r">水下占比<span class="gloss gm" title="净值低于历史高点的交易日占比。它比最大回撤更贴近持有体验：回撤讲最难受那一刻有多深，水下占比讲有多久不好受。">ⓘ</span></th>'
+      +'<th class="r">胜日率</th></tr></thead><tbody>'+riskRows+'</tbody></table></div>'
+
+    +foldBlock('week.tearsheet.rel','相对基准','beta 是回归出来的，不是假设为 1',
+      '<div class="table-wrap"><table class="data-table">'
+        +'<thead><tr><th>组合</th>'
+        +'<th class="r">beta<span class="gloss gm" title="把组合超额收益对基准超额收益做回归得到的斜率。此前面板用的是「假设 beta=1」的折算，那一列的说明里自己写着不要引用它——现在这一列是量出来的。">ⓘ</span></th>'
+        +'<th class="r">alpha 年化</th><th class="r">alpha_t</th><th class="r">R²</th>'
+        +'<th class="r">IR<span class="gloss gm" title="信息比率＝相对基准的超额收益 ÷ 跟踪误差。为负就是：按承担的偏离风险算，不如直接拿基准。">ⓘ</span></th>'
+        +'<th class="r">上行捕获</th><th class="r">下行捕获</th></tr></thead>'
+        +'<tbody>'+relRows+'</tbody></table></div>'
+      +'<div class="card-note">* = alpha 的 t 值过 ±1.96。'
+      +'alpha 的 t 值按逐日残差算、未对分批持仓的窗口重叠折算，偏乐观；'
+      +'样本量的正式口径在配对检验那张卡。</div>',
+      names.length+' 条')
+
+    +(fd.message?foldBlock('week.tearsheet.dsr','多重检验：试了这么多条，只报最好那条会高估多少',
+      '折减后夏普 DSR '+(fd.deflated_sharpe==null?'—':Number(fd.deflated_sharpe).toFixed(3)),
+      '<p class="p">'+esc(fd.message)+'</p>'
+      +(fdr.m?'<p class="p">'+esc(fdr.note||'')+'</p>'
+        +'<div class="card-note">BH 判为发现：<b>'+esc((fdr.rejected||[]).join('、')||'无')
+        +'</b>；Bonferroni 判为发现：<b>'+esc((fdr.bonferroni_rejected||[]).join('、')||'无')+'</b></div>':''),
+      (fd.survives?'扛住':'未扛住')):'')
+
+    +(costRows?foldBlock('week.tearsheet.cost','交易成本现实','已扣成本 vs 打平所需成本',
+      '<div class="table-wrap"><table class="data-table">'
+        +'<thead><tr><th>组合</th><th class="r">每期开仓</th><th class="r">年周转</th>'
+        +'<th class="r">已扣成本</th><th class="r">打平所需往返成本</th></tr></thead>'
+        +'<tbody>'+costRows+'</tbody></table></div>'
+      +'<div class="card-note">最后一列低于「已扣成本」的组合，扣完交易费之后没有超额可言。'
+      +'成本模型对每条组合是同一个常数，所以它永远改不了排名——它能改的是「这件事值不值得做」，'
+      +'而只有这一列看得见。</div>',''):'')
+    +'</div>';
+}
 function backtestCard(){
   var b=(S&&S.backtest)||{};
   var sum=b.summary||{};
@@ -5047,7 +5267,7 @@ function backtestCard(){
   });
   var nBack=sum.n_backfill_periods||0;
   var mix=nBack
-    ? '<span class="gloss" title="事后补跑的期：文档卡在当期，但模型权重见过之后的世界，货架上还有没有上架日期的标的无法按期过滤。结论以 live 期为准。">'
+    ? '<span class="gloss" title="事后补跑的期：文档卡在当期，但模型权重见过之后的世界，货架上还有没有上架日期的标的无法按期过滤。结论以实跑的那几期为准。">'
       +sum.n_live_periods+' 期实盘记录 + '+nBack+' 期事后补跑 ⓘ</span>'
     : '<span>'+(sum.n_live_periods||sum.periods)+' 期全部为实盘记录</span>';
   var rows=names.sort(function(x,y){
@@ -5183,7 +5403,7 @@ function liveSplitBlock(){
       +(h[2]?'<span class="gloss gm" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>'}).join('');
   var warn=lb.usable?'':'<div class="ls-note">现在只有 <b>'+fmtInt(lb.n_live_periods)
       +'</b> 期当期实跑（'+esc((lb.live_periods||[]).join('、'))
-      +'），<b>live 列还不该被读</b>——一期就是一个月一个市场里的几条持仓。还需要 '
+      +'），<b>实跑列还不该被读</b>——一期就是一个月一个市场里的几条持仓。还需要 '
       +fmtInt(lb.periods_needed)+' 期（四周是一轮完整的分批周期，不到一轮时'
       +'每条持仓都还开着）。</div>';
   /* 自己一张卡。它此前是「排序力」卡里的一个 h3 小节，于是那张卡同时回答
@@ -5284,7 +5504,11 @@ function rankingPowerCard(){
     +meta
     +rankingQuintileBars(pooled,benchMean)
     +warn
-    +foldBlock('week.ranking.detail','逐期拆解','每期两端 · 同期基准 · 主题来源',table,scored.length?(scored.length+' 期'):'');
+    +foldBlock('week.ranking.detail','逐期拆解','每期两端 · 同期基准 · 主题来源',table,scored.length?(scored.length+' 期'):'')
+    /* 这张卡的 </div> 一直缺着，靠浏览器在段落末尾替它兜底。只要它后面还什么
+       都没有就看不出来——把「当期实跑」拆成同级的第二张卡之后，第二张直接掉进
+       第一张里，成了卡中卡。 */
+    +'</div>';
 }
 function backtestSection(){
   var b=S.backtest||{},sum=b.summary||{},arms=sum.arms||{};
@@ -5597,6 +5821,16 @@ function openTopicDrawer(tid){pushDrawer({t:'topic',p:tid})}
  * 从前平铺在流水线图和本期输入之间，把一页阅读劈成两半。入口留在图上
  * 那个虚线空格——筛选B 里空着的第 5 格本身就是它，点空格来填它。 */
 function openRulesDrawer(){pushDrawer({t:'rules',p:''})}
+/* 「照这条改一版」。改一条准则不能是原地编辑：一条准则就是一条臂，改了内容
+   还叫同一条，它的历史序列就变成好几条不同准则的混合，回测数字失去含义。
+   所以改一版 = 生一条新的，并在生效时把旧的停用——记录里两条事件都在，
+   血缘查得到，而两条臂的序列各自干净。 */
+function phReviseFrom(id){
+  var c=((PH.data||{}).live||[]).filter(function(x){return x.id===id})[0];
+  if(!c)return;
+  PH.say=c.said;PH.arm=c.arm||PH.arm;PH.replaces=id;PH.problems=null;PH.proposal=null;
+  openRulesDrawer();
+}
 function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
 function openTopicEvidence(tid){openTopicDrawer(tid)}
 function openPosDrawer(code){pushDrawer({t:'pos',p:code})}
@@ -6677,7 +6911,7 @@ function rlPlainHTML(j){
   return '<div class="rlp">'+body+'</div>';
 }
 
-var RL_STEP_ZH={'universe':'货架核实','theme_discovery':'主题发现','inputs':'输入封存','topics':'筛选A 选题','generators':'筛选B 写想法','pool':'合并候选池','selectors':'筛选C 挑持仓'};
+var RL_STEP_ZH={'universe':'货架核实','theme_discovery':'主题发现','inputs':'输入封存','topics':'筛选A 选题','generators':'筛选B 写想法','pool':'合并候选池','selectors':'筛选C 挑持仓',/* 盯市这一趟的六步——周跑之外，日志里绝大多数运行是它。 */'feeds':'数据源体检','prices':'刷新行情','marks':'重估持仓','alerts':'检查触发','ingest':'增量研报','olive':'货架同步'};
 function rlStepName(step){
   if(RL_STEP_ZH[step])return RL_STEP_ZH[step];
   if(String(step).indexOf('feed:')===0)return '写入数据源';
@@ -8172,6 +8406,11 @@ function askDrawerBody(d){
     shaLine='重建的 '+fmtInt(corpus.n_docs||0)+' 篇与该次运行的研报回执数量一致；完整输入指纹含当时的日历，无法由当前日历表复算';
   else if(corpus.verified_sha===false)
     shaLine='⚠ 研报清单按当期口径重建，与封存的输入指纹不一致：研报库可能在运行后被修改，回答将一并说明';
+  else if(corpus.journal_note)
+    /* 「查不了」有两种：这次运行太早、没冻结输入清单（关于那次运行的事实），
+       和这台机器读不到运行日志（关于这台机器的事实）。后者说成前者，就是
+       把一个能修的故障讲成了一条修不了的历史局限。 */
+    shaLine='⚠ 无法核对输入清单：'+corpus.journal_note;
   else
     shaLine='该期早于冻结输入清单的版本，仅能按当期口径重建，无法逐条核对';
   var gloss='仅依据当期封存材料 = 回答模型可见范围限于本次运行写下的运行日志、打分/生成/选取产物，以及证据指向的研报原文；材料未覆盖的内容须明确回答记录中不存在。'+(shaLine?'\n'+shaLine:'');
@@ -9057,7 +9296,7 @@ function tick(){
 })();
 
 var PH={data:null,say:'',arm:'',busy:false,err:'',proposal:null,accepted:false,
-        out:{},
+        out:{},replaces:null,
         loaded:false,bound:false};
 
 var PH_EG=[
@@ -9151,9 +9390,10 @@ function phPropose(){
 
 function phActivate(){
   if(!PH.proposal)return;
-  phPost('activate',{id:PH.proposal.id,accept_rewrites:PH.accepted},function(b){
+  phPost('activate',{id:PH.proposal.id,accept_rewrites:PH.accepted,
+                     replaces:PH.replaces||''},function(b){
     if(b.error){PH.err=b.error;return renderRules()}
-    PH.proposal=null;PH.say='';PH.accepted=false;
+    PH.proposal=null;PH.say='';PH.accepted=false;PH.replaces=null;
     phLoad(true);
   });
 }
@@ -9311,6 +9551,12 @@ function phReviewCard(){
      +'不符合原意就换一个说法重写。</div></div>';
   }
 
+  if(PH.replaces){
+    var old0=((PH.data||{}).live||[]).filter(function(x){return x.id===PH.replaces})[0];
+    if(old0)h+='<div class="ph-step"><div class="card-note">这是在「'+esc(old0.said)
+      +'」的基础上改的。生效时那一条会同时停用——两条准则各自派生一种生成方式，'
+      +'让它们同时跑，跑赢跑输就归因不到哪一句话上。它已经写下的持仓与业绩留在组合里。</div></div>';
+  }
   var n=rw.length?4:3;
   h+='<div class="ph-step"><div class="ph-step-h"><span class="ph-step-n">'+n+'</span>'
    +'生效后会发生什么</div><div class="ph-then"><ul class="ph-list">'
@@ -9433,6 +9679,8 @@ function phRunningCard(){
         ?'<button type="button" class="ph-alt" data-el="rules.output"'
           +' data-ph-out="'+esc(c.id)+'">'
           +((PH.out[c.id]||{}).open?'收起':'看它写了什么')+' ›</button>':'')
+      +'<button type="button" class="ph-alt" data-el="rules.revise"'
+      +' data-ph-revise="'+esc(c.id)+'"'+(PH.busy?' disabled':'')+'>照这条改一版</button>'
       +'<button type="button" class="ph-alt" data-el="rules.retire"'
       +' data-ph-id="'+esc(c.id)+'"'+(PH.busy?' disabled':'')+'>停用</button>'
       +(c.runs>0?'':'<span class="card-note">停用后，该准则已写下的持仓与业绩留在组合里</span>')
@@ -9469,6 +9717,8 @@ function phBind(){
     var dd=t.closest('[data-ph-doc]');
     if(dd)return phOpenDoc(dd.getAttribute('data-ph-uid'),
                            dd.getAttribute('data-ph-doc'));
+    var rv=t.closest('[data-ph-revise]');
+    if(rv&&!rv.disabled)return phReviseFrom(rv.getAttribute('data-ph-revise'));
   });
 }
 

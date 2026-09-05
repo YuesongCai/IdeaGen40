@@ -1326,7 +1326,7 @@ button.al-mat:hover{border-color:var(--color-border-brand-subtle);background:var
 .tx-key{display:inline-flex;align-items:baseline;gap:5px;background:none;border:0;padding:0;cursor:pointer;font:400 12px/17px var(--font-sans);color:var(--color-text-metadata)}
 .tx-key:hover .id{color:var(--color-text-brand);text-decoration:underline}
 .tx-key .sw{width:9px;height:9px;border-radius:2px;align-self:center;flex:none}
-.tx-key .id{font-family:var(--font-mono);color:var(--color-text-secondary)}
+.tx-key .id{color:var(--color-text-secondary)}
 .tx-key .v{font-weight:600;color:var(--color-text-primary)}
 .tx-key .n{color:var(--color-text-tertiary)}
 .rej-why{margin:0 0 var(--space-3);padding:var(--space-2) var(--space-3);background:var(--color-feedback-neutral-subtle);border-left:3px solid var(--color-border-strong);border-radius:var(--radius-xs);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
@@ -2182,6 +2182,20 @@ function topicLabel(tid){
   for(var i=0;i<t.length;i++){var sc=(t[i].scores||{})[tid];if(sc&&sc.label)return sc.label}
   return tid;
 }
+/* 主题在界面上的写法，口径只此一处。
+ * 中文名是正文，英文代号是次要标识——这个次序在「持仓」页已经定下来
+ * （「央行政策路径与流动性 POLICY-PATH」），但别处一直只印代号、把中文名塞进
+ * title。悬停不存在于截图、投屏和打印件里，这条本页别处已经讲过一次（画布的
+ * 列头单位就是为此从 hover 挪到正文的）；而主题是整个系统里最主要的那个对象，
+ * 读者连它在讲什么都读不出来。
+ *   topicName —— 只要中文名。放不下代号的地方：正文句子、画布标签、窄单元格。
+ *   topicPair —— 中文名 + 小号灰代号。有横向余量、且读者可能需要精确指认时。
+ * 拿不到中文名（更早的期次、没打过分的主题）时两者都回落到代号，不编。 */
+function topicName(tid){return topicLabel(tid)||tid}
+function topicPair(tid){
+  var n=topicLabel(tid);
+  return esc(n||tid)+(n&&n!==tid?' <span class="hm-c mono">'+esc(tid)+'</span>':'');
+}
 /* 一次周跑通常几十分钟跑完（实测范围见 weeklyDurNote，别在这里写死）。
  * 没写结束时间的运行有两种：真的还在跑，
  * 和进程死了——进程死的时候把结束时间一起带走了，那一行会永远停在「没结束」。
@@ -2405,7 +2419,15 @@ function refresh(){
   fetch('/api/journal',{cache:'no-store'}).then(function(r){
     if(!r.ok)throw new Error('HTTP '+r.status);
     return r.json();
-  }).then(function(j){J=j;JErr=null}).catch(function(e){J=null;JErr=e&&e.message?e.message:String(e)})
+  }).then(function(j){
+    /* /api/journal answers 200 with {"error": …} when the run exists but its
+       journal does not — a monitor pass, or a node that cannot reach the
+       artifact store. Treating that as a plain object left JErr null, so the
+       receipt strip said 「返回为空」: the one phrasing that is never true here,
+       and the one that tells the reader nothing about which of the two it is. */
+    if(j&&j.error&&!j.journal){J=j;JErr=j.error}
+    else{J=j;JErr=null}
+  }).catch(function(e){J=null;JErr=e&&e.message?e.message:String(e)})
   /* 运行回执用的是 J，而它在导航重构后搬到了「证据」页——回调只重渲染
      「方法」页的话，日志晚到或从失败中恢复时，回执那条会一直停在
      「运行日志不可读」，而 JErr 早就清空了。失败态必须能自愈。 */
@@ -3049,7 +3071,7 @@ function ladderCard(){
     +'<div class="quiet" style="margin-bottom:var(--space-3)">'+lead+'</div>'
     +'<div class="lad-wrap">'+svg+'</div>'
     +'<div class="lad-leg">'
-      +'<span><i class="lad-sw hollow"></i>名义窗口（as_of → 到期日）</span>'
+      +'<span><i class="lad-sw hollow"></i>名义窗口（该期起 → 到期日）</span>'
       +'<span><i class="lad-sw" style="background:var(--color-fill-brand);opacity:.9"></i>真的持有过的日子</span>'
       +'<span><i class="lad-sw" style="background:var(--color-fill-tertiary);opacity:.5"></i>已滚出（全部平仓）</span>'
       +'<span><i class="lad-gate"></i>出场：竖闸 = 平仓时点，箭头朝外</span>'
@@ -3400,7 +3422,7 @@ function renderEvidence(){
   root.innerHTML=
      secWrap('evidence','strategies',raceHero(aggBooks()))
     +secWrap('evidence','backtest',backtestCard())
-    +secWrap('evidence','ranking',rankingPowerCard())
+    +secWrap('evidence','ranking',rankingPowerCard()+liveSplitBlock())
     +secWrap('evidence','attribution',attributionCard())
     +secWrap('evidence','limits',limitsCard())
     +secWrap('evidence','receipt',runReceiptStrip());
@@ -4052,7 +4074,7 @@ function holdMapCard(ag){
            +'），各按其所属那一期选出的主题——这是四周滚动本来的样子，'
            +'<button type="button" class="qlink" style="padding:0" onclick="goto(\'periods\')">看阶梯 →</button>。')
         : ('当前持仓来自 '+esc(vk[0]||'—')+' 期，按的是那一期选出的主题。');
-      if(stale.length)msg+='其中 <b>'+stale.map(esc).join('、')+'</b> 不在本期（'+esc(per||'—')+'）入选之列。';
+      if(stale.length)msg+='其中 <b>'+stale.map(function(t){return esc(topicName(t))}).join('、')+'</b> 不在本期（'+esc(per||'—')+'）入选之列。';
       if(unfilled.length)msg+='本期新选出的 <b>'+unfilled.map(esc).join('、')+'</b> 还没有仓位'
         +(pend?'——'+fmtInt(pend)+' 笔挂单待成交':'')+'。';
       return '<div class="hm-note">'+msg
@@ -5141,7 +5163,7 @@ function liveSplitBlock(){
     var isEv=v.evidence_column==='live';
     return '<tr'+(isEv?' class="ls-ev"':'')+'>'
       +'<td class="primary">'+esc(backtestArmName(name))
-        +(isEv?' <span class="tag">看 live 列</span>':'')+'</td>'
+        +(isEv?' <span class="tag">看实跑列</span>':'')+'</td>'
       +'<td class="r num">'+fmtInt(L.n)+'</td>'
       +'<td class="r num">'+(L.hit_rate==null?'—':fmtRate(L.hit_rate*100))+'</td>'
       +'<td class="r num '+pctCls(L.mean_return_pct)+'">'+fmtPct(L.mean_return_pct)+'</td>'
@@ -5151,9 +5173,9 @@ function liveSplitBlock(){
   }).join('');
   var head=[
     ['选取策略','',''],
-    ['live 条数','r','当期实跑的期次里，这个组合可计价的持仓条数。'],
-    ['live 胜率','r','只算当期实跑期次。对常驻探索的组合，这是唯一能当证据的一列。'],
-    ['live 均值','r','只算当期实跑期次的单笔平均收益。'],
+    ['实跑 条数','r','当期实跑的期次里，这个组合可计价的持仓条数。'],
+    ['实跑 胜率','r','只算当期实跑期次。对常驻探索的组合，这是唯一能当证据的一列。'],
+    ['实跑 均值','r','只算当期实跑期次的单笔平均收益。'],
     ['补跑 条数','r','事后补跑期次的条数。文档输入卡死在当期，但模型权重见过之后的世界。'],
     ['补跑 胜率','r','补跑期次的胜率。合并口径的数字主要由它撑起来。'],
     ['补跑 均值','r','补跑期次的单笔平均收益。']
@@ -5164,9 +5186,12 @@ function liveSplitBlock(){
       +'），<b>live 列还不该被读</b>——一期就是一个月一个市场里的几条持仓。还需要 '
       +fmtInt(lb.periods_needed)+' 期（四周是一轮完整的分批周期，不到一轮时'
       +'每条持仓都还开着）。</div>';
-  return '<div style="margin-top:var(--space-6)">'
-    +'<div class="card-title-row"><h3 class="card-title" style="font-size:15px">'
-    +'当期实跑 vs 事后补跑</h3><span class="card-note">合并口径把两者混在一起</span></div>'
+  /* 自己一张卡。它此前是「排序力」卡里的一个 h3 小节，于是那张卡同时回答
+     两个问题——排序有没有梯度、实跑和补跑差多少——而本页其余每张卡都只回答
+     一个。一张卡一个问题，是这一页自己的规矩。 */
+  return '<div class="card section">'
+    +'<div class="card-title-row"><h2 class="card-title">'
+    +'当期实跑 vs 事后补跑</h2><span class="card-note">合并口径把两者混在一起</span></div>'
     +warn
     +'<div class="table-wrap"><table class="data-table"><thead><tr>'+head
     +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
@@ -5232,6 +5257,18 @@ function rankingPowerCard(){
       +(h[2]?'<span class="gloss gm" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>'}).join('')
     +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
 
+  /* 一句话结论，和本页其余每张卡一样。两个分数本来就在这张卡上——一个在
+     第四格统计里、一个只在图注和 ⓘ 里——但没人替读者把它们读成一句话，
+     于是这张卡的第一屏是五个没有主语的数字。
+     末尾那半句用的是下面警告框自己的标题，一字不改：结论不能只报好看的
+     那一半，而警告框仍留在原位、原样展开（它不是脚注）。 */
+  var nS=rp.periods_scored||0;
+  var LEDE='font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)';
+  var lead=nS?('<div style="'+LEDE+'">顶格分位高于末位分位 <b>'
+    +fmtInt(rp.periods_top_beats_bottom)+'/'+fmtInt(nS)+' 期</b>，'
+    +'跑赢同期 SPY <b>'+fmtInt(rp.periods_top_beats_benchmark)+'/'+fmtInt(nS)+' 期</b>'
+    +'　——　<b>这张表还不能证明什么</b>，原因见下。</div>'):'';
+
   /* 警告与图表同级，不是脚注。这条排序是看过结果之后才被挑出来检验的，
      样本内这件事必须和好看的那半一起出现，否则第一次被追问就塌。 */
   var warn='<div class="rk-warn"><div class="rk-warn-h">这张表还不能证明什么</div>'
@@ -5243,10 +5280,10 @@ function rankingPowerCard(){
   return '<div class="card section" id="sec-ranking">'
     +'<div class="card-title-row"><h2 class="card-title">排序力</h2>'
     +'<span class="card-note">'+esc(rp.score_label||'')+' · 分位按期内部切</span></div>'
+    +lead
     +meta
     +rankingQuintileBars(pooled,benchMean)
     +warn
-    +liveSplitBlock()
     +foldBlock('week.ranking.detail','逐期拆解','每期两端 · 同期基准 · 主题来源',table,scored.length?(scored.length+' 期'):'');
 }
 function backtestSection(){
@@ -5751,10 +5788,12 @@ document.addEventListener('scroll',function(){hidePop()},true);
 document.addEventListener('click',function(e){
   var t=e.target;
   var g=(t&&t.closest)?t.closest('.gloss[title],.gloss[data-tip]'):null;
-  if(!g){if(popCur&&typeof popCur==='object')hidePop();return}
-  /* 有 hover 的设备已经靠移入出字了，点击不该再变成一个开关；
-   * 只在触屏上把点击当作唯一入口。 */
+  if(!g){if(popCur&&popCur.nodeType===1)hidePop();return}
+  /* ⓘ 不是按钮，点它不该连带触发外层那一行的 onclick——这一句在两种设备上都要。 */
   e.preventDefault();e.stopPropagation();
+  /* 有 hover 的设备移上去就已经出字了，点击不能再当开关，否则点一下反而把它关掉。
+   * 只有没有 hover 的设备（触屏）才靠点击开合。 */
+  if(window.matchMedia&&!window.matchMedia('(hover:none)').matches)return;
   if(popCur===g){hidePop();return}
   hidePop();popCur=g;showTipFor(g);
 },true);
@@ -6220,7 +6259,7 @@ function pipeCanvasSVG(){
       s+='<g class="pc-click" onclick="openStageDrawer(1,\''+jss(t)+'\')"'+popRef(tp)+'>'
         +'<circle cx="'+tX+'" cy="'+y+'" r="'+r+'" fill="var(--color-surface-brand-strong)"/>'
         +txt(tX,y+4,String(evN),11,'var(--color-text-on-brand)','middle',600,true)
-        +txt(tX,y-r-5,t,9.5,'var(--color-text-metadata)','middle',500,true)
+        +txt(tX,y-r-5,topicName(t),9.5,'var(--color-text-metadata)','middle',500)
         +'</g>';
     });
     if(lostN>0){
@@ -6403,8 +6442,16 @@ function pipeCanvasSVG(){
 var JCache={},JLoading={};
 function runReceiptStrip(){
   if(!J||!J.journal){
-    return '<button type="button" class="run-receipt section" onclick="openRunLog()">'
-      +'<span class="dot bad"></span><span class="rr-main">运行日志不可读（/api/journal'+(JErr?'：'+esc(JErr):'，返回为空')+'）</span>'
+    /* 即使没有日志，/api/journal 仍会交回 orch_runs 那一行——起止、成败、
+       报错。先把这行真实存在的东西说出来，再说日志为什么没有；否则读者
+       看到的是一条什么都没说的红杠。 */
+    var rr=(J&&J.run)||null;
+    var head=rr?((rr.ok?'● 完成':'● 失败')+' · run '+esc(rr.run_id||'—')
+                 +' · '+esc(rr.as_of||'')+' 期 · '+esc(rr.kind||'')+'（无逐步日志）')
+              :'运行日志不可读';
+    return '<button type="button" class="run-receipt section" onclick="openRunLog('+(rr&&rr.run_id?'\''+jss(rr.run_id)+'\'':'')+')">'
+      +'<span class="dot bad"></span><span class="rr-main">'+head
+      +(JErr?'：'+esc(JErr):'（/api/journal 未给出原因）')+'</span>'
       +'<span class="go">详情 →</span></button>';
   }
   var j=J.journal;
@@ -6423,15 +6470,16 @@ function ensureJournal(runId){
   var key=runId||'latest';
   if(JCache[key])return JCache[key];
   if(J&&J.journal&&(key==='latest'||J.run_id===runId)){
-    JCache[key]={j:J.journal};return JCache[key];
+    JCache[key]={j:J.journal,run:J.run||null};return JCache[key];
   }
   if(!JLoading[key]){
     JLoading[key]=true;
     fetch('/api/journal'+(runId?'?run_id='+encodeURIComponent(runId):''),{cache:'no-store'})
       .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
       .then(function(res){
-        if(res.b&&res.b.journal)JCache[key]={j:res.b.journal};
-        else JCache[key]={j:null,err:(res.b&&res.b.error)||('HTTP '+(res.ok?'格式不对':'错误'))};
+        var run=(res.b&&res.b.run)||null;
+        if(res.b&&res.b.journal)JCache[key]={j:res.b.journal,run:run};
+        else JCache[key]={j:null,run:run,err:(res.b&&res.b.error)||('HTTP '+(res.ok?'格式不对':'错误'))};
       })
       .catch(function(e){JCache[key]={j:null,err:e&&e.message?e.message:String(e)}})
       .then(function(){JLoading[key]=false;renderDrawers()});
@@ -6643,9 +6691,26 @@ function runLogDrawerBody(d){
     return '<div class="runlog"><div class="rl-empty">正在读取 run '+esc(d.p||'（最近一次）')+' 的运行日志……</div></div>';
   }
   if(!cached.j){
-    return '<div class="runlog"><div class="rl-empty">这条运行没有可读的日志'
-      +(cached.err?'——API 说：'+esc(cached.err):'')
-      +'。盯市（monitor）运行和较早的周跑没有留 journal 快照，这不是掩饰，是当时就没写。</div></div>';
+    /* 这里曾经写死一句「是当时就没写」。它在读不到产物存储的节点上是**假的**：
+       产物存在，只是这台机器够不着。把「记录本身没有」说成已经查明，比不说更糟——
+       现在只转述 API 给出的原因，并把 orch_runs 里那一行真实存在的事实摆出来，
+       让读者自己看到「这一趟确实跑过、只是没有逐步日志」。 */
+    var r=cached.run||null;
+    var facts='';
+    if(r){
+      facts='<div class="rl-runrow">'
+        +'<div><b>'+(r.ok?'● 完成':'● 失败')+'</b> · run '+esc(r.run_id||'—')+'</div>'
+        +'<div>'+esc(r.kind||'—')+' · '+esc(r.as_of||'—')+' 期'
+        +(r.started_at?' · 启动 '+esc(hktFmt(r.started_at,true))+' HKT':'')
+        +(r.ended_at?' · 结束 '+esc(hktFmt(r.ended_at,true))+' HKT':'（没有结束时间——这一趟没跑完）')
+        +'</div>'
+        +(r.error?'<div style="color:var(--color-feedback-error-text)">当时报的错：'+esc(r.error)+'</div>':'')
+        +'<div class="quiet">以上来自 orch_runs 的运行记录，和下面的日志缺口是两回事：这一趟确实跑过。</div>'
+        +'</div>';
+    }
+    return '<div class="runlog">'+facts+'<div class="rl-empty">没有逐步日志可读'
+      +(cached.err?'——'+esc(cached.err):'，而 API 没有说明原因')
+      +'</div></div>';
   }
   var j=cached.j;
   var steps=j.steps||[];
@@ -6756,7 +6821,7 @@ function stageCorpusBody(){
       +'<div class="card-note" style="margin-bottom:6px">研报的主题归属（同一篇可命中多个主题）</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
       +evKeys.map(function(t){
-        return '<button type="button" class="tag" style="cursor:pointer" onclick="openTopicDrawer(\''+jss(t)+'\')" title="'+esc(topicLabel(t))+'">'+esc(t)+' · '+fmtInt(evAll[t].n)+' 篇 ›</button>';
+        return '<button type="button" class="tag" style="cursor:pointer" onclick="openTopicDrawer(\''+jss(t)+'\')" title="'+esc(t)+'">'+esc(topicName(t))+' · '+fmtInt(evAll[t].n)+' 篇 ›</button>';
       }).join('')
       +'</div></div>';
   }
@@ -6803,7 +6868,7 @@ function pastCorpusList(curAsOf){
   if(!past.length)return '';
   return '<div style="margin-top:var(--space-5)">'
     +'<div class="card-note" style="margin-bottom:6px">往期研报 · 共 '+fmtInt(past.length)+' 期'
-    +'<span class="gloss gm" title="每一期读到的 = 截至该期 as_of 的 3 天窗口内入库的全部研报，与本期同一口径。历史各期一直存着，点开就是当时读到的那一份。">ⓘ</span>：</div>'
+    +'<span class="gloss gm" title="每一期读到的 = 截至该期日期的 3 天窗口内入库的全部研报，与本期同一口径。历史各期一直存着，点开就是当时读到的那一份。">ⓘ</span>：</div>'
     +'<div class="table-wrap"><table>'
     +'<thead><tr><th>期次</th><th class="r">条数</th><th>窗口</th></tr></thead><tbody>'
     +past.map(function(x){
@@ -7417,7 +7482,7 @@ function posDrawerBody(code){
   var html='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
     +'<span style="font:600 20px/28px var(--font-sans);color:var(--color-text-primary)">'+esc(p.name||bareCode(p.code))+'</span>'
     +'<span class="mono" style="color:var(--color-text-tertiary)">'+esc(p.code)+'</span>'
-    +(p.theme_id?'<button type="button" class="tag tag-brand mono" style="cursor:pointer" onclick="openTopicDrawer(\''+jss(p.theme_id)+'\')" title="'+esc(topicLabel(p.theme_id))+'">'+esc(p.theme_id)+' ›</button>':'')
+    +(p.theme_id?'<button type="button" class="tag tag-brand mono" style="cursor:pointer" onclick="openTopicDrawer(\''+jss(p.theme_id)+'\')" title="'+esc(p.theme_id)+'">'+esc(topicName(p.theme_id))+' ›</button>':'')
     +'</div>'
     +'<div style="margin:var(--space-2) 0 var(--space-4);display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline">'
     +'<span class="num '+pctCls(p.unrealized)+'" style="font:600 26px/32px var(--font-sans)">'+signedMoney(p.unrealized)+'</span>'
@@ -7540,7 +7605,7 @@ function themeBarHTML(b,compact){
     var stale=chosenNow.length&&chosenNow.indexOf(m.theme)<0;
     return '<button type="button" class="tx-key'+(stale?' stale':'')+'" onclick="openTopicDrawer(\''+jss(m.theme)+'\')" title="'+esc(topicLabel(m.theme)+(stale?'（本期未入选，仓位来自更早一期）':''))+'——点击看这个主题的打分与证据">'
       +'<span class="sw" style="background:'+themeColor(m.theme)+'"></span>'
-      +'<span class="id">'+esc(m.theme)+'</span>'
+      +'<span class="id">'+esc(topicName(m.theme))+'</span>'
       +'<span class="v num">'+m.share.toFixed(0)+'%</span>'
       +'<span class="n">'+m.n+' 只'+(stale?' · 旧期':'')+'</span></button>';
   }).join('');
@@ -7656,7 +7721,9 @@ function askLogSubject(a){
 /* 材料 → 它自己所在的那一层。追问详情不是终点，是入口。 */
 function askMatOpen(m){
   var src=String(m.source||''),k=String(m.kind||'');
-  if(k==='journal')return "openRunLogStacked()";
+  /* 材料上写着 run_id=X，点开却是「最近一次」——两个不同的运行，同一个按钮。
+     追问上下文里带着它自己的运行号，用它。 */
+  if(k==='journal')return "openRunLogStacked('"+jss(askRunId())+"')";
   /* 研报浏览器要按期查库，必须带上这次运行的 as_of——不带就取不到清单。 */
   if(k==='doc'){
     var ao=((S||{}).weekly||{}).as_of||'';
@@ -7806,7 +7873,7 @@ function proposalsDrawerBody(d){
         var cites=(x.citations||[]);
         return '<div class="pr-card">'
           +'<div class="pr-top">'
-          +(x.topic_id?'<button type="button" class="tag tag-brand mono" onclick="openTopicDrawer(\''+esc(x.topic_id)+'\')" title="'+esc(topicLabel(x.topic_id))+'——点击看这个主题">'+esc(x.topic_id)+' ›</button>':'')
+          +(x.topic_id?'<button type="button" class="tag tag-brand mono" onclick="openTopicDrawer(\''+esc(x.topic_id)+'\')" title="'+esc(x.topic_id)+'——点击看这个主题">'+esc(topicName(x.topic_id))+' ›</button>':'')
           +(x.exposure?'<span class="tag">'+esc(x.exposure)+'</span>':'')
           +(x.vehicle?'<span class="tag">'+esc(x.vehicle)+'</span>':'')
           +'</div>'
@@ -8457,7 +8524,7 @@ function calDrawerBody(){
         +(r.error?'<div style="color:var(--color-text-tertiary);font-size:12px;line-height:18px">错误原文：'+esc(r.error)+'</div>':'')
         +'</div>';
     }).join(''):(p.summaryRunId
-      ?'<div class="quiet">明细运行记录已超出近 30 条窗口，journal 快照仍可读：<button type="button" class="exp-btn" onclick="event.stopPropagation();openRunLogStacked(\''+jss(p.summaryRunId)+'\')">run '+esc(p.summaryRunId)+' 的日志 ›</button></div>'
+      ?'<div class="quiet">明细运行记录已超出近 30 条窗口，运行日志快照仍可读：<button type="button" class="exp-btn" onclick="event.stopPropagation();openRunLogStacked(\''+jss(p.summaryRunId)+'\')">run '+esc(p.summaryRunId)+' 的日志 ›</button></div>'
       :'<div class="quiet">该期无运行记录。</div>');
     var pfSeen={};
     var pf=feeds.filter(function(f){
@@ -8938,6 +9005,18 @@ function tick(){
    +'.ph-def b{font-weight:600;color:var(--color-text-primary)}'
    +'.ph-pick{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin:var(--space-3) 0}'
    +'.ph-seg{display:inline-flex}'
+   +'.ph-counts{font:400 13px/21px var(--font-sans);color:var(--color-text-secondary);margin-top:6px}'
+   +'.ph-out{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px dashed var(--color-border-default,#e0e0e0)}'
+   +'.ph-idea{padding:var(--space-3) 0;border-top:1px solid var(--color-border-subtle,#f2f2f2)}'
+   +'.ph-idea:first-of-type{border-top:none}'
+   +'.ph-idea-h{font:400 13px/20px var(--font-sans);color:var(--color-text-primary);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}'
+   +'.ph-ans{display:flex;gap:8px;align-items:baseline;margin-top:5px;font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);flex-wrap:wrap}'
+   +'.ph-ans code{font:500 11px/17px var(--font-mono);background:var(--color-surface-subtle,#f5f5f5);border-radius:var(--radius-xs);padding:1px 6px;flex:none}'
+   +'.ph-doc-btn{border:1px solid var(--color-border-default,#ddd);background:none;border-radius:var(--radius-pill);font:500 11px/17px var(--font-mono);color:var(--color-text-tertiary);padding:1px 9px;cursor:pointer;flex:none}'
+   +'.ph-doc-btn:hover{color:var(--color-text-primary);border-color:var(--color-text-tertiary)}'
+   +'.ph-doc{margin:6px 0 0;padding:var(--space-3);background:var(--color-surface-subtle,#f7f7f7);border-radius:var(--radius-sm);font:400 13px/21px var(--font-sans)}'
+   +'.ph-idea-t{margin-top:5px;font:400 13px/21px var(--font-sans);color:var(--color-text-tertiary)}'
+   +'.ph-drops{margin-top:var(--space-3);font:400 13px/21px var(--font-sans);color:var(--color-text-secondary)}'
    +'.ph-say{width:100%;box-sizing:border-box;min-height:96px;resize:vertical;padding:var(--space-4);'
    +'border:1px solid var(--color-border-default,#e0e0e0);border-radius:var(--radius-md);'
    +'font:400 15px/24px var(--font-sans);color:var(--color-text-primary);background:var(--color-surface-default,#fff)}'
@@ -8978,6 +9057,7 @@ function tick(){
 })();
 
 var PH={data:null,say:'',arm:'',busy:false,err:'',proposal:null,accepted:false,
+        out:{},
         loaded:false,bound:false};
 
 var PH_EG=[
@@ -9006,6 +9086,51 @@ function phPost(op,body,done){
     .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
     .then(function(res){PH.busy=false;done(res.b||{},res.ok)})
     .catch(function(e){PH.busy=false;PH.err=(e&&e.message)||String(e);renderRules()});
+}
+
+/* 「点开看」以前没有东西可点：面板告诉 PM 这些字段是给他核对用的，却没有
+   一条路通向那条准则真的写出来的东西。这一段就是那条路。 */
+function phToggleOutput(id){
+  var st=PH.out[id]=PH.out[id]||{};
+  st.open=!st.open;
+  if(st.open&&!st.data&&!st.busy){
+    st.busy=true;renderRules();
+    fetch('/api/philosophy/output?id='+encodeURIComponent(id),{cache:'no-store'})
+      .then(function(r){return r.json()})
+      .then(function(b){st.data=b})
+      .catch(function(e){st.err=(e&&e.message)||String(e)})
+      .then(function(){st.busy=false;renderRules()});
+    return;
+  }
+  renderRules();
+}
+
+/* 出处不是一个可以照抄的编号，是一篇能读的研报。复用面板已有的 fetchDoc /
+   docDetailHTML，而不是另做一套——读者在别处认的就是这个交互。
+
+   展开状态存在 PH.docs 里而不是 DOM 上：这个面板每 60 秒整页重画，第一版把
+   display 和 data-open 写在元素上，一次轮询就把读者正在看的那篇研报关掉了，
+   而且看起来像是点了没反应。和输入框被重画冲掉是同一类错，这个功能里我已经
+   犯过一次。状态在 PH 里，渲染时还原，重画就无害。 */
+var PHDOC={};
+function phOpenDoc(uid,docId){
+  var st=PHDOC[uid]=PHDOC[uid]||{};
+  if(st.open){st.open=false;return renderRules()}
+  st.open=true;
+  if(st.doc||st.err)return renderRules();
+  st.loading=true;renderRules();
+  fetchDoc(docId).then(function(j){st.doc=j})
+    .catch(function(e){st.err=(e&&e.message)||String(e)})
+    .then(function(){st.loading=false;renderRules()});
+}
+function phDocHTML(uid){
+  var st=PHDOC[uid];
+  if(!st||!st.open)return '';
+  var inner=st.loading?'<span class="quiet">正在取这篇研报……</span>'
+    :(st.err?'<span class="quiet">取不到这篇研报（'+esc(st.err)+'）</span>'
+      :docDetailHTML(st.doc||{},uid));
+  if(st.doc)docReg[uid]=st.doc;   /* 让「读全文」按钮找得到它 */
+  return '<div class="ph-doc">'+inner+'</div>';
 }
 
 function phSay(){var el=$('phSay');PH.say=el?el.value:PH.say;return PH.say}
@@ -9209,6 +9334,67 @@ function phReviewCard(){
 }
 
 /* ── 在跑的准则 ── */
+/* 第一周唯一能读的一对数字：它写了几条，原臂同一周写了几条。这不是业绩——
+   业绩要等一个月的持有期结束。它读的是「这批研报撑不撑得起这条准则」，
+   而这恰恰是第一周该问的问题。说清楚它不是业绩，比藏起来强。 */
+function phCounts(c){
+  var k=c.counts||{};
+  if(!k.ran)return '';
+  var line=esc(k.as_of||'')+' 那期：写出 <b class="num">'+fmtInt(k.produced)+'</b> 条';
+  if(k.dropped)line+='，丢弃 <b class="num">'+fmtInt(k.dropped)+'</b> 条';
+  if(k.base_produced!=null)
+    line+='（'+esc(c.arm_label||'原来那种')+'同期 <b class="num">'+fmtInt(k.base_produced)+'</b> 条）';
+  return '<div class="ph-counts">'+line
+    +'<span class="gloss" title="这不是业绩——业绩要等一个月的持有期结束。'
+    +'这一对数字读的是这批研报撑不撑得起这条准则：写得少或丢得多，'
+    +'说明研报里找不到这条准则要求的东西。">ⓘ</span></div>';
+}
+
+function phOutputBlock(c){
+  var st=PH.out[c.id]||{};
+  if(!st.open)return '';
+  if(st.busy)return '<div class="ph-out"><span class="quiet">正在取……</span></div>';
+  if(st.err)return '<div class="ph-out"><span class="ph-err">'+esc(st.err)+'</span></div>';
+  var d=st.data||{};
+  if(d.error)return '<div class="ph-out"><span class="ph-err">'+esc(d.error)+'</span></div>';
+  if(!d.ran)return '<div class="ph-out"><span class="quiet">'
+    +esc(d.hint||'这条准则还没跑过。')+'</span></div>';
+  var ideas=d.ideas||[];
+  var h='<div class="ph-out">';
+  h+='<div class="card-note" style="margin-bottom:var(--space-3)">'
+   +esc(d.as_of||'')+' 那期写的，显示前 '+fmtInt(d.shown||ideas.length)
+   +' 条（共 '+fmtInt(d.n_produced||ideas.length)+' 条）。'
+   +'每条后面的编号是它说自己读到这件事的那篇研报，点开可以直接对。</div>';
+  if(d.hint)h+='<div class="card-note" style="margin-bottom:var(--space-3)">'+esc(d.hint)+'</div>';
+  h+=ideas.map(function(x,n){
+    var uidBase='o'+esc(c.id).replace(/[^a-z0-9]/gi,'')+n;
+    return '<div class="ph-idea">'
+      +'<div class="ph-idea-h"><b class="mono">'+esc(x.instrument_id||'')+'</b> '
+      +esc(x.instrument_name||'')
+      +(x.topic_id?'<span class="tag">'+esc(x.topic_id)+'</span>':'')+'</div>'
+      +(x.answers||[]).map(function(a,ai){
+        var uid=uidBase+'f'+ai;
+        return '<div class="ph-ans"><code>'+esc(a.field)+'</code>'
+          +'<span>'+esc(a.value||'（没写）')+'</span>'
+          +(a.doc?'<button type="button" class="ph-doc-btn" data-ph-doc="'+esc(a.doc)+'"'
+              +' data-ph-uid="'+esc(uid)+'">'+esc(a.doc)
+              +((PHDOC[uid]||{}).open?' ⌄':' ›')+'</button>':'')
+          +'</div>'
+          +(a.doc?phDocHTML(uid):'');
+      }).join('')
+      +(x.thesis?'<div class="ph-idea-t">'+esc(x.thesis)+'</div>':'')
+      +'</div>';
+  }).join('');
+  var drops=Object.keys(d.dropped||{});
+  if(drops.length){
+    h+='<div class="ph-drops">丢弃的原因：'
+     +drops.map(function(k){return esc(k)+' <b class="num">'+fmtInt(d.dropped[k])+'</b>'}).join(' · ')
+     +'<span class="gloss" title="丢弃不是故障。答不上必答字段、或者出处对不上研报的想法会被整条扔掉——'
+     +'丢弃率本身就是这批研报撑不撑得起这条准则的读数。">ⓘ</span></div>';
+  }
+  return h+'</div>';
+}
+
 function phRunningCard(){
   var live=(PH.data||{}).live||[];
   var probs=(PH.data||{}).ledger_problems||[];
@@ -9241,11 +9427,16 @@ function phRunningCard(){
       +(c.must_answer&&c.must_answer.length
         ? ' · 每条想法必答：'+c.must_answer.map(function(f){return esc(f.field)}).join(' / ')
         : '')+'</div>'
+      +phCounts(c)
       +'<div class="ph-acts" style="margin-top:var(--space-3)">'
+      +((c.counts&&c.counts.ran)
+        ?'<button type="button" class="ph-alt" data-el="rules.output"'
+          +' data-ph-out="'+esc(c.id)+'">'
+          +((PH.out[c.id]||{}).open?'收起':'看它写了什么')+' ›</button>':'')
       +'<button type="button" class="ph-alt" data-el="rules.retire"'
       +' data-ph-id="'+esc(c.id)+'"'+(PH.busy?' disabled':'')+'>停用</button>'
       +(c.runs>0?'':'<span class="card-note">停用后，该准则已写下的持仓与业绩留在组合里</span>')
-      +'</div></div>';
+      +'</div>'+phOutputBlock(c)+'</div>';
   }).join('');
   return h+'</div>';
 }
@@ -9272,7 +9463,12 @@ function phBind(){
     if(r&&!r.disabled)return phRetire(r.getAttribute('data-ph-id'));
     var a=t.closest('[data-ph-arm]');
     if(a&&!a.disabled){PH.arm=a.getAttribute('data-ph-arm');
-      PH.problems=null;renderRules()}
+      PH.problems=null;return renderRules()}
+    var o=t.closest('[data-ph-out]');
+    if(o)return phToggleOutput(o.getAttribute('data-ph-out'));
+    var dd=t.closest('[data-ph-doc]');
+    if(dd)return phOpenDoc(dd.getAttribute('data-ph-uid'),
+                           dd.getAttribute('data-ph-doc'));
   });
 }
 

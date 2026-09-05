@@ -350,6 +350,51 @@ class DerivedArmRegisters(unittest.TestCase):
         self.assertIn("后见之明", str(e.exception))
 
 
+class TheRuleCanBeCheckedAgainstItsSources(unittest.TestCase):
+    """面板说这些字段是给你核对用的，那就得有东西可点。
+
+    Until `/api/philosophy/output` existed, the panel told the PM 「写得实不实，
+    要你点开看」 and offered nothing to click — a sentence true only in
+    intention. These pin the states that reach a person: a rule that has not run
+    says so and says when it will, and an id that is not running is a 404 rather
+    than an empty page that reads as 「它什么都没写」.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._real = philosophy.LEDGER
+        philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+
+    def tearDown(self):
+        philosophy.LEDGER = self._real
+        self.tmp.cleanup()
+
+    def test_an_unknown_id_is_not_found_rather_than_empty(self):
+        from ideagen import philosophy_web as pw
+        obj, status = pw.handle_output({"id": "pm-2026-09-05-000000"})
+        self.assertEqual(status, 404)
+        self.assertIn("不在运行中", obj["error"])
+
+    def test_a_rule_that_has_not_run_says_when_it_will(self):
+        """Zero is an answer, and an answer needs a next step attached."""
+        from ideagen import philosophy_web as pw
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        obj, status = pw.handle_output({"id": a_card()["card_id"]})
+        self.assertEqual(status, 200)
+        self.assertFalse(obj["ran"])
+        self.assertIn("周三", obj["hint"])
+
+    def test_counts_are_absent_until_the_rule_has_run(self):
+        """`counts.ran` false is what the panel keys the whole block on; a
+        missing key would render 「写出 undefined 条」."""
+        from ideagen import philosophy_web as pw
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        obj, _ = pw.handle_list()
+        self.assertEqual(len(obj["live"]), 1)
+        self.assertIn("counts", obj["live"][0])
+        self.assertIs(obj["live"][0]["counts"]["ran"], False)
+
+
 class OneBadLineCannotTakeDownTheRegistry(unittest.TestCase):
     """一行写坏的账本数据，不该让四条原臂一起下线。
 

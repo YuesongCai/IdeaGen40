@@ -61,6 +61,55 @@ def _runs(p, arm: str) -> int:
         return 0
 
 
+def _latest(p, arm: str) -> dict[str, Any] | None:
+    """The most recent verdict this arm produced, with its run row."""
+    try:
+        v = p.state.q(
+            "SELECT run_id, as_of, chosen, rejected FROM verdicts "
+            "WHERE kind='idea_generator' AND strategy=? "
+            "ORDER BY as_of DESC LIMIT 1", [arm])
+        if not v:
+            return None
+        run = p.state.q("SELECT * FROM orch_runs WHERE run_id=?",
+                        [v[0]["run_id"]])
+        return {"verdict": v[0], "run": run[0] if run else None}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _counts(p, arm: str, base_arm: str) -> dict[str, Any]:
+    """The two numbers a rule can be read by before any P&L exists.
+
+    How many ideas it wrote, and how many the arm it was grafted onto wrote in
+    the same week. That difference is not performance — it is whether the corpus
+    can express this philosophy at all, which is the first thing worth knowing
+    and the only thing knowable in week one. `dropped` is the same reading from
+    the other side: ideas the rule itself threw away for failing its own fields.
+    """
+    import json as _json
+    out: dict[str, Any] = {"ran": False}
+    latest = _latest(p, arm)
+    if not latest or p is None:
+        return out
+    v = latest["verdict"]
+    try:
+        chosen = _json.loads(v["chosen"] or "[]")
+        rejected = _json.loads(v["rejected"] or "{}")
+    except (TypeError, ValueError):
+        return out
+    out.update({"ran": True, "as_of": v["as_of"],
+                "produced": len(chosen), "dropped": len(rejected)})
+    try:
+        b = p.state.q(
+            "SELECT chosen FROM verdicts WHERE kind='idea_generator' "
+            "AND strategy=? AND as_of=? LIMIT 1", [base_arm, v["as_of"]])
+        if b:
+            out["base_produced"] = len(_json.loads(b[0]["chosen"] or "[]"))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def _view(card: dict[str, Any], p=None, *, pending: bool = False
           ) -> dict[str, Any]:
     """One card as the panel shows it."""
@@ -83,6 +132,7 @@ def _view(card: dict[str, Any], p=None, *, pending: bool = False
     if not pending:
         out["runs"] = _runs(p, arm) if p is not None else 0
         out["retired_on"] = card.get("retired_on")
+        out["counts"] = _counts(p, arm, card["scope"]["arm"]) if p else {"ran": False}
     return out
 
 
@@ -218,3 +268,66 @@ def handle_retire(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     except ValueError as e:
         return {"error": str(e)}, 404
     return {"ok": True, "id": cid}, 200
+
+#: How many of a rule's ideas the panel will show. The point is to check a few
+#: against their sources, not to read a hundred — a list nobody scrolls is the
+#: same as no list.
+SHOW_IDEAS = 12
+
+
+def handle_output(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """GET /api/philosophy/output — what this rule actually wrote, last period.
+
+    The panel promises 「这些字段是给你核对用的」 and 「写得实不实，要你点开看」.
+    Until this existed there was nothing to click, which made both sentences
+    true only in intention. Each idea arrives with the rule's own fields and the
+    document id each one claims to rest on, so a claim can be checked against
+    the research note it cites in one step.
+    """
+    from . import ask, platform as plat
+    cid = str(payload.get("id") or "")
+    card = next((c for c in philosophy.cards() if c["card_id"] == cid), None)
+    if not card:
+        return {"error": "这条准则不在运行中的列表里。"}, 404
+
+    p = plat.load()
+    arm = philosophy.arm_name(card)
+    latest = _latest(p, arm)
+    if not latest or not latest.get("run"):
+        return {"ok": True, "ran": False,
+                "hint": "这条准则还没跑过。下一次周跑（周三）它第一次出手。"}, 200
+
+    art = None
+    try:
+        art = ask._artifact(p, latest["run"], f"B_generators/{arm}.json")
+    except Exception:  # noqa: BLE001
+        art = None
+    if not isinstance(art, dict):
+        # The counts survive in the verdict even when the per-arm artifact does
+        # not, and saying so beats an empty page that looks like "it wrote
+        # nothing".
+        return {"ok": True, "ran": True, "as_of": latest["verdict"]["as_of"],
+                "ideas": [], "dropped": {},
+                "hint": "这一期的产物存档取不到了，只剩计数。"}, 200
+
+    fields = list(philosophy.require_keys(card))
+    ideas = []
+    for i in (art.get("produced") or [])[:SHOW_IDEAS]:
+        ideas.append({
+            "instrument_id": i.get("instrument_id"),
+            "instrument_name": i.get("instrument_name"),
+            "topic_id": i.get("topic_id"),
+            "thesis": i.get("thesis"),
+            "answers": [{"field": f, "value": i.get(f),
+                         "doc": i.get(f"{f}_doc")} for f in fields],
+            "citations": i.get("citations") or [],
+        })
+    # Drops are grouped by reason rather than listed one by one: 「三条因为出处
+    # 对不上语料」 is the reading, and thirty lines of the same sentence is not.
+    buckets: dict[str, int] = {}
+    for reason in (art.get("rejected") or {}).values():
+        key = str(reason).split("：")[0].split(":")[0].strip()
+        buckets[key] = buckets.get(key, 0) + 1
+    return {"ok": True, "ran": True, "as_of": latest["verdict"]["as_of"],
+            "n_produced": len(art.get("produced") or []),
+            "shown": len(ideas), "ideas": ideas, "dropped": buckets}, 200

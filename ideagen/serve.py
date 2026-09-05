@@ -306,29 +306,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Host and storage URIs are scrubbed — provenance is the timestamps
             # and step structure, not the machine identity behind them.
             from . import ask as _rv_ask
-            import json as _j
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
             from . import platform as _plat_mod
             plat_ = _plat_mod.load()
             rid = (q.get("run_id") or [None])[0]
+            cols = ("run_id, as_of, kind, ok, started_at, ended_at, error, "
+                    "calls")
             row = (plat_.state.q(
-                "SELECT run_id, as_of FROM orch_runs WHERE run_id=?", (rid,))
+                f"SELECT {cols} FROM orch_runs WHERE run_id=?", (rid,))
                 if rid else plat_.state.q(
-                "SELECT run_id, as_of FROM orch_runs WHERE kind='weekly' AND ok=1 "
+                f"SELECT {cols} FROM orch_runs WHERE kind='weekly' AND ok=1 "
                 "ORDER BY as_of DESC LIMIT 1"))
             if not row:
-                return self._json({"error": "没有可读的运行记录"})
-            r = row[0]
-            try:
-                j = _j.loads(plat_.blobs.get(
-                    f"runs/{r['as_of']}/{r['run_id']}/journal.json"))
-            except Exception as e:  # noqa: BLE001
-                return self._json({"error": f"journal 读取失败: {type(e).__name__}"})
+                return self._json({"error": (f"orch_runs 里没有 run_id={rid}"
+                                             if rid else "没有可读的运行记录")})
+            r = dict(row[0])
+            # The run row goes out either way. Without it a reader who cannot
+            # get the journal is told nothing at all — while the state store,
+            # right here, knows when the run started, whether it finished and
+            # what it said went wrong. That is a thin log, but it is a true one,
+            # and it is what separates "we have no step timeline for this pass"
+            # from "there is no record this pass happened".
+            j, why = _rv_ask.journal_or_reason(plat_, r)
+            out = {"run_id": r["run_id"], "as_of": r["as_of"],
+                   "run": _rv_ask.scrub({k: r.get(k) for k in
+                                         ("run_id", "as_of", "kind", "ok",
+                                          "started_at", "ended_at", "error",
+                                          "calls")})}
+            if j is None:
+                # The reason, not just the exception's class name. The previous
+                # version returned `type(e).__name__`, so every distinct cause —
+                # never written, wrong bucket, missing credentials — reached the
+                # page as the single word "PlatformError", and the page then
+                # guessed at a cause and guessed wrong.
+                out["error"] = why
+                return self._json(out)
             # Host, bucket names and home paths are stripped by the one shared
             # scrubber every journal-serving path goes through.
-            return self._json({"run_id": r["run_id"], "as_of": r["as_of"],
-                               "journal": _rv_ask.scrub_journal(j)})
+            out["journal"] = j
+            return self._json(out)
         if path == "/api/audit":
             # The audit bundle: the whole run in the reader's own hands, in an
             # order that reads without this UI. Same exposure class as
@@ -376,6 +393,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # 「我的打法」— which PM rules are running, which await a decision.
             from . import philosophy_web
             obj, status = philosophy_web.handle_list()
+            return self._json(obj, status=status)
+        if path == "/api/philosophy/output":
+            # What one rule actually wrote last period, so the panel's
+            # 「点开看」 has something behind it.
+            from urllib.parse import parse_qs, urlparse
+            from . import philosophy_web
+            q = parse_qs(urlparse(self.path).query)
+            obj, status = philosophy_web.handle_output(
+                {"id": (q.get("id") or [""])[0]})
             return self._json(obj, status=status)
         if path == "/api/state":
             return self._json(_state_document())

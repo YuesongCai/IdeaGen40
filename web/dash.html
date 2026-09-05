@@ -7115,16 +7115,33 @@ function corpusSourceCard(){
   }
   return tbl+pastCorpusList(w.as_of);
 }
-/* 本期读入多少、多少家机构——盖子上要报的体量 */
+/* 本期读入多少、多少家机构——盖子上要报的体量。
+ *
+ * 这两个数以前并排写成「858 篇 · 20 家机构」，而它们数的**不是同一批东西**：
+ * 858 是整个研报库，20 家是从**被引为证据的那 226 篇**里数出来的。读者只会读成
+ * 「858 篇来自 20 家机构」。而且本期 858 篇里有一半以上根本没有机构标注，
+ * 那句话把「有出处」说成了全体的属性。
+ *
+ * 现在把漏斗说出来：读了多少、其中多少篇真的被引、那些来自几家。三个数各有
+ * 各的总体，谁也不冒充谁。 */
 function corpusCount(){
   var w=S.weekly||{};
   var n=w.corpus_total||corpusRowsFor(w.as_of);
-  var insts={};
+  var insts={},cited=0;
   Object.keys(w.evidence||{}).forEach(function(t){
-    ((w.evidence[t]||{}).docs||[]).forEach(function(d){if(d&&d.institution)insts[d.institution]=1});
+    ((w.evidence[t]||{}).docs||[]).forEach(function(d){
+      if(!d)return; cited++; if(d.institution)insts[d.institution]=1;
+    });
   });
   var ni=Object.keys(insts).length;
-  return n?(fmtInt(n)+' 篇'+(ni?' · '+ni+' 家机构':'')):'';
+  if(!n)return '';
+  if(!cited)return fmtInt(n)+' 篇';
+  return fmtInt(n)+' 篇 · 被引为证据 '+fmtInt(cited)+' 篇'
+    +(ni?'，来自 '+ni+' 家机构':'')
+    +'<span class="gloss gm" title="'+esc('读入 '+n+' 篇是本期研报的全部；'
+      +'被引 '+cited+' 篇是筛选A 打分时真正引用过的那些，机构数只数这一批。'
+      +'两个数不是同一个总体——没被引的那些里有相当一部分连机构都没有标注。')
+    +'">ⓘ</span>';
 }
 
 /* 本期失败、展示上期时的诚实横幅 */
@@ -7149,15 +7166,20 @@ function pipeCanvasCard(){
   var nDocs=w.corpus_total||0;
   var nTopics=topicChosen('hgep').length;
   var nGen=(w.generators||[]).reduce(function(a,g){return a+(g.n||0)},0);
+  /* 数本期**真跑过并写出东西**的方法，不是注册表里有几种。lookthrough 一注册，
+     genOrder().length 就变成 5，而本期只有四种产出过——那句话会说「5 种方法写出
+     400 条」，而 400 是四种各 100。 */
+  var nRan=(w.generators||[]).filter(function(g){return (g.n||0)>0}).length
+           ||genOrder().length;
   var nPool=(w.pool||{}).n||0;
   var ag=aggBooks();
   var lead=(nDocs&&nPool)
     ? '本期读入 <b>'+fmtInt(nDocs)+'</b> 篇研报，收敛出 <b>'+fmtInt(nTopics)+'</b> 个宏观主题，'
-      +'<b>'+fmtInt(genOrder().length)+'</b> 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
-      +(ag&&ag.openN?('，10 个组合各自从中选出持仓，合计在持 <b>'+fmtInt(ag.openN)+'</b> 仓。'):'。')
+      +'<b>'+fmtInt(nRan)+'</b> 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
+      +(ag&&ag.openN?('，'+fmtInt((ag.books||[]).length)+' 个组合各自从中选出持仓，合计在持 <b>'+fmtInt(ag.openN)+'</b> 仓。'):'。')
     : '';
   var legend='筛选A：语义打分选出主题，灰色分流为落选。'
-    +'筛选B：'+genOrder().length+' 种方法并行生成想法，线宽对应条数；'
+    +'筛选B：'+nRan+' 种方法并行生成想法，线宽对应条数；'
     +'最下面那一格是空的，写一条你自己的准则就多一种生成方式。'
     +'合并：一个标的一条，同心环表示有几种方法同时提到它。'
     +'筛选C：各选取策略在同一候选池上并行，灰色为对照组合。'

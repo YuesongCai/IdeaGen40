@@ -6193,6 +6193,19 @@ function universeCard(){
     gaps.push({ok:false,k:'上架日期',v:fmtInt(undated)+' 个未定',
       d:'按当期资格过滤时一律放行；服务端尚未给出持有标的的上架日期核对结果。'});
   }
+  /* 删除侧。上面那条讲的是「还没上架的会不会混进来」，这条讲的是「已经下架的
+     还找不找得回来」——只有一张快照时答案是找不回来，历史期用的就是今天这张
+     货架。这话必须印出来，因为它的失效方式是数字自己变好，没有任何报错。 */
+  var sv=(((S||{}).backtest||{}).summary||{}).shelf_survivorship;
+  if(sv&&sv.snapshots!=null){
+    gaps.push(sv.point_in_time_from
+      ? {ok:true,k:'下架记录',v:fmtInt(sv.snapshots)+' 张快照 · 自 '+sv.point_in_time_from+' 起可还原',
+         d:'两次快照之间少掉的标的已记进下架记录（当前 '+fmtInt(sv.departures_open||0)
+           +' 只在架外），该日之前的期次仍用今天这张货架。'}
+      : {ok:false,k:'下架记录',v:'仅 '+fmtInt(sv.snapshots)+' 张快照，无法还原历史货架',
+         d:'被下架的产品会追溯性地从所有历史期消失，而离开货架的通常是表现差的，'
+           +'所以过去的回测数字偏乐观。第二张快照之后开始积累下架记录。'});
+  }
   if(shelf.navs===0)gaps.push({ok:false,k:'NAV',v:fmtInt(shelf.items||0)+' 个产品 · 0 个 NAV',d:'这批标的暂时无法计价。'});
   if(!shelf.snapshot_id)gaps.push({ok:false,k:'NAV 快照',v:'未接入',d:'尚无已持久化的 NAV 快照，货架为静态清单。'});
   if(shelf.identifiers_redacted)gaps.push({ok:false,k:'产品标识',v:'默认脱敏',d:'完整快照仅存于受控 RDS/TOS。'});
@@ -6398,13 +6411,17 @@ function tearsheetCard(){
   var arms=ts.arms,names=Object.keys(arms);
   var bp=ts.benchmark_performance||{},sep=ts.separability||{};
   var bench=ts.benchmark||'基准';
+  /* 第二条对照：货架自己等权。SPY 回答「不如去买股票指数」，货架等权回答
+     「选得比不选好吗」——只有后者是这些组合在声称的事。两条都摆出来。 */
+  var ap=ts.alt_benchmark_performance||null,altSep=ts.separability_vs_alt||null;
+  var altName=ts.alt_benchmark||'货架等权';
   var p0=(arms[names[0]]||{}).performance||{};
 
   /* 区间图的横轴：所有组合和基准的区间取并集，一把尺子量所有人。
      每条各自缩放会让最宽的那条看起来最窄，正好搞反。 */
   var lo=0,hi=0,any=false;
-  names.concat(['__b']).forEach(function(n){
-    var c=(n==='__b'?bp:(arms[n].performance||{})).sharpe_ci95;
+  names.concat(['__b','__a']).forEach(function(n){
+    var c=(n==='__b'?bp:(n==='__a'?(ap||{}):(arms[n].performance||{}))).sharpe_ci95;
     if(!c)return;
     if(!any){lo=c[0];hi=c[1];any=true}
     lo=Math.min(lo,c[0]);hi=Math.max(hi,c[1]);
@@ -6414,7 +6431,9 @@ function tearsheetCard(){
   var zeroX=Math.max(0,Math.min(100,(0-lo)/(hi-lo)*100));
   var benchX=(bp.sharpe==null)?null:Math.max(0,Math.min(100,(bp.sharpe-lo)/(hi-lo)*100));
 
-  var ivRows=[['__b',bench+'（基准）',bp,true]].concat(
+  var benchHead=[['__b',bench+'（基准）',bp,true]]
+    .concat(ap?[['__a',altName+'（货架等权）',ap,true]]:[]);
+  var ivRows=benchHead.concat(
     names.slice().sort(function(x,y){
       return ((arms[y].performance||{}).sharpe||-99)-((arms[x].performance||{}).sharpe||-99);
     }).map(function(n){return [n,backtestArmName(n),arms[n].performance||{},false]})
@@ -6422,7 +6441,7 @@ function tearsheetCard(){
     return sharpeIntervalRow(r[1],r[2].sharpe,r[2].sharpe_ci95,r[3],lo,hi);
   }).join('');
 
-  var riskRows=[['__b',bench+'（基准）',bp,true]].concat(
+  var riskRows=benchHead.concat(
     names.slice().sort(function(x,y){
       return ((arms[y].performance||{}).cum_return||-9)-((arms[x].performance||{}).cum_return||-9);
     }).map(function(n){return [n,backtestArmName(n),arms[n].performance||{},false]})
@@ -6513,6 +6532,8 @@ function tearsheetCard(){
       +'连「有没有正收益」都没分开。区间宽度来自 Lo(2002) 的估计量，'
       +'带偏度峰度项——尾巴越肥，区间越宽。</div>'
 
+    +(altSep?'<div class="card-note">对照自己的货架（'+esc(altName)+'，等权）：'
+        +esc(altSep.note||'')+'</div>':'')
     +'<h3 class="sub-h">收益与风险</h3>'
     +'<div class="table-wrap"><table class="data-table">'
       +'<thead><tr><th>组合</th><th class="r">区间收益</th><th class="r">年化波动</th>'
@@ -6818,6 +6839,7 @@ function rankingPowerCard(){
   var tp=(sum.theme_provenance||{}).per_period||{};
 
   var q5=pooled.Q5||{},ba=arms.buy_all||{},rnd=arms.random_pick||{},ev=arms.ev_rank||{};
+  var asym=rp.asymmetry||null;
   var meta='<div class="bt-meta">'
     +'<div class="meta-kv"><div class="k">顶格分位 Q5</div><div class="v num '+pctCls(q5.mean_return_pct)+'">'
       +fmtPct(q5.mean_return_pct)+'<span style="font-weight:400;color:var(--color-text-tertiary)"> · 胜率 '
@@ -6833,6 +6855,14 @@ function rankingPowerCard(){
       +'<span class="gloss gm" title="'+esc('顶格分位在多少期高于同期 SPY。「排序有效」（Q5 高于 Q1，'
         +rp.periods_top_beats_bottom+'/'+rp.periods_scored+' 期）与「跑赢指数」是两个结论，分开报。')
       +'">ⓘ</span></div></div>'
+    +(asym&&asym.long_share_of_spread!=null?'<div class="meta-kv"><div class="k">价差里多头那一半</div>'
+      +'<div class="v num">'+fmtRate(asym.long_share_of_spread*100)
+      +'<span class="gloss gm" title="'+esc('Q5−Q1 是一个多空统计量，而这个组合只做多、'
+        +'余钱买 JPST。按论文拆开：多头超额＝顶格分位−当期全部候选均值 '
+        +fmtPct(asym.long_excess_pct)+'，空头超额＝均值−末位分位 '
+        +fmtPct(asym.short_excess_pct)+'。只有多头那部分是这个授权能兑现的，'
+        +'所以直接引用 Q5−Q1 会高估自己。逐期差别很大：有一期多头是 0，整条价差'
+        +'全在不能碰的那一半上。')+'">ⓘ</span></div></div>':'')
     +(ev.hit_rate!=null?'<div class="meta-kv"><div class="k">照这个分数选的组合</div><div class="v num '
       +pctCls(ev.mean_return_pct)+'">'+fmtPct(ev.mean_return_pct)
       +'<span style="font-weight:400;color:var(--color-text-tertiary)"> · 胜率 '
@@ -6849,6 +6879,7 @@ function rankingPowerCard(){
       +'<td class="r num '+pctCls((q.Q1||{}).mean_return_pct)+'">'+fmtPct((q.Q1||{}).mean_return_pct)+'</td>'
       +'<td class="r num '+pctCls((q.Q5||{}).mean_return_pct)+'">'+fmtPct((q.Q5||{}).mean_return_pct)+'</td>'
       +'<td class="r num '+pctCls(x.top_minus_bottom_pct)+'">'+fmtPct(x.top_minus_bottom_pct)+'</td>'
+      +'<td class="r num '+pctCls(x.long_excess_pct)+'">'+fmtPct(x.long_excess_pct)+'</td>'
       +'<td class="r num '+pctCls(x.benchmark_pct)+'">'+fmtPct(x.benchmark_pct)+'</td>'
       +'<td class="r num '+pctCls(x.top_minus_benchmark_pct)+'">'+fmtPct(x.top_minus_benchmark_pct)+'</td></tr>';
   }).join('');
@@ -6858,6 +6889,7 @@ function rankingPowerCard(){
     ['末位 Q1','r','该期期望回报最低那一档的单笔平均收益。'],
     ['顶格 Q5','r','该期期望回报最高那一档的单笔平均收益。'],
     ['Q5−Q1','r','两端之差。它为正说明这一期排序方向是对的；六期全为正是这张表唯一稳的结论。'],
+    ['其中多头','r','顶格分位相对当期全部候选均值的超额，也就是 Q5−Q1 里这个只做多的授权真能拿到的那部分。剩下的差额只有做空末位才拿得到，而本组合不做空。'],
     ['同期 SPY','r','该期起点买入 SPY、持有同样天数的收益。'],
     ['Q5−基准','r','顶格分位相对同期 SPY 的超额。「排得动」不等于「跑赢指数」。']
   ];

@@ -718,6 +718,8 @@ OWNED: dict[str, tuple[str, ...]] = {
                           "metadata"),
     "shelf_navs": ("instrument_id", "d", "nav", "snapshot_id",
                    "data_classification"),
+    "shelf_departures": ("instrument_id", "source", "departed_as_of",
+                         "last_seen_as_of", "returned_as_of"),
     "corpus_documents": ("doc_id", "published_d", "title", "tier",
                          "data_classification", "ingested_at"),
     "paper_books": ("book_id", "selector", "capital",

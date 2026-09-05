@@ -691,9 +691,13 @@ def deflated_sharpe(arm_sharpes: dict[str, float], *, n_obs: int,
         f.message = "PSR 分母非正（偏度/峰度组合越界），不给折减后概率。"
         return f
     f.survives = f.deflated_sharpe >= 0.95
+    # 「试了 n 次」而不是「试了 n 条组合」：n 里含参赛组合之外的试验——试过但
+    # 没做成组合的排法、被换掉的版本、以及本次跑不了因而对比较表隐形的那几条。
+    # 把它读成组合数，会让人以为表上就这么多行，从而低估被收费的那次搜索。
     f.message = (
-        f"试了 {n} 条组合，最好的是 {f.best_arm}（年化夏普 {f.best_sharpe:+.2f}）。"
-        f"{n} 条毫无能力的组合，光靠运气，最好那条的年化夏普期望也有 "
+        f"一共试了 {n} 次（表上 {len(vals)} 个组合，另有 {n - len(vals)} 次试验没有"
+        f"出现在表上），最好的是 {f.best_arm}（年化夏普 {f.best_sharpe:+.2f}）。"
+        f"{n} 次毫无能力的尝试，光靠运气，最好那次的年化夏普期望也有 "
         f"{f.expected_max_sharpe_under_null:+.2f}——这才是它要跨过的门槛，不是 0。"
         f"折减后 DSR={f.deflated_sharpe:.3f}"
         + ("，≥0.95，在这个样本上扛住了多重检验。"
@@ -1275,7 +1279,7 @@ def print_comparison(rep: dict[str, Any]) -> None:
 
     fd = rep.get("family_deflation")
     if fd and fd.get("message"):
-        print(f"\n【多重检验：试了 {fd.get('n_trials','?')} 条，只报最好那条会高估多少】")
+        print(f"\n【多重检验：一共试了 {fd.get('n_trials','?')} 次，只报最好那次会高估多少】")
         print(f"  {fd['message']}")
     fdr = rep.get("fdr")
     if fdr and fdr.get("m"):

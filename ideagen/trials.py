@@ -43,7 +43,7 @@ LEDGER: tuple[dict[str, Any], ...] = (
     {"id": "generated_carl_constraint", "stage": "idea_selector",
      "status": "registered", "note": "来源限定 · 约束边界"},
     {"id": "mom_21", "stage": "idea_selector", "status": "registered",
-     "tried_on": "2026-09-05", "note": "一月动量对照臂，第二版：用 ret_21s"},
+     "tried_on": "2026-09-05", "note": "一月动量对照组合，第二版：用 ret_21s"},
     {"id": "ai_native", "stage": "idea_selector", "status": "registered",
      "note": "AI 端到端选取（需要模型，复算式回测里被排除）"},
     {"id": "calib", "stage": "idea_selector", "status": "registered",
@@ -65,11 +65,11 @@ LEDGER: tuple[dict[str, Any], ...] = (
     {"id": "grade_buckets", "stage": "idea_selector", "status": "dropped",
      "tried_on": "2026-09-05",
      "note": "按候选评级 S/A/B/C 排序，完全排不出结果（S +1.61% / A +0.95% / "
-             "C +0.17%），没有做成臂。与 ev 是同一次搜索里的两个候选。"},
+             "C +0.17%），没有做成组合。与 ev 是同一次搜索里的两个候选。"},
     {"id": "mom_21_priced_in", "stage": "idea_selector", "status": "superseded",
      "tried_on": "2026-09-05",
-     "note": "动量臂的第一版，用 priced_in（标的自身一年分布的分位）当动量。"
-             "它买的是货架上最安静的名字，十一条臂里垫底、胜率 30%。"
+     "note": "动量组合的第一版，用 priced_in（标的自身一年分布的分位）当动量。"
+             "它买的是货架上最安静的名字，十一个组合里垫底、胜率 30%。"
              "同一个名字下换了字段重跑，是两次试验不是一次。"},
 )
 
@@ -109,9 +109,9 @@ def summary(arms: object, stage: str = "idea_selector") -> dict[str, Any]:
         "extra_trials": len(unseen),
         "unseen": sorted(e["id"] for e in unseen),
         "note": (
-            "多重检验的试验次数取自 ideagen/trials.py 的试验账本，而不是"
-            "「今天恰好注册了几条臂」。账本里记着试过但没做成臂的规则"
+            "多重检验的试验次数取自 ideagen/trials.py 的试验记录，而不是"
+            "「今天恰好注册了几个组合」。记录里记着试过但没做成组合的规则"
             "（如按评级排序）和被换掉的版本（如用错字段的第一版动量），"
             "这些对比较表是隐形的，正是紧缩项要收费的部分。"
-            "账本本身仍是下限：没人能强制记录一次在别处试过就放弃的排法。"),
+            "这份记录本身仍是下限：没人能强制记录一次在别处试过就放弃的排法。"),
     }

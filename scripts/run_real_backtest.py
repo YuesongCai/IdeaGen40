@@ -214,7 +214,7 @@ def _generation_head_to_head(con, days: list, horizon_days: int) -> dict:
 
     if not (only_a or only_b):
         return {"pair": list(SOURCE_ARMS), "available": False,
-                "note": "两个来源限定臂本期没有各自独有的已计价想法"}
+                "note": "两个来源限定组合本期没有各自独有的已计价想法"}
 
     def block(values: list[float]) -> dict:
         mde = _mde_pct(values)
@@ -244,8 +244,8 @@ def _generation_head_to_head(con, days: list, horizon_days: int) -> dict:
                     or abs(gap) < joint else "not_ruled_out"),
         "verdict_applies_to": "gap_on_unique_pct",
         "note": (
-            f"两个来源限定臂共享 {overlap * 100:.0f}% 的想法——被两种方法共同提出的"
-            "想法按设计同时进入两本账。那部分在两边完全相同，对它们的差贡献为零，"
+            f"两个来源限定组合共享 {overlap * 100:.0f}% 的想法——被两种方法共同提出的"
+            "想法按设计同时进入两个组合。那部分在两边完全相同，对它们的差贡献为零，"
             f"却占了各自大部分样本。方法本身的差异只体现在各自独有的 "
             f"{a_block['n']} 与 {b_block['n']} 笔上，判定按这两组给出。"
             "头条的 n 看着很大，这个问题的有效样本远小于它。"
@@ -282,7 +282,7 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
             "另有一项口径限制，与前视无关——前视是用了未来的信息，而这一项是未来"
             f"还不够：持有期表中标注 {horizon_days} 天，但只有 "
             f"{(horizon['complete_frac'] or 0) * 100:.0f}% 的持仓跑满该窗口"
-            f"（各臂 {min(fracs) * 100:.0f}–{max(fracs) * 100:.0f}%，并不一致），"
+            f"（各组合 {min(fracs) * 100:.0f}–{max(fracs) * 100:.0f}%，并不一致），"
             "未满窗口的收益与满窗口的混在同一列；只用跑满部分重算的结果见 "
             "horizon_completeness。")
         parts.append("结论性判断以 live 期为准。")
@@ -291,7 +291,7 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
         shown = "、".join(f"{k} {v} 期" for k, v in sorted(regimes.items()))
         parts.append(
             f"主题来源并不同质（{shown}）：seed 期打的是人工在 2026-07 撰写的主题"
-            f"词典，discovered 期的主题是该期自己从当周语料里发现并命名的。后者没有"
+            f"词典，discovered 期的主题是该期自己从当周研报里发现并命名的。后者没有"
             f"任何人工事后选题，前者有；两类不要合成一个胜率读，分列见 "
             f"theme_provenance。")
     if excluded:
@@ -415,12 +415,12 @@ def _exposure(points: list[dict], gap_days: float, horizon_days: int,
         "note": (
             "净值按分批滚动组合逐日计价：每期投入 1/slots 资本、等权、持有一个"
             "持有期，空出的档位是现金。窗口开头必然欠投——第一期只占一个档位，"
-            "所以拿它和满仓指数直接比会低估每条臂一个建仓成本。"
+            "所以拿它和满仓指数直接比会低估每个组合一个建仓成本。"
             "beta_equivalent_pct 是同样平均敞口拿着基准会有的收益，"
             "excess_over_exposure_pct 是相对它的差。**该折算假设对 SPY 的 beta 为 1，"
-            "而这些臂并不满足**——2026-09-05 实测 ev_rank 的顶格分位持仓入场前年化波动"
+            "而这些组合并不满足**——2026-09-05 实测 ev_rank 的顶格分位持仓入场前年化波动"
             "35%，SPY 约 11%，所以那一列偏乐观，不要单独引用。"
-            "要判断有没有超额，看 return_per_vol_vs_benchmark：它拿每条臂自己实现的"
+            "要判断有没有超额，看 return_per_vol_vs_benchmark：它拿每个组合自己实现的"
             "净值波动做分母，不假设任何 beta。"),
     }
 
@@ -538,7 +538,7 @@ def _ranking_power(con, days: list, horizon_days: int) -> dict:
             "这条排序是在看过这些期次的结果之后才被挑出来检验的（试过 grade 与"
             "期望值两种，grade 不排序）。因此上表对这次搜索是样本内的，只够支持"
             "「值得往前跑一段看看」，不足以支持「已确认有效」——这正是 Jon "
-            "2026-08-18 提的 multiple testing。ev_rank 臂按 exploratory 注册，"
+            "2026-08-18 提的 multiple testing。ev_rank 按 exploratory 注册，"
             "它的 live 期次才是证据。"),
     }
 
@@ -571,7 +571,7 @@ def _theme_provenance(days: list) -> dict:
     return {"per_period": out, "periods_by_regime": by_regime,
             "seed_registered_d": lexicon.SEED_REGISTERED_D,
             "note": "seed = 人工撰写的主题词典（2026-07-26 注册）；"
-                    "discovered = 该期自己从当周语料里发现并命名的主题"}
+                    "discovered = 该期自己从当周研报里发现并命名的主题"}
 
 
 def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
@@ -682,13 +682,13 @@ def _horizon_completeness(positions: list[dict], horizon_days: int) -> dict:
             f"表头写的是 {horizon_days} 天持有期，但只有 "
             f"{(total_full / total * 100) if total else 0:.0f}% 的持仓真的跑满了"
             "——近几期还没有那么长的后续行情。未满窗口的收益被算进同一列，"
-            "所以那一列不是一个 30 天收益。各臂的满窗口占比还不相同，"
-            "因此「两臂被同样截断、截断会抵消」这个前提在本次并不成立。"
+            "所以那一列不是一个 30 天收益。各组合的满窗口占比还不相同，"
+            "因此「两个组合被同样截断、截断会抵消」这个前提在本次并不成立。"
             "mean_return_full_horizon_pct 是只用跑满的那部分重算的结果——"
-            "它与表中那一列分歧很大（有的臂从正翻到负、名次几乎倒转），"
+            "它与表中那一列分歧很大（有的组合从正翻到负、名次几乎倒转），"
             "但它的样本是原本就不大的样本的两成，所以这不是「真正的排名」，"
             "是这张表按当前样本无法定夺。两个数都给，判定各自带自己的下界。"
-            "要排名就是在做比较，所以面板实际会做的那个比较——相对对照臂 "
+            "要排名就是在做比较，所以面板实际会做的那个比较——相对对照组合 "
             f"{CONTROL}——单独给出 vs_control_full_horizon_pct 及其合并下界；"
             "顶层 full_horizon_verdict 说的只是该均值与零的关系，不可拿来排名。"),
     }
@@ -850,8 +850,8 @@ def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
         "arms": arms,
         "note": (
             "把每笔持仓与其主题的指示 ETF 在同一持有窗口内比较。"
-            f"对照臂 {CONTROL} 不做任何挑选，所以它相对指示标的的超额是"
-            "「候选池」带来的；各臂的超额都含有这一部分，挑选本身只能记在"
+            f"对照组合 {CONTROL} 不做任何挑选，所以它相对指示标的的超额是"
+            "「候选池」带来的；各组合的超额都含有这一部分，挑选本身只能记在"
             "excess_over_control_pct 上——那一列有它自己的下界与判定"
             "（mde_over_control_pct / verdict_over_control），顶层 verdict "
             "说的是相对指示标的那一列，两者不可混用。"
@@ -859,7 +859,7 @@ def _theme_attribution(con, positions: list[dict], powered: set[str]) -> dict:
             "no_edge_detected（样本已够检出预注册的 2 个百分点优势，而它没有出现"
             "——这是「没看出优势」，不是「还看不出来」）、underpowered"
             "（样本还不够，n_needed_for_edge 给出需要多少笔）。"
-            "no_edge_detected 额外要求配对检验也判定该臂 powered："
+            "no_edge_detected 额外要求配对检验也判定该组合 powered："
             "本层的下界把持仓当独立样本，而它们共享期次与持有窗口，"
             "只能用来否定；肯定「本该看见」需要配对检验按 n_eff 折算后的判断。"
             + _layers_note()),
@@ -979,7 +979,7 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
             entry["why"] = (
                 f"其余标的与被剔除的高频标的相差 {delta:+.2f} 个百分点，"
                 f"大于两组合并的可检出下界 {mde:.2f} 个百分点{held}；"
-                f"该下界忽略了同臂持仓的相关性，因此这是「未被排除」，"
+                f"该下界忽略了同一组合内持仓的相关性，因此这是「未被排除」，"
                 f"不是「已确认变动」")
         arms[arm] = entry
 
@@ -998,9 +998,9 @@ def _drop_top_instruments(positions: list[dict], top_n: int) -> dict:
                 "判定比较的是两个不相交的组——其余标的与被剔除的高频标的，"
                 "而不是子集与包含它的全集；下界由两组合并给出。"
                 "delta_mean_pct 仅作描述（剔除后均值相对全样本的变动），不带判定。"
-                "差距小于该门槛、或某一组小到算不出门槛的臂，标为 underpowered。"
-                "该门槛忽略了同臂持仓之间的相关性，是真实盲区的下界，所以只能用来"
-                "否定：越过它的臂标为 not_ruled_out（值得盯，未确认），没有任何臂"
+                "差距小于该门槛、或某一组小到算不出门槛的组合，标为 underpowered。"
+                "该门槛忽略了同一组合内持仓之间的相关性，是真实盲区的下界，所以只能用来"
+                "否定：越过它的组合标为 not_ruled_out（值得盯，未确认），没有任何组合"
                 "会被这项检验判定为「确实依赖高频标的」。")}
 
 
@@ -1069,8 +1069,8 @@ def main(argv: list[str]) -> int:
     head_to_head = _generation_head_to_head(con, days, args.horizon_days)
     robustness["depth_note"] = (
         "顶层字段即 depths['10']，保留是为了不改已有消费方的形状。"
-        "verdict_stable_across_depths 为 false 的臂，其结论取决于剪切多少个"
-        "标的，不能当成关于该臂的判断——本次 omega_loose 与 left_tail 即如此。")
+        "verdict_stable_across_depths 为 false 的组合，其结论取决于剪切多少个"
+        "标的，不能当成关于该组合的判断——本次 omega_loose 与 left_tail 即如此。")
     dating = _shelf_dating(
         con, {str(r.get("instrument_id")) for r in positions if r.get("instrument_id")},
         days[0].isoformat())
@@ -1131,7 +1131,7 @@ def main(argv: list[str]) -> int:
             "strict": True,
             "periods_audited": len(days),
             "leaks": 0,
-            "checks": "语料发布日 / 行情收盘日 / 候选期次，任一晚于回放日即中止",
+            "checks": "研报发布日 / 行情收盘日 / 候选期次，任一晚于回放日即中止",
         },
         "horizon_days": rep.horizon_days,
         "model_calls": rep.calls,

@@ -339,13 +339,13 @@ def _topic_context(materials, provenance_notes, con, p, run, topic_id):
         crow = (counting.get("scores") or {}).get(topic_id) or {}
         cch = counting.get("chosen") or []
         crej = (counting.get("rejected") or {}).get(topic_id)
-        _mk(materials, "counting", f"纯数数对照臂 · {topic_id}",
+        _mk(materials, "counting", f"纯数数对照打分 · {topic_id}",
             f"blob runs/{run['as_of']}/{run['run_id']}/A_topics_counting.json",
-            f"对照臂只数提及篇数：{topic_id} 被提及 "
+            f"对照打分只数提及篇数：{topic_id} 被提及 "
             f"{crow.get('mentions', 0)} 篇，"
             + (f"入选（位列 {cch.index(topic_id) + 1}/{len(cch)}）。"
                if topic_id in cch else f"未入选（{crej or '未进前 5'}）。")
-            + " 对照臂全榜: " + "; ".join(
+            + " 对照打分全榜: " + "; ".join(
                 f"{tid} {sc.get('mentions')}"
                 for tid, sc in sorted((counting.get("scores") or {}).items(),
                                       key=lambda kv: -(kv[1].get("mentions") or 0))))
@@ -442,15 +442,15 @@ def _selection_context(materials, provenance_notes, con, p, run, _sid):
                          key=lambda kv: -(kv[1].get("mentions") or 0))
         only_semantic = [t for t in chosen if t not in cchosen]
         only_counting = [t for t in cchosen if t not in chosen]
-        _mk(materials, "counting", "纯数数对照臂 · 同一批主题的另一种排法",
+        _mk(materials, "counting", "纯数数对照打分 · 同一批主题的另一种排法",
             f"blob runs/{run['as_of']}/{run['run_id']}/A_topics_counting.json",
-            "对照臂不做任何语义判断，只数每个主题被多少篇研报提到：\n"
+            "对照打分不做任何语义判断，只数每个主题被多少篇研报提到：\n"
             + "; ".join(f"{i}. {tid} {sc.get('mentions')} 篇"
                         for i, (tid, sc) in enumerate(cranked, 1))
-            + f"\n对照臂取前 {len(cchosen)}：{'、'.join(cchosen)}。"
-            + f"\n两臂重合 {len([t for t in chosen if t in cchosen])} 个；"
-            + f"仅语义臂选中：{'、'.join(only_semantic) or '无'}；"
-            + f"仅数数臂选中：{'、'.join(only_counting) or '无'}。")
+            + f"\n对照打分取前 {len(cchosen)}：{'、'.join(cchosen)}。"
+            + f"\n两种打分重合 {len([t for t in chosen if t in cchosen])} 个；"
+            + f"仅语义打分选中：{'、'.join(only_semantic) or '无'}；"
+            + f"仅数数打分选中：{'、'.join(only_counting) or '无'}。")
 
     docs, corpus_note = _run_corpus(con, p, run)
     corpus_note["n_docs_read"] = len(docs)
@@ -458,7 +458,7 @@ def _selection_context(materials, provenance_notes, con, p, run, _sid):
     # has to state what is absent first and the reason second — otherwise a
     # deliberate scope decision reads as something that went missing.
     provenance_notes.append(
-        "本步不附研报正文，只给出打分表与计数对照臂。这一步的取舍就是在这张"
+        "本步不附研报正文，只给出打分表与计数对照打分。这一步的取舍就是在这张"
         "表上做的；附上正文会让回答绕开当时真正用到的依据。逐篇正文可在"
         "单个主题的追问里查阅。")
     return label, corpus_note
@@ -538,7 +538,7 @@ def _idea_context(materials, provenance_notes, con, p, run, idea_id):
                          "institution, summary FROM documents WHERE doc_id=?",
                     (did,))
         if not drow:
-            provenance_notes.append(f"引用的研报 {did} 在语料库里找不到")
+            provenance_notes.append(f"引用的研报 {did} 在研报库里找不到")
             continue
         spent = _doc_material(materials, dict(drow[0]), cited=True,
                               budget=budget)
@@ -710,7 +710,7 @@ def answer(p, question: str, context: dict[str, Any],
     corpus_note = context.get("corpus") or {}
     verified = corpus_note.get("verified_sha")
     ver_line = {True: "（研报清单已按运行封存的 inputs_sha 逐一核对，与当时完全一致）",
-                False: "（注意：研报清单按当时口径重建，但与运行封存的 inputs_sha 未能完全对上——语料库可能在运行后有过修补）",
+                False: "（注意：研报清单按当时口径重建，但与运行封存的 inputs_sha 未能完全对上——研报库可能在运行后有过修补）",
                 None: ""}[verified]
     prompt = (
         f"这次运行：{run.get('run_id')}，{run.get('as_of')} 期。\n"

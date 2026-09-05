@@ -181,18 +181,18 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "| 文件 | 是什么 |",
         "| --- | --- |",
         "| `01_运行日志.json` | 真实时钟的逐步日志：每步的时间、耗时、产出与端口自检 |",
-        "| `02_选主题.json` | 语义打分臂：全部主题的完整打分、入选名单、落选主题与入选线的分差 |",
-        "| `02_选主题_纯数数对照.json` | 不做语义判断、仅统计提及次数的对照臂；两臂的分歧是「语义打分是否有增量」的实时读数 |",
+        "| `02_选主题.json` | 语义打分：全部主题的完整打分、入选名单、落选主题与入选线的分差 |",
+        "| `02_选主题_纯数数对照.json` | 不做语义判断、仅统计提及次数的计数对照打分；两种打分的分歧是「语义打分是否有增量」的实时读数 |",
         "| `03_写想法/*.json` | 每种生成方式各自产出的候选原文，含论点、赔率与引用的研报编号 |",
         "| `04_候选池.json` | 合并后的候选池，一标一条 |",
         "| `05_挑持仓/*.json` | 每种选取策略自同一候选池选中了什么，及其自身打分 |",
         "| `06_追问记录.jsonl` | 事后对该次运行提出的问题与回答"
         f"（本期 {n_asks} 条）；回答仅依据上述封存材料 |",
-        "| `07_语料清单.jsonl` | 本期封存的每一篇研报：标题、机构、层级、"
+        "| `07_研报清单.jsonl` | 本期封存的每一篇研报：标题、机构、层级、"
         "**取回它的检索调用**（`retrieval`）与内容哈希。"
         "`03_写想法/` 里的 `citations` 编号在这里能查到对应的那一篇 |",
         "| `08_当时生效的准则.json` | 本期生效的 PM 准则（若有）：原话、它被蒸馏成的"
-        "指令、以及每条想法因此必须回答的字段。派生臂的产出在 `03_写想法/` 里 |",
+        "指令、以及每条想法因此必须回答的字段。派生生成方式的产出在 `03_写想法/` 里 |",
         "| `manifest.json` | 每个文件的字节数与 SHA-256，用来验证包没被改过 |",
         "",
         "## 这个包不包含什么",
@@ -207,7 +207,7 @@ def _readme(run: dict, journal: dict | None, files: list[tuple[str, int]],
         "1. 读 `01_运行日志.json` 的 `steps`：时间戳为真实时钟，非事后补写。",
         "2. 选定一个关注的持仓，在 `05_挑持仓/` 中定位它由哪种选取策略选中；",
         "3. 以其 `id` 回到 `04_候选池.json` 与 `03_写想法/`，查阅当时的论点与赔率；",
-        "4. 沿 `citations` 回溯到研报编号，在 `07_语料清单.jsonl` 里查到那一篇，"
+        "4. 沿 `citations` 回溯到研报编号，在 `07_研报清单.jsonl` 里查到那一篇，"
         "看它由哪个检索调用取回、内容哈希是多少；",
         "5. 用 `manifest.json` 中的 SHA-256 验证文件自导出以来未被修改。",
         "",
@@ -266,7 +266,7 @@ def build(p, run_id: str | None, con=None) -> tuple[bytes, str] | tuple[None, st
 
     manifest_rows = _corpus_manifest(run, con)
     if manifest_rows:
-        members.append(("07_语料清单.jsonl", manifest_rows))
+        members.append(("07_研报清单.jsonl", manifest_rows))
 
     # The rules in force when this run happened. Without them a replay on
     # another machine rebuilds four arms where the run had five, and the extra

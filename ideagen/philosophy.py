@@ -96,7 +96,7 @@ FROZEN = {
     "count": "每主题 20 条的目标产量",
     "direction": "只做多（做空通过反向/防御标的表达）",
     "odds": "上下行幅度与三档概率的定义与归一",
-    "sizing": "仓位权重与止盈止损（归筛选C 与建仓，生成臂说了不算）",
+    "sizing": "仓位权重与止盈止损（归筛选C 与建仓，生成方式说了不算）",
 }
 
 #: Which stages accept a card at all. 筛选A is deliberately excluded: injecting
@@ -252,7 +252,7 @@ _PROSE_BACKSTOP: tuple[tuple[str, str], ...] = (
     # Sizing is the quiet one: a generator has no channel to the book, so a
     # directive about weight or stops is not dangerous, it is inert — the model
     # writes a field nobody reads and the PM believes his rule is running.
-    (r"仓位|权重|position_size|重仓|加仓|止损|止盈|倍(?=的?仓)", "仓位与止盈止损归筛选C 与建仓，生成臂改不动"),
+    (r"仓位|权重|position_size|重仓|加仓|止损|止盈|倍(?=的?仓)", "仓位与止盈止损归筛选C 与建仓，生成方式改不动"),
 )
 
 
@@ -305,11 +305,11 @@ def problems(card: dict[str, Any], *, existing: list[dict[str, Any]] | None = No
     stage, arm = str(scope.get("stage") or ""), str(scope.get("arm") or "")
     if stage not in INJECTABLE_STAGES:
         bad.append(f"只能注入 {'/'.join(INJECTABLE_STAGES)}，拿到的是 {stage!r}"
-                   "（筛选A 会让整周的题目都变，筛选C 的松紧已经是参数臂）")
+                   "（筛选A 会让整周的题目都变，筛选C 的松紧已经是参数）")
     if not arm:
-        bad.append("没说注入哪一条臂")
+        bad.append("没说注入到哪一种生成方式")
     elif known_arms is not None and arm not in known_arms:
-        bad.append(f"{arm!r} 不是已注册的臂；现有：{sorted(known_arms)}")
+        bad.append(f"{arm!r} 不是已注册的生成方式；现有：{sorted(known_arms)}")
 
     directives = [str(d).strip() for d in (card.get("directives") or [])
                   if str(d).strip()]

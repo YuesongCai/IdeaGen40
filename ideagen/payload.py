@@ -14,7 +14,7 @@ generator reads them.
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,7 @@ def build(con) -> dict:
         "attribution": _attribution(con),
         "dictionary": _dictionary(con, dates),
         "cohorts": _cohorts(con),
+        "macro": _macro(con, dates),
         "overview": None,   # filled below, needs cohorts
     }
     out["overview"] = _overview(con, out)
@@ -612,6 +613,68 @@ def _batch(con, d: str) -> dict | None:
                                   for c in val.get("checks", []) if not c["ok"]],
                        "summary": val.get("summary")},
         "ideas": ideas,
+    }
+
+
+def _macro(con, dates) -> dict:
+    """The macro layer, as numbers a page can render.
+
+    It is here rather than in the panel because `web/dash.html` is edited by
+    several sessions at once and a display-only change is not worth the risk of
+    landing on top of someone's unfinished work. Putting the block in the state
+    means whoever renders next can pick it up without anyone touching that file.
+
+    Deliberately without verdicts. `regime` returns legs and no score for the
+    reason stated in `macro.regime`; the positioning column reports the *link*
+    beside every number because a beta relationship and an identity are not the
+    same claim; and both the applied and the counterfactual crowding score are
+    carried, because "would this switch change anything" is the question this
+    block exists to let someone answer from data.
+    """
+    from . import macro
+    try:
+        macro.ensure_schema(con)
+    except Exception as e:                       # noqa: BLE001
+        return {"available": False, "why": f"{type(e).__name__}: {e}"}
+
+    d = dates[-1] if dates else config.today_hkt().isoformat()
+    window = [(date.fromisoformat(d) - timedelta(days=i)).isoformat()
+              for i in range(13, -1, -1)]
+
+    releases = []
+    for r in macro.window_surprises(con, window):
+        releases.append({"date": r["date"], "label": r["label"],
+                         "kind": r["kind"], "actual": r["actual"],
+                         "estimate": r["estimate"], "z": r["z"],
+                         "why": r["why"], "impact": r.get("impact")})
+
+    positioning = []
+    for code in sorted(set(macro.COT_DIRECT) | set(macro.COT_PROXY)):
+        v, meta = macro.positioning_crowding(con, code, d)
+        positioning.append({"code": code, "crowding": v,
+                            "contract": meta.get("contract"),
+                            "link": meta.get("link"),
+                            "as_of": meta.get("cot_date"),
+                            "lag_days": meta.get("lag_days"),
+                            "note": meta.get("note")})
+
+    fits = {r["status"]: r["n"] for r in db.q(
+        con, "SELECT status, COUNT(*) n FROM macro_surprise_stats"
+             " WHERE upto=(SELECT MAX(upto) FROM macro_surprise_stats)"
+             " GROUP BY status")}
+
+    return {
+        "available": True,
+        "as_of": d,
+        "flags": macro.flags(),
+        "flags_note": ("三个都是打分/模型输入，默认关；关着的时候仍然记录反事实，"
+                       "所以开关什么时候拍都有数可看。"),
+        "regime": macro.regime(con, d),
+        "releases": releases,
+        "settled_with_z": sum(1 for r in releases if r["z"] is not None),
+        "positioning": positioning,
+        "surprise_fit": {"series": fits, "min_obs": macro.MIN_OBS,
+                         "min_reaction_z": macro.MIN_REACTION_Z},
     }
 
 

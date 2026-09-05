@@ -96,3 +96,16 @@ fi
 
 docker rmi -f "ideagen40:cand-$want" >/dev/null 2>&1
 docker image prune -f >/dev/null 2>&1
+
+# 每次代码变动都构建一次完整镜像，而 origin/main 一天能动几十次。悬空层由
+# 上面的 prune 清掉，但 **构建缓存不会**，它只增不减，最后撑满 40GB 系统盘 ——
+# 而磁盘满在这台上的表现是「页面突然打不开」，不会有人联想到构建缓存。
+# 所以：每次部署后报一次剩余空间（控制台是这台唯一的通道），低于 8GB 就把
+# 构建缓存压到 2GB。平时不动它，构建才不会每次都从头来。
+free_kb=$(df -Pk / | awk 'NR==2{print $4}')
+echo "IG_CODE_DISK 剩余 $((free_kb / 1024 / 1024))GB"
+if [ "$free_kb" -lt 8388608 ]; then
+  echo "IG_CODE_DISK_PRUNE 剩余不足 8GB，清理构建缓存"
+  docker builder prune -f --keep-storage 2GB >/dev/null 2>&1
+  echo "IG_CODE_DISK 清理后剩余 $(($(df -Pk / | awk 'NR==2{print $4}') / 1024 / 1024))GB"
+fi

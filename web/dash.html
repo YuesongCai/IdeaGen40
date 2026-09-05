@@ -4992,6 +4992,23 @@ function falsificationCard(){
           moved>=n/2?'打折':'扛住了','tearsheet'));
   }else rows.push(na('减去「盘子大了以后的成本」','成本 × 规模敏感性','没有 cost_sensitivity 数据块','tearsheet'));
 
+  /* 第六刀半：窗口没跑满的那些。四成仓位跑满了 30 天，其余的窗口更短，
+     而臂的均值把 2 天和 30 天等权混在一起。 */
+  var hc=sm.horizon_completeness||null;
+  var hcEv=(hc&&hc.arms)?hc.arms.ev_rank:null,hcBa=(hc&&hc.arms)?hc.arms.buy_all:null;
+  if(hcEv&&hcBa&&hcEv.mean_return_full_horizon_pct!=null&&hcBa.mean_return_full_horizon_pct!=null){
+    var edgeAll=num(hcEv.mean_return_pct)-num(hcBa.mean_return_pct);
+    var edgeFull=num(hcEv.mean_return_full_horizon_pct)-num(hcBa.mean_return_full_horizon_pct);
+    rows.push(row('减去「窗口没跑满的那些仓位」',
+      '只有 '+fmtRate((hc.complete_frac||0)*100)+' 的仓位真的持满了 '
+        +fmtInt(hc.horizon_days)+' 天，而均值把 2 天和 30 天等权混在一起；'
+        +'只看满窗，对全量基准的领先从 '+fmtPct(edgeAll)+' 收到 '+fmtPct(edgeFull)
+        +'。注意：满窗仓位几乎都来自最早那几期，所以这也换了一段行情，'
+        +'不是一次更干净的测量',
+      fmtPct(hcEv.mean_return_full_horizon_pct)+' vs '+fmtPct(hcBa.mean_return_full_horizon_pct),
+      vd(edgeFull==null?null:edgeFull>=0.5),'backtest'));
+  }else rows.push(na('减去「窗口没跑满的那些仓位」','满窗与全部窗口的对照','没有 horizon_completeness 数据块','backtest'));
+
   /* 第七刀：试了多少次。 */
   rows.push(fd&&fd.deflated_sharpe!=null
     ? row('减去「一共试了多少次」',

@@ -520,13 +520,36 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
         weekly = {"run_id": rid, "as_of": r["as_of"], "ok": bool(r["ok"]),
                   "in_flight": r["ended_at"] is None, "calls": r["calls"],
                   "data_classification": classification}
-        corpus_receipts = p.state.q(
-            "SELECT n_rows FROM feed_runs WHERE run_id=? AND kind='corpus'",
+        # Every feed this period actually ran, not just the corpus one.
+        #
+        # `corpus_total` alone is what the pipeline canvas has always drawn, and
+        # the picture therefore says the period's only input was research. It was
+        # not: the 2026-09-02 run recorded four feed receipts — wisburg 858,
+        # treasury_auctions 9, fred_levels 5, instruments 156 — and fourteen
+        # calendar rows and a 156-name shelf reached the generators without ever
+        # appearing on the diagram that claims to show where the ideas came from.
+        # The founding spec names both halves («wisburg 日报 + 宏观日历»), so a
+        # single input block was misdrawing the design, not just omitting a
+        # detail.
+        #
+        # `corpus_total` stays for the callers that already read it; a page can
+        # migrate to `inputs` without a flag day.
+        feed_receipts = p.state.q(
+            "SELECT feed, kind, n_rows, ok, error FROM feed_runs WHERE run_id=?",
             (rid,))
+        weekly["inputs"] = [
+            {"feed": row["feed"], "kind": row["kind"],
+             "rows": int(row["n_rows"] or 0), "ok": bool(row["ok"]),
+             "error": row["error"]}
+            for row in feed_receipts]
+        weekly["inputs_by_kind"] = {}
+        for row in weekly["inputs"]:
+            k = weekly["inputs_by_kind"].setdefault(
+                row["kind"], {"rows": 0, "feeds": [], "failed": []})
+            k["rows"] += row["rows"]
+            (k["feeds"] if row["ok"] else k["failed"]).append(row["feed"])
         weekly["corpus_total"] = (
-            sum(int(row["n_rows"] or 0) for row in corpus_receipts)
-            if corpus_receipts else None
-        )
+            weekly["inputs_by_kind"].get("corpus", {}).get("rows") or None)
         weekly["topics"] = [
             {"scorer": v["strategy"], "chosen": json.loads(v["chosen"]),
              "scores": json.loads(v["scores"] or "{}")}

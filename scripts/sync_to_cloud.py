@@ -297,12 +297,24 @@ def code_leg(dry_run: bool) -> dict:
     # leaves origin/main where it was is the exact failure that let two
     # production nodes run three-day-old code while everyone believed
     # otherwise. Ask the remote, do not trust the exit code.
+    #
+    # 但「落地」不等于「origin/main 恰好等于 HEAD」。这个仓里同时有好几个会话，
+    # 每三五分钟就有人推一条；等号形式的断言会在别人抢先推上来的那几秒里
+    # 把一次**成功**的推送报成 push-did-not-land，还发一条飞书。
+    # 一个会误报的告警等于一个没人看的告警——恰恰是这个脚本自己警告过的事。
+    # 真正要问的是：HEAD 现在是不是 origin/main 的祖先。
     git("fetch", "origin", "--quiet")
     landed = git("rev-parse", "origin/main")
-    if landed != head:
+    if subprocess.run(("git", "merge-base", "--is-ancestor", head, "origin/main"),
+                      cwd=ROOT, capture_output=True).returncode != 0:
         out.update(action="push-did-not-land", ok=False,
-                   detail=f"push 退出码为 0，但 origin/main 仍是 {landed[:7]}，"
-                          f"不是 {head[:7]}")
+                   detail=f"push 退出码为 0，但 {head[:7]} 不在 origin/main "
+                          f"（现在是 {landed[:7]}）的历史里")
+        return out
+    if landed != head:
+        out.update(action="pushed", ok=True,
+                   detail=f"推了 {ahead} 个提交；期间别人又推了，"
+                          f"origin/main 现在是 {landed[:7]}，{head[:7]} 已在其中")
         return out
     out.update(action="pushed", ok=True,
                detail=f"推了 {ahead} 个提交，origin/main 现在是 {head[:7]}")

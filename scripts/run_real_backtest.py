@@ -46,6 +46,11 @@ CONTROL = "buy_all"
 #: curve cannot drift onto different benchmarks.
 BENCHMARK = config.BENCHMARKS["SPY"]
 
+#: Live periods before the live column is worth reading at all. Four is one
+#: full rotation of the four-week tranche cycle — below it every position in
+#: the column is still open somewhere, and the number moves with one market.
+LIVE_PERIODS_BEFORE_READING = 4
+
 
 def _periods(con) -> list[tuple[date, str]]:
     """Every period with a stored pool, with how that pool came to exist."""
@@ -297,6 +302,67 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
     if excluded:
         parts.append(f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。")
     return "".join(parts)
+
+
+def _live_vs_backfill(positions: list[dict], classes: dict[str, str]) -> dict:
+    """Each arm's record split by whether the period was called live.
+
+    The pooled hit rate is the number everyone quotes and it is the wrong one
+    for anything registered `exploratory`. `ev_rank` was chosen on 2026-09-05
+    after looking at these six periods; a figure spanning them measures the
+    search that found the rule, not the rule. Its live periods are the only
+    ones that will ever test it, and until this block existed nothing computed
+    them — so the contaminated number was the only number available, and would
+    have kept being cited as live periods accumulated around it.
+
+    Reported with the count in front of the rate, and with `usable` false until
+    the live side reaches a size worth reading. One live period is eight
+    positions inside one month of one market; a hit rate over it is a fact
+    about that month.
+    """
+    by: dict[str, dict[str, list[float]]] = {}
+    for r in positions:
+        ret = r.get("return_pct")
+        if ret is None:
+            continue
+        cls = "live" if classes.get(str(r.get("period"))) == "live" else "backfill"
+        by.setdefault(str(r["arm"]), {"live": [], "backfill": []})[cls].append(
+            float(ret))
+
+    def stat(v: list[float]) -> dict:
+        if not v:
+            return {"n": 0, "hit_rate": None, "mean_return_pct": None}
+        return {"n": len(v),
+                "hit_rate": round(sum(1 for x in v if x > 0) / len(v), 4),
+                "mean_return_pct": round(sum(v) / len(v), 4)}
+
+    n_live_periods = sum(1 for c in classes.values() if c == "live")
+    arms = {}
+    for name, sides in sorted(by.items()):
+        role = next((r.get("role") for r in strat.available("idea_selector")
+                     if r["name"] == name), None)
+        arms[name] = {
+            "role": role,
+            "live": stat(sides["live"]),
+            "backfill": stat(sides["backfill"]),
+            # An exploratory arm's pooled figure spans the search that chose
+            # it. Saying which column is evidence is the point of the split.
+            "evidence_column": ("live" if role == "exploratory" else "pooled"),
+        }
+    return {
+        "n_live_periods": n_live_periods,
+        "n_backfill_periods": len(classes) - n_live_periods,
+        "live_periods": sorted(d for d, c in classes.items() if c == "live"),
+        "usable": n_live_periods >= LIVE_PERIODS_BEFORE_READING,
+        "periods_needed": max(0, LIVE_PERIODS_BEFORE_READING - n_live_periods),
+        "arms": arms,
+        "note": (
+            f"按期次是否为当期实跑拆开。{LIVE_PERIODS_BEFORE_READING} 期以下的 live "
+            f"列不作数——一期就是一个月一个市场里的几条持仓，它的胜率是关于那个月的"
+            f"事实。对 exploratory 注册的臂（如 ev_rank），合并列跨越了挑出这条规则时"
+            f"看过的期次，只有 live 列才是检验；对 control 与既有臂，合并列本身就是"
+            f"它们的记录。"),
+    }
 
 
 def _benchmark_series(con, points: list[dict]) -> tuple[float | None, float | None]:
@@ -1095,6 +1161,7 @@ def main(argv: list[str]) -> int:
             f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
     provenance = _theme_provenance(days)
     ranking_power = _ranking_power(con, days, args.horizon_days)
+    live_split = _live_vs_backfill(positions, classes)
     bench = _benchmark_series(con, points)
     exposure = _exposure(points, rep.gap_days, args.horizon_days,
                          bench[0], bench[1])
@@ -1120,6 +1187,7 @@ def main(argv: list[str]) -> int:
         "theme_provenance": provenance,
         "ranking_power": ranking_power,
         "exposure": exposure,
+        "live_vs_backfill": live_split,
         "horizon_completeness": horizon,
         "generation_head_to_head": head_to_head,
         # The sweep ran with strict=True, so every period's context passed the

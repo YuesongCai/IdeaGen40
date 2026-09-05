@@ -184,6 +184,11 @@ def weekly(
                             "data_classification", "injected")}))
             corpus = corpus or []
             universe = universe or []
+            # Whether this run generates has to be captured before the line
+            # below erases the distinction: `candidates or []` turns "none were
+            # handed in" and "an empty pool was handed in" into the same value,
+            # and the shelf guard needs to tell them apart.
+            generating = candidates is None
             candidates = candidates or []
             calendar = calendar or []
             prices = prices or {}
@@ -193,17 +198,40 @@ def weekly(
             # separate almost-identical filters inside four generators — and the
             # exclusions are recorded, because a theme whose only clean expression
             # is an unconfirmed vehicle is a gap to close, not a theme to drop.
+            excluded: dict[str, str] = {}
+            dating = uni.shelf_asof_coverage(universe) if universe else None
             if universe:
-                dating = uni.shelf_asof_coverage(universe)
                 universe, excluded = uni.eligible(universe, as_of=as_of)
-                j.step("universe", eligible=len(universe),
-                       excluded=len(excluded),
-                       reasons=_reason_counts(excluded),
-                       shelf_dating=dating)
+            # Recorded even at zero. Under `if universe:` the step vanished
+            # exactly when it mattered, so a run with no shelf left no trace of
+            # having had none — the count that would have said so was inside
+            # the branch the emptiness skipped.
+            j.step("universe", eligible=len(universe), excluded=len(excluded),
+                   reasons=_reason_counts(excluded), shelf_dating=dating)
+            if universe:
                 log(f"  可用标的 {len(universe)}（排除 {len(excluded)}）"
                     + (f"　⚠ {dating['undated']} 个标的没有上架日期，"
                        f"回放这些期次不算 as-of 干净"
-                       if dating["undated"] else ""))
+                       if dating and dating["undated"] else ""))
+
+            # Fails here rather than at stage B, where it would otherwise
+            # surface. The stage-B guard does catch an empty shelf — with no
+            # instruments the generators produce nothing and it refuses the
+            # period — but it says 「生成器全部失败或全被丢弃」, which sends the
+            # reader to the generators and the model, three layers below the
+            # actual fault. The corpus guard exists for the same reason one
+            # layer up: name the input that was missing, not the step that
+            # noticed. Checked against the 2026-09-09 trigger, where the cloud
+            # instance has a shelf of zero and this is the message it will give.
+            #
+            # Only when this run is generating. A batch handed in through
+            # `candidates` has already chosen its instruments, and demanding a
+            # shelf it will not consult would refuse a run that is complete.
+            if not universe and generating:
+                raise RuntimeError(
+                    f"{as_of} 可用标的为零，筛选B 没有东西可以表达主题——"
+                    f"这次运行不算完成。「货架没同步过来」和「本周没有合规标的」"
+                    f"必须区分开")
 
             for fr in feed_results:
                 j.step(f"feed:{fr.feed}", kind=fr.kind, n=len(fr.rows),

@@ -568,6 +568,55 @@ class TestPublicPocFixture(unittest.TestCase):
         self.assertEqual(sum(row["n_rows"] for row in feeds), 20)
 
 
+class TestAnEmptyShelfNamesItself(unittest.TestCase):
+    """A week with no instruments should say so, not blame the generators.
+
+    Stage B already refuses a period that produced nothing, so an empty shelf
+    was never going to be recorded as a success. What it *was* going to say is
+    「生成器全部失败或全被丢弃」 — pointing at the generators and the model,
+    three layers below the fault. Checked ahead of the 2026-09-09 trigger,
+    where the cloud instance has a shelf of zero and would have given exactly
+    that message on the morning of the meeting it feeds.
+    """
+
+    def test_a_run_with_no_universe_says_which_input_was_missing(self):
+        from ideagen import orchestrator
+        from ideagen.platform.base import Health
+
+        class HealthyPort:
+            def __init__(self, name):
+                self.name = name
+
+            def check(self):
+                return Health(True, self.name, "test")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            platform = Platform(
+                name="test",
+                blobs=LocalBlobStore(root / "blobs"),
+                state=SqliteStateStore(root / "state.db"),
+                inference=HealthyPort("inference"),
+                events=FileEventBus(root / "events.jsonl"),
+                cache=FileCache(root / "cache"),
+                secrets=HealthyPort("secrets"),
+            )
+            inputs = dict(poc_workflow.public_inputs(date(2026, 8, 30)))
+            self.assertTrue(inputs["universe"], "premise: the fixture has a shelf")
+            inputs["universe"] = []
+            result = orchestrator.weekly(
+                as_of=date(2026, 8, 30), p=platform,
+                selectors=["buy_all"],
+                params={"top_n": 1, "skip_theme_discovery": True},
+                verbose=False, **inputs)
+
+        self.assertFalse(result.ok)
+        self.assertIn("可用标的为零", result.error)
+        self.assertNotIn("生成器全部失败", result.error,
+                         "the message must name the input, not the step "
+                         "that noticed")
+
+
 class TestPortableShelfAndPaper(unittest.TestCase):
     AS_OF = date(2026, 8, 30)
 

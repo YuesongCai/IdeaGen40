@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import types
 import unittest
 from datetime import date
 from pathlib import Path
@@ -361,12 +362,24 @@ class TheRuleCanBeCheckedAgainstItsSources(unittest.TestCase):
     """
 
     def setUp(self):
+        from ideagen import strategy as strat
         self.tmp = tempfile.TemporaryDirectory()
         self._real = philosophy.LEDGER
         philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+        # Redirecting the ledger is not enough. `activate` reloads the lexicon
+        # and the panel handlers below then install a derived arm into the
+        # *global* strategy registry, which no temporary directory takes back.
+        # The registry fills lazily, so it has to be forced before the snapshot
+        # or tearDown deletes every arm in the process rather than the one this
+        # class added — the same trap `ActivationReachesTheWeeklyRun` documents.
+        strat.available("idea_generator")
+        self._before = set(strat._REGISTRY)
 
     def tearDown(self):
+        from ideagen import strategy as strat
         philosophy.LEDGER = self._real
+        for key in set(strat._REGISTRY) - self._before:
+            del strat._REGISTRY[key]
         self.tmp.cleanup()
 
     def test_an_unknown_id_is_not_found_rather_than_empty(self):
@@ -727,3 +740,227 @@ class RewritesMustBeSeenByTheirAuthor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheRecordOutlivesTheRule(unittest.TestCase):
+    """停用一条准则不该等于把它抹掉。
+
+    `cards()` is right to drop a retired card: a run must not see a rule that
+    was stopped before it. But the panel asked `cards()` the question a person
+    asks — 「我上个月写的那条到底说了什么」 — and got the run's answer. Retiring
+    a rule made the sentence, the directives it became and the fields it
+    demanded disappear from every surface anyone looks at, while the ledger
+    built append-only so that nothing would be lost sat unread on disk.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._real = philosophy.LEDGER
+        philosophy.LEDGER = Path(self.tmp.name) / "ledger.jsonl"
+
+    def tearDown(self):
+        philosophy.LEDGER = self._real
+        self.tmp.cleanup()
+
+    def test_a_retired_rule_is_still_in_the_record(self):
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        philosophy.retire("pm-2026-09-04-a1b2c3", date(2026, 10, 1), "跑不赢")
+        self.assertEqual(philosophy.cards(), [])
+        h = philosophy.history()
+        self.assertEqual([c["card_id"] for c in h], ["pm-2026-09-04-a1b2c3"])
+        self.assertEqual(h[0]["retired_on"], "2026-10-01")
+        self.assertEqual(h[0]["retired_reason"], "跑不赢")
+
+    def test_the_record_gives_the_card_as_it_was_written(self):
+        """A summary of a rule is a different rule. The question is what this
+        one said, so the whole card comes back."""
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        philosophy.retire("pm-2026-09-04-a1b2c3", date(2026, 10, 1))
+        got = philosophy.history()[0]
+        self.assertEqual(got["source_utterance"],
+                         a_card()["source_utterance"])
+        self.assertEqual(got["directives"], a_card()["directives"])
+        self.assertEqual(got["require"], a_card()["require"])
+        self.assertEqual(got["rationale"], a_card()["rationale"])
+        self.assertEqual(got["founding_check"], a_card()["founding_check"])
+
+    def test_a_revision_is_linked_from_both_ends(self):
+        """血缘读两个方向：从旧的那条问「后来被谁接替」，从新的问「从哪句改的」。
+        Left inside `reason` as prose it was readable by a person and by
+        nothing else."""
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        philosophy.activate(
+            a_card(card_id="pm-2026-09-11-ffee00", as_of="2026-09-11",
+                   source_utterance="我要的是被合同逼着动手的卖家",
+                   replaces="pm-2026-09-04-a1b2c3"),
+            known_arms={"carl_constraint"})
+        philosophy.retire("pm-2026-09-04-a1b2c3", date(2026, 9, 11),
+                          "被 pm-2026-09-11-ffee00 替换",
+                          replaced_by="pm-2026-09-11-ffee00")
+        by_id = {c["card_id"]: c for c in philosophy.history()}
+        self.assertEqual(by_id["pm-2026-09-04-a1b2c3"]["replaced_by"],
+                         "pm-2026-09-11-ffee00")
+        self.assertEqual(by_id["pm-2026-09-11-ffee00"]["replaces"],
+                         "pm-2026-09-04-a1b2c3")
+
+    def test_the_record_survives_a_line_it_cannot_read(self):
+        """Same guarantee `cards()` has. One mistyped row must not be able to
+        empty the record."""
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        with philosophy.LEDGER.open("a", encoding="utf-8") as fh:
+            fh.write("{not json\n")
+        self.assertEqual(len(philosophy.history()), 1)
+
+    def test_the_panel_is_handed_the_record_not_just_what_is_running(self):
+        from ideagen import philosophy_web as pw
+        philosophy.activate(a_card(), known_arms={"carl_constraint"})
+        philosophy.retire("pm-2026-09-04-a1b2c3", date(2026, 10, 1), "试完了")
+        obj, _ = pw.handle_list()
+        self.assertEqual(obj["live"], [])
+        self.assertEqual(len(obj["history"]), 1)
+        self.assertIs(obj["history"][0]["live"], False)
+        self.assertEqual(obj["history"][0]["said"],
+                         a_card()["source_utterance"])
+
+
+class ASentenceSurvivesLeavingThePage(unittest.TestCase):
+    """写了一半的那句话不该只活在一个标签页的内存里。
+
+    The proposal has always been stored server-side so that 「换个浏览器、隔一天
+    回来，那句话还在等你拍板」 was true. The sentence *before* distillation was
+    not, and that is the state a person actually leaves this in: mid-thought,
+    interrupted. A reload threw away the only part that took any thinking.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        from ideagen import philosophy_web as pw
+        self._real_drafts, self._real_pending = pw.DRAFTS, pw.PENDING
+        pw.DRAFTS = Path(self.tmp.name) / "drafts"
+        pw.PENDING = Path(self.tmp.name) / "pending"
+        pw.PENDING.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        from ideagen import philosophy_web as pw
+        pw.DRAFTS, pw.PENDING = self._real_drafts, self._real_pending
+        self.tmp.cleanup()
+
+    def test_a_saved_sentence_comes_back(self):
+        from ideagen import philosophy_web as pw
+        out, code = pw.handle_draft({"say": "我要的是被迫的卖家",
+                                     "arm": "carl_constraint"})
+        self.assertEqual(code, 200)
+        self.assertTrue(out["id"])
+        again, _ = pw.handle_draft({"id": out["id"], "say": "我要的是被迫的卖家，"
+                                                           "被条款逼着的那种"})
+        self.assertEqual(again["id"], out["id"],
+                         "接着写不该变成第二条草稿")
+        self.assertEqual(len(again["drafts"]), 1)
+        self.assertIn("被条款逼着", again["drafts"][0]["say"])
+
+    def test_clearing_the_box_deletes_the_draft(self):
+        """A sentence the PM just cleared must not come back tomorrow as though
+        he had never cleared it."""
+        from ideagen import philosophy_web as pw
+        out, _ = pw.handle_draft({"say": "算了"})
+        gone, code = pw.handle_draft({"id": out["id"], "say": "   "})
+        self.assertEqual(code, 200)
+        self.assertEqual(gone["drafts"], [])
+
+    def test_several_unfinished_rules_stand_side_by_side(self):
+        from ideagen import philosophy_web as pw
+        for t in ("被迫的卖家", "只信拨了钱的政策", "买离受益最近的一层"):
+            pw.handle_draft({"say": t})
+        obj, _ = pw.handle_list()
+        self.assertEqual(len(obj["drafts"]), 3)
+
+    def test_a_draft_id_from_a_request_cannot_name_a_file_elsewhere(self):
+        """The id arrives in a request body and is about to be a filename."""
+        from ideagen import philosophy_web as pw
+        out, code = pw.handle_draft({"id": "../../ledger", "say": "x"})
+        self.assertEqual(code, 400)
+        out, code = pw.handle_draft_delete({"id": "../../ledger"})
+        self.assertEqual(code, 404)
+
+    def test_the_desk_refuses_to_become_a_pile(self):
+        from ideagen import philosophy_web as pw
+        for i in range(pw.MAX_DRAFTS):
+            pw.handle_draft({"say": f"第 {i} 条"})
+        out, code = pw.handle_draft({"say": "再来一条"})
+        self.assertEqual(code, 400)
+        self.assertIn("删掉", out["error"])
+
+    def test_rewriting_a_proposal_returns_the_sentence_to_the_desk(self):
+        """「重写」 means rewrite this sentence, not lose it. The card is a
+        machine's reading and is disposable; the sentence is not."""
+        from ideagen import philosophy_web as pw
+        card = a_card()
+        (pw.PENDING / f"{card['card_id']}.json").write_text(
+            json.dumps(card, ensure_ascii=False), encoding="utf-8")
+        out, code = pw.handle_discard({"id": card["card_id"]})
+        self.assertEqual(code, 200)
+        self.assertEqual(out["said"], card["source_utterance"])
+        drafts = pw._drafts()
+        self.assertEqual(len(drafts), 1)
+        self.assertEqual(drafts[0]["say"], card["source_utterance"])
+
+    def test_a_proposal_that_became_a_card_takes_its_draft_with_it(self):
+        """The card carries `source_utterance` verbatim, so the draft is
+        redundant rather than lost — and leaving it would show one rule twice,
+        in two different states, in two different lists.
+
+        The model call and the platform are stubbed; what is under test is the
+        handoff between the desk and the pending pile, which is where the
+        sentence could go missing.
+        """
+        from ideagen import ask, philosophy_web as pw, platform as plat
+        saved, _ = pw.handle_draft({"say": "我要的是被迫的卖家"})
+        self.assertTrue((pw.DRAFTS / f"{saved['id']}.json").exists())
+
+        card = a_card()
+        fake = types.SimpleNamespace(inference=None)
+        stubs = [(plat, "load", lambda: fake),
+                 (ask, "inference_state", lambda p: (True, "")),
+                 (philosophy, "distill",
+                  lambda *a, **k: (dict(card), []))]
+        real = [(o, n, getattr(o, n)) for o, n, _ in stubs]
+        for o, n, v in stubs:
+            setattr(o, n, v)
+        try:
+            out, code = pw.handle_propose(
+                {"say": card["source_utterance"], "arm": "carl_constraint",
+                 "draft": saved["id"]})
+        finally:
+            for o, n, v in real:
+                setattr(o, n, v)
+
+        self.assertEqual(code, 200)
+        self.assertIs(out["ok"], True)
+        self.assertTrue((pw.PENDING / f"{card['card_id']}.json").exists())
+        self.assertEqual(pw._drafts(), [],
+                         "同一条准则不该同时以草稿和草案两种状态出现")
+
+    def test_a_revision_carries_what_it_replaces_on_the_card(self):
+        """Held in the tab instead, a revision confirmed after a reload became
+        an addition: both versions running, neither one's number meaning
+        anything."""
+        from ideagen import ask, philosophy_web as pw, platform as plat
+        card = a_card()
+        fake = types.SimpleNamespace(inference=None)
+        stubs = [(plat, "load", lambda: fake),
+                 (ask, "inference_state", lambda p: (True, "")),
+                 (philosophy, "distill", lambda *a, **k: (dict(card), []))]
+        real = [(o, n, getattr(o, n)) for o, n, _ in stubs]
+        for o, n, v in stubs:
+            setattr(o, n, v)
+        try:
+            out, _ = pw.handle_propose(
+                {"say": card["source_utterance"], "arm": "carl_constraint",
+                 "replaces": "pm-2026-08-01-0f0f0f"})
+        finally:
+            for o, n, v in real:
+                setattr(o, n, v)
+        self.assertEqual(out["replaces"], "pm-2026-08-01-0f0f0f")
+        on_disk = json.loads(
+            (pw.PENDING / f"{card['card_id']}.json").read_text(encoding="utf-8"))
+        self.assertEqual(on_disk["replaces"], "pm-2026-08-01-0f0f0f")

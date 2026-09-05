@@ -629,7 +629,7 @@ def _resolve_sources(con, sources) -> list[dict]:
                   (str(sid),))
         if not r:
             out.append({"doc_id": str(sid), "resolved": False,
-                        "title": str(sid), "note": "散文式归属，无法解析到语料"})
+                        "title": str(sid), "note": "散文式归属，无法解析到研报"})
             continue
         assets = [dict(a) for a in db.q(
             con, "SELECT url,kind FROM assets WHERE doc_id=? AND reachable=1",

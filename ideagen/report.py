@@ -47,8 +47,8 @@ GLOSSARY = {
  "排序能力": "Spearman ρ：引擎给的赔率排序与后来真实收益的秩相关。ρ>0 表示排序有信息，ρ≈0 表示排序没用。",
  "Brier": "三分类（上涨/基准/下跌）概率的平方误差，越小越好。均匀先验（各 1/3）是 0.667。",
  "技能分": "1 − Brier ÷ 0.667。>0 表示概率比瞎猜有信息，<0 表示比瞎猜还差。",
- "字典覆盖": "当天语料里能被至少一个已注册主题命名的比例。主题字典最初是代码里冻结的 16 条，实测只能命名约 54% 的语料——GLP-1 与医保准入、韩国科技股重估、人形机器人、光模块出口管制、央行购金 当时都是有来源的真辩论，字典却没有词。所以字典改成「16 条种子 + 只能追加的注册表」，每天从零匹配语料里挖候选。这个数字下降就说明发现机制跟不上语料；固定主题列表按构造报不出这个数。",
- "新主题": "从语料里发现、而非最初写死的主题。注册日不可回填，且只能给注册日及以后的日子打分——否则「发现主题」就等于事后挑一个已经涨完的东西定义成主题，再为自己排序准确而自豪。",
+ "字典覆盖": "当天研报里能被至少一个已注册主题命名的比例。主题字典最初是代码里冻结的 16 条，实测只能命名约 54% 的研报——GLP-1 与医保准入、韩国科技股重估、人形机器人、光模块出口管制、央行购金 当时都是有来源的真辩论，字典却没有词。所以字典改成「16 条种子 + 只能追加的注册表」，每天从零匹配研报里挖候选。这个数字下降就说明发现机制跟不上研报；固定主题列表按构造报不出这个数。",
+ "新主题": "从研报里发现、而非最初写死的主题。注册日不可回填，且只能给注册日及以后的日子打分——否则「发现主题」就等于事后挑一个已经涨完的东西定义成主题，再为自己排序准确而自豪。",
  "冷启动": "注册未满 20 天的主题。A 因子的强度项要比较当日热度在该主题自己过去 20 天分布里的百分位，新主题没有这段历史，所以那一项暂时算不出来。标出来是为了让「发现的主题是不是系统性更差」变成可测量的问题。",
  "溯源": "智堡是客户端渲染的 SPA，逐篇没有固定网页链接（/report/<id> 之类全返回同一个空壳），所以这里不存永久链接——猜一个等于给一条指向空页的假引用。真正的凭据是可复现的 API 检索式 + 内容 sha1，加上已验证可达的图表 URL。",
  "生成器": "rules:v0.4 = 规则引擎（用于补齐每日历史，thesis 是模板）；claude-code = Claude 按契约手写；seed-import = 2026-07-27 的原始 PM pack。"
@@ -740,7 +740,7 @@ function viewCockpit() {
           '中心期望回报 vs 实际', '排序能力'),
       kpi('概率技能分', n2(o.skill, 3), sgn(o.skill),
           '> 0 优于瞎猜', '技能分'),
-      kpi('语料', o.corpus_total.toLocaleString(),
+      kpi('研报', o.corpus_total.toLocaleString(),
           null, `条来源 · ${o.charts_total} 张图表`))));
 
   /* ---- calendar ---- */
@@ -921,7 +921,7 @@ function viewReport(dd) {
       cells: [
         { el: E('div', {}, E('strong', {}, t.label),
             t.origin === 'discovered' ? E('span', { cls: 'tag new',
-              title: '语料发现的新主题，' + (t.registered_d || '') + ' 注册；'
+              title: '研报发现的新主题，' + (t.registered_d || '') + ' 注册；'
                    + '不属于最初 16 条种子，只能从注册日起打分' }, '新') : null,
             t.cold_start ? E('span', { cls: 'tag',
               title: '注册未满 20 天，A 的强度项还没有自身历史可比' }, '冷启动') : null,
@@ -962,7 +962,7 @@ function viewReport(dd) {
   if (r) {
     const c = r.corpus;
     wrap.append(E('details', {},
-      E('summary', {}, `当日语料底稿 · ${c.total.toLocaleString()} 条来源条目`),
+      E('summary', {}, `当日研报底稿 · ${c.total.toLocaleString()} 条来源条目`),
       E('div', { cls: 'panel', style: 'margin-top:8px' },
         E('p', { cls: 'small muted', style: 'margin:0 0 10px' },
           `观察窗口 ${c.window[0]} → ${c.window[2]}。逐条证据挂在它支撑的那个主题下面`
@@ -1013,7 +1013,7 @@ function dictionaryBlock() {
     { el: E('div', {}, E('strong', {}, t.label),
         t.origin === 'discovered' ? E('span', { cls: 'tag new' }, '新') : null,
         E('div', { cls: 'small muted' }, t.id)) },
-    { el: E('span', { cls: 'tag' }, t.origin === 'seed' ? '种子' : '语料发现') },
+    { el: E('span', { cls: 'tag' }, t.origin === 'seed' ? '种子' : '研报发现') },
     t.registered_d,
     { el: E('code', {}, t.indicator) },
     { v: t.n_terms, t: t.n_terms },
@@ -1027,7 +1027,7 @@ function dictionaryBlock() {
   if (c) {
     const inner = E('div');
     inner.append(E('p', { cls: 'small muted', style: 'margin:0 0 8px' },
-      `${c.as_of} 的语料里，字典能命名 `,
+      `${c.as_of} 的研报里，字典能命名 `,
       E('strong', {}, c.coverage_pct + '%'),
       `，${c.unmatched.toLocaleString()} 条命中不到任何主题。`
       + `下面是从那部分里挖出、且已过准入门槛（≥${c.gates.min_docs}篇 · `
@@ -1051,7 +1051,7 @@ function dictionaryBlock() {
   }
 
   return sec(E('span', {}, '主题字典', hint('字典覆盖')),
-    `${D.n_seed} 条种子（代码内冻结）+ ${D.n_discovered} 条从语料发现（只能追加）`
+    `${D.n_seed} 条种子（代码内冻结）+ ${D.n_discovered} 条从研报发现（只能追加）`
     + '。打分只用注册日 ≤ 当日的主题',
     body);
 }
@@ -1092,7 +1092,7 @@ function reachBlock(x) {
     hint('字典覆盖')));
   if ((x.candidates || []).length) {
     box.append(E('p', { cls: 'small muted', style: 'margin:8px 0 4px' },
-      '零匹配语料里出现的、字典还没有词的辩论（已过准入门槛，等人判定是否注册）：'),
+      '零匹配研报里出现的、字典还没有词的辩论（已过准入门槛，等人判定是否注册）：'),
       E('div', { cls: 'kvgrid' }, ...x.candidates.map(c => E('div', {},
         E('span', {}, c.terms.slice(0, 4).join(' · ')),
         E('span', { cls: 'muted' },
@@ -1118,7 +1118,7 @@ function themeDetail(d) {
     E('p', { cls: 'hintline' },
       `TIS = 0.15·D + 0.25·A + 0.25·B + 0.35·N = ${n2(t.tis, 1)}（${t.tier}）。`
       + `M 与 C 是独立维度，不进 TIS：当前 ${t.stage} / ${t.crowd}。`
-      + `方向 ${t.direction} 取自语料净立场，不取自价格——否则 M 会自我验证。`)));
+      + `方向 ${t.direction} 取自研报净立场，不取自价格——否则 M 会自我验证。`)));
 
   if (t.charts && t.charts.length) box.append(dsec(
     `原始图表 · ${t.charts.length} 张`,

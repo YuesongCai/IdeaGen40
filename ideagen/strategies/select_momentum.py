@@ -101,6 +101,6 @@ def mom_21(ctx: RunContext) -> Verdict:
         "n_unscorable": n_no_px}
     if not scores:
         meta["why_empty"] = (
-            "上下文没有价格：live 周跑不注入 prices，本臂只在回测回放里可评分")
+            "上下文没有价格：当期周跑不注入 prices，这一种只在回测回放里可评分")
     return Verdict(strategy="mom_21", version="1.0", chosen=chosen,
                    scores=scores, rejected=rejected, meta=meta)

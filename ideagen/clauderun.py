@@ -42,7 +42,7 @@ def prepare(as_of: date, *, verbose: bool = True) -> dict[str, Any]:
     log = print if verbose else (lambda *a: None)
     corpus, _ = feeds.fetch_kind("corpus", as_of)
     if not corpus:
-        raise RuntimeError(f"{as_of} 窗口没有语料，无从生成")
+        raise RuntimeError(f"{as_of} 窗口没有研报，无从生成")
     calendar, _ = feeds.fetch_kind("calendar", as_of)
     universe_rows, _ = feeds.fetch_kind("universe", as_of)
     universe_rows, _excl = uni.eligible(universe_rows, as_of=as_of)

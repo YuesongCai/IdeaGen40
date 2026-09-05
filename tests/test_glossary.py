@@ -51,15 +51,32 @@ BANNED_EN = {
     "as_of": "该期日期 / 该期起（as_of 是字段名，不是说给人听的词）",
 }
 
-#: 读者看得到的串所在的文件。加新的展示面时把它加进来。
-SURFACES = [
-    "web/dash.html",
-    "ideagen/review.py", "ideagen/cli.py", "ideagen/scheduler.py",
-    "ideagen/authpages.py", "ideagen/config.py", "ideagen/audit.py",
-    "ideagen/ask.py", "ideagen/philosophy.py", "ideagen/backtest.py",
-    "scripts/run_real_backtest.py", "scripts/sync_report.py",
-    "scripts/sync_to_cloud.py",
-]
+#: 默认全扫这两棵树。**手写清单挡不住新模块**——第一版列了 13 个文件，
+#: 一量才发现另有 14 个模块、68 处旧词漏在外面（booking 的「挑法」、
+#: orchestrator 的「没有任何语料」、wisburg 的「增量语料」…）。
+#: 所以反过来：默认全查，豁免要写理由。
+SCAN_TREES = ("ideagen", "scripts")
+SCAN_FILES = ("web/dash.html",)
+
+#: 豁免。每条都要说清为什么这个文件**应该**含旧词。
+EXEMPT = {
+    "scripts/retag_backtest_summary.py":
+        "它本身就是旧词→新词的对照表，不含旧词就没法迁移库里存的摘要",
+    "scripts/generate_batch_2026-08-07.py":
+        "2026-08-07 那一批的一次性产出与当时的判断记录，改它等于改历史",
+}
+
+
+def _surfaces() -> list[pathlib.Path]:
+    out = [ROOT / f for f in SCAN_FILES]
+    for tree in SCAN_TREES:
+        for p in sorted((ROOT / tree).rglob("*.py")):
+            if "__pycache__" in p.parts:
+                continue
+            if str(p.relative_to(ROOT)) in EXEMPT:
+                continue
+            out.append(p)
+    return out
 
 #: 故意保留的例外。整串精确匹配，每条注明理由。
 ALLOW = {
@@ -145,9 +162,9 @@ class GlossaryGate(unittest.TestCase):
 
     def test_no_banned_word_reaches_the_reader(self):
         bad = []
-        for rel in SURFACES:
-            p = ROOT / rel
-            self.assertTrue(p.exists(), f"{rel} 不在了——SURFACES 该更新")
+        for p in _surfaces():
+            rel = str(p.relative_to(ROOT))
+            self.assertTrue(p.exists(), f"{rel} 不在了")
             src = p.read_text(encoding="utf-8")
             chunks = (_html_display_strings(src) if p.suffix == ".html"
                       else [c for c in _py_display_strings(src) if _CJK.search(c)])
@@ -163,6 +180,12 @@ class GlossaryGate(unittest.TestCase):
         self.assertFalse(bad, "\n\n读者看得到的地方还留着实现细节的比喻——"
                               "换法见 docs/词表.md：\n\n" + "\n".join(bad[:12])
                               + (f"\n\n（共 {len(bad)} 处）" if len(bad) > 12 else ""))
+
+    def test_every_exemption_names_a_file_that_exists(self):
+        """豁免清单会烂掉——文件改名之后那条豁免就在悄悄免掉一个不存在的东西。"""
+        for rel, why in EXEMPT.items():
+            self.assertTrue((ROOT / rel).exists(), f"豁免指向不存在的 {rel}")
+            self.assertTrue(len(why) > 10, f"{rel} 的豁免理由太短")
 
     def test_the_gate_can_actually_see_a_violation(self):
         """闸门自己得先是活的：一段带旧词的正文必须被抓到。"""

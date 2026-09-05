@@ -327,7 +327,7 @@ def weekly(
                     if newly:
                         log(f"  主题发现  新注册 {len(newly)} 个: {', '.join(newly)}")
                     else:
-                        log(f"  主题发现  无新主题（语料覆盖率 "
+                        log(f"  主题发现  无新主题（研报覆盖率 "
                             f"{disc.get('coverage_pct')}%）")
                 except _SkipDiscovery:
                     pass  # already reported, with its own reason
@@ -343,7 +343,7 @@ def weekly(
             # commit, and it must not be reintroduced one layer up.
             if not corpus:
                 raise RuntimeError(
-                    f"{as_of} 没有任何语料，筛选A 无从打分——这次运行不算完成。"
+                    f"{as_of} 没有任何研报，筛选A 无从打分——这次运行不算完成。"
                     f"「数据源不通」和「本周没料」必须区分开")
 
             # One hash over every input. Two verdicts that disagree on this were

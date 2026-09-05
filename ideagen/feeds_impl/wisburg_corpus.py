@@ -14,7 +14,7 @@ from .. import config, db
 from ..feeds import register
 
 
-@register("wisburg", "corpus", label="Wisburg 研报语料", required=True,
+@register("wisburg", "corpus", label="Wisburg 研报", required=True,
           params={"window_days": 3})
 def wisburg_corpus(as_of: date, params: dict[str, Any]) -> Iterable[dict[str, Any]]:
     """Research text published in the trailing window, tiered by source line."""

@@ -443,10 +443,10 @@ def check_silent_success() -> None:
     if bad:
         R.warn(f"失败阶段：{bad}")
     if docs == 0:
-        R.fail("最近一次 run 之后没有任何新语料落库 —— 退出码可能是 0，"
+        R.fail("最近一次 run 之后没有任何新研报落库 —— 退出码可能是 0，"
                "但这一次跑等于什么都没做（Wisburg 未授权 / 网络不通最常见）")
     else:
-        R.ok(f"该次 run 之后新增语料 {docs} 条")
+        R.ok(f"该次 run 之后新增研报 {docs} 条")
     if px == 0:
         R.fail("prices 表为空 —— OpenD 从未取到行情，盯市与归因全是空的")
     else:

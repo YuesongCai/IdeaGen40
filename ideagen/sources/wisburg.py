@@ -1043,8 +1043,8 @@ def ingest_incremental(con, *, budget_details: int = 3,
     for line, cur in cursors.items():
         db.kv_set(con, f"ingest:cursor:{line}", cur)
     if verbose:
-        print(f"  增量语料 +{report['new']} 条（深抓 {report['deep']}）"
-              if report["new"] else "  增量语料 无新增")
+        print(f"  增量研报 +{report['new']} 条（深抓 {report['deep']}）"
+              if report["new"] else "  增量研报 无新增")
     return report
 
 

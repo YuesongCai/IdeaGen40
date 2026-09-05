@@ -1,4 +1,4 @@
-"""Booking: turn one weekly run's verdicts into paper positions, one book per 挑法.
+"""Booking: turn one weekly run's verdicts into paper positions, one book per selector.
 
 This is the step that closes the loop. The orchestrator ends at "each selector
 produced its list"; until those lists become orders on a book, the system stores
@@ -163,7 +163,7 @@ def book_run(con, p, run_id: str, *, selectors: list[str] | None = None,
         "SELECT strategy, chosen FROM verdicts WHERE run_id=? AND kind='idea_selector'",
         (run_id,))
     if not cands or not verdicts:
-        raise ValueError(f"run {run_id} 没有候选或没有挑法结论，无仓可建")
+        raise ValueError(f"run {run_id} 没有候选或没有选取策略结论，无仓可建")
 
     out: dict[str, Any] = {"run_id": run_id, "as_of": as_of.isoformat(), "books": {}}
     for v in verdicts:
@@ -183,8 +183,8 @@ def book_run(con, p, run_id: str, *, selectors: list[str] | None = None,
                 + "、".join(unpriced[:6]))
         if not chosen:
             out["books"][name] = {
-                "skipped": ("该挑法选中的标的当日都没有价格" if unpriced
-                            else "该挑法没有选中任何想法"),
+                "skipped": ("该选取策略选中的标的当日都没有价格" if unpriced
+                            else "该选取策略没有选中任何想法"),
                 **({"unpriced": unpriced} if unpriced else {})}
             continue
 
@@ -203,7 +203,7 @@ def book_run(con, p, run_id: str, *, selectors: list[str] | None = None,
 
         book_id = config.selector_book(name)
         db.upsert(con, "books", {
-            "book_id": book_id, "label": f"挑法 · {name}",
+            "book_id": book_id, "label": f"选取策略 · {name}",
             "descr": config.SELECTOR_SPEC["desc"],
             "capital": config.SELECTOR_SPEC["capital"],
             "sizing": config.SELECTOR_SPEC["sizing"],

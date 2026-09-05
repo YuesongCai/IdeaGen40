@@ -481,7 +481,7 @@ def print_report(con) -> dict:
                       f"中位 {_pct(v['median']):>9} 胜率 {v['hit']*100:>3.0f}%  "
                       f"超额 {_pct(v['excess'])}")
     cv = rep["coverage"]
-    print(f"\n【数据覆盖】语料 {cv['documents']['n']} 条 / "
+    print(f"\n【数据覆盖】研报 {cv['documents']['n']} 条 / "
           f"{cv['documents']['days']} 天 ({cv['documents']['a']}→{cv['documents']['b']})"
           f"   行情 {cv['prices']['codes']} 标的 / {cv['prices']['bars']} 根 "
           f"(至 {cv['prices']['last']})   NAV {cv['navs']['keys']} 只 / "

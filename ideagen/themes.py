@@ -568,7 +568,7 @@ def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
         row["provenance"] = [
             f"以{as_of.isoformat()}当周 {cluster['n_docs']}篇/"
             f"{cluster['n_institutions']}家机构/{cluster['n_days']}天 "
-            f"lift{cluster['max_lift']} 的零匹配语料簇为依据"]
+            f"lift{cluster['max_lift']} 的零匹配研报簇为依据"]
         try:
             card = validate(con, row, as_of)
         except RegistrationError as e:

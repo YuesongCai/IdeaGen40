@@ -287,7 +287,7 @@ def mint(raw: list[dict[str, Any]], ctx: RunContext, topic: dict[str, Any],
         unbacked = [k for k in doc_keys
                     if str(r.get(k) or "").strip() not in known_docs]
         if unbacked:
-            dropped[tag] = ("出处对不上语料（编造或写错的 doc_id）："
+            dropped[tag] = ("出处对不上研报（编造或写错的 doc_id）："
                             + "、".join(unbacked))
             continue
 

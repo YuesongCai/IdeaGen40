@@ -219,7 +219,7 @@ class RequiredIsNotTheSameAsRefusable(unittest.TestCase):
     def test_a_fabricated_doc_id_is_refused(self):
         kept, dropped = self._mint({**self.row, "forced_seller_doc": "feed:99999"})
         self.assertEqual(kept, [])
-        self.assertTrue(any("出处对不上语料" in v for v in dropped.values()),
+        self.assertTrue(any("出处对不上研报" in v for v in dropped.values()),
                         dropped)
 
     def test_a_missing_evidence_field_is_refused(self):

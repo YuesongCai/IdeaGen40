@@ -1290,7 +1290,7 @@ def main(argv: list[str]) -> int:
     print(f"\n回测已落库 {backtest_id}")
     print(f"  {len(points)} 个净值点 · {len(positions)} 条持仓 · "
           f"{rep.calls} 次模型调用（必须是 0）")
-    print("  胜率与均值按【标的×期】给：同一只标的被多个生成臂提出就是多条想法行，"
+    print("  胜率与均值按【标的×期】给：同一只标的被多种生成方式提出就是多条想法行，"
           "但只有一条价格序列。")
     for name, a in sorted(rep.arms.items(),
                           key=lambda kv: -(kv[1].mean_by_instrument or -9)):

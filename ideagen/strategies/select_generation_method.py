@@ -85,7 +85,14 @@ def generated_ai_native(ctx: RunContext) -> Verdict:
     "generated_carl_constraint",
     "1.0",
     label="来源限定 · 约束边界",
-    role="primary",
+    # Paired with generated_ai_native above: same _pick, same purpose, and the
+    # comment in _pick calls them a matched pair whose difference is
+    # attributable to Stage B alone. One of the two was registered "primary" —
+    # a copy-paste slip that made one half of a ruler read as a strategy, so
+    # anything grouping by role counted a benchmark among the things being
+    # benchmarked. The panel's own glossary had it as 对照 all along; the two
+    # sources disagreed on exactly this one arm and nothing compared them.
+    role="control",
     params={},
 )
 def generated_carl_constraint(ctx: RunContext) -> Verdict:

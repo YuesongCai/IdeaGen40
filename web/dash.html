@@ -4161,11 +4161,21 @@ function scatterNote(rows,ex){
 function armOrderCard(){
   var ex=(((S||{}).backtest||{}).summary||{}).exposure;
   if(!ex||!ex.arms)return '';
-  var CTL={buy_all:1,random_pick:1,mom_21:1,generated_ai_native:1,generated_carl_constraint:1};
+  var ROLE=((((S||{}).backtest||{}).summary||{}).live_vs_backfill||{}).arms||{};
+  /* 词表在前、role 兜底，次序是有理由的：payload 里的 role 来自**上一次回测
+   * 存下的**那份 summary，改了后端注册也要等下次重跑才会变，中间这段时间
+   * 屏幕上印的是过期身份。词表是随页面一起发的，改完立刻生效。
+   * 而 role 的价值在词表覆盖不到的地方——派生臂（chain@pm-…）、新加的选取
+   * 策略，SEL_META 里没有它们，此前会被静默画成主策略。 */
+  var isCtl=function(k){
+    var m=(typeof selMetaOf==='function')?selMetaOf(k):null;
+    if(m&&m[2])return m[2]==='对照';
+    return (ROLE[k]||{}).role==='control';
+  };
   var rows=Object.keys(ex.arms).map(function(k){
     var v=ex.arms[k]||{};
     return {k:k,ret:Number(v.return_pct),vol:v.realized_vol_pct,rv:v.return_per_vol,
-            ctl:!!CTL[k],
+            ctl:isCtl(k),
             name:(typeof backtestArmName==='function')?backtestArmName(k):k};
   }).filter(function(r){return isFinite(r.ret)});
   if(!rows.length)return '';

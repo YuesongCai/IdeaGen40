@@ -51,6 +51,18 @@ SG = "sg-37vjl7fzbs7b44etmwfumdtrn"
 KEYPAIR = "ideagen-ecs"
 REPO = "https://github.com/YuesongCai/IdeaGen40.git"
 URL_TTL_S = 7200
+# 66MB 的状态快照在这条链路上传不完 SDK 默认的 30 秒。同一个默认值今天已经
+# 让自动同步失败了大半次数，报出来是「http request timeout」，读着像网络故障。
+UPLOAD_TIMEOUT_S = 600
+
+
+def _blobs():
+    """The operator's own store, with a timeout sized for a database."""
+    from ideagen import platform as plat
+    b = plat.load().blobs
+    b.timeout_s = UPLOAD_TIMEOUT_S
+    b._client = None          # 让下次用新超时重建客户端
+    return b
 
 
 def ve(*args: str) -> dict:
@@ -63,7 +75,6 @@ def ve(*args: str) -> dict:
 
 def upload_state() -> str:
     """A consistent snapshot of the state database, presigned for the instance."""
-    from ideagen import platform as plat
     src = ROOT / "data" / "ideagen.db"
     tmp = pathlib.Path(tempfile.gettempdir()) / "ideagen_snapshot.db"
     s, d = sqlite3.connect(str(src)), sqlite3.connect(str(tmp))
@@ -71,17 +82,16 @@ def upload_state() -> str:
     d.close()
     s.close()
     data = tmp.read_bytes()
-    p = plat.load()
+    p_blobs = _blobs()
     key = f"deploy/state-{int(time.time())}.db"
-    p.blobs.put(key, data, content_type="application/x-sqlite3")
+    p_blobs.put(key, data, content_type="application/x-sqlite3")
     tmp.unlink()
     print(f"  数据库快照 {len(data) / 1e6:.1f} MB → {key}")
-    return p.blobs.presigned_get(key, expires_s=URL_TTL_S)
+    return p_blobs.presigned_get(key, expires_s=URL_TTL_S)
 
 
 def upload_env() -> str:
     """runtime.env, rewritten for a display node: SQLite, observer role."""
-    from ideagen import platform as plat
     env = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_runtime_env.py")],
                          capture_output=True, check=True).stdout.decode()
     lines = [ln for ln in env.splitlines()
@@ -90,11 +100,11 @@ def upload_env() -> str:
     lines += ["IDEAGEN_STATE_ENGINE=sqlite",
               "IDEAGEN_DB=/data/ideagen.db",
               "IDEAGEN_WEEKLY_ROLE=observer"]
-    p = plat.load()
+    p_blobs = _blobs()
     key = f"deploy/runtime-{int(time.time())}.env"
-    p.blobs.put(key, ("\n".join(lines) + "\n").encode(), content_type="text/plain")
+    p_blobs.put(key, ("\n".join(lines) + "\n").encode(), content_type="text/plain")
     print(f"  运行配置 {len(lines)} 项 → {key}")
-    return p.blobs.presigned_get(key, expires_s=URL_TTL_S)
+    return p_blobs.presigned_get(key, expires_s=URL_TTL_S)
 
 
 def user_data(env_url: str, db_url: str) -> str:

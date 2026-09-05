@@ -220,6 +220,30 @@ DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS shelf_instruments_as_of "
     "ON shelf_instruments (as_of, instrument_id)",
 
+    # What left the shelf, which is the half of the universe a snapshot cannot
+    # hold. `shelf_instruments` records membership at capture; nothing recorded
+    # non-membership, so a product dropped from the shelf simply stopped
+    # existing — including for every past period, whose replay would then be
+    # picking from a universe the week never had. That is the first sin
+    # ("survivorship") in its recoverable form: the information exists exactly
+    # once, at the moment two consecutive snapshots differ, and is destroyed if
+    # nobody writes it down. Append-only, and a comeback is a `returned_as_of`
+    # on the row rather than a delete, because "left and came back" and "never
+    # left" are different facts about the same instrument.
+    """CREATE TABLE IF NOT EXISTS shelf_departures (
+         instrument_id    TEXT NOT NULL,
+         source           TEXT NOT NULL,
+         departed_as_of   TEXT NOT NULL,
+         last_seen_as_of  TEXT NOT NULL,
+         last_snapshot_id TEXT,
+         name             TEXT,
+         returned_as_of   TEXT,
+         noticed_at       TEXT,
+         PRIMARY KEY (instrument_id, source, departed_as_of)
+       )""",
+    "CREATE INDEX IF NOT EXISTS shelf_departures_when "
+    "ON shelf_departures (departed_as_of, instrument_id)",
+
     """CREATE TABLE IF NOT EXISTS shelf_navs (
          instrument_id       TEXT NOT NULL,
          d                   TEXT NOT NULL,
@@ -379,6 +403,18 @@ MYSQL_DDL: tuple[str, ...] = (
            ) STORED,
          KEY orch_runs_as_of (as_of),
          UNIQUE KEY orch_runs_done (completed_weekly_as_of)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS shelf_departures (
+         instrument_id    VARCHAR(128) NOT NULL,
+         source           VARCHAR(64) NOT NULL,
+         departed_as_of   VARCHAR(10) NOT NULL,
+         last_seen_as_of  VARCHAR(10) NOT NULL,
+         last_snapshot_id VARCHAR(96),
+         name             TEXT,
+         returned_as_of   VARCHAR(10),
+         noticed_at       VARCHAR(32),
+         PRIMARY KEY (instrument_id, source, departed_as_of),
+         KEY shelf_departures_when (departed_as_of, instrument_id)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
     """CREATE TABLE IF NOT EXISTS feed_runs (
@@ -833,6 +869,7 @@ CONFLICT_KEY: dict[str, tuple[str, ...]] = {
     "shelf_snapshots": ("snapshot_id",),
     "shelf_instruments": ("snapshot_id", "instrument_id"),
     "shelf_navs": ("instrument_id", "d", "data_classification"),
+    "shelf_departures": ("instrument_id", "source", "departed_as_of"),
     "corpus_documents": ("doc_id",),
     "paper_books": ("book_id",),
     "paper_orders": ("order_id",),

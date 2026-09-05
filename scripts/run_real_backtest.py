@@ -34,7 +34,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ideagen import backtest, db, perf, platform as plat, schema  # noqa: E402
-from ideagen import trials  # noqa: E402
+from ideagen import shelf_store, trials  # noqa: E402
 from ideagen import config  # noqa: E402
 from ideagen import ideas as ideas_mod  # noqa: E402
 from ideagen import strategy as strat  # noqa: E402
@@ -1421,6 +1421,12 @@ def main(argv: list[str]) -> int:
             provenance=provenance),
         "undated_shelf_instruments": dating["shelf_undated"],
         "shelf_dating": dating,
+        # The deletion side of the same question. `shelf_dating` says how much
+        # of the universe can be excluded for not existing yet; this says
+        # whether anything can be included for having existed and gone, which
+        # before a second snapshot exists is "no" — stated rather than assumed.
+        "shelf_survivorship": shelf_store.survivorship(
+            lambda sql, args=(): db.q(con, sql, args)),
         "robustness_drop_top": robustness,
         "attribution_theme_layer": attribution,
         "theme_provenance": provenance,

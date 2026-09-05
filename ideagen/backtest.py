@@ -92,7 +92,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Sequence
 
 from . import (config, db, ideas as ideas_mod, lexicon,
-               strategy as strat, universe as uni)
+               shelf_store, strategy as strat, universe as uni)
 from .sources import futu_px
 
 # ---------------------------------------------------------------------------
@@ -369,6 +369,7 @@ class Audit:
     universe_excluded: int = 0
     universe_undated: int = 0
     universe_dropped_as_unlisted: int = 0
+    universe_dropped_as_departed: int = 0
     universe_max_first_seen: str | None = None
     calendar_n: int = 0
     calendar_actuals_stripped: int = 0
@@ -429,6 +430,24 @@ def context_for(con, as_of: date, *,
     # product that had not launched yet.
     universe_all = _universe(con)
     universe, universe_excluded = uni.eligible(universe_all, as_of=as_of)
+    # The other end of the same gate. `eligible` keeps out what had not arrived;
+    # this keeps out what had already left, which is the half no snapshot can
+    # express — see `shelf_store.departed_by`. Inert until a second shelf
+    # snapshot exists, and wired now because the alternative is wiring it after
+    # the first departure has already flattered a replay.
+    gone = shelf_store.departed_by(lambda sql, args=(): db.q(con, sql, args),
+                                   as_of)
+    dropped_departed = 0
+    if gone:
+        keep = []
+        for row in universe:
+            iid = str(row.get("instrument_id"))
+            if iid in gone:
+                universe_excluded[iid] = f"该标的 {gone[iid]} 已下架，当期不在货架上"
+                dropped_departed += 1
+            else:
+                keep.append(row)
+        universe = keep
     universe_dating = uni.shelf_asof_coverage(universe)
     dropped_unlisted = sum(1 for reason in universe_excluded.values()
                            if "当期不存在" in str(reason))
@@ -477,6 +496,7 @@ def context_for(con, as_of: date, *,
         universe_excluded=len(universe_excluded),
         universe_undated=universe_dating["undated"],
         universe_dropped_as_unlisted=dropped_unlisted,
+        universe_dropped_as_departed=dropped_departed,
         # Of what survived the gate. Anything later than `as_of` here means the
         # gate did not fire, which `check()` treats as a leak rather than a note.
         universe_max_first_seen=max(

@@ -33,6 +33,10 @@ from . import (config, feeds, platform as plat, schema,
                strategy as strat, universe as uni)
 
 
+class _SkipDiscovery(Exception):
+    """Discovery stopped for a reason it already reported. Not an error path."""
+
+
 @dataclass
 class RunResult:
     run_id: str
@@ -241,6 +245,22 @@ def weekly(
                     _con = _db.init()
                     disc = _themes.candidates(_con, as_of)
                     newly, skipped, cards = [], [], []
+                    # Naming needs the model. Without it, every candidate would
+                    # raise the same rejection and the journal would carry one
+                    # copy per candidate — the shape of noise that hid the
+                    # missing naming step in the first place. Said once, with
+                    # the count it cost.
+                    if getattr(p, "inference", None) is None and disc.get("candidates"):
+                        j.step("theme_discovery",
+                               coverage_pct=disc.get("coverage_pct"),
+                               unmatched=disc.get("unmatched"),
+                               candidates=len(disc["candidates"]),
+                               registered=[],
+                               error="本次运行没有 inference 端口，"
+                                     f"{len(disc['candidates'])} 个候选无法命名")
+                        log(f"  主题发现  {len(disc['candidates'])} 个候选待命名，"
+                            f"但本次运行没有模型端口——本周不注册新主题")
+                        raise _SkipDiscovery
                     for c in (disc.get("candidates") or []):
                         # `candidates` returns evidence — terms, counts, doc
                         # ids — and `validate` requires an id, a label, a key
@@ -281,6 +301,8 @@ def weekly(
                     else:
                         log(f"  主题发现  无新主题（语料覆盖率 "
                             f"{disc.get('coverage_pct')}%）")
+                except _SkipDiscovery:
+                    pass  # already reported, with its own reason
                 except Exception as e:  # noqa: BLE001 — discovery must not cost the run
                     j.step("theme_discovery", error=f"{type(e).__name__}: {e}")
                     log(f"  ⚠ 主题发现失败（本周用既有注册表继续）: {e}")

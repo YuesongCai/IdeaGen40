@@ -196,23 +196,37 @@ BY_KEY = {i.key: i for i in ALL}
 
 
 def hydrate(con) -> int:
-    """Fold Olive-ingested instruments into the in-process registry.
+    """Fold runtime-discovered fund instruments into the in-process registry.
 
-    The listed universe is frozen in source, but the Olive shelf is discovered at
+    The listed universe is frozen in source, but the fund shelf is discovered at
     runtime by the agent session. Without this, an idea naming a real Olive
     productCode would fail to resolve and silently degrade to `monitor`.
+
+    Scoped to funds rather than to `market='OLIVE'`. The narrower filter left 15
+    rows out — funds stored under their listing market, carrying a vehicle in
+    their own `meta` — so an idea naming one of them could not resolve, for no
+    reason visible in the row. Where a row was ingested from is not what makes it
+    foldable; being a fund the book may hold is.
+
+    Vehicle comes from `vehicle_of` with no fallback, which is the same answer the
+    universe feed puts on the row. Two readings of one `meta` that can disagree is
+    the shape of bug this function was just on the wrong side of; a row this
+    registry marks 「公募」 while the feed marks it unknown would be that bug again,
+    one layer up.
     """
     added = 0
-    for r in db.q(con, "SELECT key,kind,name,currency,meta FROM instruments "
-                       "WHERE market='OLIVE'"):
+    for r in db.q(con, "SELECT key,kind,name,market,currency,meta FROM instruments "
+                       "WHERE kind='fund' OR market='OLIVE'"):
         if r["key"] in BY_KEY:
             continue
         meta = db.jl(r["meta"], {}) or {}
         inst = Instrument(
             key=r["key"], kind=r["kind"] or "fund", name=r["name"] or r["key"],
             exposure=meta.get("exposure") or _exposure_for(meta),
-            olive_key=r["key"], market="OLIVE", currency=r["currency"] or "USD",
-            vehicle=_vehicle_for(meta), tags=tuple(meta.get("tags") or ("olive",)))
+            olive_key=r["key"], market=r["market"] or "OLIVE",
+            currency=r["currency"] or "USD",
+            vehicle=vehicle_of(meta),
+            tags=tuple(meta.get("tags") or ("olive",)))
         BY_KEY[inst.key] = inst
         ALL.append(inst)
         added += 1
@@ -232,6 +246,27 @@ def _vehicle_for(meta: dict) -> str:
     if g == "cash" or meta.get("asset_class") == "MM":
         return "现金"
     return {"funds": "公募", "private": "私募", "structured": "结构化"}.get(g or "", "公募")
+
+
+def vehicle_of(meta: dict) -> str:
+    """The vehicle a stored instrument row implies, or `""` when the row is silent.
+
+    Two encodings coexist in `instruments.meta` and both are legitimate: rows
+    written back by `sync_registry` carry `vehicle` outright, while rows landed by
+    the Olive shelf sync carry the shelf's own `group`. Reading only one of them
+    is what made a row's vehicle depend on which leg happened to touch it last.
+
+    Silence is returned as silence. `_vehicle_for` falls back to 「公募」 for a row
+    with no group at all, which is a guess — and a guess in this position is a
+    guess that an unverified product deals daily. The eligibility gate is built to
+    refuse an unknown vehicle, so the honest answer has to be able to reach it.
+    """
+    v = str(meta.get("vehicle") or "").strip()
+    if v:
+        return v
+    if meta.get("group") or meta.get("asset_class"):
+        return _vehicle_for(meta)
+    return ""
 
 
 # ---------------------------------------------------------------- persistence

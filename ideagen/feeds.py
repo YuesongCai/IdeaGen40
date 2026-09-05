@@ -63,7 +63,12 @@ SCHEMA: dict[Kind, dict[str, type | tuple[type, ...]]] = {
 #: rather than discovering when a watchpoint never fires.
 RECOMMENDED: dict[Kind, tuple[str, ...]] = {
     "corpus": ("summary", "body", "institution", "url", "content_hash", "retrieval"),
-    "universe": ("currency", "exposure", "liquidity", "futu_code", "olive_key"),
+    # `vehicle` is what the mandate gate judges an instrument on. A universe feed
+    # that omits it hands every one of its rows to that gate as「载体未确认」, so
+    # the omission has to be visible here rather than read as a shelf of
+    # unconfirmed products.
+    "universe": ("currency", "exposure", "vehicle", "liquidity", "futu_code",
+                 "olive_key"),
     "calendar": ("expectation", "actual", "unit", "source"),
 }
 

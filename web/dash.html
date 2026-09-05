@@ -7264,16 +7264,25 @@ function pipeCanvasCard(){
            ||genOrder().length;
   var nPool=(w.pool||{}).n||0;
   var ag=aggBooks();
+  /* 本期建仓数，和图上最后一段同一个口径。别拿 ag.openN（累计在持）当本期：
+     73 条候选池里长不出 610 个仓位，那句话会说一件做不到的事。 */
+  var nBooked=0;
+  currentBooks().forEach(function(b){
+    nBooked+=(b.open_positions||[]).filter(function(p){return p&&p.as_of===w.as_of}).length;
+  });
   var lead=(nDocs&&nPool)
     ? '本期读入 <b>'+fmtInt(nDocs)+'</b> 篇研报，收敛出 <b>'+fmtInt(nTopics)+'</b> 个宏观主题，'
       +'<b>'+fmtInt(nRan)+'</b> 种方法写出 <b>'+fmtInt(nGen)+'</b> 条想法、合并为 <b>'+fmtInt(nPool)+'</b> 条候选'
-      +(ag&&ag.openN?('，'+fmtInt((ag.books||[]).length)+' 个组合各自从中选出持仓，合计在持 <b>'+fmtInt(ag.openN)+'</b> 仓。'):'。')
+      +(ag&&ag.openN?('，'+fmtInt((ag.books||[]).length)+' 个组合各自从中选出持仓'
+        +(nBooked?('，本期建仓 <b>'+fmtInt(nBooked)+'</b> 仓（累计在持 '+fmtInt(ag.openN)+' 仓）。')
+                 :('，合计在持 <b>'+fmtInt(ag.openN)+'</b> 仓。'))):'。')
     : '';
   var legend='筛选A：语义打分选出主题，灰色分流为落选。'
     +'筛选B：'+nRan+' 种方法并行生成想法，线宽对应条数；'
     +'最下面那一格是空的，写一条你自己的准则就多一种生成方式。'
     +'合并：一个标的一条，同心环表示有几种方法同时提到它。'
     +'筛选C：各选取策略在同一候选池上并行，灰色为对照组合。'
+    +'建仓：线宽是本期建了多少仓；方块副行的「累计在持」是开仓至今还持着的，两者不是一个数。'
     +'节点大小与连线宽度对应实际数量。';
   return '<div class="card" id="pipeCard">'
     +'<div class="card-title-row"><h2 class="card-title">本期流水线'+(w.as_of?' · <span class="num" style="font:600 15px/26px var(--font-mono)">'+esc(w.as_of)+'</span>':'')+'</h2>'
@@ -7325,13 +7334,26 @@ function pipeCanvasSVG(){
   var rawIdeas=gens.reduce(function(a,g){return a+(g.n||0)},0);
   var conv=pool.convergence||{};
   var openTotal=0;books.forEach(function(b){openTotal+=(b.open_positions||[]).length});
+  /* 最后一段该画的是「本期建了多少仓」，不是「现在还持着多少仓」。两者差好几倍：
+   * 在持是开仓至今的累计，本期建仓才是这一段真正流过去的量。原来这里取
+   * open_positions.length，于是筛选C 的盒子里印着 10、流出去的线按 26 画——
+   * 同一个盒子，印的数和它的线不是一件事；整张图自称「每一段的收敛倍数」，
+   * 最后一段却从 254 涨到 610，方向都反了。 */
+  var nowN={},nowTotal=0;
+  books.forEach(function(b){
+    var k=(b.open_positions||[]).filter(function(p){return p&&p.as_of===w.as_of}).length;
+    nowN[b.selector]=k;nowTotal+=k;
+  });
+  /* 本期一仓都没建（这期还没到建仓、或已全部平掉）时退回累计口径，并且让列头、
+   * 方块副行、浮层一起改口——宁可换一个口径说清楚，也不要画一段空的。 */
+  var perNow=nowTotal>0;
   var stagePop=[
     pop('研报'+(corpusN?' · '+fmtInt(corpusN)+' 篇研报':''),null,'本期全部判断的输入；4 种生成方法共用同一份研报'),
     pop('筛选A · 选主题',totalScored?fmtInt(totalScored)+' 个主题已评分 · 前 '+chosen.length+' 入选':'尚未评分',ctrl?'与计数对照打分重合 '+overlapN+'/'+chosen.length:''),
     pop('筛选B · 写想法',gens.length?'4 种方法合计 '+fmtInt(rawIdeas)+' 条':'尚无产出','彼此独立，输入为同一批 '+chosen.length+' 个主题'),
     pop('合并 · 候选池',pool.n?fmtInt(rawIdeas)+' → '+fmtInt(pool.n)+' 条（一标的一条）':'候选池为空','同标的合并，赔率取中位数；共识度仅作记录，不参与打分'),
     pop('筛选C · 选取策略',sels.length?sels.length+' 个策略同池并行':'尚未执行','同一候选池，唯一变量为选取策略'),
-    pop('建仓',books.length?books.length+' 个组合 · '+fmtInt(openTotal)+' 个在持仓位':'未建仓','等权买入 · 进场即挂 σ×2 止损 / σ×3 止盈 · 逐日盯市')
+    pop('建仓',books.length?books.length+' 个组合 · 本期建仓 '+fmtInt(nowTotal)+' 仓 · 累计在持 '+fmtInt(openTotal)+' 仓':'未建仓','等权买入 · 进场即挂 σ×2 止损 / σ×3 止盈 · 逐日盯市；线宽为本期建仓数，与前面各段同是本期口径')
   ];
   /* 每列标注数值口径，画布上不出现无单位的裸数字。
    * 一个非技术读者第一次看这张图时问的第一个问题就是「这个数是几什么」，
@@ -7341,7 +7363,7 @@ function pipeCanvasSVG(){
             [505,'筛选B · 写想法',2,'框内 = 写出想法条数'],
             [705,'合并 · 候选池',3,'环内 = 合并后候选条数'],
             [888,'筛选C · 选取策略',4,'行末 = 该策略选中条数'],
-            [1058,'建仓',5,'块内 = 当前在持仓位数']];
+            [1058,'建仓',5,perNow?'块内 = 本期建仓仓位数':'块内 = 当前在持仓位数']];
   cols.forEach(function(c){
     /* 列头曾经也是 pc-click，和它正下方的节点点下去一模一样——一张图里
      * 同一个环节两个点击区。列头是这一列叫什么，不是控件；节点才是。
@@ -7539,7 +7561,7 @@ function pipeCanvasSVG(){
       var isCtl=m[2]==='对照';
       var nCh=(sel.chosen||[]).length;
       if(poolN&&nCh)s+=link(pX+56,pY,sX1,y,1.5+(nCh/chMax)*11,isCtl?'var(--color-border-strong)':'var(--color-surface-brand-strong)',0.35);
-      var sp=pop(esc(m[1])+' · '+esc(m[3])+'（'+esc(m[2])+'）',esc(selPlain(sel.name)),'放行 '+nCh+' / '+fmtInt(poolN)+' 条');
+      var sp=pop(esc(m[1])+' · '+esc(m[3])+'（'+esc(m[2])+'）',esc(selPlain(sel.name)),'放行 '+nCh+' / '+fmtInt(poolN)+' 条'+(perNow?' · 本期建仓 '+fmtInt(nowN[sel.name]||0)+' 仓':''));
       s+='<g class="pc-click" onclick="goSelector(\''+jss(sel.name)+'\')"'+popRef(sp)+'>'
         +'<rect x="'+sX1+'" y="'+(y-15)+'" width="'+sW+'" height="30" rx="8" fill="'+(isCtl?'var(--color-feedback-neutral-subtle)':'var(--color-surface-brand-subtle)')+'" stroke="'+(isCtl?'var(--color-border-default)':'var(--color-border-brand-subtle)')+'"/>'
         +txt(sX1+9,y+4,m[1],10.5,isCtl?'var(--color-text-metadata)':'var(--color-text-brand)','start',500)
@@ -7554,15 +7576,21 @@ function pipeCanvasSVG(){
   /* ── 持仓束 ── */
   var bX=1014;
   if(books.length){
-    var byName={};books.forEach(function(b){byName[b.selector]=(b.open_positions||[]).length});
+    var byName={};books.forEach(function(b){byName[b.selector]=perNow?(nowN[b.selector]||0):(b.open_positions||[]).length});
+    /* 线宽归一化到本段最大值，和上一段（候选池 → 筛选C）用同一把尺子。原来是
+     * n*0.7 的绝对像素：buy_all 158 仓就是一根 110px 宽的线，而建仓方块只有
+     * 96px 高，十根合起来 427px 的笔画全压在同一个点上——那团纯绿不是数据密，
+     * 是这一段没换尺子。全图五段，只有它当时是绝对值。 */
+    var bMax=1;books.forEach(function(b){bMax=Math.max(bMax,byName[b.selector]||0)});
     if(haveSels)sels.forEach(function(sel,i){
       var n=byName[sel.name]||0;if(!n)return;
-      s+=link(sX1+sW,sYs[i],bX,200,Math.max(1.2,n*0.7),'var(--color-fill-brand-green)',0.35);
+      s+=link(sX1+sW,sYs[i],bX,200,1.5+(n/bMax)*11,'var(--color-fill-brand-green)',0.35);
     });
     s+='<g class="pc-click" onclick="openStageDrawer(5)"'+popRef(stagePop[5])+'>'
       +'<rect x="'+bX+'" y="152" width="98" height="96" rx="14" fill="var(--color-surface-brand)"/>'
-      +txt(bX+49,192,fmtInt(openTotal),20,'var(--color-text-on-brand)','middle',600,true)
-      +txt(bX+49,212,books.length+' 个组合在持',10.5,'var(--color-surface-brand-sunken)','middle')
+      +txt(bX+49,188,fmtInt(perNow?nowTotal:openTotal),20,'var(--color-text-on-brand)','middle',600,true)
+      +txt(bX+49,206,perNow?'本期建仓':(books.length+' 个组合在持'),10.5,'var(--color-surface-brand-sunken)','middle')
+      +(perNow?txt(bX+49,222,'累计在持 '+fmtInt(openTotal),9,'var(--color-surface-brand-sunken)','middle'):'')
       +'</g>';
   }else{
     s+='<g class="pc-click" onclick="openStageDrawer(5)"'+popRef(stagePop[5])+'><rect x="'+bX+'" y="152" width="98" height="96" rx="14" fill="none" stroke="var(--color-border-strong)" stroke-dasharray="4 4"/>'

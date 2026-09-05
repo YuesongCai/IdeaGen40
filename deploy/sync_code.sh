@@ -80,8 +80,15 @@ fi
   # 只动 /opt/ideagen/app —— 不重装的话，同步脚本自己的修复永远到不了
   # 这台机器，而它恰恰是没人能登上去改的那台。放在测试通过之后：
   # 之前重装等于先跑一段没人担保过的代码。
-  install -m 755 "$APP/deploy/sync_state.sh" /opt/ideagen/sync_state.sh
-  install -m 755 "$APP/deploy/sync_code.sh"  /opt/ideagen/sync_code.sh
+  # 原子改名，不是原地覆写。**这个脚本此刻正在从 /opt/ideagen/sync_code.sh
+  # 执行**，而 sh 是边读边执行的：直接写回同一个 inode，正在跑的这一份会从
+  # 覆盖点开始读到错位的字节，症状是脚本中途报一句语法错就没了。
+  # 写临时文件再 mv 换掉目录项，运行中的那份仍持有旧 inode，跑完为止。
+  for f in sync_state sync_code; do
+    cp "$APP/deploy/$f.sh" "/opt/ideagen/.$f.sh.new" \
+      && chmod 755 "/opt/ideagen/.$f.sh.new" \
+      && mv -f "/opt/ideagen/.$f.sh.new" "/opt/ideagen/$f.sh"
+  done
   docker tag "ideagen40:cand-$want" ideagen40:live
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --restart always \

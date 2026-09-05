@@ -6610,6 +6610,11 @@ function renderDrawers(){
   var ta=$('phSay');
   if(ta&&document.activeElement===ta){PH.say=ta.value;return}
   hidePop();
+  /* 抽屉每次重画都是整段 innerHTML 重建，滚动位置跟着归零——于是抽屉里任何一次
+     就地展开（记录里的「当时它说了什么」、准则的「看它写了什么」、点开一篇研报）
+     都会把人弹回顶部，展开的东西反而在视野外。先记下位置，画完还回去。 */
+  var keepTop=(function(){var b=$('drawerBody-'+(drawerStack.length-1));
+    return b?b.scrollTop:0})();
   if(!drawerStack.length){root.innerHTML='';document.body.classList.remove('drawer-lock');return}
   document.body.classList.add('drawer-lock');
   var n=drawerStack.length;
@@ -6652,6 +6657,7 @@ function renderDrawers(){
     +'</section>';
   });
   root.innerHTML=html;
+  if(keepTop){var nb=$('drawerBody-'+(drawerStack.length-1));if(nb)nb.scrollTop=keepTop}
   if($('candTable')){bindCandSort();renderCandBody()}
   phBind(); /* 写准则表单现在住在抽屉里，事件要在这里挂 */
   if(drawerScrollSel){
@@ -6678,7 +6684,11 @@ function drawerBodyHTML(d){
       case 'props':return proposalsDrawerBody(d);
       case 'cal':return calDrawerBody();
       case 'trust':return trustDrawerBody();
-      case 'rules':return phDefLine()+phTeachCard()+phPendingBlock();
+      /* 「写」和「写过的」在一起：人是在这里找「我上次写的那条说了什么」的，
+         而记录原来在抽屉外面的页面上——抽屉一开就把它盖住了，等于没有。
+         phDefLine（那段「这功能是什么」的灰底说明）删了：它讲的三件事在下面
+         的折叠块里各讲了一遍，人还没开始写就先读了三遍同一个机制。 */
+      case 'rules':return phTeachCard()+phPendingBlock()+phHistoryCard();
     }
   }catch(e){return '<div class="empty-sm">该视图渲染失败（'+esc(e&&e.message?e.message:String(e))+'），数据可能尚未就位</div>'}
   return '';
@@ -10606,7 +10616,7 @@ function phTeachCard(){
    +esc(PH.saved?'已自动存下 '+PH.saved.slice(11,16):'')+'</span></div>'
    +'<div class="ph-eg">'+PH_EG.map(function(t,i){
         return '<button type="button" data-el="rules.eg'+i+'" onclick="phFill('+i+')">'
-          +esc(t.length>34?t.slice(0,34)+'…':t)+'</button>'}).join('')+'</div>';
+          +esc(t.length>18?t.slice(0,18)+'…':t)+'</button>'}).join('')+'</div>';
   /* 加到哪一条臂上，是有意义的选择而不是内部细节：加到「约束边界」是改一副已有的
      推理骨架，加到「AI 端到端」是给一个本来不设骨架的方法加上唯一一条。这四个
      名字面板别处已经在用（写想法那一段就是它们），所以问的是他答得上来的问题。 */
@@ -10639,24 +10649,22 @@ function phTeachCard(){
           +'<div class="ph-grp-n">'+note+'</div></div>'
         :'';
     };
+    /* 两组各留一句。「它的对照是原样的那一种」原来在这里、在上面那段灰底
+       说明里、在折叠块里各说了一遍——同一个机制在人还没开始写之前讲三遍，
+       是这一屏最占地方的东西。现在只在折叠块里讲一次。 */
     h+='<div class="card-note" style="margin-top:var(--space-4)">这条准则怎么落地</div>'
      +'<div class="ph-grp">'
-     +grp('从零开一种','这一种不带任何现成的推理骨架，唯一的推理指令就是你这句话。'
-          +'它的对照是原样的 AI 端到端——什么准则都没有的那一条。',scratchA)
-     +grp('在现成的骨架上加一条','保留这副推理骨架，在它后面追加你的要求，其余一字不动。'
-          +'它的对照是原样的那一种。',graftA)
+     +grp('从零开一种','不带任何现成的推理骨架，唯一的推理指令就是你这句话。',scratchA)
+     +grp('在现成的骨架上加一条','保留这副骨架，在它后面追加你的要求，其余一字不动。',graftA)
      +'</div>'
-     /* 「为什么非得挂在某根臂上」的答案在这里，只说一次。不是实现限制：
-        对照臂就是这个功能本身——没有它，四周后两条净值无从相减。 */
-     +noteFold('rules.why-arm','为什么非得挂在一种现成的生成方式上',
-        '<p><b>原来那一种就是对照。</b>没有它，四周后两条净值无从相减，'
-       +'「这句话到底值不值钱」就答不了——而那正是写下它的理由。</p>')
-     /* 一条回执，不是第二个入口：它不让人再做一次「选哪个」的决定，只说
-        刚才那一下在图上落在了哪儿。表单在抽屉里、图在抽屉外面，两者同屏但
-        分属两块，没有这句话就要靠人自己回头去找那个被描粗的框。 */
-     +'<div class="card-note" style="margin-bottom:var(--space-2)">'
-     +'流水线图里 <b>'+esc(methodName(PH.arm||''))+'</b> 已描粗，'
-     +'那条虚线就是这条准则要接进去的地方</div>';
+     /* 这个机制的完整说明，全站只此一处，且默认折起来。 */
+     +noteFold('rules.why-arm','这条准则会变成什么，为什么要挂在一种现成的方式上',
+        '<p><b>它会成为筛选B 里新的一种生成方式</b>，从你指定的那一种派生；'
+       +'<b>原来那一种一字不动，继续跑，就是它的对照。</b></p>'
+       +'<p>两种生成方式读同一批研报、同一份可买清单、同一套规则并跑，'
+       +'唯一差异是这条准则，两者的净值之差就是这条准则的净效应。'
+       +'没有对照，四周后两条净值无从相减，「这句话到底值不值钱」就答不了'
+       +'——而那正是写下它的理由。</p>');
   }
   if(PH.problems){
     h+='<div class="ph-warn" style="margin-top:var(--space-4)">'
@@ -10672,11 +10680,10 @@ function phTeachCard(){
    +(PH.busy?phWaitLabel():'生成草案')+'</button>'
    +(PH.busy?'<span class="card-note">在读你这句话、对着初心和硬边界体检、'
        +'再落成想法必须回答的字段</span>'
-     /* 原来这句话自己占一张卡（「在跑的准则 · 0 条」）。它是这个表单的回执，
-        不是一个章节——回执就该待在按下按钮的地方。 */
-     :(function(){var n=((PH.data||{}).live||[]).length;
-        return n?'':'<span class="card-note">还没有准则在跑 · 筛选B 现在跑的是 '
-          +GEN_ORDER.length+' 种内置生成方式，图上最下面那一格是空的</span>';})())
+     /* 原来这里还有一句「还没有准则在跑 · 图上最下面那一格是空的」。它讲的是
+        抽屉外面那张流水线图，而抽屉是盖在图上面的——读者看不到它说的东西。
+        「有没有准则在跑」下面的记录会说，这里不再说第二遍。 */
+     :'')
    +'</div>';
   return h+'</div>'+phDraftsBlock();
 }
@@ -10919,15 +10926,21 @@ function phRunningCard(){
    准则的摘要是另一条准则。 */
 function phHistoryCard(){
   var hs=(((PH.data||{}).history)||[]);
-  if(!hs.length)return '';
+  /* 一条都没有时给一句话，而不是什么都不画。别处的空状态一律不画（空状态自己
+     占一张卡，是把一句回执抬成一个章节），这里是例外：读者是**特地来找**这份
+     记录的，什么都不画他分不清是「还没有」还是「这功能不在这儿」——2026-09-05
+     实测就是这么被问的。所以只说一句，不带卡片外壳。 */
+  if(!hs.length)
+    return '<div class="card-note" style="margin-top:var(--space-4)">'
+      +'还没有写过准则。写下第一条之后，这里会留着它当时说了什么——'
+      +'停用了也留着。</div>';
   var gone=hs.filter(function(c){return !c.live}).length;
   var h='<div class="card section"><div class="card-title-row">'
    +'<h2 class="card-title" style="margin-bottom:0">准则记录</h2>'
    +'<span class="card-note">'+hs.length+' 条'
    +(gone?(' · 其中 '+gone+' 条已停用'):'')+'</span></div>'
    +'<div class="card-note" style="margin-bottom:var(--space-3)">'
-   +'写下过的都在这儿，停用的也在。按写下的日子倒序；点开一条，看到的是它'
-   +'当时被蒸馏成的原样——记录只增不改，这一份不会随后来的修改而变。</div>';
+   +'停用的也在。点开一条，是它当时被蒸馏成的原样。</div>';
   h+=hs.map(function(c){
     var st=PH.hist[c.id]||{};
     var line=esc(c.since)+' 写下';
@@ -11055,29 +11068,16 @@ function phGraftArm(){
    比不画更糟。 */
 function phSlotOn(){return !isSnapshot()}
 
-/* 准则和臂是两个东西——准则是他说的那句话，臂是由它派生、参与统计检验的对照
-   单位——所以不能统一成一个词：那会把「我写了一条准则」和「这条准则的样本量
-   还不够」糊成一句。但两个陌生词交替出现而从不说关系，更糟。所以这里定义一次，
-   常驻在两种状态之上，之后各用各的。 */
-function phDefLine(){
-  var n=genOrder().length;
-  return '<div class="ph-def">流水线图里，筛选B 现在有 <b>'+n+' 种</b>生成方式，'
-    +'四种是内置的。<b>你写下的准则会成为其中新的一种</b>：它从你指定的那一种'
-    +'派生一条对照，<b>原来那种冻结不动</b> '
-    +glossMark('新旧两种生成方式读同一批研报、同一份可买清单、同一套规则并跑，唯一差异是这条准则；两者的净值之差即这条准则的净效应。')
-    +'</div>';
-}
-
 /* 这一段整体的组装。画布在它上面一行，两者是同一件事的图和它的控制台。 */
 function phSection(){
   if(isSnapshot())return '';
   phLoad();
   if(!PH.data&&!PH.err)
     return '<div class="card section"><div class="empty">正在读准则…</div></div>';
-  /* phDefLine 是「这功能是什么」的说明，phTeachCard 是表单——两样都进抽屉。
-     页面上只留状态：有准则在跑就列出来，没有就什么都不画（那时图上那个
-     虚线空格自己会说「这一格是空的」）。 */
-  return phPendingReceipt()+phRunningCard()+phHistoryCard();
+  /* 页面上只留「在跑的」和它的产出——它紧挨着流水线图，那是运行状态该待的
+     地方。写准则、以及写过的准则的记录，都在抽屉里：那是「我要写 / 我写过
+     什么」这件事的一个入口，不再一分为二。 */
+  return phPendingReceipt()+phRunningCard();
 }
 
 /* 「重画准则」现在就是「重画方法页」：准则的每一次状态变化都要让上面那张图

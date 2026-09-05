@@ -21,6 +21,7 @@ being coerced into something tradeable.
 from __future__ import annotations
 
 import json
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -67,11 +68,38 @@ def universe_block(ctx: RunContext, limit: int = 120) -> str:
     reason: without it the model is matching on ticker strings, and a thesis about
     Japanese rates can end up expressed through whatever happens to have "Japan"
     in its name.
+
+    The label fixed ticker-matching and did not fix label-matching. It is one
+    hand-typed string per instrument, so products it names identically are
+    indistinguishable here however differently they are built: ITA, PPA and XAR
+    all read 国防军工 and hold 53.7% / 45.0% / 26.1% of the same ten primes, and
+    USMV and SPLV both read 美股低波动 while sharing 27% of weight. With
+    `IDEAGEN_UNIVERSE_LOOKTHROUGH=1` each row also carries its largest actual
+    holdings — a fact about the fund rather than an assertion about it.
+
+    Off by default, deliberately. This string is model input for all four
+    generators, so enriching it is a behaviour change: turning it on partway
+    through a comparison means later periods were generated against a different
+    menu than earlier ones. When on it changes every arm identically, so the arms
+    stay comparable to each other — but not to their own history.
     """
+    look: dict = {}
+    if os.environ.get("IDEAGEN_UNIVERSE_LOOKTHROUGH", "").strip() in ("1", "true"):
+        try:
+            from .. import db, lookthrough as lt
+            look = lt.load(db.connect(), getattr(ctx, "as_of", None))
+        except Exception:
+            look = {}          # an enrichment must never take generation down
     lines = []
     for u in ctx.universe[:limit]:
-        lines.append(f"{u.get('instrument_id')} | {u.get('name')} | "
-                     f"{u.get('exposure') or '未映射'} | {u.get('vehicle') or ''}")
+        sym = str(u.get("instrument_id") or "")
+        row = (f"{sym} | {u.get('name')} | "
+               f"{u.get('exposure') or '未映射'} | {u.get('vehicle') or ''}")
+        if look:
+            from .. import lookthrough as lt
+            if d := lt.differentiator(look, sym):
+                row += f" | {d}"
+        lines.append(row)
     return "\n".join(lines)
 
 

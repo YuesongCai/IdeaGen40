@@ -887,6 +887,102 @@ def cmd_sources(args) -> int:
     return 0
 
 
+def cmd_lookthrough(args) -> int:
+    """穿透：这些 ETF 到底持有什么，以及由此能问出的三个问题。
+
+    `universe.py` 用一条手写标签描述一只标的，而标签是写标签的人的断言，不是
+    这只基金的事实。四个动作分别回答：现在的标签在哪里说了谎（collisions）、
+    一个主题该用哪只标的表达（theme）、一组持仓真实押在哪些名字上（portfolio）、
+    以及把这些答案所依赖的持仓数据拉下来（refresh）。
+    """
+    from . import lookthrough as lt
+    from . import universe as uni
+    con = _con()
+    as_of = _as_of(args)
+
+    if args.action == "refresh":
+        syms = args.symbols.split(",") if args.symbols else [
+            i.key for i in uni.LISTED if i.market in ("US",)]
+        print(f"拉取 {len(syms)} 只标的的持仓…")
+        funds = lt.refresh(con, syms, as_of)
+        from collections import Counter
+        cnt = Counter(f.status for f in funds.values())
+        print(f"  可穿透 {cnt['ok']}   看不透 {cnt['opaque']}   "
+              f"非基金 {cnt['not_a_fund']}   取数失败 {cnt['error']}")
+        for sym, f in sorted(funds.items()):
+            if f.status != "ok":
+                print(f"    {sym:<8}{f.status:<12}{f.note}")
+        return 0
+
+    funds = lt.load(con, as_of)
+    if not funds:
+        print("还没有穿透快照。先跑 ideagen lookthrough refresh", file=sys.stderr)
+        return 1
+    stamp = next(iter(funds.values())).as_of
+    ok = sum(1 for f in funds.values() if f.usable)
+    print(f"穿透快照 {stamp}：{len(funds)} 只，其中 {ok} 只可穿透\n")
+
+    if args.action == "collisions":
+        labels = {i.key: i.exposure for i in uni.ALL}
+        same, diff = lt.collisions(funds, labels)
+        print("① 标签相同、底层不同 —— 生成器以为这些行可以互换")
+        for label, a, b, o in same:
+            print(f"   {label:<14}{a:>6} vs {b:<6} 实际重叠 {o*100:5.1f}%")
+        if not same:
+            print("   （无）")
+        print("\n② 标签不同、底层相同 —— 以为分散了，其实是同一笔注")
+        for a, la, b, lb, o in diff[:args.limit]:
+            print(f"   {a:>6}({la}) vs {b:<6}({lb})  重叠 {o*100:5.1f}%")
+        if not diff:
+            print("   （无）")
+        opaque = sorted(s for s, f in funds.items() if f.status == "opaque")
+        if opaque:
+            print(f"\n③ 不参与比较的 {len(opaque)} 只（持仓行没有 ticker，"
+                  f"期货/实物/掉期）：{'、'.join(opaque)}")
+        return 0
+
+    if args.action == "theme":
+        basket = [x.strip() for x in (args.names or "").split(",") if x.strip()]
+        if not basket:
+            print("需要 --names AAA,BBB,CCC（主题的底层名单）", file=sys.stderr)
+            return 2
+        labels = {i.key: i.exposure for i in uni.ALL}
+        hits = lt.resolve_theme(funds, basket)
+        print(f"主题名单（{len(basket)}）：{'、'.join(basket)}")
+        print(f"\n  {'标的':<8}{'现有标签':<18}{'真实主题权重':>10}   命中")
+        for h in hits[:args.limit]:
+            print(f"  {h.symbol:<8}{labels.get(h.symbol, ''):<18}"
+                  f"{h.weight*100:9.1f}%   {'、'.join(h.matched[:6])}")
+        if not hits:
+            print("  没有任何可穿透标的持有这个名单——不是「没有敞口」，"
+                  "是这批标的里没有")
+        return 0
+
+    if args.action == "portfolio":
+        ins = [x.strip() for x in (args.symbols or "").split(",") if x.strip()]
+        if not ins:
+            print("需要 --symbols A,B,C", file=sys.stderr)
+            return 2
+        e = lt.portfolio(funds, ins)
+        print(f"表面：{len(ins)} 只标的等权，每只 {100/len(ins):.1f}%")
+        print(f"穿透：可见 {e.coverage*100:.0f}% 的仓位，"
+              f"其中现金 {e.cash*100:.1f}%")
+        print(f"  真实有效名数 {e.effective_names:.0f} "
+              f"（表面是 {len(ins)}；差多少就是重复押注了多少）")
+        if e.opaque:
+            print(f"  看不透，未计入：{'、'.join(e.opaque)}")
+        print(f"\n  前十大真实单名：")
+        for a, w in e.top(10):
+            holders = [s for s in ins
+                       if funds.get(s) and funds[s].weights.get(a)]
+            print(f"    {a:<26}{w*100:5.2f}%   来自 {len(holders)} 只："
+                  f"{'、'.join(holders[:6])}")
+        return 0
+
+    print(f"未知动作 {args.action!r}", file=sys.stderr)
+    return 2
+
+
 def cmd_serve(args) -> int:
     serve_mod.serve(port=args.port, open_browser=args.open)
     return 0
@@ -1162,6 +1258,15 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--url", default="",
                    help="Olive MCP endpoint; the OAuth issuer is discovered "
                         "from it when OLIVE_OAUTH_ISSUER is unset")
+
+    s = add("lookthrough", cmd_lookthrough,
+            "ETF 穿透：标签撒谎在哪、主题该买哪只、一组持仓真实押在什么上")
+    s.add_argument("action",
+                   choices=["refresh", "collisions", "theme", "portfolio"])
+    s.add_argument("--symbols", help="逗号分隔；refresh 时限定范围，"
+                                     "portfolio 时是要穿透的那组持仓")
+    s.add_argument("--names", help="theme 动作的底层名单，逗号分隔")
+    s.add_argument("--limit", type=int, default=15)
 
     s = add("prices", cmd_prices, "sync Futu daily bars")
     s.add_argument("--days", type=int, default=400)

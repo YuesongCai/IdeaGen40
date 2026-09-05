@@ -1911,6 +1911,12 @@ table.ptbl td.exw{white-space:nowrap}
 .evl-a b{color:var(--color-text-primary);font-weight:600}
 .evl-n{font:400 11.5px/17px var(--font-sans);color:var(--color-text-metadata);
   margin-top:3px}
+/* 窄屏三列会把问题挤成每行两个字。堆成一列，判定挑到问题旁边——
+   这一行里最先要读到的两样东西是「问的是什么」和「结论是什么」。 */
+@media (max-width:1080px){
+  .evl-r{grid-template-columns:1fr max-content;gap:6px var(--space-3)}
+  .evl-r > :last-child{grid-column:1 / -1}
+}
 /* 判定色只有一处是亮的。整页唯一一条有信号的结论，值得让它在总账上一眼
    可见——其余两态都不上色，否则「分不出」和「没看出优势」会被读成坏消息，
    而它们其实是两个不同的、都合法的答案。 */
@@ -2689,6 +2695,7 @@ var VIEWS=[
    secs:[{s:'strategies',label:'选取策略对比'},
          {s:'backtest',label:'历史回测'},
          {s:'tearsheet',label:'业绩表'},
+         {s:'selection',label:'挑选过程可信吗'},
          {s:'ranking',label:'排序力'},
          {s:'attribution',label:'价值出在哪一段'},
          {s:'limits',label:'已知局限'},
@@ -2870,11 +2877,23 @@ function setActiveSection(slug){
 /* 滚动高亮：以视口上缘往下 120px 为判定线，取最后一个越线的区块。 */
 function markActiveSection(){
   var v=viewOf(current),secs=(v.secs||[]);
-  var line=120,best=null;
+  var line=120,best=null,present=[];
   secs.forEach(function(x){
     var el=$(secDomId(v.id,x.s));
-    if(el&&el.getBoundingClientRect().top<=line)best=x.s;
+    if(!el)return;
+    present.push(x.s);
+    if(el.getBoundingClientRect().top<=line)best=x.s;
   });
+  /* 页尾那几段永远越不过判定线：滚到最底下时它们还整齐地待在最后一屏里，
+     于是「证据」页最后三段（价值出在哪一段 / 已知局限 / 运行回执）在侧栏上
+     永远不会亮——滚到页尾，导航还停在「排序力」。页越长这个盲区越大，而这一页
+     两小时里从 2200px 长到了 4900px。
+     到底时改判「最后一段」：这时那一段确实就在眼前，而判定线是给中间用的。 */
+  var doc=document.documentElement;
+  /* 24px 的余量：不同浏览器/缩放下 scrollHeight 有零点几像素的出入，
+     卡在 1px 上会让页尾这一段偶尔亮偶尔不亮。 */
+  var atEnd=(window.scrollY||doc.scrollTop||0)+window.innerHeight>=doc.scrollHeight-24;
+  if(atEnd&&present.length)best=present[present.length-1];
   if(!best&&secs.length)best=secs[0].s;
   if(best!==activeSec)setActiveSection(best);
 }
@@ -4033,6 +4052,7 @@ function renderEvidence(){
        nP?(nP+' 期回放（'+(lvb.n_live_periods||0)+' 期当期实跑）· 下面四段问的是同一批数据的四个问题'):'一次回放的四个切面')
     +secWrap('evidence','backtest',backtestCard())
     +secWrap('evidence','tearsheet',tearsheetCard())
+    +secWrap('evidence','selection',selectionCard())
     +secWrap('evidence','ranking',rankingPowerCard()+liveSplitBlock())
     +secWrap('evidence','attribution',attributionCard())
     +grpH('这些结论的边界','哪些前提还没验过 · 这两套数字各自是哪一次跑出来的')
@@ -5465,6 +5485,86 @@ function pairedVerdictLine(sum){
     +'<div class="vd-r"><span class="vk">配对样本</span><span class="vv"><b class="num">'+fmtInt(n)+'</b> 对，远低于预注册门槛</span></div></div>';
 }
 
+/* ════════════════ 挑选过程本身可信吗 ════════════════════════════════════ */
+/* 上面每张卡都在给某一条组合打分。这张卡打分的对象是**挑组合这个动作**，
+   而它是唯一能为「养十一条组合」辩护的检验：九条存在，是为了能挑出一条。
+   如果按此前成绩挑领先者，还不如随机挑一条，那这套装置就是只有成本没有产出，
+   而任何一条组合自己的统计都看不出这一点——每条都可以很体面，同时挑选环节
+   一点东西都不加。
+
+   两个独立方法放一张卡：前推检验（按期，看决策）和 PBO（按日切块，看样本内
+   赢家守不守得住）。它们方法不同、粒度不同，所以两个都指向同一边时才有分量。 */
+function selectionCard(){
+  var ts=(((S||{}).backtest||{}).summary||{}).tearsheet;
+  if(!ts)return '';
+  var wf=ts.walk_forward||{},pb=ts.pbo||{};
+  if(!wf.all_arms&&!pb.splits)return '';
+  var pct=function(v){return v==null?'—':fmtPct(v*100)};
+
+  var wfRows=['all_arms','no_posthoc'].map(function(k){
+    var b=wf[k];if(!b)return '';
+    var tag=(k==='all_arms')?'含事后设计的组合':'剔除事后设计的组合';
+    var beatsCtl=(b.control_mean!=null)&&(b.follow_leader_mean>b.control_mean);
+    var beatsRnd=(b.all_arms_mean!=null)&&(b.follow_leader_mean>b.all_arms_mean);
+    var ranks=(b.picks||[]).map(function(x){return x.rank_of_pick}).join(', ');
+    var nLive=((b.picks||[])[0]||{}).n_arms_live;
+    return '<tr'+(k==='no_posthoc'?' class="ls-ev"':'')+'>'
+      +'<td class="primary">'+esc(tag)
+        +(k==='no_posthoc'?' <span class="tag">该读这行</span>':'')+'</td>'
+      +'<td class="r num '+(beatsCtl&&beatsRnd?'up':'down')+'">'+pct(b.follow_leader_mean)+'</td>'
+      +'<td class="r num dim">'+pct(b.control_mean)+'</td>'
+      +'<td class="r num dim">'+pct(b.all_arms_mean)+'</td>'
+      +'<td class="r num dim">'+pct(b.hindsight_best_mean)+'</td>'
+      +'<td class="r num dim">'+fmtInt(b.n_decisions)+'</td>'
+      +'<td class="r num dim" title="被挑中的那条当期实际排名，共 '+fmtInt(nLive)+' 条">'
+        +esc(ranks)+'</td></tr>';
+  }).join('');
+
+  var clean=wf.no_posthoc||wf.all_arms||{};
+  var works=(clean.control_mean!=null&&clean.all_arms_mean!=null)
+    ? (clean.follow_leader_mean>clean.control_mean&&clean.follow_leader_mean>clean.all_arms_mean)
+    : null;
+  var verdict=(works===null)?'':(works
+    ? '<div class="card-note"><b>按此前成绩挑领先者，这段样本里既跑赢了全量基准也跑赢了随机挑一条。</b>'
+      +'决策次数仍然很少，别当成结论。</div>'
+    : '<div class="ls-note"><b>按此前成绩挑领先者，还不如随机挑一条。</b>'
+      +'也就是说：这段样本里，「挑」这个动作本身没有产出。</div>');
+
+  var pbRows=Object.keys(pb.splits||{}).sort(function(a,b){return a-b}).map(function(k){
+    var b=pb.splits[k];if(b.pbo==null)return '';
+    var ci=(b.null||{}).ci95||[null,null];
+    return '<tr><td class="primary">切 '+esc(k)+' 块</td>'
+      +'<td class="r num dim">'+fmtInt(b.n_combinations)+'</td>'
+      +'<td class="r num">'+Number(b.pbo).toFixed(2)+'</td>'
+      +'<td class="r num dim">'+((b.null||{}).median==null?'—':Number(b.null.median).toFixed(2))+'</td>'
+      +'<td class="r num dim">'+(ci[0]==null?'—':'['+Number(ci[0]).toFixed(2)+', '+Number(ci[1]).toFixed(2)+']')+'</td>'
+      +'<td class="r num dim">'+(b.p_value==null?'—':Number(b.p_value).toFixed(2))+'</td>'
+      +'<td class="r">'+(b.better_than_noise?'优于噪声':'<span class="dim">与噪声分不开</span>')+'</td></tr>';
+  }).join('');
+
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">挑选过程本身可信吗</h2>'
+    +'<span class="card-note">打分对象不是某一条组合，是「挑组合」这个动作</span></div>'
+    +verdict
+    +'<h3 class="sub-h">前推检验：每期只用此前的成绩挑领先者，再看它当期结果</h3>'
+    +'<div class="table-wrap"><table class="data-table">'
+      +'<thead><tr><th>口径</th>'
+      +'<th class="r">跟随领先者</th><th class="r">全量基准</th>'
+      +'<th class="r">随机挑一条<span class="gloss gm" title="当期所有组合的平均收益，也就是闭着眼睛挑一条的期望。跟随领先者跑不赢它，就说明挑选环节没有产出。">ⓘ</span></th>'
+      +'<th class="r">事后最优</th><th class="r">决策次数</th><th class="r">被挑中那条的当期排名</th></tr></thead>'
+      +'<tbody>'+wfRows+'</tbody></table></div>'
+    +(wf.note?'<div class="card-note">'+esc(wf.note)+'</div>':'')
+    +(pbRows?foldBlock('week.selection.pbo','回测过拟合概率 PBO',
+      '样本内最优的那条，样本外守不守得住',
+      '<div class="table-wrap"><table class="data-table">'
+        +'<thead><tr><th>切法</th><th class="r">组合数</th><th class="r">实测 PBO</th>'
+        +'<th class="r">同形状噪声<span class="gloss gm" title="零假设是「各条组合可交换」：在每个交易日内打乱组合标签，保留当天的横截面分布与相关结构，只抹掉组合身份。门槛是这一列，不是 0.5——样本内外取自同一段有限数据，赢家会机械性回归，偏移多少取决于组合数、观测数和块数。">ⓘ</span></th>'
+        +'<th class="r">噪声 95% 区间</th><th class="r">p</th><th>判定</th></tr></thead>'
+        +'<tbody>'+pbRows+'</tbody></table></div>'
+      +(pb.note?'<div class="card-note">'+esc(pb.note)+'</div>':''),
+      (pb.pbo_range?'PBO '+Number(pb.pbo_range[0]).toFixed(2)+'~'+Number(pb.pbo_range[1]).toFixed(2):'')):'')
+    +'</div>';
+}
 /* ════════════════════ 业绩表 — 「拿着它这段时间会怎样」 ══════════════════════ */
 /* 这张卡回答的问题和「历史回测」那张不同，所以是两张卡（一张卡一个问题）：
    那张问「A 挑得比 B 好吗」——配对、扣掉共同涨跌、看统计功效；

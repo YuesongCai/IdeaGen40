@@ -32,6 +32,19 @@ KEEPS_ORIGIN = {"same-origin", "strict-origin-when-cross-origin",
                 "origin-when-cross-origin", "no-referrer-when-downgrade"}
 
 
+#: Generous on purpose. These tests deliberately reach the password check — that
+#: is the point of asserting 401 rather than 403 — and the password check is
+#: `hashlib.scrypt` at n=2**15, ~32MB per attempt, chosen to be slow. Three
+#: seconds is plenty on an idle laptop and not plenty on this one: the repo runs
+#: with twenty-odd agent sessions and a full suite in parallel, and the request
+#: then times out client-side. The failure surfaces in the cloud deploy gate as
+#: a red test on whichever commit happened to be HEAD, which is never the commit
+#: that caused it — and costs everyone a deploy cycle while somebody reproduces
+#: it and watches it pass. A timeout here is only a guard against a true hang;
+#: it does not need to be tight to do that job.
+TIMEOUT_S = 30
+
+
 class LoginSurvivesTheTrip(unittest.TestCase):
     def setUp(self):
         self.server = Server(("127.0.0.1", 0), Handler)
@@ -47,12 +60,12 @@ class LoginSurvivesTheTrip(unittest.TestCase):
             headers={"Content-Type": "application/x-www-form-urlencoded",
                      **headers})
         try:
-            return urllib.request.urlopen(req, timeout=3).status
+            return urllib.request.urlopen(req, timeout=TIMEOUT_S).status
         except urllib.error.HTTPError as e:
             return e.code
 
     def test_the_policy_does_not_strip_the_origin_it_checks(self):
-        page = urllib.request.urlopen(self.base + "/login", timeout=3)
+        page = urllib.request.urlopen(self.base + "/login", timeout=TIMEOUT_S)
         policy = page.headers.get("Referrer-Policy")
         self.assertIn(
             policy, KEEPS_ORIGIN,

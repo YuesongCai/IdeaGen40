@@ -262,8 +262,14 @@ def code_leg(dry_run: bool) -> dict:
             (sys.executable, "-m", "pytest", "tests", "-q", "-x"),
             cwd=tmp, capture_output=True, text=True, timeout=900,
             env=gate_env(tmp / "gate.db"))
-        tail = (tests.stdout or tests.stderr or "").strip().splitlines()
-        out["tests"] = tail[-1][:200] if tail else "(no output)"
+        raw = (tests.stdout or tests.stderr or "").strip().splitlines()
+        # 只报最后一行，等于一个说不出原因的闸门。2026-09-05 代码腿被拦了一小时,
+        # `--status` 从头到尾只说 "1 failed, 32 passed" —— 够判断被拦了,
+        # 不够判断拦在哪,于是没人去看。pytest 的短摘要里每个失败自带一行
+        # `FAILED <文件>::<用例>`,带上它们,「被拦了」和「拦在哪」一句话说完。
+        named = [ln for ln in raw if ln.startswith(("FAILED ", "ERROR "))]
+        summary = raw[-1] if raw else "(no output)"
+        out["tests"] = " | ".join([summary, *named])[:400]
         if tests.returncode != 0:
             out.update(action="blocked", ok=False,
                        detail=f"测试闸门拦下 HEAD {head[:7]}，没有推送")

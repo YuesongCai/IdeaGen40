@@ -34,7 +34,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ideagen import backtest, db, perf, platform as plat, schema  # noqa: E402
-from ideagen import shelf_store, trials  # noqa: E402
+from ideagen import prereg, shelf_store, trials  # noqa: E402
 from ideagen import config  # noqa: E402
 from ideagen import ideas as ideas_mod  # noqa: E402
 from ideagen import strategy as strat  # noqa: E402
@@ -1513,6 +1513,13 @@ def main(argv: list[str]) -> int:
         "paired": {k: {kk: vv for kk, vv in vars(v).items()}
                    for k, v in rep.paired.items()},
     }
+
+    # What would count as this working, decided before the data arrives. Added
+    # last because it reads the finished summary by path — the estimator is
+    # pinned as a lookup rather than described in words, so that next quarter
+    # nobody gets to choose which number the promise was about.
+    summary["prereg"] = prereg.evaluate(
+        summary, live_periods_since=summary.get("n_live_periods"))
 
     inputs_sha = hashlib.sha256(json.dumps(
         {"dates": summary["dates"], "arms": arms, "control": CONTROL,

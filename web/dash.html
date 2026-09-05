@@ -4820,6 +4820,35 @@ function grpH(t,sub){
       在界面上长得一模一样，这是本仓最常见的缺陷形状。
    ② 判定只有三种：没扛住 / 打折 / 扛住了。含糊的措辞会被读成通过。
    ③ 每一行右边指向拥有这份细节的那张卡，漏斗只负责串，不负责重讲。 */
+/* 「往前跑一段看看」只有在「什么算活下来」被提前写死时才有意义。这一块把那
+   句话变成三条可对账的承诺：估计量用路径钉死（不是文字描述），门槛和方向写在
+   数据到来之前，到期之前只报数不判定——因为下一轮真正的自由度不在门槛上，
+   而在「用哪个数」。 */
+function preregBlock(){
+  var pr=(((S||{}).backtest||{}).summary||{}).prereg;
+  if(!pr||!pr.entries||!pr.entries.length)return '';
+  var rows=pr.entries.map(function(e){
+    var cls=e.status==='通过'?'fx-yes':(e.status==='未通过'?'fx-no'
+      :(e.status==='未到期'?'fx-half':'fx-na'));
+    var v=(e.value==null)?'—':(Math.abs(e.value)<1?e.value.toFixed(3):fmtPct(e.value));
+    return '<tr><td class="primary">'+esc(e.claim)
+      +'<div class="fx-d">'+esc(e.path)+' · 门槛 '
+        +(e.rule==='gte'?'≥':'≤')+' '+e.threshold
+        +' · 注册于 '+esc(e.registered_on)+'</div></td>'
+      +'<td class="r num">'+v+'<span class="dim"> 样本内 '
+        +(e.in_sample_value==null?'—':Number(e.in_sample_value).toFixed(3))+'</span></td>'
+      +'<td class="r num dim">'+fmtInt(e.live_periods_since)+' / '+fmtInt(e.min_live_periods)+' 期</td>'
+      +'<td class="r"><span class="fx-v '+cls+'">'+esc(e.status)+'</span></td></tr>';
+  }).join('');
+  return '<div style="margin-top:var(--space-5)">'
+    +'<div class="card-title-row"><h3 class="card-title" style="font-size:15px">'
+    +'预注册：什么算它真的成立</h3>'
+    +'<span class="card-note">数据到来之前就写死的三条 · 到期前只报数不判定</span></div>'
+    +'<div class="table-wrap"><table class="data-table fx-t"><thead><tr>'
+      +'<th>要往前检验的那句话</th><th class="r">当前值</th><th class="r">进度</th>'
+      +'<th class="r">判定</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="card-note">'+esc(pr.note||'')+'</div></div>';
+}
 function falsificationCard(){
   var sm=(((S||{}).backtest||{}).summary)||{};
   var rp=sm.ranking_power||{},ts=sm.tearsheet||{};
@@ -4973,6 +5002,7 @@ function falsificationCard(){
       +'<span class="fx-out-v">值得往前跑一段看看。这条排序按<b>探索类</b>注册，'
       +'只有它注册之后的当期实跑才算证据——上面每一道检验都是在同一段样本内做的，'
       +'样本内没扛住的东西，样本外不会自己好起来。</span></div>'
+    +preregBlock()
     +'</div>';
 }
 

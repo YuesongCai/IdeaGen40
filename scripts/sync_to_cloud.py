@@ -224,6 +224,60 @@ def export_head(dest: pathlib.Path) -> None:
             f"git worktree add failed: {(r.stderr or r.stdout).strip()[:300]}")
 
 
+def image_paths() -> list[str]:
+    """What the Dockerfile actually copies, read from the Dockerfile.
+
+    Not a list repeated here. The bug that made this function necessary was
+    exactly a list kept in two places: the Dockerfile said which files reach
+    the image, and a test independently assumed a file at the repository root
+    would be there. Copying the list into this script would set up the same
+    divergence one level further out.
+    """
+    df = (ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8")
+    out = []
+    for line in df.splitlines():
+        line = line.strip()
+        if not line.upper().startswith("COPY "):
+            continue
+        parts = line.split()[1:]
+        if parts and parts[0].startswith("--"):   # COPY --from=... : another stage
+            continue
+        if len(parts) >= 2:
+            out.append(parts[0])
+    if not out:
+        raise RuntimeError("deploy/Dockerfile 里没有解析到任何 COPY 行")
+    return out
+
+
+def mirror_image(full: pathlib.Path, img: pathlib.Path) -> None:
+    """Lay out only what the image will contain, so the gate judges what runs.
+
+    The local gate and the cloud gate were not testing the same tree, and that
+    difference had teeth: on 2026-09-05 a commit passed here with 609 tests
+    green and was refused by the cloud updater, which held production three
+    hours behind. The test read `.gitignore`; a worktree has one and the image
+    does not, because the Dockerfile copies six directories and nothing from
+    the repository root.
+
+    So the gate now runs against the image's file set. It still comes from a
+    detached worktree of HEAD rather than `git checkout-index`: the index holds
+    whatever other sessions have staged and not yet committed, while HEAD is
+    precisely what a push publishes and what the cloud will check out. Testing
+    the index would answer a question nobody asked.
+    """
+    img.mkdir(parents=True, exist_ok=True)
+    for rel in image_paths():
+        src = full / rel
+        dst = img / rel
+        if not src.exists():
+            continue          # a COPY of something not in this commit
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
+
+
 def drop_worktree(dest: pathlib.Path) -> None:
     """Remove the gate's worktree and its registration, whatever went wrong.
 
@@ -269,13 +323,15 @@ def code_leg(st: dict, dry_run: bool) -> dict:
                        detail=f"测试闸门此前已拦下 HEAD {head[:7]}，未重跑")
             return out
     else:
-        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ideagen-gate-")) / "head"
+        root = pathlib.Path(tempfile.mkdtemp(prefix="ideagen-gate-"))
+        tmp, img = root / "head", root / "img"
         try:
             export_head(tmp)
+            mirror_image(tmp, img)
             tests = subprocess.run(
                 (sys.executable, "-m", "pytest", "tests", "-q", "-x"),
-                cwd=tmp, capture_output=True, text=True, timeout=1800,
-                env=gate_env(tmp / "gate.db"))
+                cwd=img, capture_output=True, text=True, timeout=1800,
+                env=gate_env(img / "gate.db"))
             raw = (tests.stdout or tests.stderr or "").strip().splitlines()
             # 只报最后一行，等于一个说不出原因的闸门。2026-09-05 代码腿被拦了一小时,
             # `--status` 从头到尾只说 "1 failed, 32 passed" —— 够判断被拦了,
@@ -299,7 +355,7 @@ def code_leg(st: dict, dry_run: bool) -> dict:
             return out
         finally:
             drop_worktree(tmp)
-            shutil.rmtree(tmp.parent, ignore_errors=True)
+            shutil.rmtree(root, ignore_errors=True)
 
     if dry_run:
         out.update(action="would-push", ok=True,

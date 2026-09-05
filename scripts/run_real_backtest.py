@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ideagen import backtest, db, platform as plat, schema  # noqa: E402
 from ideagen import config  # noqa: E402
 from ideagen import strategy as strat  # noqa: E402
-from ideagen.poc_workflow import _arm_positions, _curves  # noqa: E402
+from ideagen.poc_workflow import _arm_positions  # noqa: E402
 
 METHODOLOGY = "real-pool-asof-replay/v1"
 CONTROL = "buy_all"
@@ -297,6 +297,79 @@ def _disclaimer(*, n_backfill: int, asof_note: str, horizon: dict,
     if excluded:
         parts.append(f"未参与：{'、'.join(excluded)}（需调用模型，会使复算不可重复）。")
     return "".join(parts)
+
+
+def _benchmark_return(con, points: list[dict]) -> float | None:
+    """Benchmark return over exactly the span the curve covers."""
+    if not points:
+        return None
+    ds = [p["d"] for p in points]
+    a, b = min(ds), max(ds)
+    q = lambda d: db.q1(con, "SELECT close c FROM prices WHERE code=? AND d<=? "
+                             "ORDER BY d DESC LIMIT 1", (BENCHMARK, d))
+    lo, hi = q(a), q(b)
+    return None if not (lo and hi) else (hi["c"] / lo["c"] - 1) * 100
+
+
+def _exposure(points: list[dict], gap_days: float, horizon_days: int,
+              bench_pct: float | None) -> dict:
+    """How much of the book was at risk, and what the curve means given that.
+
+    A tranche portfolio ramps: the first period commits one slot of four, so the
+    book runs a quarter invested for a week and cannot be read against a
+    fully-invested index over that stretch. Comparing the curve to the benchmark
+    without saying so understates every arm by the cost of its own ramp.
+
+    `beta_equivalent_pct` is the return the same average exposure would have
+    produced holding the benchmark, and `excess_over_exposure_pct` is what each
+    arm did relative to that. It assumes a beta of one against SPY, which a book
+    of sector, commodity and currency ETFs does not have — so it is a coarse
+    adjustment, stated as one, and the right way to read it is as a rank rather
+    than a number.
+    """
+    if not points:
+        return {}
+    by_arm: dict[str, list[dict]] = {}
+    for p in points:
+        by_arm.setdefault(p["arm"], []).append(p)
+    any_arm = next(iter(by_arm.values()))
+    fracs = [p.get("invested_frac") for p in any_arm[1:]
+             if p.get("invested_frac") is not None]
+    mean_inv = (sum(fracs) / len(fracs)) if fracs else None
+    beta_eq = (None if (mean_inv is None or bench_pct is None)
+               else mean_inv * bench_pct)
+    arms = {}
+    for name, rows in sorted(by_arm.items()):
+        ret = rows[-1]["equity"] - 100.0
+        arms[name] = {
+            "nav_end": round(rows[-1]["equity"], 4),
+            "return_pct": round(ret, 4),
+            "excess_over_benchmark_pct": (None if bench_pct is None
+                                          else round(ret - bench_pct, 4)),
+            "excess_over_exposure_pct": (None if beta_eq is None
+                                         else round(ret - beta_eq, 4)),
+            "max_drawdown_pct": round(min(r["drawdown"] for r in rows), 4)}
+    no_series = any_arm[0].get("no_series") or []
+    return {
+        "slots": max(1, round(horizon_days / max(gap_days, 1e-9))),
+        "gap_days": gap_days, "horizon_days": horizon_days,
+        "days": len(any_arm) - 1,
+        "mean_invested_frac": None if mean_inv is None else round(mean_inv, 4),
+        "ramp": [{"d": p["d"], "invested_frac": p.get("invested_frac")}
+                 for p in any_arm[1:]],
+        "benchmark": BENCHMARK,
+        "benchmark_pct": None if bench_pct is None else round(bench_pct, 4),
+        "beta_equivalent_pct": None if beta_eq is None else round(beta_eq, 4),
+        "arms": arms,
+        "instruments_without_daily_series": no_series,
+        "note": (
+            "净值按分批滚动组合逐日计价：每期投入 1/slots 资本、等权、持有一个"
+            "持有期，空出的档位是现金。窗口开头必然欠投——第一期只占一个档位，"
+            "所以拿它和满仓指数直接比会低估每条臂一个建仓成本。"
+            "beta_equivalent_pct 是同样平均敞口拿着基准会有的收益，"
+            "excess_over_exposure_pct 是相对它的差；该折算假设对 SPY 的 beta 为 1，"
+            "而板块/商品/汇率 ETF 组合并不满足，所以它是粗折算，读次序比读数值可靠。"),
+    }
 
 
 def _ranking_power(con, days: list, horizon_days: int) -> dict:
@@ -914,9 +987,16 @@ def main(argv: list[str]) -> int:
         horizon_days=args.horizon_days, require_full_horizon=False,
         allow_model=False, strict=True)
 
-    points = _curves(rep)
     positions = [row for arm in arms
                  for row in _arm_positions(con, days, arm, args.horizon_days)]
+    # Positions first, because the curve is now built from them. The previous
+    # curve compounded each period's mean *horizon* return once per *period*,
+    # over windows that overlap — a 30-day result banked every week, and the
+    # same market move counted four times. It read +22.43% for an arm whose
+    # periods averaged +3.48%, with the last step a two-day mark treated as a
+    # completed period. See `backtest.tranche_curve`.
+    points = backtest.tranche_curve(
+        con, positions, horizon_days=args.horizon_days, gap_days=rep.gap_days)
 
     n_backfill = sum(1 for c in classes.values() if c != "live")
     # Three depths, not one. Ten was a number I chose, and a conclusion that
@@ -962,6 +1042,8 @@ def main(argv: list[str]) -> int:
             f"过滤时一律放行，补跑期的可选标的可能包含当时尚未上架的产品。")
     provenance = _theme_provenance(days)
     ranking_power = _ranking_power(con, days, args.horizon_days)
+    exposure = _exposure(points, rep.gap_days, args.horizon_days,
+                         _benchmark_return(con, points))
     summary = {
         "data_classification": ("mixed-live-backfill" if n_backfill else "live"),
         "proof": "real_pools_real_prices_asof_replay",
@@ -981,6 +1063,7 @@ def main(argv: list[str]) -> int:
         "attribution_theme_layer": attribution,
         "theme_provenance": provenance,
         "ranking_power": ranking_power,
+        "exposure": exposure,
         "horizon_completeness": horizon,
         "generation_head_to_head": head_to_head,
         # The sweep ran with strict=True, so every period's context passed the
@@ -1040,8 +1123,14 @@ def main(argv: list[str]) -> int:
                                   separators=(",", ":"), allow_nan=False),
         })
         for row in points:
+            # `invested_frac` / `no_series` are curve context, not columns —
+            # `backtest_points` has neither, and adding them would mean a schema
+            # migration in a file another session is holding. They travel in the
+            # summary instead, where `exposure` already carries the same facts.
             schema.upsert(p.state, "backtest_points",
-                          {"backtest_id": backtest_id, **row})
+                          {"backtest_id": backtest_id,
+                           **{k: v for k, v in row.items()
+                              if k not in ("invested_frac", "no_series")}})
         for row in positions:
             schema.upsert(p.state, "backtest_positions",
                           {"backtest_id": backtest_id, **row})

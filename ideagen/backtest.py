@@ -1072,6 +1072,122 @@ def sweep(con, dates: Sequence[date | str], *,
 
 
 # ---------------------------------------------------------------------------
+def tranche_curve(con, positions: Sequence[dict[str, Any]], *,
+                  horizon_days: int, gap_days: float,
+                  cash_pct_annual: float = 0.0) -> list[dict[str, Any]]:
+    """Daily NAV of a portfolio that opens one tranche per period.
+
+    Replaces a curve that compounded each period's mean return once per period.
+    That construction is wrong in two ways at once and they compound each other:
+
+    * the returns are **horizon** returns compounded at the **period** cadence.
+      Six weekly steps each multiplying by a 30-day return claims a month's
+      result was banked every week — roughly four times the exposure any capital
+      actually had.
+    * the windows **overlap**. The 2026-07-29 tranche was still held through
+      08-05, 08-12 and 08-19, so one market move was counted four times.
+
+    What it produced was not small: ev_rank's six periods averaged +3.48% over
+    30 days and the curve read +22.43% over six weeks, with the final step a
+    **two-day** reading (09-02 → 09-04, the last close available) compounded as
+    a completed period. A number built that way is exactly what a PM means by
+    "fake", and it was the panel's headline curve.
+
+    The portfolio here is the one the design actually describes: each period
+    deploys one tranche of `1/slots` of capital into that period's picks, equally
+    weighted, held for the horizon; `slots = round(horizon / gap)` — four, for a
+    30-day hold opened weekly — so capital is committed once and released once.
+    Slots with no live tranche sit in cash, which is a real portfolio state and
+    the reason a curve like this trails a fully-invested index in a rising tape.
+
+    Marking is daily against the close, so a tranche that has not reached its
+    horizon contributes what it is worth today rather than a completed trade.
+    Instruments with no daily series (funds, structured products) are dropped
+    from the mark and reported in `no_series`, never marked flat at 0%.
+    """
+    slots = max(1, round(horizon_days / max(gap_days, 1e-9)))
+    codes = {str(r["instrument_id"]) for r in positions}
+    inst = {r["key"]: r["futu_code"] for r in db.q(
+        con, "SELECT key, futu_code FROM instruments WHERE futu_code IS NOT NULL")}
+    priced = {c: inst[c] for c in codes if c in inst}
+    no_series = sorted(codes - set(priced))
+
+    entries = [r["entry_d"] for r in positions if r.get("entry_d")]
+    exits = [r["exit_d"] for r in positions if r.get("exit_d")]
+    if not entries or not exits:
+        return []
+    lo, hi = min(entries), max(exits)
+    cal = [r["d"] for r in db.q(
+        con, "SELECT DISTINCT d FROM prices WHERE d>=? AND d<=? ORDER BY d", (lo, hi))]
+    if len(cal) < 2:
+        return []
+
+    series: dict[str, dict[str, float]] = {}
+    for key, code in priced.items():
+        series[key] = {r["d"]: r["close"] for r in db.q(
+            con, "SELECT d, close FROM prices WHERE code=? AND d>=? AND d<=?",
+            (code, lo, hi))}
+
+    # tranche -> its instruments, and the half-open [entry, exit] it is held over
+    tranches: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in positions:
+        if not r.get("entry_d") or not r.get("exit_d"):
+            continue
+        t = tranches.setdefault((r["arm"], r["period"]),
+                                {"entry": r["entry_d"], "exit": r["exit_d"],
+                                 "keys": []})
+        t["entry"] = min(t["entry"], r["entry_d"])
+        t["exit"] = max(t["exit"], r["exit_d"])
+        if str(r["instrument_id"]) in series:
+            t["keys"].append(str(r["instrument_id"]))
+
+    daily_cash = (cash_pct_annual / 100.0) / 252.0
+    out: list[dict[str, Any]] = []
+    for arm in sorted({r["arm"] for r in positions}):
+        mine = {k: v for k, v in tranches.items() if k[0] == arm}
+        nav, peak = 100.0, 100.0
+        out.append({"arm": arm, "d": cal[0], "equity": 100.0, "period_ret": 0.0,
+                    "drawdown": 0.0, "n_positions": 0})
+        for i in range(1, len(cal)):
+            prev, day = cal[i - 1], cal[i]
+            invested, n_open = 0.0, 0
+            for t in mine.values():
+                # held on `day` when the tranche opened on or before the prior
+                # close and has not yet passed its exit
+                if not (t["entry"] <= prev and day <= t["exit"]):
+                    continue
+                rets = []
+                for k in t["keys"]:
+                    a, b = series[k].get(prev), series[k].get(day)
+                    if a and b:
+                        rets.append(b / a - 1.0)
+                if rets:
+                    invested += (sum(rets) / len(rets)) / slots
+                    n_open += len(rets)
+            live_slots = sum(1 for t in mine.values()
+                             if t["entry"] <= prev and day <= t["exit"])
+            inv_w = min(live_slots, slots) / slots
+            cash_w = max(0.0, 1.0 - inv_w)
+            nav *= 1.0 + invested + cash_w * daily_cash
+            peak = max(peak, nav)
+            out.append({"arm": arm, "d": day, "equity": round(nav, 6),
+                        "period_ret": round((invested + cash_w * daily_cash) * 100.0, 6),
+                        "drawdown": round((nav / peak - 1.0) * 100.0, 6),
+                        # How much of the book was actually at risk that day.
+                        # Without it the curve is unreadable at the start: the
+                        # first tranche is one slot of four, so the book runs a
+                        # quarter invested for a week and cannot be compared to
+                        # a fully-invested index over that stretch. On the six
+                        # real periods the ramp averages 72% — a curve trailing
+                        # the index by less than the ramp costs is ahead of its
+                        # own exposure, and that is the comparison worth making.
+                        "invested_frac": round(inv_w, 4),
+                        "n_positions": n_open})
+    if out and no_series:
+        out[0]["no_series"] = no_series
+    return out
+
+
 def print_sweep(rep: Sweep) -> Sweep:
     """Console report. Every statistic carries its n and its coverage.
 

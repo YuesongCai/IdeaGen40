@@ -41,6 +41,16 @@ UNAVAILABLE_MSG = "本机为观察节点，追问需在生产实例上进行（�
 #: Total character budget for the 当时材料 block handed to the model.
 CONTEXT_CHAR_BUDGET = 30_000
 
+#: How near the cut line a topic has to be for the choice to count as contested.
+#: On 2026-09-02 the sixth-placed topic missed by 0.1 and the seventh by 0.2, so
+#: a window of one point is already generous — it is meant to catch the rows a
+#: reader would point at, not to re-admit the whole table.
+CUT_NEIGHBOURHOOD = 1.0
+
+#: Reports per contested topic. Enough to say what the mentions contained,
+#: few enough that the scoring table stays the spine of the answer.
+CUT_EVIDENCE_PER_TOPIC = 4
+
 #: Where every Q&A lands. The asks are part of the audit trail: a question the
 #: operator needed to ask is a gap the artifacts did not answer on their own.
 ASK_LOG = config.DATA / "ask_log.jsonl"
@@ -393,10 +403,28 @@ def _selection_context(materials, provenance_notes, con, p, run, _sid):
     reports, why did these five come out". Answering it from a per-topic
     context makes the model reason about one row at a time and infer the rest,
     which is exactly how a plausible-sounding but reconstructed answer gets
-    produced. So this hands over the entire scoring table at once — every
-    topic's four factors, the cut line, and the counting arm's ranking beside
-    it — and nothing else. The comparison the run actually made is the
-    comparison the answer has to work from.
+    produced. So the spine is the entire scoring table at once — every topic's
+    four factors, the cut line, and the counting arm's ranking beside it. The
+    comparison the run actually made is the comparison the answer works from.
+
+    This deliberately carried no report text at all, on the reasoning that
+    attaching bodies lets an answer route around the thing that actually
+    decided. Tested on 2026-09-05 and the cost showed: asked Jon's question
+    verbatim, the answer was correct, complete, cited two materials, and closed
+    with 「当时记录里没有研报正文，这一步的取舍就是在这张打分表上完成的」. True,
+    and the shape he rejected — his question names a hundred reports and the
+    answer contains none, so it describes the mechanism instead of recalling
+    the week.
+
+    So a bounded exception, and the bound is the point: reports are attached
+    only for the topics where the decision was actually contested — the ones
+    straddling the cut line, and the ones where semantic scoring and pure
+    counting disagreed. Those are the comparisons a PM asks about ("it was
+    mentioned sixty times and still missed the cut — what did those sixty
+    say?"). They are labelled as the evidence *behind* the factor scores rather
+    than as a second basis for the choice, and the table stays the spine. A
+    topic that won or lost by a wide margin gets no bodies, because nothing
+    about it was in question.
     """
     art = _artifact(p, run, "A_topics.json")
     counting = _artifact(p, run, "A_topics_counting.json")
@@ -454,13 +482,50 @@ def _selection_context(materials, provenance_notes, con, p, run, _sid):
 
     docs, corpus_note = _run_corpus(con, p, run)
     corpus_note["n_docs_read"] = len(docs)
+
+    # Which topics the choice actually turned on. Two kinds, and neither is
+    # "the winners": a topic that led by ten points was never in question, and
+    # attaching its evidence would pad the context with the uncontested.
+    contested: list[tuple[str, str]] = []
+    if cut is not None:
+        near = [t for t, sc in ranked
+                if sc.get("score") is not None
+                and abs(sc["score"] - cut) <= CUT_NEIGHBOURHOOD]
+        for t in near[:4]:
+            contested.append((t, "入选线两侧" if t in chosen else "差一点入选"))
+    if isinstance(counting, dict):
+        for t in ([x for x in chosen if x not in (counting.get("chosen") or [])][:2]
+                  + [x for x in (counting.get("chosen") or [])
+                     if x not in chosen][:2]):
+            if all(t != c[0] for c in contested):
+                contested.append((t, "两种打分意见相反"))
+
+    included: list[str] = []
+    budget = CONTEXT_CHAR_BUDGET - sum(len(m["text"]) for m in materials)
+    for tid, why in contested:
+        theme = _theme(run, tid)
+        if theme is None or not docs:
+            continue
+        hits = _topic_hits(docs, theme)[:CUT_EVIDENCE_PER_TOPIC]
+        if not hits:
+            continue
+        for d in hits:
+            spent = _doc_material(materials, d, cited=True, budget=budget)
+            if not spent:
+                break
+            budget -= spent
+        included.append(f"{tid}（{why}）")
+    corpus_note["evidence_attached_for"] = included
+
     # The UI prints these notes under a 「材料缺口」 heading, so the sentence
     # has to state what is absent first and the reason second — otherwise a
     # deliberate scope decision reads as something that went missing.
     provenance_notes.append(
-        "本步不附研报正文，只给出打分表与计数对照打分。这一步的取舍就是在这张"
-        "表上做的；附上正文会让回答绕开当时真正用到的依据。逐篇正文可在"
-        "单个主题的追问里查阅。")
+        "本步以打分表与计数对照打分为准——这一步的取舍就是在表上做的。"
+        + (f"另附了取舍真正吃紧处的研报：{'、'.join(included)}；"
+           "它们是四个因子背后的证据，不是另一套选择依据。"
+           if included else "本期没有取舍吃紧的主题，故不附研报正文。")
+        + "其余主题的逐篇正文可在单个主题的追问里查阅。")
     return label, corpus_note
 
 

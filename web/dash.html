@@ -2703,6 +2703,11 @@ var VIEWS=[
          {s:'selection',label:'挑选过程可信吗'},
          {s:'ranking',label:'排序力'},
          {s:'attribution',label:'价值出在哪一段'},
+         /* 「当期实跑 vs 事后补跑」此前挂在「排序力」名下——它讲的不是排序力，
+            是上面几段里哪几列才算证据，对它们一体适用。它留在那里的后果是
+            两条标签完全不同的链接（「实跑 / 补跑 逐条对照 ›」和「完整检验 ›」）
+            指向同一个锚点，而「排序力」成了全页最大的一段（1724px）。 */
+         {s:'split',label:'哪些数字算证据'},
          {s:'limits',label:'已知局限'},
          {s:'receipt',label:'运行回执'}]}
 ];
@@ -3663,7 +3668,7 @@ function evidenceProgressCard(){
       +'font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)">'
       +'补跑期次的文档输入按 as-of 严格卡死在当期，但模型权重已经见过那之后的世界——'
       +'这一项用代码消不掉，所以补跑只能用来搭管线，不能用来下结论。'
-      +'<button type="button" class="exp-btn" onclick="gotoSection(\'evidence\',\'ranking\')">'
+      +'<button type="button" class="exp-btn" onclick="gotoSection(\'evidence\',\'split\')">'
       +'实跑 / 补跑 逐条对照 ›</button>'
     +'</div>'
   +'</div>';
@@ -3967,10 +3972,29 @@ function evLedgerRows(){
       need:'只有 '+fmtInt(sep.n_days)+' 个交易日，区间宽到没法分开任何两条'});
   }
 
+  /* 「照过去的成绩挑一条来跟」是另一个会话加的那张卡（selectionCard）。
+     它问的不是「哪条策略好」而是「挑这个动作本身有没有产出」，是第六个
+     问题——总账不写它，就不再是这一页的目录。判定取它自己算的那两样：
+     走查前推里 follow_leader 与两条对照的高下，以及 PBO 分不分得开噪声。 */
+  var ts=sm.tearsheet||{},wf=ts.walk_forward||{},pb=ts.pbo||{};
+  var cl=wf.no_posthoc||wf.all_arms||null;
+  if(cl&&cl.control_mean!=null&&cl.all_arms_mean!=null){
+    var works=(cl.follow_leader_mean>cl.control_mean)&&(cl.follow_leader_mean>cl.all_arms_mean);
+    var pr=pb.pbo_range||[],noise=(pb.any_split_beats_noise===false);
+    out.push({sec:'selection',n:'④',short:'挑这个动作没产出',
+      q:'照过去的成绩挑一条来跟，管用吗？',
+      state:works?'sig':'none',
+      a:works?'<b>管用</b>——既跑赢全量基准也跑赢随机挑一条'
+             :'<b>不管用</b>——还不如随机挑一条',
+      need:(pr.length===2?'过拟合概率 '+Number(pr[0]).toFixed(2)+'–'+Number(pr[1]).toFixed(2)
+             +(noise?'，各种切法都与噪声分不开':''):'')
+           +(cl.n_decisions?(pr.length===2?' · ':'')+'只有 '+fmtInt(cl.n_decisions)+' 次决策':'')});
+  }
+
   var rp=sm.ranking_power;
   if(rp&&rp.pooled){
     var lvb=sm.live_vs_backfill||{};
-    out.push({sec:'ranking',n:'④',short:'分数排得动结果',
+    out.push({sec:'ranking',n:'⑤',short:'分数排得动结果',
       q:'系统给每条想法打的分，排得动真实结果吗？',
       state:'sig',
       a:'<b>排得动</b>——顶格分位高于末位分位 '
@@ -3985,7 +4009,7 @@ function evLedgerRows(){
     var vd=function(v){return ks.filter(function(k){
       return at.arms[k].verdict_over_control===v})};
     var ne=vd('no_edge_detected'),un=vd('underpowered'),nr=vd('not_ruled_out');
-    out.push({sec:'attribution',n:'⑤',short:'挑标的这一段没看出优势',
+    out.push({sec:'attribution',n:'⑥',short:'挑标的这一段没看出优势',
       q:'多出来的那点钱，是出在「挑标的」这一段吗？',
       state:nr.length?'open':(ne.length?'none':'open'),
       a:nr.length?('<b>'+fmtInt(nr.length)+' 个</b>的优势尚未被排除')
@@ -3994,6 +4018,12 @@ function evLedgerRows(){
       need:un.length?(fmtInt(un.length)+' 个在这一层上样本仍不足'):''});
   }
   return out;
+}
+/* 「五个问题」这类数字此前是写死在文案里的，另一个会话往这一页加了第六张卡，
+   那句话就地说谎了。数字一律从行数来。 */
+function cnZh(n){
+  var t=['零','一','二','三','四','五','六','七','八','九','十'];
+  return (n>=0&&n<=10)?t[n]:String(n);
 }
 function tsBenchName(sm){return ((sm.tearsheet||{}).benchmark)||benchName()}
 
@@ -4006,9 +4036,9 @@ function evidenceLede(rows){
   var lvb=sm.live_vs_backfill||{};
   var sigs=rows.filter(function(r){return r.state==='sig'});
   var head=sigs.length
-    ? '没有一条选取策略被证明更好——五问里唯一出信号的是「'
+    ? '没有一条选取策略被证明更好——'+cnZh(rows.length)+'问里唯一出信号的是「'
       +esc(sigs.map(function(r){return r.short}).join('」「'))+'」'
-    : '没有一条选取策略被证明更好——五个问题目前都还分不出';
+    : '没有一条选取策略被证明更好——'+cnZh(rows.length)+'个问题目前都还分不出';
 
   var nr=(typeof nextRunInfo==='function')?nextRunInfo():null;
   var next=nr
@@ -4020,14 +4050,14 @@ function evidenceLede(rows){
     +'<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
       +'这一页检验一个命题：<b style="color:var(--color-text-secondary);font-weight:500">让模型读研报、'
       +'选宏观主题、写出想法，再按某种规矩挑出来，会不会比不挑更好。</b>'
-      +'下面是这个命题的五种问法，各配它自己的判定和还差多少。证据有两套：'
-      +'① 来自向前下单的纸面组合，②–⑤ 来自同一次历史回测（'
+      +'下面是这个命题的'+cnZh(rows.length)+'种问法，各配它自己的判定和还差多少。证据有两套：'
+      +'① 来自向前下单的纸面组合，②–'+(rows.length?rows[rows.length-1].n:'')+' 来自同一次历史回测（'
       +fmtInt((lvb.n_live_periods||0)+(lvb.n_backfill_periods||0))+' 期，其中 <b>'
       +fmtInt(lvb.n_live_periods||0)+' 期</b>是当期实跑）。'
     +'</div>'
     +'<div class="card section" id="evLedger">'
       +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">证据总账</h2>'
-        +'<span class="card-note">五个问题 · 现在各自到哪了</span></div>'
+        +'<span class="card-note">'+cnZh(rows.length)+'个问题 · 现在各自到哪了</span></div>'
       +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 0">'
         +head+'</div>'
       +'<div class="evl">'+rows.map(function(r){
@@ -4090,14 +4120,15 @@ function renderEvidence(){
     +grpH('第一套证据 · 向前下单的纸面组合',
        books.length?(books.length+' 个组合各自真的下了单，第 '+weekIndex(books)+' 周'):'尚未建仓')
     +secWrap('evidence','strategies',raceHero(aggBooks()))
-    +grpH('第二套证据 · 同一次历史回测的四个切面',
-       nP?(nP+' 期回放（'+(lvb.n_live_periods||0)+' 期当期实跑）· 下面四段问的是同一批数据的四个问题'):'一次回放的四个切面')
+    +grpH('第二套证据 · 同一次历史回测的几个切面',
+       nP?(nP+' 期回放（'+(lvb.n_live_periods||0)+' 期当期实跑）· 下面几段问的是同一批数据的不同问题'):'一次回放的几个切面')
     +secWrap('evidence','backtest',backtestCard())
     +secWrap('evidence','tearsheet',tearsheetCard())
     +secWrap('evidence','selection',selectionCard())
-    +secWrap('evidence','ranking',rankingPowerCard()+liveSplitBlock())
+    +secWrap('evidence','ranking',rankingPowerCard())
     +secWrap('evidence','attribution',attributionCard())
-    +grpH('这些结论的边界','哪些前提还没验过 · 这两套数字各自是哪一次跑出来的')
+    +grpH('这些结论的边界','哪几列才算证据 · 哪些前提还没验过 · 这两套数字各自是哪一次跑出来的')
+    +secWrap('evidence','split',liveSplitBlock())
     +secWrap('evidence','limits',limitsCard())
     +secWrap('evidence','receipt',receiptWhich('第一套证据 · 向前下单的纸面组合')+runReceiptStrip()
              +backtestReceiptLine());

@@ -8679,6 +8679,14 @@ function proposalsDrawerBody(d){
     +glossMark('原始提案存在这次运行的生成产物里，需要后端现场读取。')+'</div>';
   var ps=(r&&r.proposals)||[],docs=(r&&r.docs)||{};
   if(!ps.length){
+    /* 「没有这条的提案记录」外加一句「大概是更早一期的持仓」——四份生成产物
+       全都读不到时，这是一个凭空给出的具体解释。服务端现在会说哪几份没读到。 */
+    var ur=(r&&r.unread)||[];
+    if(ur.length){
+      return '<div class="empty-sm" style="color:var(--color-feedback-warning-text)">'
+        +'读不到本期的生成产物，所以列不出 '+esc(code)+' 的提案——这不代表当时没写。<br>'
+        +ur.map(esc).join('<br>')+'</div>';
+    }
     return '<div class="empty-sm">本期生成产物里没有 '+esc(code)+' 的提案记录 '
       +glossMark('候选池里的这一行可能来自更早一期的持仓，而不是本期新写的想法。')+'</div>';
   }

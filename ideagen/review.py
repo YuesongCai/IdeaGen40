@@ -1098,12 +1098,27 @@ def _proposal_index(p, run: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     #: 「本期生成产物里没有这条的提案记录」 plus a guess about carried-over
     #: holdings — a specific explanation, offered where none is known.
     unread: list[str] = []
-    from . import ask as _ask
+    from . import platform as _plat
     for method in ("ai_native", "carl_constraint", "chain", "gap"):
-        art, why = _ask.artifact_or_reason(
-            p, run, f"B_generators/{method}.json")
+        # Not `key`: that name is the cache key for the whole run, three lines
+        # up, and shadowing it here filed the index under the last artifact
+        # path instead — the cache then never hit and every request re-read
+        # four artifacts.
+        art_key = (f"runs/{run['as_of']}/{run['run_id']}/"
+                   f"B_generators/{method}.json")
+        try:
+            art = json.loads(p.blobs.get(art_key))
+        except _plat.BlobMissing:
+            # This run did not use that method — the normal case for a period
+            # whose set of generators differs, and a fact about the run that
+            # will not change. Skipped quietly, and the index still caches.
+            continue
+        except Exception as e:  # noqa: BLE001
+            unread.append(f"{method}：读不到产物存储"
+                          f"（{type(e).__name__}: {e}）")
+            continue
         if not isinstance(art, dict):
-            unread.append(f"{method}：{why or '产物不是一份记录'}")
+            unread.append(f"{method}：产物读到了但不是一份记录")
             continue
         for item in (art.get("produced") or []):
             iid = str(item.get("instrument_id") or "")

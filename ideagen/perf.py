@@ -1481,6 +1481,11 @@ def walk_forward_selection(per_period: dict[str, dict[str, float | None]], *,
             "rank_of_pick": 1 + sorted(live.values(), reverse=True).index(
                 live[pick]),
             "n_arms_live": len(live),
+            # Per-decision edge, so the mean can carry an interval. Five
+            # decisions is five numbers: without one, "following the leader loses to random"
+            # is a point estimate being read as a result.
+            "edge_vs_all_arms": round(
+                live[pick] - _mean(list(live.values())), 6),
         })
 
     w.n_decisions = len(lead_rets)

@@ -538,6 +538,21 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
         posthoc_arms=_posthoc_arms(),
         control=CONTROL)
     rep["trials"] = trials.summary(sorted(curves))
+    # An interval on the selection edge, from the per-decision numbers. Five
+    # decisions cannot separate "the apparatus loses to random" from "this sample
+    # cannot tell" — and the funnel prints a verdict either way, so it needs to
+    # know which one it is.
+    # `walk_forward` holds two label blocks *and* a float (`contamination`) and a
+    # note beside them, so iterate values defensively — the first version did
+    # `.items()` straight into `.get` and killed the whole run after the summary
+    # was built but before it was stored, which reads from outside as "the
+    # backtest is unchanged" rather than as a crash.
+    for _blk in (rep.get("walk_forward") or {}).values():
+        if not isinstance(_blk, dict):
+            continue
+        _edges = [p.get("edge_vs_all_arms") for p in (_blk.get("picks") or [])
+                  if isinstance(p, dict) and p.get("edge_vs_all_arms") is not None]
+        _blk["edge_bootstrap"] = backtest.period_bootstrap_ci(_edges)
     # Capacity: participation of average daily dollar volume at the design's own
     # sizing. `turnover_and_cost` already answers "does the edge survive the
     # fee"; this answers the question a fee-blind reader still has, which is

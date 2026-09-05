@@ -4988,12 +4988,16 @@ function falsificationCard(){
 
   /* 第八刀：挑组合这个动作本身。 */
   var fl=num(walk&&walk.follow_leader_mean),rndPick=num(walk&&walk.all_arms_mean);
+  var wb=walk&&walk.edge_bootstrap;
   rows.push(fl!=null&&rndPick!=null
     ? row('减去「挑组合这个动作本身」',
         '每期只用此前成绩挑领先者，对照随机挑一条（已剔除事后设计的组合，'
-          +fmtInt(walk.n_decisions)+' 次决策）',
-        fmtPct(fl*100)+' vs 随机 '+fmtPct(rndPick*100),
-        vd(fl>=rndPick),'selection')
+          +fmtInt(walk.n_decisions)+' 次决策）'
+          +((wb&&wb.covers_zero)?'；'+fmtInt(walk.n_decisions)
+            +' 次决策的区间盖住 0——它跑输随机，但这段样本也分不开二者':''),
+        fmtPct(fl*100)+' vs 随机 '+fmtPct(rndPick*100)
+          +(wb&&wb.ci?' <span class="dim">['+fmtPct(wb.ci[0]*100)+', '+fmtPct(wb.ci[1]*100)+']</span>':''),
+        (wb&&wb.ci&&wb.covers_zero)?'分不开':vd(fl>=rndPick),'selection')
     : na('减去「挑组合这个动作本身」','前推检验','没有 walk_forward 数据块','selection'));
 
   var nNo=rows.filter(function(r){return r.indexOf('fx-no')>=0}).length;

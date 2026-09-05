@@ -2860,10 +2860,15 @@ function ladderCard(){
       return r.status!=='rolled'&&r.held_from&&r.held_from===lastOut.exit_day;
     });
     var inN=0;sameDay.forEach(function(r){inN+=(r.n_open||0)});
+    /* 同一天进场的可能不止一期：09-04 那次补跑一口气建了四期。把仓位数记在
+       其中一期名下会凭空放大它——要么点名一期，要么说清是几期合计。 */
+    var inTxt='';
+    if(sameDay.length===1)inTxt='，同一天 '+esc(sameDay[0].as_of)+' 期 '+fmtInt(inN)+' 仓进场';
+    else if(sameDay.length>1)inTxt='，同一天另有 '+sameDay.length+' 期共 '+fmtInt(inN)
+      +' 仓一起建仓（'+esc(sameDay[0].as_of)+' … '+esc(sameDay[sameDay.length-1].as_of)+'，补跑）';
     roll='<b>'+esc(lastOut.as_of)+' 期已在 '+esc(lastOut.exit_day||'—')+' 全部滚出</b>'
       +(parts.length?('（'+esc(parts.join(' · '))+'）'):'')
-      +(inN?('，同一天 '+esc(sameDay[sameDay.length-1].as_of)+' 期 '+fmtInt(inN)+' 仓进场'):'')
-      +'——这就是「第五周换第一周」。';
+      +inTxt+'——这就是「第五周换第一周」。';
   }
   var lead=live.length
     ? (roll

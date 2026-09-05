@@ -460,7 +460,10 @@ def _apply_fill(con, order: dict, idea: dict, d: str, px: float, rule: str) -> s
         "code": order["code"], "kind": idea["instrument"], "theme": idea["theme"],
         "horizon": idea["horizon"], "grade": idea["grade"],
         "qty": qty, "avg_px": fill_px, "cost": gross + fee,
-        "opened_d": d, "horizon_end": hz_end,
+        # `d` is the session that filled; `as_of` is the week this idea is
+        # from. They differ whenever a period is booked late, and every
+        # by-period read wants the second one.
+        "opened_d": d, "as_of": idea["as_of"], "horizon_end": hz_end,
         "stop_px": idea["stop_px"], "take_px": idea["take_lo"],
         "status": "open", "fees": fee,
         "peak_px": fill_px, "trough_px": fill_px,

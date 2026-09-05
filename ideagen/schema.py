@@ -717,6 +717,12 @@ ADD_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # sent. Rows never deep-fetched stay NULL.
     ("documents", "body_sha256", "TEXT"),
     ("documents", "raw_uri", "TEXT"),
+    # The vintage a position belongs to. `opened_d` records the session it
+    # filled in, which is the same thing only when the run happened on time;
+    # a catch-up run stamps every period it books with that one afternoon.
+    # Existing rows stay NULL until `scripts/backfill_position_periods.py`
+    # derives them from the order that opened them.
+    ("positions", "as_of", "TEXT"),
 )
 
 

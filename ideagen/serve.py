@@ -379,6 +379,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(obj, status=status)
         if path == "/api/state":
             return self._json(_state_document())
+        if path == "/api/period":
+            # One period's pipeline, on demand. The state document carries the
+            # spine (every period, cheap) and the newest period's pipeline; the
+            # other five are fetched only when someone walks back to them, so a
+            # tab polling /api/state every minute does not pay for six candidate
+            # pools it is not showing.
+            from urllib.parse import parse_qs, urlparse
+            from . import platform as _plat, review
+            q = parse_qs(urlparse(self.path).query)
+            as_of = (q.get("as_of") or [None])[0]
+            if not as_of:
+                return self._json({"error": "as_of required"}, status=400)
+            try:
+                blk = review.weekly_block(_plat.load(), db.init(), as_of)
+            except Exception as e:  # noqa: BLE001
+                return self._json(
+                    {"error": f"{type(e).__name__}: {e}", "as_of": as_of},
+                    status=500)
+            if not blk:
+                # A period with no weekly run is a real answer, not an error:
+                # orders can exist against a week whose run never finished.
+                return self._json({"as_of": as_of, "weekly": None,
+                                   "reason": "no weekly run for this period"})
+            return self._json({"as_of": as_of, "weekly": blk})
         if path == "/api/olive/status":
             from . import olive_web
             return self._json(olive_web.status())
@@ -935,6 +959,7 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     print(f"  /login         登录页（公网访问走账号，不再是钥匙）")
     print(f"  /account       账号管理：改口令、增删用户、踢设备")
     print(f"  /legacy        本地 SQLite 旧版报表")
+    print(f"  /api/period    单期流水线 JSON（?as_of=YYYY-MM-DD）")
     print(f"  /api/status    紧凑摘要 JSON")
     print(f"  /api/report    完整归因 JSON")
     print(f"  Ctrl-C 停止\n")

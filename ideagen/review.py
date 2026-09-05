@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from . import cloud_paper, config, db, platform as plat, shelf_store
+from . import cloud_paper, config, db, periods, platform as plat, shelf_store
 
 E = html.escape
 
@@ -369,81 +369,38 @@ def _gen_meta(meta: dict, hide_licensed: bool) -> dict:
     return meta
 
 
-def state(con=None, p=None) -> dict[str, Any]:
-    """The full system state as one JSON document.
+def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
+    """One weekly run, all three stages, for `as_of` or the newest period.
 
-    This is the dashboard's only data source, and it lives here — server side,
-    next to the queries — rather than scattered through frontend fetch calls,
-    because a page that assembles its own truth from six endpoints is a page
-    whose numbers can disagree with each other. One document, one timestamp,
-    internally consistent.
+    Lifted out of `state()` so the pipeline can be read for *any* period rather
+    than only the newest one. `state()` still embeds the newest as `weekly`;
+    `/api/period` serves the rest on demand, the same way `/api/corpus` already
+    served one period's documents. Keeping the heavy per-period payload out of
+    the cached state document is deliberate — the document is polled every
+    minute by every open tab, and six periods of candidate pools in it would be
+    paid for on every poll by readers looking at one.
     """
-    con = con or db.init()
-    p = p or plat.load()
-    now = _hkt_now()
-    out: dict[str, Any] = {"generated_at": now.isoformat(),
-                           "platform": p.name}
-
-    # -- liveness ---------------------------------------------------------
-    hb = None
-    try:
-        raw = p.cache.get("scheduler:heartbeat")
-        hb = json.loads(raw) if raw else None
-    except Exception:  # noqa: BLE001
-        pass
-    if not hb:
-        try:
-            rows = p.state.q(
-                "SELECT started_at, platform FROM orch_runs WHERE kind='monitor' "
-                "ORDER BY started_at DESC LIMIT 1")
-            if rows:
-                at = datetime.fromisoformat(str(rows[0]["started_at"]))
-                if at.tzinfo is None:
-                    at = at.replace(tzinfo=timezone.utc)
-                hb = {
-                    "at_utc": at.astimezone(timezone.utc).isoformat(),
-                    "at_hkt": at.astimezone(config.TZ).isoformat(),
-                    "platform": rows[0].get("platform") or p.name,
-                    "venue": "paper",
-                    "source": "rds-monitor",
-                }
-        except Exception:  # noqa: BLE001
-            pass
-    age = None
-    if hb:
-        age = (datetime.now(timezone.utc)
-               - datetime.fromisoformat(hb["at_utc"])).total_seconds()
-    import re as _re
-    def _scrub(text: str) -> str:
-        # Bucket names and paths can embed the cloud account id; the dashboard
-        # may be screenshotted or shared, so identifiers never leave the server.
-        text = _re.sub(r"tos://[\w.-]+", "tos://<bucket>", text or "")
-        return _re.sub(r"/Users/[\w.-]+", "~", text)
-    out["alive"] = {"heartbeat": hb, "age_s": age,
-                    "ok": age is not None and age < 1800,
-                    **_port_health(p, _scrub)}
-
-    # -- run history ------------------------------------------------------
-    out["runs"] = [dict(r) for r in p.state.q(
-        "SELECT run_id, as_of, kind, platform, ok, started_at, ended_at, "
-        "error, calls FROM orch_runs ORDER BY started_at DESC LIMIT 30")]
-    # Same rule as the run-history card: a filled gap stops being a gap.
-    out["gaps"] = [r["as_of"] for r in p.state.q(
-        "SELECT as_of FROM orch_runs g WHERE run_id LIKE 'gap-%' "
-        "AND NOT EXISTS (SELECT 1 FROM orch_runs w WHERE w.kind='weekly' "
-        "  AND w.ok=1 AND w.as_of=g.as_of) ORDER BY as_of")]
-
     # -- latest weekly, all three stages ---------------------------------
     # Newest *period*, not newest execution. Ordering by started_at alone was
     # fine while runs only ever happened in period order; the moment a missing
     # historical week is filled in, the front page silently reverts to July
     # while the books show today. as_of decides which week this is; started_at
     # only breaks ties between attempts at the same week.
-    wk = p.state.q("SELECT run_id, as_of, ok, ended_at, calls, "
-                   "data_classification FROM orch_runs "
-                   "WHERE kind='weekly' ORDER BY as_of DESC, started_at DESC "
-                   "LIMIT 1")
+    if as_of:
+        # A named period. Ordered `ok DESC` so a week that failed twice and then
+        # succeeded reports the success: the failures are its attempt history,
+        # visible in the spine, not its verdict.
+        wk = p.state.q("SELECT run_id, as_of, ok, ended_at, calls, "
+                       "data_classification FROM orch_runs "
+                       "WHERE kind='weekly' AND as_of=? "
+                       "ORDER BY ok DESC, started_at DESC LIMIT 1", (as_of,))
+    else:
+        wk = p.state.q("SELECT run_id, as_of, ok, ended_at, calls, "
+                       "data_classification FROM orch_runs "
+                       "WHERE kind='weekly' ORDER BY as_of DESC, started_at DESC "
+                       "LIMIT 1")
     weekly: dict[str, Any] = {}
+    hide_licensed = False
     if wk:
         r = wk[0]
         rid = r["run_id"]
@@ -579,7 +536,84 @@ def state(con=None, p=None) -> dict[str, Any]:
             sum(int(row["n_rows"] or 0) for row in rows)
             if rows else weekly.get("current_corpus_total")
         )
-    out["weekly"] = weekly
+    return weekly
+
+
+def state(con=None, p=None) -> dict[str, Any]:
+    """The full system state as one JSON document.
+
+    This is the dashboard's only data source, and it lives here — server side,
+    next to the queries — rather than scattered through frontend fetch calls,
+    because a page that assembles its own truth from six endpoints is a page
+    whose numbers can disagree with each other. One document, one timestamp,
+    internally consistent.
+    """
+    con = con or db.init()
+    p = p or plat.load()
+    now = _hkt_now()
+    out: dict[str, Any] = {"generated_at": now.isoformat(),
+                           "platform": p.name}
+
+    # -- liveness ---------------------------------------------------------
+    hb = None
+    try:
+        raw = p.cache.get("scheduler:heartbeat")
+        hb = json.loads(raw) if raw else None
+    except Exception:  # noqa: BLE001
+        pass
+    if not hb:
+        try:
+            rows = p.state.q(
+                "SELECT started_at, platform FROM orch_runs WHERE kind='monitor' "
+                "ORDER BY started_at DESC LIMIT 1")
+            if rows:
+                at = datetime.fromisoformat(str(rows[0]["started_at"]))
+                if at.tzinfo is None:
+                    at = at.replace(tzinfo=timezone.utc)
+                hb = {
+                    "at_utc": at.astimezone(timezone.utc).isoformat(),
+                    "at_hkt": at.astimezone(config.TZ).isoformat(),
+                    "platform": rows[0].get("platform") or p.name,
+                    "venue": "paper",
+                    "source": "rds-monitor",
+                }
+        except Exception:  # noqa: BLE001
+            pass
+    age = None
+    if hb:
+        age = (datetime.now(timezone.utc)
+               - datetime.fromisoformat(hb["at_utc"])).total_seconds()
+    import re as _re
+    def _scrub(text: str) -> str:
+        # Bucket names and paths can embed the cloud account id; the dashboard
+        # may be screenshotted or shared, so identifiers never leave the server.
+        text = _re.sub(r"tos://[\w.-]+", "tos://<bucket>", text or "")
+        return _re.sub(r"/Users/[\w.-]+", "~", text)
+    out["alive"] = {"heartbeat": hb, "age_s": age,
+                    "ok": age is not None and age < 1800,
+                    **_port_health(p, _scrub)}
+
+    # -- run history ------------------------------------------------------
+    out["runs"] = [dict(r) for r in p.state.q(
+        "SELECT run_id, as_of, kind, platform, ok, started_at, ended_at, "
+        "error, calls FROM orch_runs ORDER BY started_at DESC LIMIT 30")]
+    # Same rule as the run-history card: a filled gap stops being a gap.
+    out["gaps"] = [r["as_of"] for r in p.state.q(
+        "SELECT as_of FROM orch_runs g WHERE run_id LIKE 'gap-%' "
+        "AND NOT EXISTS (SELECT 1 FROM orch_runs w WHERE w.kind='weekly' "
+        "  AND w.ok=1 AND w.as_of=g.as_of) ORDER BY as_of")]
+
+    out["weekly"] = weekly_block(p, con)
+
+    # -- the period spine: every week, oldest first -----------------------
+    # The ladder. Without this the page can only ever describe the newest run,
+    # and the four-week roll (每周 25%，第五周换第一周) has nowhere to be drawn —
+    # which is why it lived in a tooltip. See `ideagen/periods.py`.
+    try:
+        out["periods"] = periods.spine(con, p)
+    except Exception as e:  # noqa: BLE001 — the axis must not take the page down
+        out["periods"] = []
+        out["periods_error"] = f"{type(e).__name__}: {e}"
 
     # -- books: equity curves + open positions ---------------------------
     books = []
@@ -593,7 +627,11 @@ def state(con=None, p=None) -> dict[str, Any]:
         # order shows an honest NULL rather than a stale guess.
         pos = [dict(x) for x in db.q(
             con, "SELECT p.code, p.qty, p.avg_px AS entry_px, m.px AS last_px, "
-                 "p.stop_px, p.take_px, p.opened_d, m.upnl AS unrealized, "
+                 # `as_of` is the vintage, `opened_d` the session it filled in.
+                 # The page groups the ladder on the first and dates the fill
+                 # with the second; before this column shipped it had only the
+                 # second and had to apologise in prose for the difference.
+                 "p.stop_px, p.take_px, p.opened_d, p.as_of, m.upnl AS unrealized, "
                  "i.thesis, i.theme_id, i.tool_desc AS instrument_name "
                  "FROM positions p "
                  "LEFT JOIN ideas i USING(idea_uid) "

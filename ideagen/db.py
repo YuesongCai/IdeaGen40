@@ -253,6 +253,12 @@ CREATE TABLE IF NOT EXISTS positions (
     avg_px      REAL NOT NULL,
     cost        REAL NOT NULL,
     opened_d    TEXT NOT NULL,
+    -- The weekly period this position belongs to (the vintage), which is not
+    -- the day it filled. A backfill books six periods on one afternoon, so
+    -- `opened_d` on those rows is the afternoon, not the week; grouping the
+    -- ladder by it collapses five vintages into one. `as_of` is the idea's
+    -- period and is what every by-period read groups on.
+    as_of       TEXT,
     horizon_end TEXT,
     stop_px     REAL, take_px REAL,
     status      TEXT NOT NULL,           -- open | closed
@@ -293,6 +299,13 @@ CREATE TABLE IF NOT EXISTS mtm (
     px      REAL, mv REAL, upnl REAL, upnl_pct REAL,
     PRIMARY KEY (book_id, pos_id, d)
 );
+-- The dashboard asks for a position's latest mark, and asks it per position:
+-- `LEFT JOIN mtm ON pos_id = ... AND d = (SELECT MAX(d) ...)`. The primary key
+-- leads with book_id, so that join cannot use it and falls back to scanning
+-- every mark. At ~14k marks and ten books that was two seconds of the state
+-- build, growing with every daily mark — the cost of a missing index looks
+-- exactly like the cost of a growing system, which is why it went unnoticed.
+CREATE INDEX IF NOT EXISTS ix_mtm_pos ON mtm(pos_id, d);
 
 CREATE TABLE IF NOT EXISTS alerts (
     alert_id TEXT PRIMARY KEY,
@@ -337,6 +350,7 @@ def init(path: Path | str | None = None) -> sqlite3.Connection:
     con = connect(path)
     con.executescript(SCHEMA)
     _ensure_columns(con)
+    _ensure_indexes(con)
     _ensure_books(con)
     return con
 
@@ -369,6 +383,26 @@ def _ensure_columns(con: sqlite3.Connection) -> None:
         # in the platform state store and are `schema.evolve`'s to look after.
         if have and column not in have:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+#: Indexes over columns that `_ensure_columns` adds. They cannot live in SCHEMA:
+#: `CREATE TABLE IF NOT EXISTS` is a no-op against an existing table, so on any
+#: database with history the indexed column does not exist yet when SCHEMA runs
+#: and the whole script aborts — taking every later statement with it.
+ADD_INDEXES: tuple[tuple[str, str], ...] = (
+    ("ix_pos_asof", "CREATE INDEX IF NOT EXISTS ix_pos_asof "
+                    "ON positions(as_of, book_id)"),
+)
+
+
+def _ensure_indexes(con: sqlite3.Connection) -> None:
+    for _name, ddl in ADD_INDEXES:
+        try:
+            con.execute(ddl)
+        except sqlite3.OperationalError:
+            # The column this indexes belongs to a table this module does not
+            # own on this platform; the state store looks after its own shape.
+            continue
 
 
 def _ensure_books(con: sqlite3.Connection) -> None:

@@ -225,6 +225,7 @@
   "avg_px",
   "cost",
   "opened_d",
+  "as_of",
   "horizon_end",
   "stop_px",
   "take_px",

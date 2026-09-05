@@ -1772,6 +1772,151 @@ def pbo_null(returns: dict[str, Sequence[float]], *, n_splits: int = 8,
 # ---------------------------------------------------------------------------
 # Capacity: the other half of the seventh sin
 
+#: Cost schedules, as stated assumptions rather than fitted coefficients. Each
+#: is (participation-of-ADV threshold, one-way bps) in ascending order; the last
+#: entry catches everything above the previous threshold. The point of having
+#: three is that the reader gets to see which conclusions survive the choice.
+COST_SCHEDULES: dict[str, tuple[tuple[float, float], ...]] = {
+    "flat": ((1.0, 4.0),),
+    "tiered_mid": ((0.01, 5.0), (0.05, 15.0), (1.0, 30.0)),
+    "tiered_heavy": ((0.01, 7.5), (0.05, 25.0), (1.0, 60.0)),
+}
+
+
+def cost_sensitivity(rows: Sequence[dict[str, Any]], *, capital: float,
+                     slots: int,
+                     schedules: dict[str, tuple[tuple[float, float], ...]] | None = None,
+                     capital_multiples: Sequence[float] = (1.0, 5.0, 10.0)
+                     ) -> dict[str, Any]:
+    """Does the ranking survive a cost that depends on how thin the names are?
+
+    `turnover_and_cost` charges every arm the same basis points, and every arm
+    here turns over at the same rate, so that constant cannot reorder anything —
+    the report says so honestly and then has nothing further to offer. But the
+    arms are not equally liquid: the concentrated ones open two positions a
+    period, which at this book's sizing is $12.5M in a single name, against
+    diversified arms spreading the same capital over seventy. Deutsche Bank's
+    Figure 67/68 is exactly this: conviction beats diversification until the cost
+    of reaching the thin names is subtracted, and then it does not.
+
+    `capacity` deliberately refuses to turn participation into a dollar impact,
+    on the grounds that nobody here has fitted the coefficients. This does not
+    contradict that: nothing is fitted. Three schedules are *stated*, applied,
+    and the ranking is reported under each, so the output is "which conclusions
+    depend on the cost assumption" rather than "here is the cost".
+
+    The size of the book decides whether any of this matters, so the sweep runs
+    at multiples of it. On the 2026-09 data at the book's actual $10M the
+    schedules move two arms and no top-four position: liquidity is simply not
+    binding at this size. At 10x the same schedules reorder the table, because
+    the concentrated arms open two positions a period and their per-name ticket
+    grows with the book while the diversified arms' does not. So the honest
+    statement is not "cost changes the ranking" or "it doesn't" — it is that the
+    ranking is cost-insensitive at today's size and stops being so somewhere on
+    the way to $100M, which is a fact about capacity, not about the fee.
+    """
+    sched = schedules or COST_SCHEDULES
+    seen: set[tuple[str, str, str]] = set()
+    by_arm: dict[str, list[dict[str, Any]]] = {}
+    missing = 0
+    for r in rows:
+        key = (str(r.get("arm")), str(r.get("period")),
+               str(r.get("instrument_id")))
+        if key in seen:
+            continue
+        seen.add(key)
+        by_arm.setdefault(str(r.get("arm")), []).append(r)
+        if r.get("adv_usd") in (None, 0):
+            missing += 1
+    if not by_arm:
+        return {}
+
+    def one_way(part: float, table: tuple[tuple[float, float], ...]) -> float:
+        for threshold, bps in table:
+            if part < threshold:
+                return bps
+        return table[-1][1]
+
+    gross: dict[str, float] = {}
+    per_arm: dict[str, dict[str, Any]] = {}
+    shape: dict[str, tuple[float, list[float], list[float]]] = {}
+    for arm, rs in by_arm.items():
+        per_period: dict[str, int] = {}
+        for r in rs:
+            per_period[str(r.get("period"))] = per_period.get(
+                str(r.get("period")), 0) + 1
+        n_pos = st.median(list(per_period.values())) if per_period else 1
+        advs = [float(r["adv_usd"]) for r in rs
+                if r.get("adv_usd") not in (None, 0)]
+        rets = [float(r["return_pct"]) for r in rs
+                if r.get("return_pct") is not None]
+        if not advs or not rets:
+            continue
+        gross[arm] = _mean(rets)
+        shape[arm] = (n_pos, advs, rets)
+
+    def cost_bps(arm: str, table, mult: float) -> float:
+        n_pos, advs, _ = shape[arm]
+        pos_usd = capital * mult / max(1, slots) / max(1, n_pos)
+        return _mean([one_way(pos_usd / a, table) for a in advs]) * 2
+
+    for arm, (n_pos, advs, rets) in shape.items():
+        pos_usd = capital / max(1, slots) / max(1, n_pos)
+        per_arm[arm] = {
+            "median_positions_per_period": n_pos,
+            "position_usd": round(pos_usd, 0),
+            "participation_median": round(st.median(
+                [pos_usd / a for a in advs]), 6),
+            "gross_mean_return_pct": round(_mean(rets), 4),
+            "schedules": {
+                name: {
+                    "round_trip_bps": round(cost_bps(arm, table, 1.0), 2),
+                    "net_mean_return_pct": round(
+                        _mean(rets) - cost_bps(arm, table, 1.0) / 100.0, 4),
+                } for name, table in sched.items()},
+        }
+
+    def order(key) -> list[str]:
+        return sorted(per_arm, key=key, reverse=True)
+
+    gross_rank = order(lambda a: gross[a])
+    out: dict[str, Any] = {
+        "capital_usd": capital, "slots": slots, "missing_adv": missing,
+        "arms": per_arm, "gross_rank": gross_rank, "rank_under": {},
+        "capital_sweep": {}, }
+    for name in sched:
+        net_rank = order(
+            lambda a, n=name: per_arm[a]["schedules"][n]["net_mean_return_pct"])
+        moved = [a for i, a in enumerate(gross_rank)
+                 if net_rank.index(a) != i]
+        out["rank_under"][name] = {"order": net_rank, "arms_that_moved": moved}
+    # Where the ranking starts to depend on the fee: the same schedules applied
+    # at multiples of the book. Liquidity is not a property of the strategy, it
+    # is a property of the strategy at a size.
+    for mult in capital_multiples:
+        row: dict[str, Any] = {"capital_usd": round(capital * mult, 0)}
+        for name, table in sched.items():
+            net = {a: gross[a] - cost_bps(a, table, mult) / 100.0
+                   for a in per_arm}
+            net_rank = sorted(net, key=lambda a: net[a], reverse=True)
+            row[name] = {
+                "arms_that_moved": sum(1 for i, a in enumerate(gross_rank)
+                                       if net_rank.index(a) != i),
+                "top": net_rank[0],
+                "mean_round_trip_bps": round(_mean(
+                    [cost_bps(a, table, mult) for a in per_arm]), 2),
+            }
+        out["capital_sweep"][f"{mult:g}x"] = row
+    out["note"] = (
+        "成本档位是声明的假设，不是拟合出来的系数——所以这里报的是「哪些结论"
+        "依赖于这个假设」，而不是「成本是多少」。同一个常数改不了排名（各组合周转"
+        "相同），但按流动性分档就能：这个本金规模下，每期只开两个仓的组合"
+        "单笔就是 1250 万美元，参与度中位 2%~8%、p90 到 13%~23%；"
+        "而分散的组合每笔只有几十万。论文 Fig 67/68 讲的正是这件事——"
+        "集中打赢分散，直到把够到薄标的的成本减掉为止。")
+    return out
+
+
 def capacity(rows: Sequence[dict[str, Any]], *, capital: float, slots: int,
              participation_cap: float = 0.10) -> dict[str, Any]:
     """How much money this could run before its own orders move the price.

@@ -563,11 +563,18 @@ def _tearsheet(con, points: list[dict], positions: list[dict],
         cap_rows.append({
             "arm": r.get("arm"), "period": r.get("period"),
             "instrument_id": r.get("instrument_id"),
+            "return_pct": r.get("return_pct"),
             "adv_usd": (_adv(c, str(r["entry_d"]))
                         if c and r.get("entry_d") else None)})
+    slots = max(1, round(horizon_days / max(1.0, 7.0)))
     rep["capacity"] = perf.capacity(
-        cap_rows, capital=config.CAPITAL_USD,
-        slots=max(1, round(horizon_days / max(1.0, 7.0))))
+        cap_rows, capital=config.CAPITAL_USD, slots=slots)
+    # The half `capacity` refuses to guess and `turnover_and_cost` cannot see:
+    # one constant cannot reorder arms that all turn over alike, but a cost that
+    # scales with how thin their names are can — and does. See
+    # `perf.cost_sensitivity`; the schedules are stated, not fitted.
+    rep["cost_sensitivity"] = perf.cost_sensitivity(
+        cap_rows, capital=config.CAPITAL_USD, slots=slots)
 
     rep["note"] = (
         "这张表描述的是净值曲线本身，和上面的配对检验回答的是两个问题："

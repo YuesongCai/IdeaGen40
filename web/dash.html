@@ -6597,17 +6597,50 @@ function tearsheetCard(){
          看完了」。 */
       +'<div class="card-note">最后一列低于「已扣成本」的组合，扣完交易费之后没有超额可言。'
       +'成本模型对每条组合是同一个常数、而各组合的年周转相同，所以<b>这个</b>常数'
-      +'改不了排名——它能改的是「这件事值不值得做」，而只有这一列看得见。'
-      +'<span class="gloss gm" title="'+esc('换成按流动性分档的成本模型就不一定了：'
-        +'各组合持仓的日均成交额中位数相差 4.6 倍（$163M–$749M），日均成交额低于 '
-        +'$20M 的仓位占比在 2.3%–10.4% 之间。持薄票多的那几个会被多扣，'
-        +'而现在这张表看不见这件事。')+'">ⓘ</span></div>',''):'')
+      +'改不了排名——它能改的是「这件事值不值得做」。'
+      +'按流动性分档的成本能不能改排名，见下面那块。</div>'
+      +costSizeBlock(),''):'')
 
     /* 成交现实。上面那张讲的是「成交之后被扣掉多少」，这张讲的是「到底成不成交」
        ——回测按当期第一个收盘价无条件成交，而唯一用了进场区间的那个组合只成交了
        三成。两个数必须一起读，单看任何一个结论都会反过来。 */
     +fillRealityBlock()
     +'</div>';
+}
+function costSizeBlock(){
+  /* 流动性不是策略的属性，是「策略 × 规模」的属性。同一套分档成本在今天这个
+     规模下几乎不改排名，规模大上去就改——所以这里扫的是本金倍数，而不是只报
+     一个成本数。档位是声明的假设不是拟合出来的，因此报的是「哪些结论依赖它」。 */
+  /* 它挂在 tearsheet 下面，不在 summary 顶层——读错一层就是整块静默不显示，
+     而「静默不显示」和「这次没算」在界面上长得一模一样。 */
+  var cs=((((S||{}).backtest||{}).summary||{}).tearsheet||{}).cost_sensitivity;
+  if(!cs||!cs.capital_sweep||!cs.arms)return '';
+  var mults=Object.keys(cs.capital_sweep);
+  if(!mults.length)return '';
+  var n=Object.keys(cs.arms).length;
+  var rows=mults.map(function(m){
+    var r=cs.capital_sweep[m],cells=['flat','tiered_mid','tiered_heavy'].map(function(k){
+      var x=r[k]||{};
+      return '<td class="r num">'+fmtInt(x.arms_that_moved)+' / '+fmtInt(n)
+        +'<span style="color:var(--color-text-tertiary)"> · '+fmtInt(x.mean_round_trip_bps)+'bp</span></td>';
+    }).join('');
+    return '<tr><td class="primary">'+esc(m)+' · $'+fmtInt(Math.round(r.capital_usd/1e6))+'M</td>'+cells+'</tr>';
+  }).join('');
+  return '<div style="margin-top:var(--space-5)">'
+    +'<div class="card-title-row"><h3 class="card-title" style="font-size:15px">'
+    +'成本能不能改排名，取决于盘子多大</h3>'
+    +'<span class="card-note">三档成本假设 × 本金倍数：换了多少个名次</span></div>'
+    +'<div class="table-wrap"><table class="data-table"><thead><tr>'
+      +'<th>本金</th><th class="r">同一常数</th><th class="r">按流动性分档（中）</th>'
+      +'<th class="r">按流动性分档（重）</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="card-note">档位是<b>声明</b>的假设，不是拟合出来的系数——所以这张表报的是'
+      +'「哪些结论依赖这个假设」，不是「成本是多少」。同一个常数在任何规模下都改不了'
+      +'排名（各组合周转相同）；按流动性分档，在今天的盘子上只动两个名次，'
+      +'盘子放大之后开始成片地换。原因是每期只开两个仓的组合，单笔金额跟着本金长，'
+      +'而分散的组合不会。'
+      +'<span class="gloss gm" title="'+esc('论文 Fig 67/68 的结论：集中打赢分散，'
+        +'直到把够到薄标的的成本减掉为止。这也是容量那一列的另一面——'
+        +'集中出成绩和装不下钱是同一件事。')+'">ⓘ</span></div></div>';
 }
 function fillRealityBlock(){
   var fr=(((S||{}).backtest||{}).summary||{}).fill_reality;

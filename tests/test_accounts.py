@@ -219,15 +219,30 @@ class TheRosterIsNotPublished(unittest.TestCase):
     anyone bothers to attack the hashes.
 
     Checked by reading .gitignore rather than shelling out to git, because this
-    suite also runs inside the image, where there is no repository at all.
+    suite also runs inside the image, where there is no repository at all —
+    and the image is also why the file has to be looked for rather than opened.
+    The Dockerfile copies `ideagen scripts tests prompts seed web` and nothing
+    from the root, so `.gitignore` is not there either, and reading it blind
+    raised FileNotFoundError. The cloud updater runs this suite before it will
+    swap containers, so on 2026-09-05 that error stopped deployment at 2297d64
+    while the same commit passed every local gate: they test a worktree, which
+    has the file. Dropping the dependency on the `git` binary was the right
+    instinct applied one step short of the dependency that mattered.
+
+    Skipping is right rather than shipping .gitignore into the image: the claim
+    is about what this repository would publish, and inside a container there
+    is no repository for it to be true or false about.
     """
 
     def test_the_account_store_and_the_password_notebook_are_ignored(self):
         from ideagen import config
+        ignore = Path(config.ROOT) / ".gitignore"
+        if not ignore.is_file():
+            self.skipTest("没有 .gitignore —— 这里不是仓库（镜像里就是如此），"
+                          "这条断言无从谈起")
         patterns = {
             line.strip()
-            for line in (Path(config.ROOT) / ".gitignore").read_text(
-                encoding="utf-8").splitlines()
+            for line in ignore.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")}
         for needed in ("data/accounts.json", "data/seed_passwords.json"):
             self.assertIn(needed, patterns,

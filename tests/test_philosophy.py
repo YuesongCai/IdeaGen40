@@ -662,11 +662,22 @@ class ActivationReachesTheWeeklyRun(unittest.TestCase):
 
     def test_an_empty_ledger_registers_nothing(self):
         """The reviewer's actual observation, stated as the expected result:
-        four arms and no more is what an empty ledger should look like."""
+        the statically registered methods and no more is what an empty ledger
+        should look like.
+
+        The list is spelled out rather than derived on purpose, and it did its
+        job: adding `lookthrough` in 2026-09 failed here first. Registering a
+        new generation method is a research decision, so it should cost a
+        deliberate edit to this line rather than passing silently.
+
+        `lookthrough` is absent from `gen_pm.BASES`, so no card derives from it
+        — a two-stage method that raises on themes it cannot express is not yet
+        a stable base to graft a PM rule onto."""
         from ideagen.strategies import gen_pm
         gen_pm._install()
         self.assertEqual(sorted(self._weekly_would_run()),
-                         ["ai_native", "carl_constraint", "chain", "gap"])
+                         ["ai_native", "carl_constraint", "chain", "gap",
+                          "lookthrough"])
 
 
 class RewritesMustBeSeenByTheirAuthor(unittest.TestCase):

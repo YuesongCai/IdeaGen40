@@ -61,6 +61,19 @@ CITATION_RULE = ("每条想法必须带 citations 字段：从上面材料里挑
                  "没有任何材料支撑的想法不要写。")
 
 
+def lookthrough_menu() -> bool:
+    """Whether the buyable menu carries each fund's real holdings.
+
+    Read here rather than at import so a run can be replayed under either menu,
+    and recorded on every verdict rather than trusted to a note somewhere: the
+    switch changes what the model was shown, so a period generated under one
+    menu is not comparable to a period generated under the other, and the only
+    place that fact survives a year is the run's own metadata.
+    """
+    return os.environ.get(
+        "IDEAGEN_UNIVERSE_LOOKTHROUGH", "").strip().lower() in ("1", "true")
+
+
 def universe_block(ctx: RunContext, limit: int = 120) -> str:
     """The buyable list, as compactly as it can be stated without losing meaning.
 
@@ -84,7 +97,7 @@ def universe_block(ctx: RunContext, limit: int = 120) -> str:
     stay comparable to each other — but not to their own history.
     """
     look: dict = {}
-    if os.environ.get("IDEAGEN_UNIVERSE_LOOKTHROUGH", "").strip() in ("1", "true"):
+    if lookthrough_menu():
         try:
             from .. import db, lookthrough as lt
             look = lt.load(db.connect(), getattr(ctx, "as_of", None))
@@ -404,7 +417,15 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
     # does not depend on which call happened to return first.
     def _one_topic(t: dict[str, Any]) -> dict[str, Any]:
         out: dict[str, Any] = {"calls": 0}
-        prompt, out["n_docs"] = build_prompt(ctx, t)
+        # A two-stage method returns a third element: the calls it already spent
+        # before this prompt existed. `lookthrough` asks the model for the
+        # theme's companies first, then maps them to vehicles through real
+        # holdings, so it costs two calls per topic. Counting one would make the
+        # most expensive arm look like the cheapest in exactly the column where
+        # cost is compared across arms.
+        built = build_prompt(ctx, t)
+        prompt, out["n_docs"] = built[0], built[1]
+        out["calls"] += int(built[2]) if len(built) > 2 else 0
         raw, n = ask_json(ctx, prompt)
         out["calls"] += n
         if isinstance(raw, dict):
@@ -496,6 +517,12 @@ def generate_per_topic(ctx: RunContext, method: str, build_prompt,
               "topup_per_topic": topups,
               "horizon_days": HORIZON_DAYS, "topic_errors": errors,
               "truncated": over, "universe_size": len(ctx.universe),
+              # Which menu this period's ideas were generated against. The
+              # enrichment changes model input for every arm identically, so the
+              # arms stay comparable to each other across the switch and not to
+              # their own history — which is only checkable if each run says
+              # which side of it it sits on.
+              "universe_lookthrough": lookthrough_menu(),
               # Topics whose own vocabulary matched no document: those prompts fell
               # back to the undifferentiated corpus, so their ideas are not really
               # "this topic's" ideas.

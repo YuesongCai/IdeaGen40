@@ -7070,7 +7070,7 @@ function periodInputsCard(){
   var univBody=universeCard();   /* 顺带回填 UNIV_GAPS / UNIV_ROWS */
   if(!corpusBody&&!univBody)return '';
   var cN=corpusCount();
-  var lead=[cN?cN+'研报':'',UNIV_ROWS?'货架 '+UNIV_ROWS:'',
+  var lead=[cN?cN+corpusGloss():'',UNIV_ROWS?'货架 '+UNIV_ROWS:'',
             UNIV_GAPS?UNIV_GAPS+' 项已知缺口':''].filter(Boolean).join(' · ');
   return '<div class="card section">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">本期输入</h2>'
@@ -7146,10 +7146,22 @@ function corpusCount(){
   });
   var ni=Object.keys(insts).length;
   if(!n)return '';
-  if(!cited)return fmtInt(n)+' 篇';
-  return fmtInt(n)+' 篇 · 被引为证据 '+fmtInt(cited)+' 篇'
-    +(ni?'，来自 '+ni+' 家机构':'')
-    +'<span class="gloss gm" title="'+esc('读入 '+n+' 篇是本期研报的全部；'
+  if(!cited)return fmtInt(n)+' 篇研报';
+  return fmtInt(n)+' 篇研报 · 被引为证据 '+fmtInt(cited)+' 篇'
+    +(ni?'，来自 '+ni+' 家机构':'');
+}
+/* 上面那句只返回纯文本：它有一个调用点是 foldBlock 盖子右侧的量词，那里会被
+   esc()，塞 HTML 进去会把 <span> 原样印在页面上（2026-09-05 我就这么干过一次）。
+   要 ⓘ 的地方单独调这个。 */
+function corpusGloss(){
+  var w=S.weekly||{};
+  var n=w.corpus_total||corpusRowsFor(w.as_of);
+  var cited=0;
+  Object.keys(w.evidence||{}).forEach(function(t){
+    ((w.evidence[t]||{}).docs||[]).forEach(function(d){if(d)cited++});
+  });
+  if(!n||!cited)return '';
+  return '<span class="gloss gm" title="'+esc('读入 '+n+' 篇是本期研报的全部；'
       +'被引 '+cited+' 篇是筛选A 打分时真正引用过的那些，机构数只数这一批。'
       +'两个数不是同一个总体——没被引的那些里有相当一部分连机构都没有标注。')
     +'">ⓘ</span>';

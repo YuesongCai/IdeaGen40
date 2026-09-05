@@ -49,11 +49,24 @@ fi
 echo "IG_CODE_UPDATE $have -> $want"
 git -C "$APP" reset -q --hard "$REF"
 
+# The checkout has to move before the build, because the build needs the tree
+# at $want. But if the candidate never becomes the running container, leaving
+# it there makes the NEXT poll compare $want against $want and print
+# IG_CODE_CURRENT — the node reports itself up to date while still serving
+# $have, and stops retrying until somebody happens to push again. That is how
+# 2026-09-05 stayed invisible: three consecutive IG_CODE_TESTS_FAIL, then a
+# calm IG_CODE_CURRENT, container frozen at 2297d64. The tree is a claim about
+# what is running; put it back when the claim turns out to be false.
+rollback_checkout() {
+  [ -n "$have" ] || return 0
+  git -C "$APP" reset -q --hard "$have" 2>/dev/null || true
+}
+
 # Build under a throwaway tag. Tagging :live before the suite runs would leave
 # the name pointing at an image nothing has vouched for, and the next restart
 # would quietly adopt it.
 if ! docker build -q -t "ideagen40:cand-$want" -f "$APP/deploy/Dockerfile" "$APP" >/dev/null 2>&1; then
-  echo "IG_CODE_BUILD_FAIL $want"; exit 1
+  echo "IG_CODE_BUILD_FAIL $want"; rollback_checkout; exit 1
 fi
 
 if [ "$REQUIRE_TESTS" = "1" ]; then
@@ -70,6 +83,7 @@ if [ "$REQUIRE_TESTS" = "1" ]; then
       | head -25 | sed 's/^/IG_CODE_ERR /'
     tail -6 /tmp/sync_code_tests.log | sed 's/^/IG_CODE_TAIL /'
     docker rmi -f "ideagen40:cand-$want" >/dev/null 2>&1
+    rollback_checkout
     exit 1
   fi
 fi

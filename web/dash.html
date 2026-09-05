@@ -666,6 +666,8 @@ tr.expandable:focus-visible,th.sortable:focus-visible{
 }
 .empty .e-action:hover{background:var(--color-action-primary-hover)}
 .empty .e-action:active{background:var(--color-action-primary-pressed)}
+.ls-note{margin:var(--space-3) 0;padding:var(--space-3) var(--space-4);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface-muted);font:400 13px/20px var(--font-sans);color:var(--color-text-secondary)}
+tr.ls-ev td{background:var(--color-surface-muted)}
 .rk-bars{display:flex;flex-direction:column;gap:var(--space-3)}
 .rk-row{display:grid;grid-template-columns:34px minmax(90px,1fr) 74px auto;align-items:center;gap:var(--space-3)}
 .rk-k{font:500 13px/16px var(--font-mono,var(--font-sans));color:var(--color-text-secondary)}
@@ -3205,7 +3207,10 @@ function renderAll(){
   renderEvidence();
   /* 准则不再有自己的视图：它是「方法」页里紧挨着流水线画布的一段，
      renderMethod 已经把它画出来了，这里不能再画一遍。 */
-  renderDrawers(); /* 抽屉打开时刷新其内容 */
+  /* 抽屉打开时刷新其内容。写准则的表单就在抽屉里，正在往里打字时轮询让路——
+     否则每 60 秒一次，打了一半的话连同光标一起被换掉。 */
+  PH_POLLING=true;
+  try{renderDrawers()}finally{PH_POLLING=false}
   buildNav();      /* 子项依赖区块是否渲染，必须在内容之后重建 */
   /* 用 setTimeout 而不是 requestAnimationFrame：标签页隐藏时 rAF 一帧都不
      触发，深链跳转会静默失效。动画可以没有，落位不能没有。 */
@@ -5044,6 +5049,49 @@ function rankingQuintileBars(pooled,benchMean){
       +'<i class="rk-bench-key"></i> 竖线为同期基准（SPY）六期均值 '+fmtPct(benchMean)
       +'——只有顶格分位越过它。</div>';
 }
+/* ── live 与补跑分开算 ─────────────────────────────────────────
+   合并胜率是所有人会引用的那个数，而对 exploratory 注册的臂它是错的那个：
+   ev_rank 是看过这六期结果之后才被挑出来检验的，跨这六期的数字量的是那次
+   搜索，不是这条规则。所以把 live 列单独摆出来，并且在期数不够时明说它
+   不该被读——把数算出来却没有一个屏幕指向它，和没算是一回事。 */
+function liveSplitBlock(){
+  var lb=(((S||{}).backtest||{}).summary||{}).live_vs_backfill;
+  if(!lb||!lb.arms)return '';
+  var rows=Object.keys(lb.arms).sort().map(function(name){
+    var v=lb.arms[name],L=v.live||{},B=v.backfill||{};
+    var isEv=v.evidence_column==='live';
+    return '<tr'+(isEv?' class="ls-ev"':'')+'>'
+      +'<td class="primary">'+esc(backtestArmName(name))
+        +(isEv?' <span class="tag">看 live 列</span>':'')+'</td>'
+      +'<td class="r num">'+fmtInt(L.n)+'</td>'
+      +'<td class="r num">'+(L.hit_rate==null?'—':fmtRate(L.hit_rate*100))+'</td>'
+      +'<td class="r num '+pctCls(L.mean_return_pct)+'">'+fmtPct(L.mean_return_pct)+'</td>'
+      +'<td class="r num dim">'+fmtInt(B.n)+'</td>'
+      +'<td class="r num dim">'+(B.hit_rate==null?'—':fmtRate(B.hit_rate*100))+'</td>'
+      +'<td class="r num dim">'+fmtPct(B.mean_return_pct)+'</td></tr>';
+  }).join('');
+  var head=[
+    ['选取策略','',''],
+    ['live 条数','r','当期实跑的期次里，这条臂可计价的持仓条数。'],
+    ['live 胜率','r','只算当期实跑期次。对 exploratory 臂，这是唯一能当证据的一列。'],
+    ['live 均值','r','只算当期实跑期次的单笔平均收益。'],
+    ['补跑 条数','r','事后补跑期次的条数。文档输入卡死在当期，但模型权重见过之后的世界。'],
+    ['补跑 胜率','r','补跑期次的胜率。合并口径的数字主要由它撑起来。'],
+    ['补跑 均值','r','补跑期次的单笔平均收益。']
+  ].map(function(h){return '<th'+(h[1]?' class="'+h[1]+'"':'')+'>'+esc(h[0])
+      +(h[2]?'<span class="gloss gm" title="'+esc(h[2])+'">ⓘ</span>':'')+'</th>'}).join('');
+  var warn=lb.usable?'':'<div class="ls-note">现在只有 <b>'+fmtInt(lb.n_live_periods)
+      +'</b> 期当期实跑（'+esc((lb.live_periods||[]).join('、'))
+      +'），<b>live 列还不该被读</b>——一期就是一个月一个市场里的几条持仓。还需要 '
+      +fmtInt(lb.periods_needed)+' 期（四周是一轮完整的分批周期，不到一轮时'
+      +'每条持仓都还开着）。</div>';
+  return '<div style="margin-top:var(--space-6)">'
+    +'<div class="card-title-row"><h3 class="card-title" style="font-size:15px">'
+    +'当期实跑 vs 事后补跑</h3><span class="card-note">合并口径把两者混在一起</span></div>'
+    +warn
+    +'<div class="table-wrap"><table class="data-table"><thead><tr>'+head
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
 function rankingPowerCard(){
   var sum=((S||{}).backtest||{}).summary||{},rp=sum.ranking_power;
   if(!rp||!rp.pooled){
@@ -5072,7 +5120,7 @@ function rankingPowerCard(){
       +'<span class="gloss gm" title="'+esc('顶格分位在多少期高于同期 SPY。「排序有效」（Q5 高于 Q1，'
         +rp.periods_top_beats_bottom+'/'+rp.periods_scored+' 期）与「跑赢指数」是两个结论，分开报。')
       +'">ⓘ</span></div></div>'
-    +(ev.hit_rate!=null?'<div class="meta-kv"><div class="k">已成形 ev_rank</div><div class="v num '
+    +(ev.hit_rate!=null?'<div class="meta-kv"><div class="k">已成形 '+esc(backtestArmName('ev_rank'))+'</div><div class="v num '
       +pctCls(ev.mean_return_pct)+'">'+fmtPct(ev.mean_return_pct)
       +'<span style="font-weight:400;color:var(--color-text-tertiary)"> · 胜率 '
       +fmtRate((ev.hit_rate||0)*100)+' · n='+fmtInt(ev.n_scored)+'</span></div></div>':'')
@@ -5108,7 +5156,7 @@ function rankingPowerCard(){
   /* 警告与图表同级，不是脚注。这条排序是看过结果之后才被挑出来检验的，
      样本内这件事必须和好看的那半一起出现，否则第一次被追问就塌。 */
   var warn='<div class="rk-warn"><div class="rk-warn-h">这张表还不能证明什么</div>'
-    +'<p>'+esc(rp.provenance_warning||'')+'</p>'
++'<p>'+esc(humanizeKeys(rp.provenance_warning||''))+'</p>'
     +'<p>汇总看是单调阶梯，<b>逐期看并不是</b>——单期内部会出现 Q4 高于 Q5、甚至 Q4 全期最差。'
     +'稳的只有两端：Q5 高于 Q1，'+fmtInt(rp.periods_top_beats_bottom)+'/'
     +fmtInt(rp.periods_scored)+' 期无一例外。</p></div>';
@@ -5119,6 +5167,7 @@ function rankingPowerCard(){
     +meta
     +rankingQuintileBars(pooled,benchMean)
     +warn
+    +liveSplitBlock()
     +foldBlock('week.ranking.detail','逐期拆解','每期两端 · 同期基准 · 主题来源',table,scored.length?(scored.length+' 期'):'');
 }
 function backtestSection(){
@@ -5472,6 +5521,7 @@ function crumbName(d){
   return '';
 }
 function renderDrawers(){
+  if(PH_POLLING&&phTyping())return;
   var root=$('drawerRoot');if(!root)return;
   /* 表单进抽屉之后，60 秒一次的轮询会连人正在打的字一起重画掉。
      和 renderMethod 里原来那道守卫同一个道理，只是搬到了这里。 */
@@ -5702,7 +5752,7 @@ function genOrder(){
     known[k]=1;
     var cid=String(k).indexOf('@')>=0?String(k).split('@')[1]:'';
     out.push([k, derivedGenLabel(k), 'PM 注入',
-      '由「准则」页注入的一条准则派生：与原来那种同批、同料、同规则并跑，原来那种冻结不动，两种生成方式的净值之差即这条准则的净效应。'
+      '由「准则」页注入的一条准则派生：与原来那种读同一批研报、同一份可买清单、同一套规则并跑，原来那种冻结不动，两种生成方式的净值之差即这条准则的净效应。'
         +(cid?'　准则编号 '+cid:''),
       '（这一条的措辞来自 PM 写下的准则，不是内置方法）']);
   });
@@ -5719,6 +5769,7 @@ var SEL_META=[
   ['omega_loose','赔率排序 · 宽松','主策略','赔率排序 · 宽阈值','按概率加权赔率（期望收益 ÷ 期望亏损）排序，须高于现金收益门槛，达标全取，上限 14 条。'],
   ['spread','分散度约束','主策略','组合层约束','按赔率排序后施加分散约束：同一主题至多 3 条、同一敞口至多 3 条、同一生成方法至多 4 条，避免单一敞口重复计入。'],
   ['calib','证据一致性','主策略','赔率折价','按赔率排序，并对四类情形折价：主题证据不足、置信度高于证据强度、概率估计粗糙、隐含涨幅缺乏依据。'],
+  ['ev_rank','期望值排序','常驻探索','期望值排序 · 前 20%','按候选自陈三点情景（上行/基准/下行及各自概率）的概率加权期望回报排序，取前 20% 且须高于现金门槛。这个数每条想法都算过，此前没有任何选取策略在用它。**这条排序是在看过既有期次的结果之后才被挑出来检验的**，因此合并口径对那次搜索是样本内的，只有它往后的当期实跑期次才是检验。三项证伪已做：它一阶上在排风险（顶格分位持仓入场前波动是末位的 6.4 倍）、风险调整后跑输指数、优势在剔除最常持有的标的后不成立。'],
   ['left_tail','下行风险优先','常驻探索','下行优先','不计上行空间，仅按期望亏损（亏损概率 × 亏损幅度）由低至高选取。检验组合结果由规避尾部亏损而非捕捉上行主导的假设。'],
   ['omega_strict','赔率排序 · 严格','常驻探索','赔率排序 · 高阈值','排序方法与宽松版完全相同，仅阈值不同：宽松版达标全取（本期 {n:omega_loose} 条），严格版仅取高置信部分（本期 {n:omega_strict} 条），空余仓位留存现金。两者业绩差即阈值收紧的净效应。'],
   ['buy_all','全量基准','对照','基准 · 不筛选','买入候选池全部标的。作为基准而非策略：任一选取策略若不能跑赢它，选取环节不产生价值。'],
@@ -5806,11 +5857,21 @@ function orderedSelectors(){
  * 不带 force 的调用来自每 60 秒的整页轮询，而这一页现在装着面板上唯一一个
  * 输入框——准则那句话。轮询重画会把打了一半的话连同光标一起换掉，所以
  * 正在往里打字时整页跳过；PH.say 由 oninput 实时同步，跳过不丢状态。 */
+/* 有人正在写准则。表单曾经在页面上、现在在抽屉里，两处都归整页轮询重画。 */
+function phTyping(){
+  var t=$('phSay');
+  if(!t||document.activeElement!==t)return false;
+  PH.say=t.value;   /* 跳过之前先把话收好，跳过不丢状态 */
+  return true;
+}
+/* 轮询中：只有 renderAll 会把它置 true。人点出来的重画一律照常发生，
+   让路的只有每 60 秒那一次。 */
+var PH_POLLING=false;
+
 function renderMethod(force){
   var root=$('view-method');
   if(!S){root.innerHTML='';return}
-  var ta=$('phSay');
-  if(!force&&ta&&document.activeElement===ta){PH.say=ta.value;return}
+  if(!force&&phTyping())return;
   root.innerHTML=
      procFailBanner()
     +periodReceipt()
@@ -8903,11 +8964,11 @@ function phTeachCard(){
         '<p><b>原来那一种就是对照。</b>没有它，四周后两条净值无从相减，'
        +'「这句话到底值不值钱」就答不了——而那正是写下它的理由。</p>')
      /* 一条回执，不是第二个入口：它不让人再做一次「选哪个」的决定，只说
-        刚才那一下在上面那张图里落在了哪儿。选择器离画布有一屏，没有这句话
-        就要靠人自己回头去找那根被描粗的臂。 */
+        刚才那一下在图上落在了哪儿。表单在抽屉里、图在抽屉外面，两者同屏但
+        分属两块，没有这句话就要靠人自己回头去找那个被描粗的框。 */
      +'<div class="card-note" style="margin-bottom:var(--space-2)">'
-     +'上面的流水线图里，<b>'+esc(methodName(PH.arm||''))+'</b> 已描粗，'
-     +'虚线就是这条准则要接进去的地方</div>';
+     +'流水线图里 <b>'+esc(methodName(PH.arm||''))+'</b> 已描粗，'
+     +'那条虚线就是这条准则要接进去的地方</div>';
   }
   if(PH.problems){
     h+='<div class="ph-warn" style="margin-top:var(--space-4)">'
@@ -8926,7 +8987,7 @@ function phTeachCard(){
         不是一个章节——回执就该待在按下按钮的地方。 */
      :(function(){var n=((PH.data||{}).live||[]).length;
         return n?'':'<span class="card-note">还没有准则在跑 · 筛选B 现在跑的是 '
-          +GEN_ORDER.length+' 种内置生成方式，上图最下面那一格是空的</span>';})())
+          +GEN_ORDER.length+' 种内置生成方式，图上最下面那一格是空的</span>';})())
    +'</div>';
   return h+'</div>';
 }
@@ -9046,14 +9107,19 @@ function phRunningCard(){
    断在正则上。委托之后这个上下文不存在，id 里是什么字符都无所谓。 */
 function phBind(){
   if(PH.bound)return;
-  var host=$('view-method');if(!host)return;
   PH.bound=true;
-  host.addEventListener('click',function(e){
+  /* 委托挂在 document 上，不是某一个视图容器。写准则的表单现在住在抽屉里，
+     而抽屉渲染在视图之外的浮层里——挂在 #view-method 上时，抽屉里
+     「这条准则怎么落地」那四个按钮点下去毫无反应，PH.arm 永远停在默认值，
+     每一条准则都会静悄悄落到「约束边界」上。而这恰恰是刚请人去做的那个选择。
+     选择器足够专有（data-ph-id / data-ph-arm 只出现在准则界面），
+     不需要再用容器去限定作用域；id 也依旧不进 JS 字符串字面量。 */
+  document.addEventListener('click',function(e){
     var t=e.target;if(!t||!t.closest)return;
     var r=t.closest('[data-ph-id]');
-    if(r&&host.contains(r)&&!r.disabled)return phRetire(r.getAttribute('data-ph-id'));
+    if(r&&!r.disabled)return phRetire(r.getAttribute('data-ph-id'));
     var a=t.closest('[data-ph-arm]');
-    if(a&&host.contains(a)&&!a.disabled){PH.arm=a.getAttribute('data-ph-arm');
+    if(a&&!a.disabled){PH.arm=a.getAttribute('data-ph-arm');
       PH.problems=null;renderRules()}
   });
 }
@@ -9097,10 +9163,10 @@ function phSlotOn(){return !isSnapshot()}
    常驻在两种状态之上，之后各用各的。 */
 function phDefLine(){
   var n=genOrder().length;
-  return '<div class="ph-def">上面那张图里，筛选B 现在有 <b>'+n+' 种</b>生成方式，'
+  return '<div class="ph-def">流水线图里，筛选B 现在有 <b>'+n+' 种</b>生成方式，'
     +'四种是内置的。<b>你写下的准则会成为其中新的一种</b>：它从你指定的那一种'
     +'派生一条对照，<b>原来那种冻结不动</b> '
-    +glossMark('新旧两种生成方式同批、同料、同规则并跑，唯一差异是这条准则；两者的净值之差即这条准则的净效应。')
+    +glossMark('新旧两种生成方式读同一批研报、同一份可买清单、同一套规则并跑，唯一差异是这条准则；两者的净值之差即这条准则的净效应。')
     +'</div>';
 }
 

@@ -4320,7 +4320,15 @@ function statusStrip(){
        「缺失」和「还没跑」是两回事，不写出来读者会等它自己补上。 */
     +(gaps?' · <span style="color:var(--color-feedback-warning-text)">另有 <b class="num">'
         +gaps+'</b> 期永久缺失</span>'
-        +'<span class="gloss gm" title="超过 48 小时宽限仍未跑成即判定失败，不补跑：那一期的判断永远不存在，组合里也不会有它的仓。">ⓘ</span>':'');
+        +'<span class="gloss gm" title="超过 48 小时宽限仍未跑成即判定失败，不补跑：那一期的判断永远不存在，组合里也不会有它的仓。">ⓘ</span>':'')
+    /* 「永久缺失」讲的是那一期根本没跑成。还有一类它旁边一直没说：**跑成了、
+       选取判决也做出来了，批次却从没建成仓**——校验没过，停在 draft。
+       2026-09-05 实测九个（合计 237 条想法），卡住它们的是 ref_price_present /
+       ref_price_dated：一个批次里只要有两条想法拿不到参考价，整批七十四条都
+       不建仓。后果打在对照实验的地基上——buy_all（全量基准）因此缺两期。
+       这一类此前在页面上完全看不见，而它和「永久缺失」是同一种东西：
+       那几期的判断存在，但没有仓。 */
+    +stuckBatchNote();
 
   return '<div class="card status-card section">'
     +'<button type="button" class="status-line" onclick="openStatusDrawer()" title="查看系统状态">'
@@ -7048,6 +7056,26 @@ function periodsActedNote(){
         +'。缺期的那几期，选取判决当时正常做出来了，单子却没下。'
         +'参照（全量基准）自己缺期时，「相对基准的差距」两边不是同一段时间。')
     +'">同期只成立到 '+(have.length-short.length)+'/'+have.length+' ⚠</span>';
+}
+/* 从没建成仓的批次：跑成了、判决也做出来了，只是校验没过，停在 draft。
+ * 和「N 期永久缺失」是同一种东西的另一半，此前页面上完全看不见。 */
+function stuckBatchNote(){
+  var sb=((S||{}).stuck_batches)||[];
+  var real=sb.filter(function(b){return String(b.batch_id||'').indexOf('PROBE')<0});
+  if(!real.length)return '';
+  var ideas=real.reduce(function(a,b){return a+(Number(b.n_ideas)||0)},0);
+  var per={};real.forEach(function(b){per[b.as_of]=(per[b.as_of]||0)+1});
+  var why={};real.forEach(function(b){(b.blocked_by||[]).forEach(function(c){why[c]=1})});
+  return ' · <span style="color:var(--color-feedback-warning-text)">另有 <b class="num">'
+    +fmtInt(real.length)+'</b> 个批次从没建成仓</span>'
+    +'<span class="gloss gm" title="'+esc(
+        '这几期跑成了、选取判决也做出来了，但批次校验没过，停在 draft，'
+        + fmtInt(ideas)+' 条想法从未建仓。按期：'
+        + Object.keys(per).sort().map(function(a){return a+' '+per[a]+' 个'}).join('、')
+        + '。卡住它们的检查：'+Object.keys(why).sort().join('、')
+        + '。校验是全有全无的——一个批次里只要有几条想法拿不到参考价，整批都不建仓，'
+        + '而建仓那一步本来就会跳过拿不到价格的标的。')
+    +'">ⓘ</span>';
 }
 var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。两条线按想法成文那一期的参考价算，不是按实际成交价——成交离参考越远，它们相对成交价越偏。触发后自动执行。';
 var ARM_GLOSS='正式比较组合 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索组合不参与结论判定。';

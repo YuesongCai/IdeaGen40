@@ -862,6 +862,23 @@ def state(con=None, p=None) -> dict[str, Any]:
                       "exits": exits})
     out["books"] = books
     out["books_aggregate"] = _books_aggregate(books)
+    # 从没建成仓的批次。它们不是「没跑」——选取判决正常做出来了，批次也写下了，
+    # 只是校验没过就停在 draft。2026-09-05 实测九个（外加两个 PROBE 测试批次），
+    # 合计 237 条想法从未建仓，而卡住它们的是 `ref_price_present` /
+    # `ref_price_dated`：**一个批次里只要有两条想法拿不到参考价，整批七十四条
+    # 都不建仓**。而建仓那一步本来就会跳过拿不到价格的标的，两者严格程度不一致。
+    #
+    # 后果打在对照实验的地基上：buy_all（全量基准）因此缺两期。页面在别处会
+    # 主动报「1 期永久缺失」，这一类却完全看不见，所以这里把它交出去。
+    out["stuck_batches"] = [
+        {"batch_id": r["batch_id"], "as_of": r["as_of"],
+         "n_ideas": r["n_ideas"], "status": r["status"],
+         "blocked_by": sorted({
+             c.get("check") for c in
+             (_json_value(r["validation"], {}) or {}).get("checks", [])
+             if not c.get("ok") and c.get("severity") == "error"})}
+        for r in db.q(con, "SELECT batch_id, as_of, n_ideas, status, validation "
+                           "FROM batches WHERE status!='traded' ORDER BY as_of, batch_id")]
     # The cash rate the page quotes when it explains where the un-deployed
     # money's return came from. The page used to print a literal "3.72%" and
     # label it "current" — that literal is config.RISK_FREE_ANNUAL, the

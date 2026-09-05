@@ -52,18 +52,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         from . import accounts
         return accounts
 
+    def _cookie(self, name: str) -> str | None:
+        """One named cookie out of the request, or None."""
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v.strip()
+        return None
+
     def _session_user(self) -> str | None:
         """The account this request is signed in as, if any. Cached per request."""
         if not hasattr(self, "_session_cache"):
             from . import accounts
-            raw = self.headers.get("Cookie") or ""
-            token = None
-            for part in raw.split(";"):
-                k, _, v = part.strip().partition("=")
-                if k == accounts.SESSION_COOKIE:
-                    token = v
-                    break
-            self._session_cache = accounts.check(token)
+            self._session_cache = accounts.check(
+                self._cookie(accounts.SESSION_COOKIE))
         return self._session_cache
 
     def _login_redirect(self):
@@ -144,7 +146,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._raw(
             authpages.account_page(who, admin=accounts.is_admin(who),
                                    users=accounts.list_users(),
-                                   msg=msg, ok=ok),
+                                   msg=msg, ok=ok,
+                                   store=accounts.store_status()),
             "text/html; charset=utf-8")
 
     def _authorized(self) -> bool:
@@ -183,10 +186,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return True
         from urllib.parse import parse_qs, urlparse
         q = parse_qs(urlparse(self.path).query)
+        # Parse the cookie header instead of doing string surgery on it. The
+        # previous version did `.replace("dashkey=", "").split(";")[0]`, which
+        # returns whichever cookie happens to be FIRST — so the moment the
+        # browser also carried a session cookie, the key cookie stopped being
+        # found and a machine that had been getting in for weeks started
+        # bouncing off the login page for no visible reason.
         supplied = ((q.get("key") or [None])[0]
                     or self.headers.get("X-Dash-Key")
-                    or (self.headers.get("Cookie") or "").replace(
-                        "dashkey=", "").split(";")[0].strip())
+                    or self._cookie("dashkey"))
         ok = bool(supplied) and supplied == key
         if ok and (q.get("key") or [None])[0]:
             # Move the key out of the URL into a cookie so links shared from the
@@ -261,8 +269,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._deploy_state(json_only=path.startswith("/api/"))
         if path == "/api/whoami":
             who = self._session_user()
+            acct = self._acct()
             return self._json({"user": who,
-                               "admin": bool(who and self._acct().is_admin(who)),
+                               "admin": bool(who and acct.is_admin(who)),
+                               "role": acct.role(who) if who else None,
                                "via": "session" if who else "key"})
         if path == "/api/olive/oauth/start":
             return self._begin_olive_authorization()
@@ -437,8 +447,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/legacy":
             return self._live_dashboard()
         if path == "/healthz":
+            # The account store is reported here because an ephemeral one is
+            # invisible until the deploy that empties it: the login page works,
+            # the operator gets in, and only the colleagues added since last
+            # time are missing. This is the one endpoint that needs no login,
+            # so it is the one place the answer is always reachable.
             return self._json({"ok": True, "ts": config.now_hkt().isoformat(),
-                               "code": _code_version()})
+                               "code": _code_version(),
+                               "accounts": self._acct().store_status()})
         return super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -544,7 +560,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._raw(authpages.login_page(
                     error=f"尝试太频繁，请等 {int(wait) + 1} 秒再试。"),
                     "text/html; charset=utf-8", status=429)
-            user = (form.get("username") or "").strip()
+            # Canonical form, not the raw keystrokes. `verify` looks the
+            # account up normalised, but `issue` and `note_login` took whatever
+            # was typed — so signing in as "Jon" verified fine and then minted a
+            # cookie for a user that does not exist, which the very next request
+            # rejected. The symptom is "it logs me straight back out".
+            user = accounts.normalize_name(form.get("username"))
             if user and accounts.verify(user, form.get("password") or ""):
                 accounts.throttle_ok(client)
                 accounts.note_login(user)
@@ -582,10 +603,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if path == "/account/add":
                 if not accounts.is_admin(who):
                     return self._account_page("只有管理员能新增账号。")
-                accounts.add_user(form.get("username") or "",
-                                  form.get("password") or "")
+                name = accounts.normalize_name(form.get("username"))
+                accounts.add_user(name, form.get("password") or "",
+                                  role=(form.get("role") or "member"),
+                                  note=(form.get("note") or "").strip()[:64])
                 return self._account_page(
-                    f"已创建 {form.get('username')}。", ok=True)
+                    f"已创建 {name}（{accounts.ROLE_LABEL[accounts.role(name)]}）。",
+                    ok=True)
+            if path == "/account/reset":
+                # An admin resetting somebody else's password. Its absence is
+                # what made a forgotten password terminal here: no shell on the
+                # box, no mail, no reset link — the account was simply over.
+                if not accounts.is_admin(who):
+                    return self._account_page("只有管理员能重置口令。")
+                target = accounts.normalize_name(form.get("username"))
+                accounts.admin_set_password(target, form.get("password") or "")
+                return self._account_page(
+                    f"已重置 {target} 的口令；ta 的所有设备都要重新登录。", ok=True)
+            if path == "/account/role":
+                if not accounts.is_admin(who):
+                    return self._account_page("只有管理员能改角色。")
+                target = accounts.normalize_name(form.get("username"))
+                want = form.get("role") or "member"
+                accounts.set_role(target, want)
+                return self._account_page(
+                    f"{target} 现在是{accounts.ROLE_LABEL[want]}。", ok=True)
             if path == "/account/remove":
                 if not accounts.is_admin(who):
                     return self._account_page("只有管理员能删除账号。")
@@ -968,6 +1010,10 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     # UI rather than by editing an env file.
     from . import accounts
     try:
+        st = accounts.store_status()
+        print(f"  账号存放于 {st['path']}（{st['why']}）"
+              + ("" if st["durable"] else
+                 "  ⚠ 换容器就会丢，新加的人明天就不见了"))
         created = accounts.bootstrap()
         if created:
             print(f"  已从部署配置创建首个账号：{created}（管理员）")

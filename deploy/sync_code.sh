@@ -90,10 +90,14 @@ fi
       && mv -f "/opt/ideagen/.$f.sh.new" "/opt/ideagen/$f.sh"
   done
   docker tag "ideagen40:cand-$want" ideagen40:live
+  # 这一行 `docker rm -f` 就是账号消失的地方。账号文件必须在 $DATA 挂载上，
+  # 不能在容器里 —— 否则每次部署都清空一次，而部署会把配置里那个管理员重新
+  # 建出来，站点看起来一切正常。IDEAGEN_ACCOUNTS_FILE 见下。
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --restart always \
     --env-file "$CONF" \
     -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db \
+    -e IDEAGEN_ACCOUNTS_FILE=/data/accounts.json \
     -v "$DATA":/data -p 80:8765 -p 443:8765 \
     --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 \
     >/dev/null 2>&1 \

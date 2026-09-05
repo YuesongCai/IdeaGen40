@@ -141,5 +141,97 @@ class AccountsTest(unittest.TestCase):
         self.assertFalse(self.a.verify("alice", "alicepassword"))
 
 
+
+class WhereTheAccountsLive(unittest.TestCase):
+    """The bug that made the login "often not work", pinned.
+
+    On the display node the container is recreated by the code leg every time
+    origin/main moves — several times a day, because several agents push there.
+    `_store_path()` fell through to `config.DATA`, which inside the image is
+    `/app/data`: part of the container. So every deploy deleted every account
+    except the one `bootstrap()` re-mints from runtime.env, and the people added
+    since simply stopped existing. Nothing logged it. The login page kept
+    working perfectly for the one account that kept being recreated.
+
+    The container has exactly one durable writable directory — the host mount
+    the database sits on — and the fix is to prefer it. Which means the fix
+    travels on the code leg and lands on a machine nobody can log in to.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self._prev = os.environ.get("IDEAGEN_ACCOUNTS_FILE")
+        os.environ.pop("IDEAGEN_ACCOUNTS_FILE", None)
+        from ideagen import accounts
+        self.a = accounts
+
+    def tearDown(self) -> None:
+        if self._prev is None:
+            os.environ.pop("IDEAGEN_ACCOUNTS_FILE", None)
+        else:
+            os.environ["IDEAGEN_ACCOUNTS_FILE"] = self._prev
+        self._tmp.cleanup()
+
+    def _as_container(self, db_dir: Path):
+        """Pretend to be the image: WORKDIR /app, database on a host mount."""
+        from unittest import mock
+        from ideagen import config
+        return mock.patch.multiple(
+            config, ROOT=Path("/app"), DATA=Path("/app/data"),
+            DB_PATH=db_dir / "ideagen.db")
+
+    def test_the_database_mount_wins_over_the_disposable_image_directory(self):
+        mount = Path(self._tmp.name) / "data"
+        mount.mkdir()
+        with self._as_container(mount):
+            st = self.a.store_status()
+        self.assertEqual(st["path"], str(mount / "accounts.json"),
+                         "accounts landed inside the container again; the next "
+                         "deploy would delete every colleague added since")
+        self.assertTrue(st["durable"])
+
+    def test_an_ephemeral_store_says_so_instead_of_looking_fine(self):
+        """With no mount to fall back to, the answer must be loud, not silent."""
+        from unittest import mock
+        from ideagen import config
+        with mock.patch.multiple(config, ROOT=Path("/app"),
+                                 DATA=Path(self._tmp.name) / "in-image",
+                                 DB_PATH=Path("/app/data/ideagen.db")):
+            st = self.a.store_status()
+        self.assertFalse(st["durable"])
+        self.assertIn("换容器", st["why"])
+
+    def test_an_explicit_setting_beats_every_guess(self):
+        want = Path(self._tmp.name) / "explicit" / "accounts.json"
+        os.environ["IDEAGEN_ACCOUNTS_FILE"] = str(want)
+        st = self.a.store_status()
+        self.assertEqual(st["path"], str(want))
+        self.assertTrue(st["durable"])
+
+
+class TheRosterIsNotPublished(unittest.TestCase):
+    """This repository is public and the account store sits in `data/`.
+
+    The file was untracked but not ignored, which is the worst of the three
+    states available: invisible in `git status -s` terms until the day somebody
+    runs `git add -A`, and then permanent. It holds every username with access
+    and a scrypt hash per password — the roster is itself the disclosure, before
+    anyone bothers to attack the hashes.
+
+    Checked by reading .gitignore rather than shelling out to git, because this
+    suite also runs inside the image, where there is no repository at all.
+    """
+
+    def test_the_account_store_and_the_password_notebook_are_ignored(self):
+        from ideagen import config
+        patterns = {
+            line.strip()
+            for line in (Path(config.ROOT) / ".gitignore").read_text(
+                encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")}
+        for needed in ("data/accounts.json", "data/seed_passwords.json"):
+            self.assertIn(needed, patterns,
+                          f"{needed} would be publishable by `git add -A`")
+
 if __name__ == "__main__":
     unittest.main()

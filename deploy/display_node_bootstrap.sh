@@ -41,10 +41,14 @@ echo "IG_PERM $(stat -c'%U:%a' "$DATA/ideagen.db")"
 cd "$APP" && docker build -q -t ideagen40:live -f deploy/Dockerfile . >/dev/null 2>&1 \
   && echo IG_BUILD || { echo IG_BUILD_FAIL; exit 1; }
 
+# 账号文件必须落在挂载上，不能落在容器里。容器里的那一份每次代码部署都会被删掉，
+# 而部署会自己把运行台里配置的那个管理员重新建出来 —— 于是站点看起来完全正常，
+# 只有「上周加的同事今天登不进去」这一个症状，没人会把它跟一次部署联系起来。
 docker rm -f ideagen-dash >/dev/null 2>&1
 docker run -d --name ideagen-dash --restart always \
   --env-file "$CONF/runtime.env" \
   -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db \
+  -e IDEAGEN_ACCOUNTS_FILE=/data/accounts.json \
   -v "$DATA":/data -p 80:8765 -p 443:8765 \
   --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 \
   >/dev/null 2>&1 && echo IG_RUN || { echo IG_RUN_FAIL; exit 1; }

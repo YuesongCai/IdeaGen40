@@ -27,9 +27,9 @@ body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
 h1{margin:0 0 4px;font-size:19px;font-weight:650;letter-spacing:-.01em}
 .sub{margin:0 0 22px;color:var(--muted);font-size:13px}
 label{display:block;margin:14px 0 6px;font-size:13px;font-weight:550}
-input[type=text],input[type=password]{width:100%;padding:10px 12px;font-size:14px;
+input[type=text],input[type=password],select{width:100%;padding:10px 12px;font-size:14px;
   color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
-input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 button{margin-top:18px;width:100%;padding:10px 14px;font-size:14px;font-weight:600;
   color:#fff;background:var(--accent);border:0;border-radius:8px;cursor:pointer}
 button:hover{filter:brightness(1.07)}
@@ -43,6 +43,7 @@ button.danger{background:transparent;color:var(--err);border:1px solid var(--lin
 .foot{margin-top:20px;padding-top:14px;border-top:1px solid var(--line);
   color:var(--muted);font-size:12.5px}
 a{color:var(--accent);text-decoration:none}
+code{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);padding:1px 5px;border-radius:5px}
 table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:550;font-size:12px}
@@ -84,14 +85,51 @@ def login_page(*, error: str | None = None, nxt: str = "/review") -> bytes:
 
 
 def account_page(user: str, *, admin: bool, users: list[dict],
-                 msg: str | None = None, ok: bool = False) -> bytes:
+                 msg: str | None = None, ok: bool = False,
+                 store: dict | None = None) -> bytes:
     banner = (f"<div class='msg{" ok" if ok else ""}'>{html.escape(msg)}</div>"
               if msg else "")
+    # Where the accounts live, said out loud. An ephemeral store looks identical
+    # to a good one right up until a deploy empties it, and the person who
+    # notices is a colleague who cannot log in — by which point nobody connects
+    # it to a deploy. If it is durable this is one quiet line; if it is not, it
+    # is the loudest thing on the page.
+    store_note = ""
+    if store:
+        if store.get("durable"):
+            store_note = (f"<p class=sub style='margin:-14px 0 18px'>账号存放于 "
+                          f"<code>{html.escape(str(store.get('path')))}</code>"
+                          f"（{html.escape(str(store.get('why')))}），"
+                          f"重新部署不会丢。</p>")
+        else:
+            store_note = ("<div class=msg>⚠ 这台机器上的账号存在容器里"
+                          f"（{html.escape(str(store.get('path')))}）——"
+                          "下一次代码部署会把这里新加的人全部清掉，"
+                          "只剩下部署配置里自带的那一个。先修这个，再加人。</div>")
+
+    def _role_cell(u: dict) -> str:
+        label = "管理员" if u["admin"] else "成员"
+        if not admin or u["name"] == user:
+            # No control for yourself: the only move it offers is demoting
+            # yourself out of the page you are standing on.
+            return f"<span class=you>{label}</span>"
+        want = "member" if u["admin"] else "admin"
+        verb = "降为成员" if u["admin"] else "升为管理员"
+        return (f"<span class=you>{label}</span> "
+                "<form method=post action=/account/role style=display:inline>"
+                f"<input type=hidden name=username value='{html.escape(u['name'])}'>"
+                f"<input type=hidden name=role value='{want}'>"
+                f"<button class=ghost type=submit>{verb}</button></form>")
+
     rows = "".join(
-        "<tr><td>{name}{you}{tag}</td><td>{created}</td><td>{last}</td><td>{act}</td></tr>".format(
+        "<tr><td><b>{name}</b>{you}{note}</td><td>{role}</td>"
+        "<td>{created}</td><td>{last}</td><td>{act}</td></tr>".format(
             name=html.escape(u["name"]),
             you=" <span class=you>你</span>" if u["name"] == user else "",
-            tag=" <span class=you>管理员</span>" if u["admin"] else "",
+            note=(f"<div class=sub style='margin:2px 0 0'>"
+                  f"{html.escape(u.get('note') or '')}</div>"
+                  if u.get("note") else ""),
+            role=_role_cell(u),
             created=html.escape((u.get("created") or "—")[:10]),
             last=html.escape((u.get("last_login") or "从未登录")[:16].replace("T", " ")),
             act=("" if u["name"] == user or not admin else
@@ -100,30 +138,60 @@ def account_page(user: str, *, admin: bool, users: list[dict],
                  "<button class=danger type=submit>删除</button></form>"))
         for u in users)
 
+    options = "".join(
+        f"<option value='{html.escape(u['name'])}'>{html.escape(u['name'])}</option>"
+        for u in users if u["name"] != user)
+
     admin_block = f"""
-      <h2>账号</h2>
-      <table><tr><th>用户</th><th>创建</th><th>最近登录</th><th></th></tr>{rows}</table>
       <h2>新增账号</h2>
       <form method=post action=/account/add>
         <div class=row>
           <div><label for=nu>用户名</label>
-            <input id=nu name=username type=text required></div>
+            <input id=nu name=username type=text required
+                   placeholder="英文字母、数字和 . _ -"></div>
           <div><label for=np>口令（至少 8 位）</label>
             <input id=np name=password type=password required></div>
         </div>
+        <div class=row>
+          <div><label for=nn>备注（谁、哪家，可留空）</label>
+            <input id=nn name=note type=text></div>
+          <div><label for=nr>角色</label>
+            <select id=nr name=role>
+              <option value=member>成员——看运行台</option>
+              <option value=admin>管理员——还能管账号</option>
+            </select></div>
+        </div>
         <button type=submit>创建</button>
-      </form>""" if admin else f"""
-      <h2>账号</h2>
-      <table><tr><th>用户</th><th>创建</th><th>最近登录</th><th></th></tr>{rows}</table>
-      <p class=sub style="margin-top:10px">只有管理员能增删账号。</p>"""
+      </form>
+
+      <h2>替别人重置口令</h2>
+      <p class=sub style='margin:6px 0 0'>这台机器没有邮件、也没有找回链接。
+        谁忘了口令，只能在这里重置——重置之后 ta 所有设备上的登录都会失效。</p>
+      <form method=post action=/account/reset>
+        <div class=row>
+          <div><label for=ru>账号</label>
+            <select id=ru name=username required>{options}</select></div>
+          <div><label for=rp>新口令（至少 8 位）</label>
+            <input id=rp name=password type=password required></div>
+        </div>
+        <button type=submit>重置</button>
+      </form>""" if admin else """
+      <p class=sub style="margin-top:10px">只有管理员能增删账号、改角色、重置口令。</p>"""
 
     return _page("账号 · IdeaGen40", f"""
       <h1>账号</h1>
       <p class=sub>当前登录：<b>{html.escape(user)}</b>
-        {"（管理员）" if admin else ""} ·
+        （{"管理员" if admin else "成员"}） ·
         <a href="/review">回运行台</a></p>
+      {store_note}
       {banner}
-      <h2>改口令</h2>
+      <h2>所有人</h2>
+      <table><tr><th>用户</th><th>角色</th><th>创建</th><th>最近登录</th><th></th></tr>
+        {rows}</table>
+      <p class=sub style='margin-top:8px'>只有两种角色：<b>成员</b>能看运行台的全部内容，
+        <b>管理员</b>另外还能加人、删人、改角色、重置口令。页面本身两者看到的一样。</p>
+      {admin_block}
+      <h2>改我自己的口令</h2>
       <form method=post action=/account/password>
         <label for=cp>当前口令</label>
         <input id=cp name=current type=password autocomplete=current-password required>
@@ -132,7 +200,6 @@ def account_page(user: str, *, admin: bool, users: list[dict],
         <button type=submit>修改</button>
       </form>
       <p class=sub style="margin-top:8px">改完之后所有设备上的登录都会失效，包括这一台。</p>
-      {admin_block}
       <div class=foot>
         <form method=post action=/logout style="display:inline">
           <button class=ghost type=submit>退出登录</button></form>

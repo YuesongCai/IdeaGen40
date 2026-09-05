@@ -3,6 +3,18 @@
 .ideagen.env
 *.env
 
+# ---------------------------------------------------------------- accounts
+# Who can log in, and the scrypt hash of their password. This repository is
+# public: committing this file would publish the roster of everyone with access
+# plus material to attack offline. It was untracked but NOT ignored, which is
+# the worst of the three states — one `git add -A` away from being permanent.
+data/accounts.json
+data/accounts.json.tmp
+# The one-time password notebook `scripts/seed_accounts.py --passwords` writes,
+# so both nodes can be seeded with one set of credentials. Plaintext by nature.
+*.passwords.json
+data/seed_passwords.json
+
 # ---------------------------------------------------------------- generated
 data/ideagen.db
 data/ideagen.db-*

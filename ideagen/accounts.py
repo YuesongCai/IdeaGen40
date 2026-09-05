@@ -37,24 +37,88 @@ import time
 from pathlib import Path
 from typing import Any
 
-#: Where the accounts live. The compose file mounts /opt/ideagen/oauth (0700 on
-#: the host) at this path, so the file survives image rebuilds and container
-#: replacement. A laptop has no such mount and falls back to the data dir.
-def _store_path() -> Path:
+#: Where the accounts live — and whether that place survives a redeploy.
+#:
+#: Getting this wrong is silent and total. The file lands inside the container,
+#: every login still works, and the next code deploy — which on these nodes can
+#: be any hour of any day, because several agents push to main and the code leg
+#: rebuilds the container whenever it moves — deletes every account except the
+#: one `bootstrap()` re-mints from runtime.env. A colleague added on Monday is
+#: gone on Tuesday, their password change reverts, and nobody is told any of it.
+#: That was the actual reason the login "often did not work".
+#:
+#: So the choice is no longer a guess with a silent fallback: the candidates are
+#: ordered, each one says whether it outlives the container, and the one that
+#: got picked is reported by `store_status()` and printed at startup.
+def _in_image() -> bool:
+    """True when this process is the container, whose filesystem is disposable."""
+    from . import config
+    return str(getattr(config, "ROOT", "")) == "/app"
+
+
+def _candidates() -> list[tuple[Path, bool, str]]:
+    """(path, survives a redeploy, why) in preference order."""
+    from . import config
+    out: list[tuple[Path, bool, str]] = []
     explicit = os.environ.get("IDEAGEN_ACCOUNTS_FILE")
     if explicit:
-        return Path(explicit)
-    # The shared host directory is the first choice because it outlives the
-    # container — but it is created 0700 by root in the instance's boot script,
-    # and the container runs as an unprivileged uid, so it is frequently not
-    # writable here. Checking beats assuming: an unwritable path turns every
-    # login into a 500, which looks like the app being broken rather than a
-    # directory mode.
-    run_dir = Path("/run/ideagen-oauth")
-    if run_dir.is_dir() and os.access(run_dir, os.W_OK):
-        return run_dir / "accounts.json"
-    from . import config
-    return Path(getattr(config, "DATA", "data")) / "accounts.json"
+        out.append((Path(explicit), True, "IDEAGEN_ACCOUNTS_FILE 指定"))
+    # The compose deployment mounts a host directory here for the OAuth tokens.
+    # It is created 0700 by root in the boot script and the container runs
+    # unprivileged, so it is frequently NOT writable — checking beats assuming,
+    # because an unwritable path turns every login into a 500 that looks like
+    # the app being broken rather than a directory mode.
+    out.append((Path("/run/ideagen-oauth/accounts.json"), True,
+                "宿主机挂载 /run/ideagen-oauth"))
+    # The database's own directory. On the display node that is the host mount
+    # `/data` — the one durable writable place that container already has. Using
+    # it means this fix reaches a running node through the code leg, with no
+    # reinstall of a machine nobody can log into. Skipped when the database is
+    # the in-image default, which is as disposable as everything else in there.
+    try:
+        db_dir = Path(getattr(config, "DB_PATH")).parent
+        if db_dir.is_absolute() and not str(db_dir).startswith(str(config.ROOT)):
+            out.append((db_dir / "accounts.json", True, f"数据库目录 {db_dir}"))
+    except Exception:  # noqa: BLE001 — a missing DB_PATH must not break login
+        pass
+    # Last resort. On a laptop this is an ordinary directory and perfectly
+    # durable; inside the image it is the trap described above.
+    out.append((Path(getattr(config, "DATA", "data")) / "accounts.json",
+                not _in_image(),
+                "容器内路径，换容器就没了" if _in_image() else "本机 data 目录"))
+    return out
+
+
+def _writable(path: Path) -> bool:
+    """Can this process actually create and rewrite `path`?"""
+    parent = path.parent
+    if path.exists():
+        return os.access(path, os.W_OK) and os.access(parent, os.W_OK)
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except Exception:  # noqa: BLE001
+        return False
+    return parent.is_dir() and os.access(parent, os.W_OK)
+
+
+def store_status() -> dict[str, Any]:
+    """Which candidate is in use, and whether accounts survive a redeploy.
+
+    Exposed on /healthz and printed at startup on purpose. An ephemeral store is
+    not an error at the moment it is chosen — it only becomes one later, when a
+    deploy quietly empties it — so it has to be visible before then.
+    """
+    for path, durable, why in _candidates():
+        if _writable(path):
+            return {"path": str(path), "durable": durable, "why": why,
+                    "mirror": _mirror_on()}
+    last = _candidates()[-1]
+    return {"path": str(last[0]), "durable": False,
+            "why": "所有候选路径都不可写", "mirror": _mirror_on()}
+
+
+def _store_path() -> Path:
+    return Path(store_status()["path"])
 
 
 #: Where the accounts are mirrored so they survive the container being
@@ -184,17 +248,91 @@ def _hash(password: str, salt: bytes) -> str:
         hashlib.scrypt(password.encode(), salt=salt, **_SCRYPT)).decode()
 
 
+#: Two roles, and deliberately only two.
+#:
+#: The reference system this was modelled on carries a role *code list* per
+#: request, per tenant, checked by a separate gateway. That is the right shape
+#: for a product with many customers and many desks; it is the wrong shape for
+#: one dashboard read by five named people, where every extra role is a rule
+#: somebody has to remember and nobody will test. So: `admin` can manage
+#: accounts, `member` can read the dashboard. Everything else — which pages,
+#: which portfolios — is the same for both, because it genuinely is.
+ROLES = ("admin", "member")
+ROLE_LABEL = {"admin": "管理员", "member": "成员"}
+
+
+def role(name: str) -> str:
+    """This account's role. Stored as the `admin` flag for backward compat —
+    accounts written before roles existed keep working without a migration."""
+    u = load()["users"].get(normalize_name(name))
+    if not u:
+        return "member"
+    return "admin" if u.get("admin") else "member"
+
+
 def list_users() -> list[dict[str, Any]]:
     users = load()["users"]
     return [{"name": n, "admin": bool(u.get("admin")),
+             "role": "admin" if u.get("admin") else "member",
+             "note": u.get("note") or "",
              "created": u.get("created"), "last_login": u.get("last_login")}
             for n, u in sorted(users.items())]
 
 
-def add_user(name: str, password: str, *, admin: bool = False) -> None:
-    name = name.strip()
+def _admins(data: dict[str, Any]) -> list[str]:
+    return [n for n, u in data["users"].items() if u.get("admin")]
+
+
+def set_role(name: str, new_role: str) -> None:
+    """Promote or demote. Refuses to remove the last admin.
+
+    Without that guard the account page offers a single click that locks
+    everyone out of account management for good — recoverable only by editing a
+    JSON file on a machine that has no shell.
+    """
+    if new_role not in ROLES:
+        raise ValueError(f"没有 {new_role} 这个角色")
+    data = load()
+    u = data["users"].get(normalize_name(name))
+    if not u:
+        raise ValueError(f"没有用户 {name}")
+    if new_role != "admin" and u.get("admin") and len(_admins(data)) == 1:
+        raise ValueError("这是最后一个管理员，降级之后就没人能管账号了")
+    u["admin"] = (new_role == "admin")
+    save(data)
+
+
+#: Usernames are typed into a login form by five people, so they are kept to
+#: what survives a keyboard, a phone, and a copy-paste: ASCII letters, digits,
+#: dot, dash, underscore. A name that renders differently than it was typed is
+#: an account that "sometimes" does not work.
+_NAME_OK = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+
+
+def normalize_name(name: str) -> str:
+    """The canonical form of a typed username: trimmed and lowercased.
+
+    Case-insensitive on purpose. `Jon` and `jon` being two different accounts is
+    a support ticket waiting to happen, and the person who hits it experiences
+    it as "the password does not work".
+    """
+    return (name or "").strip().lower()
+
+
+def add_user(name: str, password: str, *, admin: bool = False,
+             role: str | None = None, note: str = "") -> None:
+    if role is not None:
+        if role not in ROLES:
+            raise ValueError(f"没有 {role} 这个角色")
+        admin = (role == "admin")
+    name = normalize_name(name)
     if not name or len(name) > 64:
         raise ValueError("用户名不能为空，且不超过 64 字符")
+    bad = sorted(set(name) - _NAME_OK)
+    if bad:
+        raise ValueError(
+            f"用户名只能用英文字母、数字和 . _ -（这些不行：{''.join(bad)}）")
     if len(password) < 8:
         raise ValueError("口令至少 8 位")
     data = load()
@@ -205,6 +343,7 @@ def add_user(name: str, password: str, *, admin: bool = False) -> None:
         "salt": base64.b64encode(salt).decode(),
         "hash": _hash(password, salt),
         "admin": admin,
+        "note": note,
         "epoch": 1,
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
@@ -220,7 +359,7 @@ def set_password(name: str, password: str) -> None:
     if len(password) < 8:
         raise ValueError("口令至少 8 位")
     data = load()
-    u = data["users"].get(name)
+    u = data["users"].get(normalize_name(name))
     if not u:
         raise ValueError(f"没有用户 {name}")
     salt = secrets.token_bytes(16)
@@ -230,7 +369,20 @@ def set_password(name: str, password: str) -> None:
     save(data)
 
 
+def admin_set_password(name: str, password: str) -> None:
+    """Reset somebody else's password.
+
+    The one thing missing that made "I cannot get in" unfixable: the account
+    page could add a colleague and delete a colleague, but the day one of them
+    forgot their password there was nothing an admin could do about it, on a
+    machine with no shell. Same epoch bump as a self-service change, so the
+    reset also ends whatever sessions the old password left behind.
+    """
+    set_password(name, password)
+
+
 def remove_user(name: str) -> None:
+    name = normalize_name(name)
     data = load()
     if name not in data["users"]:
         raise ValueError(f"没有用户 {name}")
@@ -242,7 +394,7 @@ def remove_user(name: str) -> None:
 
 def revoke_sessions(name: str) -> None:
     data = load()
-    u = data["users"].get(name)
+    u = data["users"].get(normalize_name(name))
     if not u:
         raise ValueError(f"没有用户 {name}")
     u["epoch"] = int(u.get("epoch", 1)) + 1
@@ -282,7 +434,7 @@ def throttle_ok(client: str) -> None:
 
 
 def verify(name: str, password: str) -> bool:
-    u = load()["users"].get(name)
+    u = load()["users"].get(normalize_name(name))
     if not u:
         # Hash anyway, so a missing user and a wrong password take the same
         # time. Otherwise the login form answers "does this account exist".
@@ -294,18 +446,19 @@ def verify(name: str, password: str) -> bool:
 
 def note_login(name: str) -> None:
     data = load()
-    u = data["users"].get(name)
+    u = data["users"].get(normalize_name(name))
     if u:
         u["last_login"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save(data)
 
 
 def is_admin(name: str) -> bool:
-    u = load()["users"].get(name)
+    u = load()["users"].get(normalize_name(name))
     return bool(u and u.get("admin"))
 
 
 def issue(name: str, *, days: int = SESSION_DAYS) -> str:
+    name = normalize_name(name)
     u = load()["users"].get(name)
     epoch = int((u or {}).get("epoch", 1))
     payload = f"{name}|{epoch}|{int(time.time()) + days * 86400}"

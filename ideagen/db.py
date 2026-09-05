@@ -349,10 +349,35 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 def init(path: Path | str | None = None) -> sqlite3.Connection:
     con = connect(path)
     con.executescript(SCHEMA)
+    _ensure_state_tables(con)
     _ensure_columns(con)
     _ensure_indexes(con)
     _ensure_books(con)
     return con
+
+
+def _ensure_state_tables(con: sqlite3.Connection) -> None:
+    """Also build the state store's tables, which code on this connection reads.
+
+    `SCHEMA` above and `schema.DDL` are two declarations of one database. Every
+    real deployment lands them in the same SQLite file, so the split is
+    invisible — until a connection built from `SCHEMA` alone is asked for a
+    table only `schema.DDL` declares. `ideas.compute` reaching `events` through
+    `macro.band_sigma_pct` did exactly that: `no such table: events` on a fresh
+    `db.init(":memory:")`, while every live database on the estate had the
+    table and looked fine. It blocked the cloud deploy gate, which is the only
+    place anything runs against a database this young.
+
+    Same shape as `first_seen_d` in `_ensure_columns` below, and the same
+    answer: reuse the existing declaration instead of hand-copying the DDL
+    here, because the duplication is the bug. Every statement is
+    IF NOT EXISTS, so this is additive on a database that already has them.
+    """
+    from . import schema
+
+    for stmt in schema.DDL:
+        con.execute(stmt)
+    con.commit()
 
 
 def _ensure_columns(con: sqlite3.Connection) -> None:

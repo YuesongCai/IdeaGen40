@@ -4694,12 +4694,22 @@ function evLedgerRows(){
   var rp=sm.ranking_power;
   if(rp&&rp.pooled){
     var lvb=sm.live_vs_backfill||{};
-    out.push({sec:'ranking',n:'⑤',short:'分数排得动结果',
+    /* 这一行是全页唯一的「有信号」，页头那句话也是从它生成的——所以它必须
+       自己带上证伪的结论。只写「排得动」而把「排的是风险」留到十屏之后，
+       读者在第一屏拿到的就是相反的意思。它现在指向漏斗，不再指向排序力：
+       漏斗才是那句「排得动之后还剩什么」的答案所在。 */
+    var pvo=(rp.partial_vs_volatility||{});
+    /* `short` 会被页头那句话直接引用（「六问里唯一出信号的是「…」」）。
+       写「分数排得动结果」，读者在第一屏得到的就是一个已经被证伪掉大半的
+       结论——所以这里必须是带条件的那一版。 */
+    out.push({sec:'funnel',n:'⑤',short:'分数排得动的是风险',
       q:'系统给每条想法打的分，排得动真实结果吗？',
       state:'sig',
-      a:'<b>排得动</b>——顶格分位高于末位分位 '
-        +fmtInt(rp.periods_top_beats_bottom)+'/'+fmtInt(rp.periods_scored)+' 期',
-      need:'但这条排序是看过结果之后才挑出来检验的（样本内）'
+      a:'<b>排得动，但排的是风险</b>——顶格高于末位 '
+        +fmtInt(rp.periods_top_beats_bottom)+'/'+fmtInt(rp.periods_scored)+' 期，'
+        +'控住入场前波动后只剩 '
+        +(pvo.mean_rho_partial==null?'—':Number(pvo.mean_rho_partial).toFixed(3)),
+      need:'这条排序是看过结果之后才挑出来检验的（样本内）'
         +(lvb.periods_needed?'；实跑还差 '+fmtInt(lvb.periods_needed)+' 期才算证据':'')});
   }
 

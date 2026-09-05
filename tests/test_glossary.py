@@ -275,19 +275,30 @@ class GlossaryGate(unittest.TestCase):
         from ideagen import strategy
         import ideagen.strategies                      # noqa: F401
         html = (ROOT / "web" / "dash.html").read_text(encoding="utf-8")
+        # GEN_ORDER 还有一层更糟的后果：不在它里面而本期跑过的生成方式，
+        # 会被 genOrder() 一律画成「PM 注入 · 由准则页注入的一条准则派生」。
+        # 内置的新方法漏进这条路径，界面就会替它编一个来历。
         for kind, var in (("idea_generator", "GEN_PATH"),
+                          ("idea_generator", "GEN_ORDER"),
                           ("idea_selector", "SEL_PATH")):
-            block = re.search(rf"var {var}=\{{.*?\}};", html, re.S)
+            block = re.search(rf"var {var}=[\{{\[].*?\n\];|var {var}=\{{.*?\}};",
+                              html, re.S)
             self.assertIsNotNone(block, f"dash.html 里找不到 {var}")
             mapped = set(re.findall(r"([a-z0-9_]+):'", block.group()))
+            mapped |= set(re.findall(r"\['([a-z0-9_]+)'", block.group()))
             registered = {m["name"] for m in strategy.available(kind)}
             missing = sorted(registered - mapped)
             self.assertFalse(
                 missing,
-                f"这些 {kind} 注册了但 {var} 里没有，「执行路径」那排数字会少数：\n  "
+                f"这些 {kind} 注册了但 {var} 里没有，"
+                + ("「执行路径」那排数字会少数：\n  " if var.endswith("PATH")
+                   else "它一跑起来就会被画成「PM 注入」：\n  ")
                 + "\n  ".join(missing)
-                + f"\n往 web/dash.html 的 {var} 里加 <名字>:'ai'|'frame'|'code'"
-                  "（needs_model=False 的一定是 code）")
+                + f"\n往 web/dash.html 的 {var} 里加一条"
+                + ("：<名字>:'ai'|'frame'|'code'（needs_model=False 的一定是 code）"
+                   if var.endswith("PATH") else
+                   "：[键名, 中文名, 短语, 长说明, 例]——不加的话它一跑起来"
+                   "就会被画成「PM 注入」，界面替它编一个来历"))
 
     def test_every_exemption_names_a_file_that_exists(self):
         """豁免清单会烂掉——文件改名之后那条豁免就在悄悄免掉一个不存在的东西。"""

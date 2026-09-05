@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Keeps the two cloud nodes in step with this laptop, every ten minutes.
+
+       Before this existed, both directions relied on somebody remembering.
+       On 2026-09-05 both were wrong at once and neither said so: the display
+       node had been serving a day-old set of marks because publishing a
+       snapshot only ever happened inside daily.sh (which had not run), and
+       origin/main was three days behind because a push that everyone believed
+       had happened never landed. Every dashboard looked healthy throughout.
+
+       So the interval is not the point — the reporting is. The script pushes
+       only what changed, gates code on the same test suite the cloud updater
+       runs before it swaps images, verifies with the remote that the push
+       actually landed, and sends a Lark DM when a leg is stuck.
+
+       PATH is set explicitly: launchd starts with almost none, and both git
+       (credential helper) and lark-cli (notifications) live outside it. -->
+  <key>Label</key><string>com.ideagen40.cloudsync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
+    <string>/Users/yuesongcai/IdeaGen40/scripts/sync_to_cloud.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/yuesongcai/IdeaGen40</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StartInterval</key><integer>600</integer>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/cloud_sync.log</string>
+  <key>StandardErrorPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/cloud_sync.log</string>
+</dict>
+</plist>

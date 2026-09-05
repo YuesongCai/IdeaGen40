@@ -802,6 +802,15 @@ def state(con=None, p=None) -> dict[str, Any]:
         # because a method that only breaks even must not clear Jon's >50% bar
         # on rounding. win_rate stays null until something has actually closed —
         # 0% would read as "always loses" when the truth is "no verdicts yet".
+        # 这个组合实际在几期出过手。面板反复写着「各策略同池同期，净值差异
+        # 仅来自选取策略」，而 2026-09-05 实测**十个组合里只有两个覆盖全部六期**：
+        # buy_all（全量基准，所有比较的参照）缺 08-12 与 08-19 两期，
+        # ai_native 只有三期。选取判决当时是正常做出来的（buy_all 那两期分别选了
+        # 74 和 75 条），单子却一张没下——中间安静地丢了。
+        # 参照自己缺了两期，那两期里出过手的组合就不是在和它比同一段时间。
+        periods_acted = db.q1(
+            con, "SELECT COUNT(DISTINCT as_of) n FROM positions WHERE book_id=?",
+            (b["book_id"],))
         # `same_day` 是这个胜率能不能被当成业绩读的前提。2026-09-05 实测：
         # 十个组合的 202 笔已平仓**全部**是同日开平（补跑把五期订单挤在撮合
         # 当天，horizon_end 已经在过去，于是建仓当天就按「到期」平掉）。同日
@@ -832,6 +841,8 @@ def state(con=None, p=None) -> dict[str, Any]:
                       "wins": realized["w"] if realized else 0,
                       "closed_same_day": (realized["same_day"]
                                           if realized else 0),
+                      "periods_acted": (periods_acted["n"]
+                                        if periods_acted else 0),
                       "win_rate": (round(realized["w"] / realized["n"], 4)
                                    if realized and realized["n"] else None),
                       # Orders placed but not yet filled, and orders that

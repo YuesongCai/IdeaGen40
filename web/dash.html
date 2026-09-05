@@ -4521,7 +4521,7 @@ function raceHero(ag){
   /* 同名同去处的第二颗「尚不排名的依据」去掉了：抬头上那颗（修好之后）
      已经指向「已知局限」，同一张卡上两个一模一样的入口，读者会以为
      它们是两件事。这里只留口径说明。 */
-  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各管一个模拟组合；统一口径：<b>与全量基准的差距</b>。</div>';
+  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各管一个模拟组合；统一口径：<b>与全量基准的差距</b>'+periodsActedNote()+'。</div>';
   /* 芯片：与噪音带同序、同色点、同一个指标（vs 全买），不再印名次大字 */
   var rows=pairedDiffs(books).slice().sort(function(a,b){return (b.diff===null?-1e9:b.diff)-(a.diff===null?-1e9:a.diff)});
   var medals='<div class="medal-strip">'
@@ -7019,6 +7019,36 @@ function overDeployed(){
         +'本金」——补跑把五期订单挤在撮合当天开出，平掉一部分后停在 100% 之上。')
     +'"> · 其中 '+out.length+' 个组合超过自己的本金 ⚠</span>';
 }
+/* 面板两处写着「各策略同池同期，净值差异仅来自选取策略」。同池成立；
+ * **同期不成立**：2026-09-05 实测十个组合里只有两个覆盖全部六期。
+ * buy_all——全量基准，所有「相对基准的差距」的参照——缺 08-12 与 08-19 两期，
+ * ai_native 只有三期。那两期的选取判决当时是正常做出来的（buy_all 分别选了
+ * 74 和 75 条），单子却一张没下，中间安静地丢了 118 和 109 条。
+ *
+ * 后果不是少两个点：参照自己缺了两期，那两期里出过手的组合就不是在和它比
+ * 同一段时间，而「与全量基准的差距」是这一页的头条口径。
+ *
+ * 这里不改建仓、也不重算差距，只是把「谁在几期出过手」摆出来，让读者知道
+ * 这句「同期」现在成立到什么程度。 */
+function periodsActedNote(){
+  var bs=(typeof currentBooks==='function'?currentBooks():[])||[];
+  var have=bs.filter(function(b){return b.periods_acted!=null});
+  if(have.length<2)return '';
+  var max=0; have.forEach(function(b){max=Math.max(max,b.periods_acted||0)});
+  var short=have.filter(function(b){return (b.periods_acted||0)<max});
+  if(!short.length)return '';
+  var names=short.sort(function(x,y){return (x.periods_acted||0)-(y.periods_acted||0)})
+    .map(function(b){
+      return (typeof backtestArmName==='function'?backtestArmName(b.selector):b.selector)
+        +' '+(b.periods_acted||0)+'/'+max;
+    });
+  return ' <span class="gloss gm" style="color:var(--color-feedback-warning-text)" title="'
+    +esc('「同期」现在只成立到这个程度：'+have.length+' 个组合里 '
+        +(have.length-short.length)+' 个覆盖全部 '+max+' 期，其余是 '+names.join('、')
+        +'。缺期的那几期，选取判决当时正常做出来了，单子却没下。'
+        +'参照（全量基准）自己缺期时，「相对基准的差距」两边不是同一段时间。')
+    +'">同期只成立到 '+(have.length-short.length)+'/'+have.length+' ⚠</span>';
+}
 var SIGMA_GLOSS='σ = 标的近月波动率。止损与止盈按其倍数设定（−2σ / +3σ），使风控幅度在不同波动水平的资产间可比。两条线按想法成文那一期的参考价算，不是按实际成交价——成交离参考越远，它们相对成交价越偏。触发后自动执行。';
 var ARM_GLOSS='正式比较组合 = 预注册参与统计检验的策略（主策略）。限定比较次数以控制多重检验下的假阳性，对照与探索组合不参与结论判定。';
 var RULER_GLOSS='基准 = 不作判断的对照组合（全量 / 随机）。跑不赢全量基准即选取环节无增量，跑不赢随机基准即排序为噪声。';
@@ -8478,7 +8508,7 @@ function stageSelectorsBody(d){
     matrix='<div class="empty-sm" style="margin-top:var(--space-3)">候选池为空——闸门矩阵无从谈起</div>';
   }
   return tabs+focusHead+legend+matrix
-    +epi('各策略同池同期，净值差异仅来自选取策略 '+glossMark('因此组合之间可以直接配对比较。但当前配对样本量尚未满足预注册要求，带内排名不构成结论。'));
+    +epi('各策略同池同期，净值差异仅来自选取策略 '+glossMark('因此组合之间可以直接配对比较。但当前配对样本量尚未满足预注册要求，带内排名不构成结论。')+periodsActedNote());
 }
 
 /* ── 6 · 自动建仓 ── */
@@ -8761,7 +8791,7 @@ function bookDrawerBody(sel){
   }else{
     html+='<div class="empty-sm" style="margin-top:var(--space-4)">该组合空仓：无标的达到门槛，留存现金</div>';
   }
-  html+=epi('与其他组合同池同期，净值差异即选取策略差异 '+glossMark('当前配对样本量尚未满足预注册要求，排名不构成结论。'));
+  html+=epi('与其他组合同池同期，净值差异即选取策略差异 '+glossMark('当前配对样本量尚未满足预注册要求，排名不构成结论。')+periodsActedNote());
   return html;
 }
 /* ══════════ 追问记录 — 历次追问的运营视图 ══════════

@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ideagen import db, platform as plat, review  # noqa: E402
+from ideagen import ask, db, platform as plat, review  # noqa: E402
 
 
 def scrub(obj):
@@ -45,16 +45,24 @@ def main() -> int:
 
     state = review.state(con, p)
     journal = None
-    row = p.state.q("SELECT run_id, as_of FROM orch_runs WHERE kind='weekly' "
+    journal_error = None
+    row = p.state.q("SELECT run_id, as_of, kind FROM orch_runs WHERE kind='weekly' "
                     "AND ok=1 ORDER BY as_of DESC LIMIT 1")
     if row:
-        try:
-            j = json.loads(p.blobs.get(
-                f"runs/{row[0]['as_of']}/{row[0]['run_id']}/journal.json"))
+        # Through the shared reader, so the published page can say the same
+        # thing the live one does. Reading the blob here meant the exporter
+        # knew why the log was missing, printed it to a terminal nobody keeps,
+        # and shipped a page whose only explanation was 「静态快照未包含运行
+        # 日志」 — a fact about the snapshot standing in for the reason.
+        j, why = ask.journal_or_reason(p, dict(row[0]))
+        if j is not None:
             journal = {"run_id": row[0]["run_id"], "as_of": row[0]["as_of"],
                        "journal": j}
-        except Exception as e:  # noqa: BLE001 — the page states the absence
-            print(f"  journal 不可读（页面会如实标注）: {type(e).__name__}")
+        else:
+            journal_error = why
+            print(f"  运行日志不可读（页面会如实标注）: {why}")
+    else:
+        journal_error = "orch_runs 里没有跑成的周跑记录"
 
     if journal:
         for h in (journal.get("journal", {}).get("port_health") or []):
@@ -62,6 +70,7 @@ def main() -> int:
                 h.pop("meta", None)
         journal.get("journal", {}).pop("host", None)
     payload = scrub({"state": state, "journal": journal,
+                     "journal_error": journal_error,
                      "exported_at": datetime.now(timezone.utc).isoformat()})
 
     html = Path("web/dash.html").read_text(encoding="utf-8")

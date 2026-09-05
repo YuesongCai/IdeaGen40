@@ -215,40 +215,48 @@ button:focus-visible,a:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var
    这里放的是**步进器**，不是选择器，区别是有意的：选择器让人从一个集合里挑
    （把那个集合复制到第二个地方，就是把「选哪一期」这个决定要求做两次）；
    步进器只是沿着你已经在的那根轴挪一格，像翻页。全部期次的清单只在「各期」
-   一处，那里的行本身就是控件。中间那块标签是状态，点它去「各期」。 */
-.pnav{display:flex;align-items:center;gap:2px}
-.pnav-step{
-  width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+   一处，那里的行本身就是控件。中间那块标签是状态，点它去「各期」。
+
+   外形上是**一个盒子**，不是三个挨着的盒子。三件套各自描边会在顶栏里显得碎，
+   而它们是一个控件。高度锁 28px：顶栏里「问它为什么选它」「数据源」「?」全是
+   28px，这一组先前是 24（箭头）和 26（标签）——既比邻居矮，组内两种高度还让
+   上下边缘对不齐，看上去就是歪的。同一排控件的高度必须是同一个数。 */
+.pstep-wrap{display:flex;align-items:center}
+.pstep-box{
+  display:flex;align-items:stretch;height:28px;
   border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);
-  background:var(--color-surface-white);color:var(--color-text-secondary);
-  cursor:pointer;padding:0;
+  background:var(--color-surface-white);overflow:hidden;
 }
-.pnav-step:hover:not(:disabled){
-  border-color:var(--color-border-brand);color:var(--color-text-brand);
-  background:var(--color-surface-brand-subtle);
+.pstep-btn{
+  width:24px;display:flex;align-items:center;justify-content:center;
+  border:none;background:none;padding:0;cursor:pointer;
+  color:var(--color-text-tertiary);
 }
-.pnav-step:disabled{opacity:.32;cursor:default}
-.pnav-lab{
-  display:flex;align-items:baseline;gap:5px;padding:3px 9px;min-height:24px;
-  border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);
-  background:var(--color-surface-white);cursor:pointer;
-  font:500 12px/18px var(--font-mono);color:var(--color-text-primary);
-  white-space:nowrap;
+.pstep-btn:hover:not(:disabled){
+  background:var(--color-surface-subtle);color:var(--color-text-brand);
 }
-.pnav-lab:hover{border-color:var(--color-border-brand);color:var(--color-text-brand)}
-.pnav-lab .u{font-family:var(--font-sans);color:var(--color-text-tertiary)}
-/* 不在最新一期时，整块换成品牌色——离开默认状态这件事必须一眼看得出来，
+.pstep-btn:disabled{opacity:.3;cursor:default}
+.pstep-lab{
+  display:flex;align-items:center;gap:4px;padding:0 9px;
+  border:none;border-left:1px solid var(--color-border-subtle);
+  border-right:1px solid var(--color-border-subtle);
+  background:none;cursor:pointer;white-space:nowrap;
+  font:500 12px/1 var(--font-mono);color:var(--color-text-primary);
+}
+.pstep-lab:hover{background:var(--color-surface-subtle);color:var(--color-text-brand)}
+.pstep-lab .u{font-family:var(--font-sans);color:var(--color-text-tertiary)}
+/* 不在最新一期时整块换成品牌色——离开默认状态这件事必须一眼看得出来，
    否则读者会拿着上个月的数字当本周的读。 */
-.pnav.off .pnav-lab{
-  border-color:var(--color-border-brand);background:var(--color-surface-brand-subtle);
-  color:var(--color-text-brand);
-}
-.pnav-back{
-  border:none;background:none;padding:0 2px 0 6px;cursor:pointer;
-  font:500 12px/18px var(--font-sans);color:var(--color-text-brand);
+.pstep-box.off{border-color:var(--color-border-brand);background:var(--color-surface-brand-subtle)}
+.pstep-box.off .pstep-lab{color:var(--color-text-brand);border-color:var(--color-border-brand-subtle)}
+.pstep-box.off .pstep-btn{color:var(--color-text-brand)}
+/* 「回到最新」在盒子外面：它不是这根轴上的一格，是跳回默认，和步进不是同一件事。 */
+.pstep-back{
+  border:none;background:none;padding:0 2px 0 8px;cursor:pointer;
+  font:500 12px/20px var(--font-sans);color:var(--color-text-brand);
   text-decoration:underline;text-underline-offset:2.5px;white-space:nowrap;
 }
-@media (max-width:900px){.pnav-lab .u{display:none}}
+@media (max-width:900px){.pstep-lab .u{display:none}}
 .refresh-stamp{font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);display:flex;align-items:center;gap:8px}
 .refresh-stamp .rs-dot{width:6px;height:6px;border-radius:var(--radius-pill);background:var(--color-feedback-success-default)}
 .refresh-stamp.stale .rs-dot{background:var(--color-feedback-error-default)}
@@ -486,7 +494,10 @@ tr.derive-row>td{
 .gap-row.ok .gv{color:var(--color-text-tertiary)}
 /* 检验结论：判定一行，支撑分组各一行 */
 .vd{margin-top:var(--space-3);display:flex;flex-direction:column;gap:2px}
-.vd-t{font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)}
+/* 这句是「历史回测」卡的头条（它移到元数据条上面了），所以按头条排：
+   原来 13px 次要灰是给脚注用的，摆在卡顶会被它下面更大更黑的四组数字压过去。 */
+.vd-t{font:400 15px/23px var(--font-sans);color:var(--color-text-primary)}
+.vd-t b{font-weight:600}
 .vd-t b{font-weight:600;color:var(--color-text-primary)}
 /* 标签列曾写死 96px，「样本已足、无差距」正好多出一个字，被折行成
  * 「样本已足、无差」+ 独占一行的「距」。max-content 让两行共用最宽那条的
@@ -1848,6 +1859,89 @@ table.ptbl td.exw{white-space:nowrap}
   border-bottom:1px dashed var(--color-border-strong);
 }
 .wk-p-btn:hover{color:var(--color-text-brand);border-bottom-color:var(--color-text-brand)}
+
+/* ── 概览重构：证据进度 / 已学到什么 / 账面现状 ───────────────────
+   概览此前把整块头条给了一个收益率，然后用三行小字把它收回去（其中
+   0.36pp 是货币基金利息、对手方是满仓、样本尚不足以判定）。一个大数字
+   加三行撤回，净信息量为零——问题不在文案，在选错了头条对象：本期持仓
+   平均只持有 1 天，这台机器现在根本没有可报的收益。
+   真正回答「它管用吗」的数在 backtest.summary.live_vs_backfill 里：
+   六期中只有 1 期是当期实跑，usable=false，还差 2 期。那才是头条。 */
+
+/* 证据进度条：一格 = 一期。空心 = 事后补跑，实心 = 当期实跑，
+   虚线格 = 还没到的那几期。「还差 2 期」因此是看得见的，而不是一句话。 */
+.ev-prog{display:flex;gap:5px;align-items:flex-end;margin:var(--space-3) 0 var(--space-2)}
+.ev-cell{width:34px;height:26px;border-radius:4px;border:1px solid var(--color-border-default);
+  background:transparent;position:relative}
+.ev-cell.live{background:var(--color-brand-default,#174b35);border-color:var(--color-brand-default,#174b35)}
+.ev-cell.todo{border-style:dashed;opacity:.55}
+.ev-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;
+  font:400 11px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.ev-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;
+  border:1px solid var(--color-border-default);vertical-align:-1px;margin-right:5px}
+.ev-legend i.live{background:var(--color-brand-default,#174b35);border-color:var(--color-brand-default,#174b35)}
+.ev-legend i.todo{border-style:dashed}
+
+/* 三项证伪：结论下面挂的是「它没干净通过的那几关」，不是补充说明。
+   用竖线组把它们和结论绑在一起，避免读成三条无关的注脚。 */
+.fal-list{margin:var(--space-3) 0 0;padding:0 0 0 var(--space-4);
+  border-left:2px solid var(--color-border-default);list-style:none}
+.fal-list li{margin:0 0 6px;font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)}
+.fal-list li:last-child{margin-bottom:0}
+.fal-list b{color:var(--color-text-primary);font-weight:600}
+
+/* ══ 证据总账 ═══════════════════════════════════════════════════
+   证据页此前是七张平级卡，每张卡自己写了结论句，页面层面却从没说过它们
+   在验证同一个命题。读者要跨过 4000px 才能把五句「还分不出来」合成一句
+   话，而那五句用的是五种措辞，读起来像五个发现。这张总账把五个判定摆成
+   一屏：一行一个问题，判定用三态（有信号 / 已能说没有 / 还分不出），
+   右边写还差什么。它不是新数字，全部来自下面那几张卡自己算出来的字段。 */
+.evl{display:flex;flex-direction:column;margin-top:var(--space-3)}
+.evl-r{display:grid;grid-template-columns:1.35fr 104px 1.25fr;
+  gap:var(--space-3);align-items:baseline;width:100%;text-align:left;
+  border:none;border-top:1px solid var(--color-border-subtle);background:none;
+  padding:11px var(--space-2);cursor:pointer;font-family:var(--font-sans)}
+.evl-r:first-child{border-top:none}
+.evl-r:hover{background:var(--color-surface-sunken)}
+.evl-r:focus-visible{outline:2px solid var(--color-fill-brand);outline-offset:-2px}
+.evl-q{font:500 13.5px/20px var(--font-sans);color:var(--color-text-primary)}
+.evl-q i{font-style:normal;color:var(--color-text-metadata);margin-right:6px;
+  font-family:var(--font-mono)}
+.evl-a{font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)}
+.evl-a b{color:var(--color-text-primary);font-weight:600}
+.evl-n{font:400 11.5px/17px var(--font-sans);color:var(--color-text-metadata);
+  margin-top:3px}
+/* 判定色只有一处是亮的。整页唯一一条有信号的结论，值得让它在总账上一眼
+   可见——其余两态都不上色，否则「分不出」和「没看出优势」会被读成坏消息，
+   而它们其实是两个不同的、都合法的答案。 */
+.evl-s{font:500 11.5px/17px var(--font-sans);color:var(--color-text-tertiary);
+  border:1px solid var(--color-border-default);border-radius:9999px;
+  padding:2px 9px;justify-self:start;white-space:nowrap}
+.evl-s.sig{color:var(--color-brand-default,#174b35);
+  border-color:var(--color-brand-default,#174b35);font-weight:600}
+/* 组标题：把七张卡分成「它们各自来自哪套数据」。四张卡是同一次回测的四个
+   切面，这件事此前完全不可见——它们和另一套数据的卡并排，看起来像七个
+   独立话题。 */
+.grp-h{display:flex;align-items:baseline;gap:var(--space-3);flex-wrap:wrap;
+  margin:var(--space-6) 0 var(--space-3);padding-bottom:6px;
+  border-bottom:1px solid var(--color-border-default)}
+.grp-h:first-child{margin-top:var(--space-4)}
+.grp-h .gt{font:600 13px/19px var(--font-sans);color:var(--color-text-primary);
+  letter-spacing:.02em}
+.grp-h .gs{font:400 12px/18px var(--font-sans);color:var(--color-text-metadata)}
+
+/* 回测里十条臂的次序。条形只画正收益的相对长度——它要传达的是次序和
+   量级差，不是精确读数，精确读数在右边的数字上。 */
+.rank-row{display:grid;grid-template-columns:132px 1fr 62px;align-items:center;
+  gap:var(--space-3);padding:3px 0}
+.rank-row .rn{font:400 13px/18px var(--font-sans);color:var(--color-text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank-row.bm .rn{color:var(--color-text-primary);font-weight:600}
+.rank-bar{height:9px;border-radius:2px;background:var(--color-border-subtle,#eee);overflow:hidden}
+.rank-bar>i{display:block;height:100%;background:var(--color-stock-up-default,#167447)}
+.rank-row.bm .rank-bar>i{background:var(--color-text-tertiary)}
+.rank-row.ctl .rank-bar>i{background:var(--color-text-tertiary);opacity:.45}
+.rank-row .rv{font:600 13px/18px var(--font-mono);text-align:right}
 </style>
 </head>
 <body>
@@ -1878,7 +1972,7 @@ table.ptbl td.exw{white-space:nowrap}
       <div class="topbar">
         <h1 class="page-title" id="pageTitle">组合</h1>
         <div class="topbar-actions">
-          <div class="pnav" id="periodNav"></div>
+          <div class="pstep-wrap" id="periodNav"></div>
           <div class="refresh-stamp" id="stamp"><span class="rs-dot"></span><span id="stampText">刷新于 --:--:-- · 每 60 秒自动</span></div>
           <button type="button" class="ask-top" id="askTop" data-el="ask.global" onclick="openAskPicker()" title="本期任何一个宏观主题、标的、选取策略，都能问它当时为什么这么定——只依据那次运行封存的材料作答，不使用事后信息"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.6 2.2h8.8v5.6H5.2L2.8 9.9V7.8H1.6z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.7 4.1a1.3 1.3 0 0 1 2.4.6c0 .9-1.2.9-1.2 1.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><circle cx="5.9" cy="7" r=".5" fill="currentColor"/></svg><span>问它为什么选它</span></button>
           <a class="source-link" href="/olive">数据源</a>
@@ -2575,6 +2669,7 @@ var VIEWS=[
   {id:'overview',label:'概览',sub:'它管用吗',
    icon:'<path d="M2 12.5 6 7l3 3 5-6.5"/><path d="M2 14h12"/>',
    secs:[{s:'verdict',label:'结论'},
+         {s:'ledger',label:'账面'},
          {s:'health',label:'运行状况'}]},
   {id:'periods',label:'各期',sub:'一期一期地看',
    icon:'<path d="M2 3.5h12v9H2z"/><path d="M2 6.5h12"/><path d="M5.5 3.5v9"/><path d="M10 6.5v6"/>',
@@ -2655,12 +2750,20 @@ function decDrawers(raw){
 /* URL 只在这里写。push 用于「进入更深一层」，这样浏览器后退退回上一层
    而不是离开页面；其余一律 replace，避免滚动和轮询把历史刷满。 */
 var routeDepth=0, routeSuspend=false;
-function syncRoute(){
-  if(routeSuspend)return;
-  var dz=encDrawers(),qs=[];
+/* 期坐标和抽屉栈是「屏幕上现在是什么」的一部分，不是某一次跳转的附加参数。
+   所以拼查询串只此一处：switchView 曾经自己写 URL、只写视图和段落，于是
+   选中某一期之后换个视图，?p= 就从地址栏掉了——屏幕上还是那一期，链接却
+   指向最新一期。发出去别人打开是另一期，自己按刷新也会弹回去。
+   抽屉栈同理：开着抽屉换视图，?d= 一起没。 */
+function routeQuery(){
+  var qs=[],dz=encDrawers();
   if(dz)qs.push('d='+dz);
   if(PERIOD)qs.push('p='+encodeURIComponent(PERIOD));
-  var url=buildRoute(current,activeSec)+(qs.length?'?'+qs.join('&'):'');
+  return qs.length?'?'+qs.join('&'):'';
+}
+function syncRoute(){
+  if(routeSuspend)return;
+  var url=buildRoute(current,activeSec)+routeQuery();
   var depth=drawerStack.length;
   try{
     if(depth>routeDepth)history.pushState(null,'',url);
@@ -2752,7 +2855,11 @@ function gotoSection(view,slug){
   if(view!==current)switchView(view,slug);
   scrollToEl($(secDomId(view,slug)));
   setActiveSection(slug);
-  try{history.replaceState(null,'',buildRoute(view,slug))}catch(e){}
+  /* 走 syncRoute 而不是自己拼一遍。这里曾经自己写 URL，于是深链
+     `#/holdings?p=2026-08-12` 打开时：switchView 先写对了带期坐标的地址，
+     首屏的锚点跳转紧接着把它改回 `#/holdings`——同一次开页里写两遍、
+     后一遍把前一遍的信息抹掉。屏幕上还是那一期，链接已经不是了。 */
+  try{syncRoute()}catch(e){}
 }
 function setActiveSection(slug){
   activeSec=slug;
@@ -2779,7 +2886,7 @@ function switchView(id,sec){
   if(!sec)window.scrollTo(0,0);
   activeSec=null;
   buildNav();
-  try{history.replaceState(null,'',buildRoute(id,sec))}catch(e){}
+  try{history.replaceState(null,'',buildRoute(id,sec)+routeQuery())}catch(e){}
 }
 /* cross-link: jump to a view and anchor within it */
 function goto(view,anchor){
@@ -2812,14 +2919,6 @@ var PCACHE={};        /* as_of -> weekly 块。按需取，不进每分钟轮询
 var PFETCH={};        /* 正在飞的请求，避免重复发 */
 
 function periodList(){return (S&&S.periods)||[]}
-/* review.py 认真地把每个失败的原因写进状态文档（periods_error /
-   corpus_periods_error / evidence_error），而面板一个都没读过——三种失败
-   都退化成同一句「没有」。空集合和读失败在这里必须分开说。 */
-function stateErr(k){return (S&&S[k])||''}
-function failNote(msg,why){
-  return '<div class="quiet" style="text-align:center;color:var(--color-feedback-warning-text)">'
-    +esc(msg)+'<br><span style="font-size:11.5px">服务端报的原因：'+esc(why)+'</span></div>';
-}
 function periodAt(a){
   var L=periodList();
   for(var i=0;i<L.length;i++)if(L[i].as_of===a)return L[i];
@@ -2856,17 +2955,8 @@ function fetchPeriod(a){
   if(window.__STATIC__){PCACHE[a]={as_of:a,offline:true};return}
   PFETCH[a]=1;
   fetch('/api/period?as_of='+encodeURIComponent(a),{cache:'no-store'})
-    /* 服务端是分得清的：真没跑过 → 200 带 weekly:null 和 reason；出错 → 500
-       带 error。这里从前既不看 r.ok 也不看 reason，于是 500 的响应体里没有
-       weekly，就被当成 missing:true，渲染成「这一期没有跑成的运行记录」——
-       把服务器故障说成了这一期没跑。 */
-    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}},
-                                           function(){return {ok:r.ok,b:null}})})
-    .then(function(res){
-      var b=res.b||{};
-      if(!res.ok||b.error){PCACHE[a]={as_of:a,error:String(b.error||('HTTP '+(res.ok?'响应不是 JSON':'错误')))};return}
-      PCACHE[a]=b.weekly||{as_of:a,missing:true,reason:b.reason||''};
-    })
+    .then(function(r){return r.json()})
+    .then(function(j){PCACHE[a]=(j&&j.weekly)||{as_of:a,missing:true}})
     .catch(function(e){PCACHE[a]={as_of:a,error:String(e&&e.message||e)}})
     .then(function(){delete PFETCH[a];renderAll()});
 }
@@ -2925,37 +3015,31 @@ function renderPeriodNav(){
   var host=$('periodNav');
   if(!host)return;
   var L=periodList();
-  if(!L.length){
-    /* 期次骨架取失败时 periods 是 []，导航整条消失——读者看不到有东西坏了，
-       只看到一个少了控件的页面。列不出来就说列不出来。 */
-    var pe=stateErr('periods_error');
-    host.className='pnav'+(pe?' off':'');
-    host.innerHTML=pe?('<span class="pnav-lab" title="'+esc(pe)+'">期次列不出来</span>'):'';
-    return;
-  }
+  if(!L.length){host.innerHTML='';host.className='pstep-wrap';return}
   var cur=curPeriod(), last=latestPeriod(), i=-1;
   for(var k=0;k<L.length;k++)if(L[k].as_of===cur){i=k;break}
   var off=!!PERIOD&&cur!==last;
   var r=periodAt(cur)||{};
   var w=(S&&S.weekly)||{};
   var note=w.loading?'载入中…'
-    :(w.error?('这一期取不到：'+w.error)
     :(w.missing?'这一期没有跑成的运行记录'
     :(r.status==='rolled'?('已滚出 · '+fmtInt(r.n_closed)+' 仓全部平仓')
     :(r.days_left===0?'今天到期'
-    :(r.days_left>0?('还有 '+r.days_left+' 天到期'):'')))));
-  host.className='pnav'+(off?' off':'');
-  host.innerHTML=
-     '<button type="button" class="pnav-step" onclick="periodStep(-1)"'
+    :(r.days_left>0?('还有 '+r.days_left+' 天到期'):''))));
+  /* host 是外壳，盒子在里面：「回到最新」要待在盒子外，否则 overflow:hidden 会裁掉它。 */
+  host.className='pstep-wrap';
+  host.innerHTML='<div class="pstep-box'+(off?' off':'')+'">'+
+     '<button type="button" class="pstep-btn" onclick="periodStep(-1)"'
       +(i<=0?' disabled':'')+' aria-label="上一期" title="上一期">'
       +'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 1.6 2.8 5l3.4 3.4"/></svg></button>'
-    +'<button type="button" class="pnav-lab" onclick="goto(\'periods\')"'
+    +'<button type="button" class="pstep-lab" onclick="goto(\'periods\')"'
       +' title="'+esc(cur+' 期'+(note?(' · '+note):'')+'　点开看全部 '+L.length+' 期')+'">'
       +'<span>'+esc(cur||'—')+'</span><span class="u">期</span></button>'
-    +'<button type="button" class="pnav-step" onclick="periodStep(1)"'
+    +'<button type="button" class="pstep-btn" onclick="periodStep(1)"'
       +(i<0||i>=L.length-1?' disabled':'')+' aria-label="下一期" title="下一期">'
       +'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 1.6 7.2 5l-3.4 3.4"/></svg></button>'
-    +(off?'<button type="button" class="pnav-back" onclick="setPeriodExact(null)">回到最新</button>':'');
+    +'</div>'
+    +(off?'<button type="button" class="pstep-back" onclick="setPeriodExact(null)">回到最新</button>':'');
 }
 
 /* ── 图一：四周阶梯 ──────────────────────────────────────────────────
@@ -2965,48 +3049,8 @@ function renderPeriodNav(){
 function ladderCard(){
   var L=periodList();
   if(!L.length){
-    var pe=stateErr('periods_error');
-    host.className='pnav'+(pe?' off':'');
-    host.innerHTML=pe?('<span class="pnav-lab" title="'+esc(pe)+'">期次列不出来</span>'):'';
-    return;
-  }
-  var cur=curPeriod(), last=latestPeriod(), i=-1;
-  for(var k=0;k<L.length;k++)if(L[k].as_of===cur){i=k;break}
-  var off=!!PERIOD&&cur!==last;
-  var r=periodAt(cur)||{};
-  var w=(S&&S.weekly)||{};
-  var note=w.loading?'载入中…'
-    :(w.error?('这一期取不到：'+w.error)
-    :(w.missing?'这一期没有跑成的运行记录'
-    :(r.status==='rolled'?('已滚出 · '+fmtInt(r.n_closed)+' 仓全部平仓')
-    :(r.days_left===0?'今天到期'
-    :(r.days_left>0?('还有 '+r.days_left+' 天到期'):'')))));
-  host.className='pnav'+(off?' off':'');
-  host.innerHTML=
-     '<button type="button" class="pnav-step" onclick="periodStep(-1)"'
-      +(i<=0?' disabled':'')+' aria-label="上一期" title="上一期">'
-      +'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 1.6 2.8 5l3.4 3.4"/></svg></button>'
-    +'<button type="button" class="pnav-lab" onclick="goto(\'periods\')"'
-      +' title="'+esc(cur+' 期'+(note?(' · '+note):'')+'　点开看全部 '+L.length+' 期')+'">'
-      +'<span>'+esc(cur||'—')+'</span><span class="u">期</span></button>'
-    +'<button type="button" class="pnav-step" onclick="periodStep(1)"'
-      +(i<0||i>=L.length-1?' disabled':'')+' aria-label="下一期" title="下一期">'
-      +'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 1.6 7.2 5l-3.4 3.4"/></svg></button>'
-    +(off?'<button type="button" class="pnav-back" onclick="setPeriodExact(null)">回到最新</button>':'');
-}
-
-/* ── 图一：四周阶梯 ──────────────────────────────────────────────────
-   一期一条横条，从建仓到 30 天到期，共用一根日期轴。今天那根竖线一穿过去，
-   同时活着几期就是几条——初心里「每周 25%、四周滚动」第一次被画出来，而不是
-   写在提示里。行即入口：整行可点，点进那一期。 */
-function ladderCard(){
-  var L=periodList();
-  if(!L.length){
-    var pe=stateErr('periods_error');
     return '<div class="card section"><div class="qhead"><h2 class="qtitle">四周阶梯</h2></div>'
-      +(pe?failNote('期次骨架这次没取出来——不是没有期次，是这一步失败了。',pe)
-          :'<div class="quiet" style="text-align:center">尚无期次记录。</div>')
-      +'</div>';
+      +'<div class="quiet" style="text-align:center">尚无期次记录。</div></div>';
   }
   var today=todayISO();
   var x0=L[0].as_of, x1=today;
@@ -3488,6 +3532,262 @@ function askHintHTML(){
     +'<button type="button" class="orient-x" data-el="ask.hint.dismiss" onclick="dismissAskHint()">知道了</button>'
   +'</div>';
 }
+/* ── 概览重构：头条从「收益率」换成「证据进度」────────────────────
+ * 这一页此前的头条是 books_aggregate 的合计收益率，配一句「跑输 SPY N 个
+ * 百分点」的结论体。三个问题叠在一起：
+ *   ① 那个数 92% 是没投出去的钱吃的货币市场利息（+0.36pp / +0.39pp），
+ *      只有 +0.03pp 来自选出来的持仓；
+ *   ② 对手方是满仓的指数，自己是四周分批、上个月大部分时间在现金里；
+ *   ③ 本期持仓平均只持有 1 天——用一天的行情做一个月判断的头条。
+ * 于是卡片必须在大数字下面写三行小字把它逐条收回去。一个数字加三行撤回，
+ * 净信息量为零，而且占掉了整块首屏。
+ *
+ * 真正回答「它管用吗」的数一直算着，只是没有任何屏幕指向它：
+ *   live_vs_backfill: n_live=1 / n_backfill=5 / usable=false / 还需 3 期
+ * 六期里只有 08-26 一期是当期实跑，其余五期是事后补跑。「还不知道，因为
+ * 只跑了 1 期真的，还差 3 期」——这是个确定的、有内容、能倒计时的答案，
+ * 比一个自己撤回的百分号强。头条给它。 */
+function evidenceProgressCard(){
+  var sm=(((S||{}).backtest||{}).summary)||{};
+  var lb=sm.live_vs_backfill;
+  if(!lb)return '';
+  var nLive=Number(lb.n_live_periods||0);
+  var nBack=Number(lb.n_backfill_periods||0);
+  /* periods_needed 是后端 max(0, 门槛 − 已有)，即「还差几期」，不是总数。
+   * 当成总数写会把 3 印成 2。门槛本身要写出来，否则读者无从判断 3 是多是少。 */
+  var need=Number(lb.periods_needed||0);
+  var gate=nLive+need;
+  var cls=sm.period_classification||{};
+  var order=Object.keys(cls).sort();
+  var done=order.length||(nLive+nBack);
+
+  var headline=lb.usable
+    ? '实跑期次已达 '+fmtInt(nLive)+' 期，可以开始读了'
+    : '还不能说它管用——'+fmtInt(done)+' 期里只有 <b>'+fmtInt(nLive)+' 期</b>是当期实跑';
+
+  /* 一格 = 一期。虚线格是还没到的那几期，「还差 3 期」因此是看得见的
+     长度，而不是一句需要读者自己在脑子里换算的话。 */
+  var cells=order.map(function(d){
+    var live=cls[d]==='live';
+    return '<span class="ev-cell'+(live?' live':'')+'" title="'+esc(d)
+      +' 期 · '+(live?'当期实跑':'事后补跑')+'"></span>';
+  }).join('')
+  +(need>0?'<span style="width:10px"></span>'+new Array(need+1).join(
+      '<span class="ev-cell todo" title="还没跑到的实跑期次"></span>'):'');
+
+  var nr=(typeof nextRunInfo==='function')?nextRunInfo():null;
+  var nextLine=nr
+    ? '下一期 <b class="num">'+esc(nr.date)+'</b>（'+nr.wd+' '+nr.hm+'）跑完，实跑 +1'
+      +'　还有 <span class="js-cd num">'+cdShort(nr.secs)+'</span>'
+    : '下次运行时刻未知（接口未提供时刻表）';
+
+  return '<div class="card section" id="evProgress">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">它管用吗</h2>'
+      +'<span class="card-note">证据进度，不是业绩</span></div>'
+    +'<div style="font:600 22px/30px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 0">'
+      +headline+'</div>'
+    +'<div class="ev-prog">'+cells+'</div>'
+    +'<div class="ev-legend">'
+      +'<span><i class="live"></i>当期实跑 '+fmtInt(nLive)+' 期</span>'
+      +'<span><i></i>事后补跑 '+fmtInt(nBack)+' 期</span>'
+      +(need>0?'<span><i class="todo"></i>还需 '+fmtInt(need)+' 期（门槛 '+fmtInt(gate)+' 期）'
+        +'<span class="gloss gm" title="四周是一轮完整的分批周期。不到一轮时每条持仓都还开着，那时的胜率量的是持仓开着的那几天，不是一个月的判断。">ⓘ</span></span>':'')
+    +'</div>'
+    +'<div style="margin-top:var(--space-3);font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)">'
+      +esc(nr?'':'')+nextLine+'</div>'
+    /* 「补跑为什么不算数」必须和进度条同框。不写，读者会把 6 期当 6 期，
+       而这一整张卡的前提就是它们不等价。 */
+    +'<div style="margin-top:var(--space-3);padding-top:var(--space-3);'
+      +'border-top:1px solid var(--color-border-subtle);'
+      +'font:400 12px/18px var(--font-sans);color:var(--color-text-tertiary)">'
+      +'补跑期次的文档输入按 as-of 严格卡死在当期，但模型权重已经见过那之后的世界——'
+      +'这一项用代码消不掉，所以补跑只能用来搭管线，不能用来下结论。'
+      +'<button type="button" class="exp-btn" onclick="gotoSection(\'evidence\',\'ranking\')">'
+      +'实跑 / 补跑 逐条对照 ›</button>'
+    +'</div>'
+  +'</div>';
+}
+
+/* 目前学到了什么。概览只说「还不知道」而不给任何内容，是一页正确的空白；
+ * 这套东西六期下来确实挖出了一条东西，而它连同三项证伪一起，才是诚实的
+ * 全貌。三项证伪必须和发现同框——分开放，被引用的永远只有前半句。 */
+function learnedCard(){
+  var sm=(((S||{}).backtest||{}).summary)||{};
+  var rp=sm.ranking_power;
+  if(!rp||!rp.pooled)return '';
+  var q1=rp.pooled.Q1||{},q5=rp.pooled.Q5||{};
+  var nP=Number(rp.periods_scored||0);
+  var nTB=Number(rp.periods_top_beats_bottom||0);
+  var nBM=Number(rp.periods_top_beats_benchmark||0);
+  var vc=rp.volatility_control||{};
+  var ratio=vc.vol_ratio_top_over_bottom;
+
+  var ex=sm.exposure||{};
+  var evArm=(ex.arms||{}).ev_rank||{};
+  var rvArm=evArm.return_per_vol, rvBM=ex.benchmark_return_per_vol;
+
+  var rb=sm.robustness_drop_top||{};
+  var rbEv=(rb.arms||{}).ev_rank||{};
+  var dropN=Number(rb.top_n||0);
+  var kept=(rbEv.excluded||{}).mean_return_pct;
+  var full=(rbEv.full||{}).mean_return_pct;
+  var ctlKept=((rb.arms||{}).buy_all||{}).excluded||{};
+
+  var fal=[];
+  if(ratio) fal.push('<b>一阶上它在排风险。</b>顶格分位持仓入场前的 '
+    +fmtInt(vc.lookback_days||60)+' 日波动是末位分位的 <b class="num">'+Number(ratio).toFixed(1)+' 倍</b>——'
+    +'上涨窗口里把风险从低到高排一遍，本来就会得到一条漂亮的收益阶梯。');
+  if(rvArm!=null&&rvBM!=null) fal.push('<b>风险调整后仍跑输指数。</b>单位波动收益 <b class="num">'
+    +Number(rvArm).toFixed(3)+'</b>，同期 '+esc(benchName())+' 是 <b class="num">'+Number(rvBM).toFixed(3)+'</b>。'
+    +'（这里不用 beta 折算那一列——它假设 beta=1，而这个组合的 beta 大于 1，那列偏乐观。）');
+  if(kept!=null&&full!=null&&ctlKept.mean_return_pct!=null)
+    fal.push('<b>优势无法被证明能离开少数标的存活。</b>剔掉最常持有的 '+dropN+' 个标的后，它剩 <b class="num">'
+      +Number(kept).toFixed(2)+'%</b>，全量基准剩 <b class="num">'+Number(ctlKept.mean_return_pct).toFixed(2)+'%</b>——'
+      +'原本 '+Number(full).toFixed(2)+'% 对基准的领先收敛到几乎没有。'
+      +'而被剔除的正是上面那批高波动标的，两条独立检验指向同一批名字。'
+      /* 措辞必须压住：回测给的判定是 underpowered——剔除后剩下的样本量本来就
+       * 不足以分辨两组，所以它证明的是「优势无法被证明存活」，不是「优势是假的」。
+       * 写成后者，就是拿一个不显著的检验去下一个显著的结论。 */
+      +(rbEv.verdict==='underpowered'
+        ? '<span style="color:var(--color-text-tertiary)">（剔除后只剩 '
+          +fmtInt((rbEv.excluded||{}).n)+' / '+fmtInt((rbEv.full||{}).n)
+          +' 笔，样本已不足以分辨两组——这说明优势没能被证明存活，不等于它已被证伪。）</span>'
+        : ''));
+
+  return '<div class="card section" id="learned">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">目前唯一站得住的发现</h2>'
+      +'<span class="card-note">六期挖出来的，连同它没通过的三关</span></div>'
+    +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
+      /* 标题放名字，定义挂 gloss：score_label 是一整句定义（「候选自陈情景的概率
+       * 加权期望回报」），直接当标题印，一行里会出现两个「候选」，而且读者拿到
+       * 的是解释、不是这条东西叫什么。 */
+      +'期望值分数能把候选排出次序'
+      +'<span class="gloss gm" title="'+esc((rp.score_label||'')+'——'+(rp.ex_ante||''))+'">ⓘ</span></div>'
+    +'<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-secondary)">'
+      +'按每期内部切五分位：顶格 <b class="num up">'+Number(q5.mean_return_pct||0).toFixed(2)+'%</b>'
+      +'（'+fmtInt(q5.n)+' 笔），末位 <b class="num">'+Number(q1.mean_return_pct||0).toFixed(2)+'%</b>'
+      +'（'+fmtInt(q1.n)+' 笔）；<b>'+fmtInt(nP)+' 期全部顶格高于末位</b>'
+      +(nP?('，'+fmtInt(nBM)+' 期顶格跑赢同期 '+esc(benchName())):'')+'。'
+      +'<span class="gloss gm" title="'+esc(rp.note||'')+'">ⓘ</span>'
+    +'</div>'
+    +(fal.length?'<ul class="fal-list">'+fal.map(function(t){return '<li>'+t+'</li>'}).join('')+'</ul>':'')
+    +'<div style="margin-top:var(--space-3);padding-top:var(--space-3);'
+      +'border-top:1px solid var(--color-border-subtle);'
+      +'font:400 13px/19px var(--font-sans);color:var(--color-text-primary)">'
+      +'所以能说的只有 <b>「值得往前跑一段看看」</b>。'
+      +'<span style="color:var(--color-text-tertiary)">这条排序是看过这六期的结果之后才挑出来检验的，'
+      +'对那次搜索是样本内的；它按探索类注册，只有往后的实跑期次才算证据。</span>'
+      +'<span class="gloss gm" title="'+esc(rp.provenance_warning||'')+'">ⓘ</span>'
+      +'<button type="button" class="exp-btn" onclick="gotoSection(\'evidence\',\'ranking\')">完整检验 ›</button>'
+    +'</div>'
+  +'</div>';
+}
+
+/* 回测里十条策略的次序。这是 NAV 那一层唯一没被「大部分时间是现金」污染的
+ * 东西——逐日计价、每期投 1/slots、空档位现金，分母写在标题上。
+ * 概览放的是次序和一个入口，不是那张全表：证据页那张才是可下钻的对象。 */
+function armOrderCard(){
+  var ex=(((S||{}).backtest||{}).summary||{}).exposure;
+  if(!ex||!ex.arms)return '';
+  var rows=Object.keys(ex.arms).map(function(k){
+    var v=ex.arms[k]||{};
+    return {k:k,ret:Number(v.return_pct),vol:v.realized_vol_pct,rv:v.return_per_vol};
+  }).filter(function(r){return isFinite(r.ret)});
+  if(!rows.length)return '';
+  rows.push({k:'__bm__',ret:Number(ex.benchmark_pct),vol:ex.benchmark_vol_pct,
+             rv:ex.benchmark_return_per_vol,bm:true});
+  rows.sort(function(a,b){return b.ret-a.ret});
+  var mx=Math.max.apply(null,rows.map(function(r){return Math.abs(r.ret)}))||1;
+
+  var CTL={buy_all:1,random_pick:1,mom_21:1,generated_ai_native:1,generated_carl_constraint:1};
+  var body=rows.map(function(r){
+    var name=r.bm?('同期 '+benchName()+' · 满仓')
+      :((typeof backtestArmName==='function')?backtestArmName(r.k):r.k);
+    var cls=r.bm?'bm':(CTL[r.k]?'ctl':'');
+    var w=Math.max(1,Math.abs(r.ret)/mx*100);
+    var tip=(r.vol!=null&&r.rv!=null)
+      ?(name+'：实现波动 '+Number(r.vol).toFixed(1)+'%，单位波动收益 '+Number(r.rv).toFixed(3))
+      :name;
+    return '<div class="rank-row '+cls+'" title="'+esc(tip)+'">'
+      +'<span class="rn">'+esc(name)+'</span>'
+      +'<span class="rank-bar"><i style="width:'+w.toFixed(1)+'%"></i></span>'
+      +'<span class="rv '+pctCls(r.ret)+'">'+(r.ret>=0?'+':'')+r.ret.toFixed(2)+'%</span>'
+    +'</div>';
+  }).join('');
+
+  var inv=ex.mean_invested_frac!=null?(Number(ex.mean_invested_frac)*100).toFixed(1)+'%':null;
+  return '<div class="card section" id="armOrder">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">回测里，十条选取策略的次序</h2>'
+      +'<span class="card-note">'+fmtInt(ex.days)+' 天 · 逐日计价</span></div>'
+    +'<div class="quiet" style="margin-bottom:var(--space-3)">'
+      +'按初心的分批设计复算：每期投 1/'+fmtInt(ex.slots)+' 本金、等权、持有 '
+      +fmtInt(ex.horizon_days)+' 天，空档位放现金。'
+      +(inv?'区间平均投出 <b>'+inv+'</b>——分批组合开头必然欠投，不标出来就等于让每个组合替自己的建仓期背锅。':'')
+      +'<span class="gloss gm" title="这条曲线曾经是假数：早前的实现把每期的 30 天平均收益按「周」复利，而这些 30 天窗口彼此高度重叠，同一段行情被计了四次，量级放大约四倍。现在按逐日计价重算，次序全部保住、量级掉一个数量级。">ⓘ</span>'
+    +'</div>'
+    +body
+    +'<div class="card-note" style="margin-top:var(--space-3)">'
+      +'读次序，别读数值——这是六期的样本内回测，其中 5 期是补跑。'
+      +'<button type="button" class="exp-btn" onclick="gotoSection(\'evidence\',\'backtest\')">回测口径与局限 ›</button>'
+    +'</div>'
+  +'</div>';
+}
+
+/* 账面。它从头条降到这里，因为它现在量的主要不是判断的质量：合计里绝大部分
+ * 是没投出去的钱吃的利息，而本期持仓只持有了几天。数字全留着——Jon 只看
+ * NAV，删掉会让他问「钱呢」——但不再摆成结论，也不再配那条「组合 vs 满仓
+ * 指数」的净值曲线：那张图是同一个错误比较的图像版。 */
+function ledgerCard(ag){
+  if(!ag)return '';
+  var ret=aggReturnPct(ag);
+  var gain=(ag.lastEquity!==null&&ag.capital)?(ag.lastEquity-ag.capital):null;
+  var pos=(ag.unrealized||0)+(ag.realized||0);
+  var pp=function(v){return ag.capital?(v/ag.capital*100):0};
+  var dep=(ag.capital&&ag.deployed!==undefined)?(ag.deployed/ag.capital*100):null;
+  var pr=(typeof periodAt==='function')?periodAt(curPeriod()):null;
+  var md=pr?Number(pr.mark_days||0):null;
+
+  var split='';
+  if(gain!==null&&ag.capital&&Math.abs(gain-pos)/Math.abs(gain||1)>=0.05){
+    split='<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-secondary);margin-top:var(--space-2)">'
+      +'其中 <b class="num">'+(pp(gain-pos)>=0?'+':'')+pp(gain-pos).toFixed(2)+' pp</b> 是未投出资金的货币市场利息，'
+      +'只有 <b class="num '+pctCls(pos)+'">'+(pp(pos)>=0?'+':'')+pp(pos).toFixed(2)+' pp</b> 来自选出来的持仓。'
+      +'<span class="gloss gm" title="'+esc(cashRateNote())
+      +'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。">ⓘ</span></div>';
+  }
+
+  return '<div class="card section" id="ledger">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">账面</h2>'
+      +'<span class="card-note">纸面成交，非实盘</span></div>'
+    +'<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2) var(--space-5);margin-top:var(--space-2)">'
+      +'<span style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary)">'
+        +'全部 '+currentBooks().length+' 个组合 · 至今合计</span>'
+      +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'
+        +(ret===null?'—':fmtPct(ret))+'</span>'
+      +(dep!==null?'<span style="font:400 13px/18px var(--font-sans);color:var(--color-feedback-warning-text)">'
+        +'已投出 '+dep.toFixed(0)+'%</span>':'')
+      +(md!==null?'<span style="font:400 13px/18px var(--font-sans);color:'
+        +(md<=1?'var(--color-feedback-warning-strong)':'var(--color-text-tertiary)')+'">'
+        +'本期持仓持有 '+fmtInt(md)+' 天</span>':'')
+    +'</div>'
+    +split
+    /* 「跑输基准 N 个百分点」的结论体从这里去掉了。把一个四周分批、上个月
+       大半时间在现金里的账户和满仓指数相减，得到的差主要是仓位不是判断；
+       它此前是首屏最大的一行字，也是最容易被读错的一行。基准仍然给，但
+       只作为同期参照放在事实行里，不做结论。 */
+    +'<div class="card-note" style="margin-top:var(--space-3)">'
+      +'浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
+      +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
+      +' · 在场 '+fmtInt(ag.openN||0)+' 仓'
+      +' · 本金 '+fmtMoney(ag.capital)
+      +(benchReturnPct()!==null?' · 同期 '+esc(benchName())+'（满仓）<span class="num">'
+        +fmtPct(benchReturnPct())+'</span>'
+        +'<span class="gloss gm" title="并列给出，不相减：这个组合按设计四周分批建仓，区间内平均只有一部分本金在场，而基准全程满仓。两者相减得到的差主要来自仓位节奏，不是选股判断。">ⓘ</span>':'')
+      +' · 已计佣金与滑点 '+glossMark(COST_GLOSS)
+      +'<button type="button" class="exp-btn" data-el="week.headline.trust" onclick="openTrustDrawer()">可信度与局限 ›</button>'
+    +'</div>'
+  +'</div>';
+}
 function renderOverview(){
   var root=$('view-overview');
   if(!S){root.innerHTML='';return}
@@ -3514,18 +3814,19 @@ function renderOverview(){
       })()
       +'</div>'
     +askHintHTML()
-    +secWrap('overview','verdict',portfolioHeadline(ag))
-    /* 「系统状态」和「周历」原本各是一个抽屉，可它们讲的是同一件事——这台
-       机器在不在跑、每一期跑成了没有。类别不该住在抽屉里，抽屉留给某一个
-       具体对象。搬进概览并默认折叠，概览就不会因此变长。 */
-    /* 运维层：这台机器在不在跑、每一期跑成了没有。它和上面那张带净值曲线的
-       结论卡不是同一层，从前却是两张平级的卡——而且两张都是空壳：标题一句
-       话加一个展开钮，其中「系统自检」说的（心跳 · 端口 · 数据源）状态条
-       自己已经说过了。状态条就是这一层的结论，两个明细收在它底下。 */
+    /* 结论层：三张卡按「问题 → 目前的答案 → 答案的强度」排。
+       ① 它管用吗 —— 证据进度（实跑 / 补跑 / 还差几期），头条。
+       ② 目前学到了什么 —— 唯一站得住的发现，连同它没通过的三关。
+       ③ 回测里的次序 —— NAV 那一层唯一没被「大部分时间是现金」污染的东西。
+       此前这里是一个 92% 由货币基金利息构成的收益率大字，加三行把它收回去
+       的小字，再加一条把分批组合和满仓指数画在一起的净值曲线。 */
+    +secWrap('overview','verdict',evidenceProgressCard()+learnedCard()+armOrderCard())
+    /* 账面从头条降级到这里，作为事实而不是结论。数字一个没删。 */
+    +secWrap('overview','ledger',ledgerCard(ag))
+    /* 运维层：这台机器在不在跑、每一期跑成了没有。状态条是这一层的结论，
+       两个明细收在它底下。 */
     +secWrap('overview','health',
        statusStrip()
-       /* 状态条是这一层的结论，底下两个盖子是它的明细。中间留一整个 section
-          间距，两者就读成了不相干的两块——贴上去，它们是一件事。 */
        +'<div class="card section" style="margin-top:calc(-1 * var(--space-3));padding-top:var(--space-3)">'
          +foldBlock('overview.status.detail','系统自检',
             '心跳时刻 · 平台端口 · 数据源健康',statusDrawerBody())
@@ -3541,19 +3842,203 @@ function renderHoldings(){
   root.innerHTML=ladderStrip()
     +secWrap('holdings','exposure',holdMapCard(aggBooks()));
 }
-/* 证据：凭什么信。选取策略对比属于这里而不是首屏——它是一个还要十几周
-   才有结论的实验，放在概览会把「它管用吗」那一问挤掉。 */
+/* ══ 证据页 ═══════════════════════════════════════════════════════
+   这一页此前是七张平级卡，直接从「选取策略对比 · 10 个组合 · 第 2 周」开场。
+   每张卡自己的结论句写得很好——那部分本来就做对了——但页面层面从没说过
+   三件事，而这三件事恰好是一个零背景的读者最先要问的：
+
+   ① 这一页在验证哪个命题。七张卡都在回答同一个问题的不同问法，没写。
+   ② 这七张卡不是七个平级话题。②–⑤ 是同一次回测的四个切面，① 是另一套
+      数据（实盘模拟组合），⑥⑦ 是脚注。摆成七个兄弟，这个层次就消失了。
+   ③ 合起来的判定是什么。五张卡各说一遍「还分不出来」，五种措辞，读者要
+      跨过 4000px 自己合成——读起来像五个发现，其实是一个。
+
+   所以补三样东西：一句开场（命题 + 总判定 + 下一步）、一张证据总账（五个
+   判定摆成一屏）、三个组标题（说清每组数据从哪来）。总账不产生新数字，
+   每一格都取自下面那几张卡已经算出来的字段。 */
+
+/* 五个问题 —— 这一页的实际论证结构。判定三态：
+     sig  = 出了信号（正面）
+     none = 样本已足够，可以说「没有」——这是结论，不是数据缺口
+     open = 还分不出（样本不足或区间重叠）
+   none 和 open 的区别是这套东西最容易被说反的地方：把「已经看出没优势」
+   写成「还看不出来」，是往人们希望的方向说假话。归因卡为此专门写过一段，
+   总账沿用它的三态，不自己重新判。 */
+function evLedgerRows(){
+  var sm=(((S||{}).backtest||{}).summary)||{};
+  var out=[];
+
+  var books=(typeof currentBooks==='function')?currentBooks():[];
+  if(books.length){
+    var wk=weekIndex(books);
+    var dif=pairedDiffs(books);
+    var apart=dif.filter(function(r){return r.diff!==null&&Math.abs(r.diff)>2}).length;
+    out.push({sec:'strategies',n:'①',short:'实盘还分不出',
+      q:'实盘上，哪个选取策略更好？',
+      state:apart?'sig':'open',
+      a:apart?('<b>'+fmtInt(apart)+' 个已明显分开</b>，其余仍在误差带内')
+             :('<b>分不出</b>——'+fmtInt(books.length)+' 个组合的差距都在误差带内'),
+      need:'第 '+wk+' 周 · 主策略里最慢的一条约需 '+targetWeeks()+' 期才够判定'});
+  }
+
+  var pr=sm.paired||{},pk=Object.keys(pr);
+  if(pk.length){
+    var pow=pk.filter(function(k){return pr[k].powered});
+    var sig=pk.filter(function(k){return pr[k].significant});
+    out.push({sec:'backtest',n:'②',short:'回测里没有一条跑赢全买',
+      q:'回测里，有策略跑赢「把候选池全买下来」吗？',
+      state:sig.length?'sig':(pow.length?'none':'open'),
+      a:sig.length?('<b>有 '+fmtInt(sig.length)+' 条</b>达到预注册门槛')
+                  :'<b>没有</b>——一条都没被判定跑赢',
+      need:(pow.length?fmtInt(pow.length)+' 个样本已足、仍无差距 · ':'')
+           +fmtInt(pk.length-pow.length)+' 个样本仍不足'});
+  }
+
+  var sep=((sm.tearsheet||{}).separability)||null;
+  if(sep){
+    var above=(sep.arms_above_benchmark||[]).length;
+    out.push({sec:'tearsheet',n:'③',short:'和指数分不开',
+      q:'拿着它这段时间，会比拿 '+esc(tsBenchName(sm))+' 好吗？',
+      state:above?'sig':'open',
+      a:above?('<b>'+fmtInt(above)+' 条</b>被证明跑赢基准')
+             :('<b>分不出</b>——'+fmtInt(sep.n_measurable)+'/'+fmtInt(sep.n_arms)
+               +' 条的夏普区间都盖住了基准'),
+      need:'只有 '+fmtInt(sep.n_days)+' 个交易日，区间宽到没法分开任何两条'});
+  }
+
+  var rp=sm.ranking_power;
+  if(rp&&rp.pooled){
+    var lvb=sm.live_vs_backfill||{};
+    out.push({sec:'ranking',n:'④',short:'分数排得动结果',
+      q:'系统给每条想法打的分，排得动真实结果吗？',
+      state:'sig',
+      a:'<b>排得动</b>——顶格分位高于末位分位 '
+        +fmtInt(rp.periods_top_beats_bottom)+'/'+fmtInt(rp.periods_scored)+' 期',
+      need:'但这条排序是看过结果之后才挑出来检验的（样本内）'
+        +(lvb.periods_needed?'；实跑还差 '+fmtInt(lvb.periods_needed)+' 期才算证据':'')});
+  }
+
+  var at=sm.attribution_theme_layer;
+  if(at&&at.arms){
+    var ks=Object.keys(at.arms).filter(function(k){return k!==at.control});
+    var vd=function(v){return ks.filter(function(k){
+      return at.arms[k].verdict_over_control===v})};
+    var ne=vd('no_edge_detected'),un=vd('underpowered'),nr=vd('not_ruled_out');
+    out.push({sec:'attribution',n:'⑤',short:'挑标的这一段没看出优势',
+      q:'多出来的那点钱，是出在「挑标的」这一段吗？',
+      state:nr.length?'open':(ne.length?'none':'open'),
+      a:nr.length?('<b>'+fmtInt(nr.length)+' 个</b>的优势尚未被排除')
+        :(ne.length?('<b>'+fmtInt(ne.length)+' 个</b>样本已足够，而优势没有出现')
+                   :'<b>还答不了</b>——没有一个组合的样本够'),
+      need:un.length?(fmtInt(un.length)+' 个在这一层上样本仍不足'):''});
+  }
+  return out;
+}
+function tsBenchName(sm){return ((sm.tearsheet||{}).benchmark)||benchName()}
+
+/* 开场：命题 → 总判定 → 这一页怎么读 → 下一步。
+   顺序照「概览」那一页——那页已经把这件事做对了（期次大字 + 一句灰色说明
+   + 三张按「问题→答案→答案强度」排的卡），证据页照抄它的次序即可，
+   不必另发明一套。 */
+function evidenceLede(rows){
+  var sm=(((S||{}).backtest||{}).summary)||{};
+  var lvb=sm.live_vs_backfill||{};
+  var sigs=rows.filter(function(r){return r.state==='sig'});
+  var head=sigs.length
+    ? '没有一条选取策略被证明更好——五问里唯一出信号的是「'
+      +esc(sigs.map(function(r){return r.short}).join('」「'))+'」'
+    : '没有一条选取策略被证明更好——五个问题目前都还分不出';
+
+  var nr=(typeof nextRunInfo==='function')?nextRunInfo():null;
+  var next=nr
+    ? '下一期 <b class="num">'+esc(nr.date)+'</b>（'+nr.wd+' '+nr.hm+'）跑完，实跑 +1'
+      +(lvb.periods_needed?'——离第一个可读点还差 <b>'+fmtInt(lvb.periods_needed)+' 期</b>':'')
+    : '下次运行时刻未知（接口未提供时刻表）';
+
+  return '<div class="wk-h1" style="font-size:20px;line-height:29px">凭什么信</div>'
+    +'<div style="font:400 14px/21px var(--font-sans);color:var(--color-text-tertiary);margin:2px 0 var(--space-4)">'
+      +'这一页检验一个命题：<b style="color:var(--color-text-secondary);font-weight:500">让模型读研报、'
+      +'选宏观主题、写出想法，再按某种规矩挑出来，会不会比不挑更好。</b>'
+      +'下面是这个命题的五种问法，各配它自己的判定和还差多少。证据有两套：'
+      +'① 来自实盘模拟组合，②–⑤ 来自同一次历史回测（'
+      +fmtInt((lvb.n_live_periods||0)+(lvb.n_backfill_periods||0))+' 期，其中 <b>'
+      +fmtInt(lvb.n_live_periods||0)+' 期</b>是当期实跑）。'
+    +'</div>'
+    +'<div class="card section" id="evLedger">'
+      +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">证据总账</h2>'
+        +'<span class="card-note">五个问题 · 现在各自到哪了</span></div>'
+      +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 0">'
+        +head+'</div>'
+      +'<div class="evl">'+rows.map(function(r){
+        return '<button type="button" class="evl-r" data-el="evidence.ledger.'+r.sec+'"'
+          +' onclick="gotoSection(\'evidence\',\''+r.sec+'\')"'
+          +' title="到这一段去看它是怎么算出来的">'
+          +'<span class="evl-q"><i>'+r.n+'</i>'+esc(r.q)+'</span>'
+          +'<span class="evl-s'+(r.state==='sig'?' sig':'')+'">'
+            +(r.state==='sig'?'有信号':(r.state==='none'?'没看出优势':'还分不出'))+'</span>'
+          +'<span><span class="evl-a">'+r.a+'</span>'
+            +(r.need?'<div class="evl-n">'+esc(r.need)+'</div>':'')+'</span>'
+        +'</button>';
+      }).join('')+'</div>'
+      +'<div style="margin-top:var(--space-4);padding-top:var(--space-3);'
+        +'border-top:1px solid var(--color-border-subtle);'
+        +'font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)">'
+        +'<b style="color:var(--color-text-primary)">下一步</b>　'+next+'。'
+        +'<span style="color:var(--color-text-tertiary)">在那之前，这一页的数字用来搭管线和排查口径，不用来下结论：'
+        +'补跑期次的文档输入卡死在当期，模型权重却已经见过那之后的世界。</span>'
+      +'</div>'
+    +'</div>';
+}
+
+/* 组标题。「历史回测」「业绩表」「排序力」「价值出在哪一段」是同一次回测的
+   四个切面，而它们此前和另一套数据的卡并排，读起来像四个独立话题——于是
+   读者会把四个「样本不足」当成四份独立的坏消息，其实是同一份样本被问了
+   四遍。这一行小字就是为了说清这件事。 */
+/* 回执此前只有一条，讲的是周跑；而它印在一页 80% 是回测的末尾，读者会
+   合理地以为这次运行产出了上面那些回测数字。它产出的只有第一套证据。
+   所以两套证据各给一条回执，各自标明对应上面哪一段。 */
+function receiptWhich(t){
+  return '<div class="card-note" style="margin:var(--space-2) 0 4px">'+esc(t)+'　产出于：</div>';
+}
+function backtestReceiptLine(){
+  var b=(S&&S.backtest)||{};
+  if(!b.backtest_id)return '';
+  var span=(b.window_start&&b.window_end)?('　窗口 '+esc(b.window_start)+' → '+esc(b.window_end)):'';
+  var sm=b.summary||{};
+  return receiptWhich('第二套证据 · 历史回测')
+    +'<div class="rr-row section"><button type="button" class="run-receipt"'
+    +' onclick="gotoSection(\'evidence\',\'backtest\')" title="回到这次回测的口径与局限">'
+    +'<span class="dot"></span><span class="rr-main">● 完成 · '+esc(b.backtest_id)
+    +span+'　'+fmtInt(sm.periods||0)+' 期 · '+fmtInt(sm.model_calls||0)+' 次模型调用'
+    +'</span><span class="go">口径与局限 →</span></button></div>';
+}
+function grpH(t,sub){
+  return '<div class="grp-h"><span class="gt">'+esc(t)+'</span>'
+    +(sub?'<span class="gs">'+esc(sub)+'</span>':'')+'</div>';
+}
+
 function renderEvidence(){
   var root=$('view-evidence');
   if(!S){root.innerHTML='';return}
+  var sm=(((S||{}).backtest||{}).summary)||{};
+  var lvb=sm.live_vs_backfill||{};
+  var nP=(lvb.n_live_periods||0)+(lvb.n_backfill_periods||0);
+  var books=(typeof currentBooks==='function')?currentBooks():[];
   root.innerHTML=
-     secWrap('evidence','strategies',raceHero(aggBooks()))
+     evidenceLede(evLedgerRows())
+    +grpH('第一套证据 · 实盘模拟组合',
+       books.length?(books.length+' 个组合各自真的下了单，第 '+weekIndex(books)+' 周'):'尚未建仓')
+    +secWrap('evidence','strategies',raceHero(aggBooks()))
+    +grpH('第二套证据 · 同一次历史回测的四个切面',
+       nP?(nP+' 期回放（'+(lvb.n_live_periods||0)+' 期当期实跑）· 下面四段问的是同一批数据的四个问题'):'一次回放的四个切面')
     +secWrap('evidence','backtest',backtestCard())
     +secWrap('evidence','tearsheet',tearsheetCard())
     +secWrap('evidence','ranking',rankingPowerCard()+liveSplitBlock())
     +secWrap('evidence','attribution',attributionCard())
+    +grpH('这些结论的边界','哪些前提还没验过 · 这两套数字各自是哪一次跑出来的')
     +secWrap('evidence','limits',limitsCard())
-    +secWrap('evidence','receipt',runReceiptStrip());
+    +secWrap('evidence','receipt',receiptWhich('第一套证据 · 实盘模拟组合')+runReceiptStrip()
+             +backtestReceiptLine());
   if($('candTable')){bindCandSort();renderCandBody()}
 }
 
@@ -3927,8 +4412,10 @@ function raceHero(ag){
   var head='<div class="qhead"><h2 class="qtitle">选取策略对比 · '+books.length+' 个组合 · 第 '+weekN+' 周</h2>'
     +'<span style="display:flex;gap:var(--space-3);align-items:center">'+miniChain(4,'筛选C · 选取策略')
     +'<button type="button" class="qlink" onclick="openStageDrawer(4)">筛选C 详情 →</button></span></div>';
-  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各管一个模拟组合；统一口径：<b>与全量基准的差距</b>。'
-    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()" title="未验证假设 · 已修复缺陷 · 历史回测">尚不排名的依据 ⓘ</button></div>';
+  /* 同名同去处的第二颗「尚不排名的依据」去掉了：抬头上那颗（修好之后）
+     已经指向「已知局限」，同一张卡上两个一模一样的入口，读者会以为
+     它们是两件事。这里只留口径说明。 */
+  var sentence='<div class="quiet" style="margin-bottom:var(--space-3)">同一候选池，'+books.length+' 个选取策略各管一个模拟组合；统一口径：<b>与全量基准的差距</b>。</div>';
   /* 芯片：与噪音带同序、同色点、同一个指标（vs 全买），不再印名次大字 */
   var rows=pairedDiffs(books).slice().sort(function(a,b){return (b.diff===null?-1e9:b.diff)-(a.diff===null?-1e9:a.diff)});
   var medals='<div class="medal-strip">'
@@ -3974,8 +4461,12 @@ function raceHero(ag){
   return '<div class="card section" id="whoWins">'+head
     +'<div style="font:600 17px/25px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-2)">'
       +noiseHeadline(books,weekN)+'</div>'
+    /* 这颗按钮此前调 gotoSection('evidence','strategies')——而这张卡就在
+       strategies 里，于是它是滚到自己，点了没反应。它 title 写的
+       「未验证假设 · 已修复缺陷」是「已知局限」那一段的内容，和折叠区里
+       同名的那颗（openTrustDrawer）本来就该去同一处。 */
     +'<div class="quiet">第 '+weekN+' 周 · 主策略里最慢的一条约需 '+targetWeeks()+' 期才够判定'
-      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="gotoSection(\'evidence\',\'strategies\')" title="未验证假设 · 已修复缺陷 · 历史回测">尚不排名的依据 ⓘ</button></div>'
+      +'<button type="button" class="exp-btn" data-el="week.strategies.why" onclick="openTrustDrawer()" title="未验证假设 · 已修复缺陷">尚不排名的依据 ⓘ</button></div>'
     +agg
     +foldBlock('week.books.compare','各组合逐个看','相对基准差距 · 净值曲线 · 持仓 · 主题分布',
         sentence
@@ -4573,7 +5064,7 @@ function themeMixCard(books){
   var avgW={};themes.forEach(function(t){avgW[t]=tot[t]/grand});
 
   var legend='<div class="tmx-legend">'+themes.map(function(t,i){
-    return '<span><i style="background:'+themeColor(t)+'"></i>'+esc(t)+' '+(avgW[t]*100).toFixed(0)+'%</span>';
+    return '<span title="'+esc(t)+'"><i style="background:'+themeColor(t)+'"></i>'+esc(topicName(t))+' '+(avgW[t]*100).toFixed(0)+'%</span>';
   }).join('')+'</div>';
 
   var order=SEL_META.map(function(m){return m[0]});
@@ -4591,11 +5082,11 @@ function themeMixCard(books){
         var d=w-avgW[t];
         if(dev===null||Math.abs(d)>Math.abs(dev.d))dev={t:t,d:d,w:w};
         return '<span class="tmx-seg" style="width:'+(w*100).toFixed(2)+'%;background:'+themeColor(t)+'" '
-          +'title="'+esc(t)+' '+(w*100).toFixed(1)+'%（全策略均值 '+(avgW[t]*100).toFixed(1)+'%，'
+          +'title="'+esc(topicName(t))+' '+(w*100).toFixed(1)+'%（全策略均值 '+(avgW[t]*100).toFixed(1)+'%，'
           +(d>=0?'超配 +':'低配 −')+Math.abs(d*100).toFixed(1)+' pp）"></span>';
       }).join('');
     }
-    var devTxt=dev?((dev.d>=0?'超配 ':'低配 ')+dev.t+' '+(dev.d>=0?'+':'−')+Math.abs(dev.d*100).toFixed(0)+'pp'):'—';
+    var devTxt=dev?((dev.d>=0?'超配 ':'低配 ')+topicName(dev.t)+' '+(dev.d>=0?'+':'−')+Math.abs(dev.d*100).toFixed(0)+'pp'):'—';
     return '<button type="button" class="tmx-row'+(m[2]==='对照'?' ctl':'')+'" onclick="openBookDrawer(\''+jss(o.b.selector||'')+'\')" '
       +'title="'+esc(m[1])+' · '+o.n+' 仓 · 相对全策略均值最大偏离：'+esc(devTxt)+'">'
       +'<span class="tmx-name">'+esc(m[1])+'</span>'
@@ -4775,16 +5266,6 @@ function firstBookedDate(books){
 /* 首屏那两个大数的实际区间。组合的净值曲线从 bookWindowStart 起算，基准
  * 对齐到同一天——但建仓要晚得多，中间那段组合是现金。区间不写出来，
  * 「第 1 周」旁边挂着一个六周的 SPY 涨幅，读者只会算出 SPY 一周涨 6%。 */
-function heroWindowNote(books){
-  var sr=((S&&S.benchmark)||{}).series||[];
-  var b=benchBase();
-  if(!b||!sr.length)return '';
-  var md=function(d){return String(d||'').slice(5)};
-  var t='区间 '+md(b.start)+' → '+md(sr[sr.length-1].d);
-  var bk=firstBookedDate(books);
-  if(bk&&bk>b.start)t+='（'+md(bk)+' 才建仓，此前是现金）';
-  return t;
-}
 function weekIndex(books){
   var minBooked=firstBookedDate(books);
   if(!minBooked)return 1;
@@ -4794,48 +5275,6 @@ function weekIndex(books){
 /* 组合 vs 基准的两条线，期初都归 100。两个数字说得清「跑赢还是跑输」，
    说不清「什么时候拉开的、中间回撤过没有」——那是 PM 看曲线的原因。
    数据全部来自服务端：books_aggregate.equity 与 benchmark.series。 */
-function overviewCurveSVG(){
-  var sa=(S||{}).books_aggregate||{}, eq=sa.equity||[];
-  var bm=(S||{}).benchmark||{}, bs=bm.series||[];
-  if(eq.length<2)return '';
-  var base=sa.capital||eq[0].equity;
-  var mine=eq.map(function(x){return {d:x.d,v:x.equity/base*100}});
-  /* 归一必须用与组合同一天的收盘，不是整条基准序列的第一天。
-   * 基准行情比组合净值早起几个交易日，用 bs[0] 归一会让基准线从 98.72 出发
-   * 而不是 100——图上说「期初都归 100」，画出来却不是；而且末值 104.63 和
-   * 首屏那个已经对齐过的 +5.99% 对不上，同一屏里两个数互相打架。 */
-  var bIdx=(function(){var b=(typeof benchBase==='function')?benchBase():null;return (b&&bs[b.i])?b.i:0})();
-  var bBase=bs.length?bs[bIdx].close:null;
-  var bmap={};bs.forEach(function(x){bmap[x.d]=x.close});
-  var carry=null;
-  var bench=bBase?mine.map(function(m){
-    if(bmap[m.d]!==undefined)carry=bmap[m.d];
-    return {d:m.d,v:carry===null?100:carry/bBase*100};
-  }):[];
-  var all=mine.map(function(x){return x.v}).concat(bench.map(function(x){return x.v}));
-  var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);
-  var pad=Math.max(0.15,(mx-mn)*0.18);mn-=pad;mx+=pad;
-  var W=760,H=132,pl=6,pr=6,pt=8,pb=16;
-  function X(i,n){return pl+i*(W-pl-pr)/Math.max(1,n-1)}
-  function Y(v){return pt+(mx-v)/(mx-mn||1)*(H-pt-pb)}
-  function path(a){return a.map(function(x,i){return (i?'L':'M')+X(i,a.length).toFixed(1)+' '+Y(x.v).toFixed(1)}).join(' ')}
-  var up=(mine[mine.length-1].v>=100);
-  var col=up?'var(--color-stock-up-default)':'var(--color-stock-down-default)';
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block" role="img"'
-    +' aria-label="组合至今与基准的净值走势，期初均为 100">'
-    +'<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(100).toFixed(1)+'" y2="'+Y(100).toFixed(1)
-      +'" stroke="var(--color-border-default)" stroke-width="1" stroke-dasharray="3 3"/>';
-  if(bench.length)svg+='<path d="'+path(bench)+'" fill="none" stroke="var(--color-text-tertiary)" stroke-width="1.5"/>';
-  svg+='<path d="'+path(mine)+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/>'
-    +'</svg>';
-  return '<div style="margin-top:var(--space-4)">'+svg
-    +'<div style="display:flex;gap:var(--space-4);flex-wrap:wrap;margin-top:2px;'
-      +'font:400 11px/16px var(--font-sans);color:var(--color-text-tertiary)">'
-      +'<span><i style="display:inline-block;width:10px;height:2px;background:'+col+';vertical-align:middle;margin-right:5px"></i>组合至今</span>'
-      +(bench.length?'<span><i style="display:inline-block;width:10px;height:2px;background:var(--color-text-tertiary);vertical-align:middle;margin-right:5px"></i>同期 '+esc(benchName())+'</span>':'')
-      +'<span style="margin-left:auto">'+esc(eq[0].d)+' → '+esc(eq[eq.length-1].d)+' · 期初 = 100</span>'
-    +'</div></div>';
-}
 /* 现金利率必须报系统实际在用的那个：货架 7 日收益中位数取到了就用它，
  * 取不到才落到 config.RISK_FREE_ANNUAL。页面以前直接写死兜底值还标「当前」，
  * 在货架有报价的那些周，印的是一个系统根本没用的数。 */
@@ -4847,144 +5286,6 @@ function cashRateNote(){
     ? '未建仓的现金按货币市场利率计息（'+pct+'，取自货架 7 日收益中位数）。'
     : '未建仓的现金按货币市场利率计息（'+pct+'，货架未报价，用的是配置里的兜底值）。';
 }
-function portfolioHeadline(ag){
-  if(!ag)return '';
-  var ret=aggReturnPct(ag), spy=benchReturnPct();
-  var vs=(ret!==null&&spy!==null)?(ret-spy):null;
-  var nBooks=currentBooks().length;
-  var wk=weekIndex(currentBooks());
-  /* 首屏只回答一个问题：这一个月，组合相对基准是跑赢还是跑输。
-     浮动盈亏那种大额金额单独看会骗人——+103,515 在 1 亿本金上是 0.10%，
-     而同期 SPY 是 4.63%，所以头条是收益率与基准对照，金额降为附注。
-     基准不能叫「什么都不做」：买 SPY 是满仓 beta，不是空仓，把跑输 SPY
-     说成「不如躺着」在给 PM 看的材料里是错的。 */
-  var verdict = vs===null ? '尚无可比的收益数据'
-    : '<b>'+(vs>=0?'跑赢 ':'跑输 ')+esc(benchName())+' '
-        +fmtGapPp(vs,{unit:' 个百分点'})+'</b>';
-  return '<div class="card section" id="wkHeadline">'
-    +'<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-6) var(--space-8)">'
-      +'<div>'
-        /* 分母必须和数字同一高度：组合按设计只投出四分之一（四周梯队，
-           其余在货币基金），而基准那栏是满仓。
-           但「分母不同」不等于「差距由分母造成」——这一步我先前写反了。
-           实测：投出去的 19.5% 自身收益 +0.53%，对同期基准 +5.99%，
-           差 5.46 个百分点，而表面差距是 5.53——仓位节奏只解释了 0.07。
-           现金和股票两边都远远跑输基准，所以怎么配都改变不了结论。
-           标出分母是为了让读者知道两栏不同源，不是为了替差距开脱。 */
-        /* 这里曾经写「本期组合」，而这个数是**至今**：区间从第一期建仓一直到
-           今天，六期全在里面。名字和口径对不上，是这一页最容易被读错的地方——
-           读者以为看的是这一周，其实看的是整条阶梯。右边补一格真正的本期。 */
-        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">全部 '+nBooks+' 个组合 · 至今合计'
-          +'<span class="gloss gm" title="整条四周阶梯合计，从第一期建仓算到今天，在场的各期都在里面——不是单独某一周。单期的账看右边那一格，或进「各期」。">ⓘ</span>'
-          +(function(){
-            var d=(ag.capital&&ag.deployed!==undefined)?(ag.deployed/ag.capital*100):null;
-            return d===null?'':'<span style="color:var(--color-feedback-warning-text)"> · 已投出 '+d.toFixed(0)+'%</span>'
-              +'<span class="gloss gm" title="'+esc((function(){
-                  var cost=ag.deployed||0,pnl=(ag.unrealized||0)+(ag.realized||0);
-                  var own=cost?(pnl/cost*100):null,bm=benchReturnPct(),tot=aggReturnPct(ag);
-                  var t='按设计每周只投出四分之一本金（四周梯队），未投出的部分放在货币基金里；'
-                    +'现在是第 '+wk+' 周，所以这一栏是部分建仓的组合，而右边的基准是满仓。';
-                  if(own!==null&&bm!==null&&tot!==null){
-                    t+='但分母不同并不解释这个差距：只看投出去的那 '+(cost/(ag.capital||1)*100).toFixed(1)
-                      +'%，它自身收益 '+own.toFixed(2)+'%，对基准 '+bm.toFixed(2)+'%，差 '
-                      +Math.abs(own-bm).toFixed(2)+' 个百分点，与表面差距 '+Math.abs(tot-bm).toFixed(2)
-                      +' 几乎一样——仓位节奏只解释其中约 '+Math.abs((own-bm)-(tot-bm)).toFixed(2)
-                      +' 个百分点。现金与股票两边都远跑输基准，怎么配都不改变结论。';
-                  }
-                  return t;})())+'">ⓘ</span>';
-          })()
-        +'</div>'
-        +'<div class="num '+pctCls(ret)+'" style="font:600 34px/40px var(--font-sans)">'+(ret===null?'—':fmtPct(ret))+'</div>'
-      +'</div>'
-      +(function(){
-        /* 真正的本期：这一期自己选的那批，从它自己建仓那天算起。和左边那个
-           至今数放在一起，两者的关系就是阶梯——这也是「各期」那一页在讲的事。 */
-        var pr=(typeof periodAt==='function')?periodAt(curPeriod()):null;
-        if(!pr)return '';
-        var rp=(pr.ret===null||pr.ret===undefined)?null:pr.ret*100;
-        return '<div>'
-          +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">'
-            +'本期 <span class="num">'+esc(pr.as_of)+'</span> · 只这一期'
-            +'<span class="gloss gm" title="这一期选出来的那批持仓自己的账，分母是它自己投出去的钱（'
-              +esc(fmtM(pr.cost))+'），不是组合本金。一期只找到几条想法时分母就小，'
-              +'它的百分比和满仓那一期不可直接比。">ⓘ</span>'
-          +'</div>'
-          +'<div class="num '+pctCls(rp)+'" style="font:600 26px/40px var(--font-sans)">'
-            +(rp===null?'—':fmtPct(rp))+'</div>'
-          +'<div style="font:400 11px/15px var(--font-mono);color:var(--color-text-tertiary);margin-top:-4px">'
-            +fmtInt(pr.n_open)+' 仓 · '+esc(fmtM(pr.cost))
-            /* 持有天数必须和这个百分比同框。一天的行情和三十天的判断长得一模一样。 */
-            +((Number(pr.mark_days)||0)<=1
-              ? ' · <span style="color:var(--color-feedback-warning-strong);font-weight:600">仅持有 '
-                +(Number(pr.mark_days)||0)+' 天</span>'
-              : ' · 持有 '+pr.mark_days+' 天')
-            +'</div>'
-        +'</div>';
-      })()
-      +'<div>'
-        +'<div style="font:400 13px/18px var(--font-sans);color:var(--color-text-tertiary);margin-bottom:4px">同期 '+esc(benchName())+' · 基准<span style="color:var(--color-text-tertiary)"> · 满仓</span>'
-          +(function(){var n=benchWindowNote();return n?'<span class="gloss gm" title="'+esc(n)+'">ⓘ</span>':''})()
-        +'</div>'
-        +'<div class="num" style="font:600 34px/40px var(--font-sans);color:var(--color-text-secondary)">'+(spy===null?'—':fmtPct(spy))+'</div>'
-      +'</div>'
-      +'<div style="padding-bottom:4px">'
-        +'<div style="font:400 15px/22px var(--font-sans);color:var(--color-text-primary)">'+verdict+'</div>'
-        /* 结论式写法有个副作用：读者会把它当成定论，下周反超就以为「翻盘了」。
-           样本量限定必须和结论同框，不能只留在下面那张对比卡里。 */
-        +'<div style="font:400 12px/17px var(--font-sans);color:var(--color-text-tertiary);margin-top:2px">'
-          +(function(){var w=heroWindowNote(currentBooks());return w?esc(w)+' · ':''})()
-          +'建仓后第 '+wk+' 周 · 样本尚不足以判定优劣'
-          +'<span class="gloss gm" title="单周甚至单月的领先或落后大多来自噪声。预注册的判定口径是与全量基准的差距超出 ±2 个百分点，主策略里最慢的一条约需 '+targetWeeks()+' 期样本；在那之前的排名不构成结论。">ⓘ</span>'
-        +'</div>'
-      +'</div>'
-    +'</div>'
-    /* 两个数字说得清「跑赢还是跑输」，说不清「什么时候拉开的、中间回撤过
-       没有」。PM 看的是形状。 */
-    +overviewCurveSVG()
-    /* 把这个头条数拆开——它是全页最容易被读错的一个数。
-     * 合计 +0.46% 里只有约 0.10pp 来自选股，其余来自没投出去的钱吃的货币
-     * 市场利息。而右边的基准是满仓的。不写出来，「跑输 4 个百分点」会被
-     * 读成「AI 选股很差」，但真实情况是：四分之三的钱还没进场，比较的
-     * 两边根本不是同一个仓位。 */
-    +(function(){
-      var gain=(ag.lastEquity!==null&&ag.capital)?(ag.lastEquity-ag.capital):null;
-      var pos=(ag.unrealized||0)+(ag.realized||0);
-      if(gain===null||!ag.capital)return '';
-      var cash=gain-pos;
-      var pp=function(v){return (v/ag.capital*100)};
-      var depPct=ag.capital?(ag.deployed/ag.capital*100):0;
-      if(Math.abs(cash)/Math.abs(gain||1)<0.05)return '';   /* 现金部分可忽略时不啰嗦 */
-      return '<div class="hero-split">'
-        +'<span class="hs-h">这 '+fmtPct(pp(gain))+' 从哪来</span>'
-        +'<span class="hs-i"><b class="num '+pctCls(pos)+'">'+(pp(pos)>=0?'+':'')+pp(pos).toFixed(2)+' pp</b> 选出来的持仓</span>'
-        +'<span class="hs-i"><b class="num">'+(pp(cash)>=0?'+':'')+pp(cash).toFixed(2)+' pp</b> 未投出资金的货币市场利息'
-        +'<span class="gloss gm" title="'+esc(cashRateNote())+'这部分收益与选股好坏无关——它衡量的是钱停着的时间，不是判断的质量。'
-          +'当前实际投出 '+depPct.toFixed(0)+'%'
-          +(ag.pending?'，低于每周约四分之一的设计值，因为还有 '+fmtInt(ag.pending)+' 笔挂单没有成交':'')
-          +'。">ⓘ</span></span>'
-        /* 「已投出 N%」现在标在上面那个大数旁边，正对着基准栏的「满仓」——
-         * 那是它该待的位置。这里不再说第二遍：同一个数字在半屏之内出现两次，
-         * 读者会去想它们是不是两件事。它独有的那点信息（挂单没成交，所以
-         * 实际投出比设计值还低）并进了上面现金那一项的说明里。 */
-        +'</div>';
-    })()
-    /* 一个人看完这个数字，下一句必然是「为什么」。追问入口就该在这里，
-       而不是让他自己去别的页面找。 */
-    /* 这里原本还跟一句「只依据这次运行当时封存的材料回答，不用事后信息」。
-       同一句话这一页已经说了三遍：顶栏那颗按钮的 title、页首那个「凡是带
-       问它的地方」提示框、以及这颗按钮自己的 title。删掉行内这份。 */
-    +'<div style="margin-top:var(--space-4)">'+askBtn('selection','topics')+'</div>'
-    +'<div class="card-note" style="margin-top:var(--space-3)">'
-      +'浮动盈亏 <span class="num '+pctCls(ag.unrealized)+'">'+signedMoney(ag.unrealized)+'</span>'
-      +' · 已实现 <span class="num '+pctCls(ag.realized)+'">'+signedMoney(ag.realized)+'</span>'
-      +' · 在场 '+fmtInt(ag.openN||0)+' 仓'
-      +' · 本金 '+fmtMoney(ag.capital)
-      +' · 纸面成交（已计佣金与滑点 '+glossMark(COST_GLOSS)+'），非实盘'
-      +'<button type="button" class="exp-btn" data-el="week.headline.trust" onclick="openTrustDrawer()">可信度与局限 ›</button>'
-    +'</div>'
-  +'</div>';
-}
-
 /* 组合与基准的差距，全站唯一的格式化入口。
    这个差就是读者拿两个头条数字相减能自己验的那一个（+0.46% 与 +5.99% →
    5.53），所以精度必须和那两个数对得上。之前概览写「5.53 个百分点」、
@@ -5392,6 +5693,11 @@ function backtestCard(){
   return '<div class="card section"><div class="card-title-row">'
     +'<h2 class="card-title">历史回测</h2>'
     +'<span class="card-note">真实候选池 · 真实收盘 · 零模型复算（'+fmtInt(sum.model_calls||0)+' 次模型调用）</span></div>'
+    /* 结论先行——这句话代码里本来就写着，位置却是反的：判定排在窗口/期数/
+       持有期/时间钳制四组元数据之后，读者要先跨过十五个数字才知道这张卡的
+       结论是什么。本页其余每张卡都是标题之后一句话。元数据是这句话的脚注，
+       不是它的前置条件。 */
+    +pairedVerdictLine(sum)
     +'<div class="bt-meta">'
       +'<div class="meta-kv"><div class="k">窗口</div><div class="v num">'+esc(b.window_start||'—')+' → '+esc(b.window_end||'—')+'</div></div>'
       +'<div class="meta-kv"><div class="k">期数</div><div class="v">'+mix+'</div></div>'
@@ -5416,9 +5722,6 @@ function backtestCard(){
           +'</div></div>'
         :'')
     +'</div>'
-    /* 结论先行：配对检验的判定是这张卡真正要说的话，各臂明细和口径差异
-       都是支撑它的下一层，读者需要时再展开。 */
-    +pairedVerdictLine(sum)
     +foldBlock('week.backtest.detail','各策略明细','胜率 · 平均收益 · 口径说明',
       '<div class="table-wrap"><table>'
         +'<thead><tr><th>选取策略</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
@@ -5947,18 +6250,26 @@ function drawerQ(d){
   if(d.t==='rules')return '一句话 · 选一种生成方式 · 生成草案';
   return '';
 }
+/* 改完栈就要把它写进地址栏。此前四个改栈的函数一个都没同步路由——于是
+   上面那段「栈按层序列化进 URL，恢复时逐层压回」的设计连同它的注释一起，
+   实际上从来没有生效过：抽屉是这个产品最深的一层内容，而它既发不出去，
+   刷新也回不来。 */
+function syncDrawers(){renderDrawers();try{syncRoute()}catch(e){}}
 function pushDrawer(d){
   var top=drawerStack[drawerStack.length-1];
-  if(top&&top.t===d.t&&String(top.p)===String(d.p)){renderDrawers();return}
+  if(top&&top.t===d.t&&String(top.p)===String(d.p)){syncDrawers();return}
   if(drawerStack.length>=6)drawerStack.pop(); /* 逻辑深度上限 6：再深替换栈顶 */
   drawerStack.push(d);
-  renderDrawers();
+  syncDrawers();
 }
-function popDrawer(){drawerStack.pop();renderDrawers()}
-function truncDrawers(n){drawerStack.length=Math.max(0,n);renderDrawers()}
-function closeDrawers(){drawerStack=[];renderDrawers()}
+function popDrawer(){drawerStack.pop();syncDrawers()}
+function truncDrawers(n){drawerStack.length=Math.max(0,n);syncDrawers()}
+function closeDrawers(){drawerStack=[];syncDrawers()}
 function gotoView(v,anchor){closeDrawers();goto(v,anchor)}
-function openStageDrawer(i,f){drawerStack=[{t:'stage',p:i,f:(f===undefined?null:f)}];renderDrawers()}
+function openStageDrawer(i,f){
+  drawerStack=[{t:'stage',p:i,f:(f===undefined?null:f)}];
+  syncDrawers();
+}
 function goStage(i){openStageDrawer(i)}
 /* 聚焦状态条：一句回执 + 一个退出，不是第二份清单。
  * 判断标准很简单——它不该让读者再做一次「选哪个」的决定，
@@ -6467,13 +6778,7 @@ function corpusSourceCard(){
   var w=S.weekly||{};
   var rows=(S.feeds||[]).filter(function(x){return x.kind==='corpus'&&x.as_of===w.as_of});
   var n=w.corpus_total||corpusRowsFor(w.as_of);
-  var ce=stateErr('corpus_periods_error');
-  if(!n&&!rows.length&&!corpusPeriods().length){
-    /* 整块卡片消失是最不该有的失败方式：页面看起来就像本来没有这一节。 */
-    if(!ce)return '';
-    return '<div class="card section"><div class="qhead"><h2 class="qtitle">研报来源</h2></div>'
-      +failNote('往期研报索引这次没建出来——不是没有研报。',ce)+'</div>';
-  }
+  if(!n&&!rows.length&&!corpusPeriods().length)return '';
   var g={};rows.forEach(function(f){(g[f.feed]=g[f.feed]||[]).push(f)});
   var keys=Object.keys(g);
   var tbl=keys.length
@@ -7353,8 +7658,10 @@ function stageTopicsBody(d){
   var agree0=topicChosen('hgep').filter(function(t){return ctrlChosen[t]});
   var hOnly0=topicChosen('hgep').filter(function(t){return !ctrlChosen[t]});
   var cOnly0=(ctrl?(ctrl.chosen||[]):[]).filter(function(t){return !chosenSet[t]});
-  var disLine=ctrl?'<div class="card-note" style="margin-bottom:var(--space-3)">两种打分重合 '+agree0.length+'/'+topicChosen('hgep').length+'：双选 '+(agree0.map(esc).join('·')||'—')
-    +'；仅语义打分 '+(hOnly0.map(esc).join('·')||'—')+'；仅计数打分 '+(cOnly0.map(esc).join('·')||'—')+'</div>':'';
+  /* 三串主题名。名字读不懂，「两种打分重合几个」这句话就只剩下那个分数。 */
+  var tn=function(a){return a.map(function(t){return esc(topicName(t))}).join('·')||'—'};
+  var disLine=ctrl?'<div class="card-note" style="margin-bottom:var(--space-3)">两种打分重合 '+agree0.length+'/'+topicChosen('hgep').length+'：双选 '+tn(agree0)
+    +'；仅语义打分 '+tn(hOnly0)+'；仅计数打分 '+tn(cOnly0)+'</div>':'';
   var inHTML='',outHTML='';
   rows.forEach(function(r,ri){
     var rowHTML='';
@@ -7484,10 +7791,7 @@ function topicDrawerBody(tid,embedded){
         +(ev.truncated?'<div style="font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px">另有 '+fmtInt(ev.truncated)+' 条未显示</div>':''),
         fmtInt(ev.n)+' 条');
   }else{
-    var ee=(w&&w.evidence_error)||'';
-    html+=ee
-      ? '<div class="empty-sm" style="color:var(--color-feedback-warning-text)">词表命中清单这次没取出来——不是这个主题没有研报。服务端报的原因：'+esc(ee)+'</div>'
-      : '<div class="empty-sm">这个主题没有词表命中的研报清单'+(r?'（打分依据的证据计数见上）':'')+'</div>';
+    html+='<div class="empty-sm">这个主题没有词表命中的研报清单'+(r?'（打分依据的证据计数见上）':'')+'</div>';
   }
   /* 追问是「证据」这一组的最后一格：读完分数和研报还是不服气，就问它本人。
    * 它从前单占一行浮在两段中间，看着像个和上下文无关的功能按钮。 */
@@ -7841,7 +8145,7 @@ function stageBookingBody(){
           return '<div class="pos-line">'
             +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\')">'+esc(bareCode(p.code))+'</button></span>'
             +'<span>'+askBtn('idea','pool:'+bareCode(p.code),{stop:true,cls:'sm icon'})+'</span>'
-            +'<span class="pos-nm" title="'+esc(p.thesis||'')+'">'+esc(p.instrument_name||'')+(p.theme_id?' · '+esc(p.theme_id):'')+'</span>'
+            +'<span class="pos-nm" title="'+esc(p.thesis||'')+'">'+esc(p.instrument_name||'')+(p.theme_id?' · '+esc(topicName(p.theme_id)):'')+'</span>'
             +rngBarHTML(p)
             +'<span class="pos-pnl '+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'</span>'
             +'</div>';
@@ -10034,6 +10338,20 @@ var route0=parseRoute('#/'+initHash+(initSec?'/'+initSec:''));
 PERIOD=route0.period||null;
 switchView(route0.view,route0.sec);
 bootSec=(initSec||(location.hash&&location.hash.indexOf('/')>=0))?route0.sec:null;
+/* 后退键。`applyRoute` 早就写好了，连 routeSuspend 的防回环都在，但全站
+   没有一处调用它，也没有任何 popstate 监听——于是 pushState 推进去的历史
+   条目没人接：开着抽屉按后退，地址栏变了、抽屉还开着；再按一次直接离开
+   面板。而「按后退关掉浮层」是所有人第一反应就会做的事。
+   parseRoute 对不认识的输入一律回落到合法值，所以这里不需要再兜一层。 */
+window.addEventListener('popstate',function(){
+  try{applyRoute(parseRoute(location.hash))}catch(e){}
+});
+/* 深链里带的抽屉栈要在首屏压回去，否则 ?d= 只写得进读不回来：
+   同一条链接自己打开是一回事，发给别人打开是另一回事。 */
+if(route0.drawers&&route0.drawers.length){
+  var boot0=route0.drawers;
+  bootDrawer=bootDrawer||function(){drawerStack=boot0.slice();syncDrawers()};
+}
 renderBootState();
 refresh();
 setInterval(refresh,60000);

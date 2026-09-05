@@ -7801,7 +7801,13 @@ function mergedPositions(){
       var cv=(p.qty||0)*(p.entry_px||0);
       byCode[k].unrealized+=(p.unrealized||0);
       byCode[k].value+=mv;byCode[k].cost+=cv;
-      byCode[k].books.push(b.selector||b.book_id);
+      /* 按不同的组合去重，不是按持仓条数累加。四周滚动下同一个组合会在
+         好几期买同一只标的，逐条 push 会把「几个组合选中它」算成「它一共有
+         几笔仓」——2026-09-05 实测 67 个标的里 64 个被灌水，22 个的徽标分子
+         超过了分母（最高 21/10）。这个数还驱动着共识度散点图的横轴和
+         「≥6 个加亮描边」，两处一起偏。每笔仓的明细在 perBook 里，不受影响。 */
+      var sel=b.selector||b.book_id;
+      if(byCode[k].books.indexOf(sel)<0)byCode[k].books.push(sel);
       byCode[k].perBook.push({sel:b.selector||b.book_id,unrealized:p.unrealized,qty:p.qty,
                               entry_px:p.entry_px,opened_d:p.opened_d});
     });

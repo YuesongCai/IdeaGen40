@@ -2900,6 +2900,113 @@ class TestAMissingArtifactIsNotAnUnreachableOne(unittest.TestCase):
         self.assertIn("不是记录的空缺", why)
 
 
+class TestAReadFailureNeverReadsAsAnAbsence(unittest.TestCase):
+    """The invariant this whole family of bugs violated, held in one place.
+
+    Every one of them had the same shape: a failure path that produced the same
+    value as a genuine absence, and a caller that then stated a cause it did not
+    know — "this run never wrote that", "this period never ran", "this topic has
+    no reports behind it", "first boot, mint an admin". The values differ; the
+    mistake is identical, so the tests for it belong together.
+    """
+
+    def test_the_audit_bundle_declares_what_it_could_not_get(self):
+        from ideagen import audit
+        import io, zipfile
+        from unittest import mock
+
+        class Store:
+            def get(self, key):
+                raise RuntimeError("connection refused")
+
+            def list(self, prefix):
+                raise RuntimeError("connection refused")
+
+        class P:
+            blobs = Store()
+
+        run = {"run_id": "r1", "as_of": "2026-09-02", "kind": "weekly",
+               "ok": 1, "started_at": "", "ended_at": "", "calls": 0,
+               "inputs_sha": None}
+        with mock.patch.object(audit.ask, "_run_row", return_value=run), \
+             mock.patch.object(audit, "_ask_entries", return_value=[]), \
+             mock.patch.object(audit, "_corpus_manifest",
+                               side_effect=audit.ManifestUnavailable("db down")):
+            blob, _ = audit.build(P(), "r1")
+        names = zipfile.ZipFile(io.BytesIO(blob)).namelist()
+        self.assertIn("00_读取缺口.txt", names)
+        note = zipfile.ZipFile(io.BytesIO(blob)).read(
+            "00_读取缺口.txt").decode()
+        # The reason has to say whose problem it is, not merely that a file is
+        # absent — the bundle is what a reviewer is handed as proof.
+        self.assertIn("读不到产物存储", note)
+        readme = zipfile.ZipFile(io.BytesIO(blob)).read("README.md").decode()
+        self.assertIn("00_读取缺口.txt", readme)
+
+    def test_a_complete_bundle_carries_no_gap_note(self):
+        """The note must not become decoration that appears on healthy runs."""
+        from ideagen import audit
+        import io, json as _j, zipfile
+        from unittest import mock
+
+        art = _j.dumps({"produced": []}).encode()
+
+        class Store:
+            def get(self, key):
+                return art
+
+            def list(self, prefix):
+                return [prefix + "ai_native.json"]
+
+        class P:
+            blobs = Store()
+
+        run = {"run_id": "r1", "as_of": "2026-09-02", "kind": "weekly",
+               "ok": 1, "started_at": "", "ended_at": "", "calls": 0,
+               "inputs_sha": None}
+        with mock.patch.object(audit.ask, "_run_row", return_value=run), \
+             mock.patch.object(audit, "_ask_entries", return_value=[]), \
+             mock.patch.object(audit, "_corpus_manifest", return_value=b"{}\n"):
+            blob, _ = audit.build(P(), "r1")
+        self.assertNotIn("00_读取缺口.txt",
+                         zipfile.ZipFile(io.BytesIO(blob)).namelist())
+
+    def test_bootstrap_refuses_to_mint_when_the_mirror_is_unreadable(self):
+        """Minting here discards every account the mirror was holding."""
+        from ideagen import accounts
+        from unittest import mock
+        with mock.patch.object(accounts, "load",
+                               return_value={"users": {}}), \
+             mock.patch.object(accounts, "_mirror_pull",
+                               side_effect=accounts.MirrorUnreadable("tos down")), \
+             mock.patch.object(accounts, "add_user") as add:
+            with self.assertRaises(RuntimeError):
+                accounts.bootstrap()
+        add.assert_not_called()
+
+    def test_proposals_say_which_generators_could_not_be_read(self):
+        from ideagen import review
+        from unittest import mock
+
+        class Store:
+            def get(self, key):
+                raise RuntimeError("connection refused")
+
+        class P:
+            blobs = Store()
+            name = "test"
+
+        run = {"run_id": "r1", "as_of": "2026-09-02"}
+        idx, unread = review._proposal_index(P(), run)
+        self.assertEqual(idx, {})
+        self.assertEqual(len(unread), 4)
+        self.assertIn("读不到产物存储", unread[0])
+        # And it must not be cached: the store coming back has to change the
+        # answer, or the page keeps saying "no proposals" for the rest of the
+        # process's life.
+        self.assertNotIn("r1", review._PROPOSAL_INDEX)
+
+
 class TestBookingSkipsUnpricedRatherThanFailingTheBatch(unittest.TestCase):
     """One unpriced ticker must not cost a book its whole week.
 

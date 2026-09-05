@@ -2862,6 +2862,7 @@ function gotoSection(view,slug){
   if(view!==current)switchView(view,slug);
   scrollToEl($(secDomId(view,slug)));
   setActiveSection(slug);
+  spyUntil=Date.now()+900;   /* 略长于 scrollToEl 的最长动画（520ms）+ 兜底定时器 */
   /* 走 syncRoute 而不是自己拼一遍。这里曾经自己写 URL，于是深链
      `#/holdings?p=2026-08-12` 打开时：switchView 先写对了带期坐标的地址，
      首屏的锚点跳转紧接着把它改回 `#/holdings`——同一次开页里写两遍、
@@ -2875,7 +2876,13 @@ function setActiveSection(slug){
   });
 }
 /* 滚动高亮：以视口上缘往下 120px 为判定线，取最后一个越线的区块。 */
+/* 点了侧栏之后短暂停掉滚动高亮。页尾那几段永远越不过判定线（它们在最后一屏里，
+   滚不动了），所以点「已知局限」时：setActiveSection 先把它点亮，紧接着平滑滚动
+   自己触发的 scroll 事件又把高亮改成最后一段——看上去就是「点了它，亮的是别的」。
+   锁的时长跟着滚动动画走，动画结束后自然回到滚动跟随。 */
+var spyUntil=0;
 function markActiveSection(){
+  if(Date.now()<spyUntil)return;
   var v=viewOf(current),secs=(v.secs||[]);
   var line=120,best=null,present=[];
   secs.forEach(function(x){

@@ -18,6 +18,7 @@ import html
 import hashlib
 import json
 import os
+import pathlib
 import threading
 import time
 from datetime import datetime, timezone
@@ -231,6 +232,29 @@ ASSUMPTIONS = [
     ("1 个月单一持有期", "决策（Jon 原设计是 1m+6m 双期限）", "被覆盖的立场，未正式对比"),
 ]
 
+def _attribution_state() -> str:
+    """Which attribution layers exist, and which one this build computed.
+
+    The sentence used to be hand-written, and it said "four layers" while naming
+    three — the count came from Jon's taxonomy (选择/择时/仓位/因子) and the names
+    came from a later split of the work, so 仓位 was never mentioned by either.
+    Not a miscount: the number and the list were about different things. Deriving
+    both from the one table means the sentence cannot disagree with itself again.
+    """
+    try:
+        from scripts.run_real_backtest import ATTRIBUTION_LAYERS  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 — a caption must never break the payload
+        return "层次表暂不可读；已做的是「选择」层：每笔持仓 vs 同窗口改持该主题的 ETF"
+    names = [n for n, _, _ in ATTRIBUTION_LAYERS]
+    done = [n for n, _, ok in ATTRIBUTION_LAYERS if ok]
+    todo = [n for n, _, ok in ATTRIBUTION_LAYERS if not ok]
+    return (f"共 {len(names)} 层（" + "、".join(names) + "）。已做「"
+            + "、".join(done) + "」层：每笔持仓 vs 同窗口改持该主题的 ETF；"
+            + "、".join(todo) + " 层都还没有做")
+
+
+_ATTRIBUTION_STATE = _attribution_state()
+
 FIXES = [
     ("idea_uid 重绑（+377% 假收益）", "✅ 已修", "产物不可变 + 幂等 + 测试"),
     ("强制凑满 40 条", "✅ 已修", "门槛准入，不足留现金"),
@@ -242,10 +266,18 @@ FIXES = [
     ("表撞名静默 / 孤儿数据 / 非法 JSON", "✅ 已修", "建表前查撞名 + orphans() + _finite()"),
     ("Redis 口令写进不可变产物", "✅ 已修", "redact_url 统一脱敏"),
     ("同一期跑两次", "✅ 已修", "数据库部分唯一索引，不只靠锁"),
-    ("归因四层反事实（Jon）", "❌ 未做", "只有 matched benchmark 一层"),
-    ("剔除高频标的复测（Jon）", "❌ 未做", "待进回测层"),
+    ("归因四层反事实（Jon）", "🟡 一层已做", _ATTRIBUTION_STATE),
+    ("剔除高频标的复测（Jon）", "✅ 已修",
+     "最常被持有的标的与其余标的分组比较，剔 5 / 10 / 20 三个深度，"
+     "判定用两组合并的可检出下界"),
     ("波动调整后与指数比（Jon）", "❌ 未做", "现在只有裸超额"),
 ]
+#: This list is maintained by hand, and a hand-maintained list of what is not
+#: done drifts the moment something gets done — the page then says a thing is
+#:未做 while the section above it renders that thing's output. That happened:
+#: 剔除高频标的复测 shipped and sat here marked ❌ until someone read the two
+#: side by side. Anything here that could be derived from the payload should
+#: be; until then, changing a state here is part of shipping the fix.
 
 RUNBOOK = """
 <h4>在不在跑？</h4>
@@ -277,6 +309,58 @@ def build(con=None, p=None) -> "config.Path":
 
 
 # ---------------------------------------------------------------- state API
+def _books_aggregate(books: list[dict[str, Any]]) -> dict[str, Any]:
+    """One curve for all the books, and the return that goes with it.
+
+    Aggregating here rather than in the page is the point: this is a cross-book
+    roll-up that a screenshot may be judged on, so it needs one definition that
+    can be replayed, not one that each renderer re-derives.
+
+    The awkward case is a book with a shorter history. It is not missing data —
+    that book had not been funded into positions yet, and cash is a position.
+    So a book carries its last mark forward, and sits at its capital before its
+    first mark. Summing only the dates every book shares would drop the earliest
+    weeks entirely; summing only what is present would make the total jump on
+    the day a book starts, which reads as a gain that nobody earned.
+
+    The page used to require identical date axes across all ten books and
+    silently produced nothing when one of them started a week late — answering
+    "did this make money" with a dash, over a bookkeeping detail.
+    """
+    funded = [b for b in books if b.get("capital")]
+    if not funded:
+        return {}
+    curves = []
+    for b in funded:
+        marks = {m["d"]: float(m["equity"]) for m in (b.get("equity") or [])
+                 if m.get("d") is not None and m.get("equity") is not None}
+        curves.append((float(b["capital"]), marks))
+    dates = sorted({d for _, marks in curves for d in marks})
+    capital = sum(c for c, _ in curves)
+    if not dates or not capital:
+        return {"capital": capital, "n_books": len(funded),
+                "equity": [], "return_pct": None,
+                "basis": "no marked dates yet"}
+    carried: list[float | None] = [None] * len(curves)
+    series = []
+    for d in dates:
+        total = 0.0
+        for i, (cap_i, marks) in enumerate(curves):
+            if d in marks:
+                carried[i] = marks[d]
+            total += cap_i if carried[i] is None else carried[i]
+        series.append({"d": d, "equity": round(total, 2)})
+    last = series[-1]["equity"]
+    return {
+        "capital": capital,
+        "n_books": len(funded),
+        "equity": series,
+        "return_pct": round((last / capital - 1) * 100, 4),
+        "basis": ("union of every marked date; a book carries its last mark "
+                  "forward and sits at its capital before its first mark"),
+    }
+
+
 # -- port health ---------------------------------------------------------
 # `Platform.check()` is a doctor probe: it opens a live connection to all six
 # ports, and on the cloud platform that means a TOS `list_objects` round trip —
@@ -342,6 +426,17 @@ def _port_health(p, scrub) -> dict[str, Any]:
             "ports_pending": False}
 
 
+#: Keys a licensed run may publish as-is. Everything here is either rendered by
+#: the dashboard (`per_topic`, `target_per_topic`, `topics_without_corpus_match`,
+#: `truncated`) or a bounded enum / numeric map with no room for prose. Adding a
+#: key here is a decision to publish it; that is the point of the list.
+_GEN_META_KEEP = frozenset({
+    "per_topic", "target_per_topic", "topup_per_topic",
+    "topics_without_corpus_match", "truncated", "topic_errors",
+    "weights", "caps", "admission", "generation_method",
+})
+
+
 def _gen_meta(meta: dict, hide_licensed: bool) -> dict:
     """A generator's meta, with the one prose-bearing key redacted for export.
 
@@ -356,17 +451,29 @@ def _gen_meta(meta: dict, hide_licensed: bool) -> dict:
     failed, and with what kind of failure, is exactly the diagnostic worth
     publishing; the model's own words are the part that is not.
 
-    This is the near side of the wall. The publish gate's bookkeeping-prose rule
-    is the far side, and it is what catches the next key someone adds here.
+    The far side used to be the publish gate. It is not enough: the gate scans
+    for machine identity and partner identifiers, and a key holding the PM's own
+    sentence about how to invest matched none of those. That key existed, and
+    only a hand review caught it before a publish.
+
+    So the rule is inverted. A named key passes; anything else passes only if it
+    is a bare number or boolean, which cannot carry prose. A new diagnostic that
+    happens to be a string is dropped from the public payload until someone
+    decides, deliberately, that it belongs there — which is the decision that
+    silently did not happen last time.
     """
     if not hide_licensed:
         return meta
-    errs = meta.get("topic_errors")
+    out: dict = {}
+    for k, v in meta.items():
+        if k in _GEN_META_KEEP or (isinstance(v, (int, float, bool))
+                                   and not isinstance(v, str)):
+            out[k] = v
+    errs = out.get("topic_errors")
     if isinstance(errs, dict) and errs:
-        meta = dict(meta)
-        meta["topic_errors"] = {k: str(v).split(":", 1)[0].strip()
-                                for k, v in errs.items()}
-    return meta
+        out["topic_errors"] = {k: str(v).split(":", 1)[0].strip()
+                               for k, v in errs.items()}
+    return out
 
 
 def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
@@ -539,6 +646,36 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
     return weekly
 
 
+def _snapshot_state() -> dict[str, Any] | None:
+    """When this node's database was installed, on a node that is fed one.
+
+    `generated_at` answers "when was this page built", which is now on every
+    request and therefore reads fresh even when the underlying data stopped
+    arriving days ago. That gap is why "is it in sync?" kept having to be asked
+    a person rather than read off the page.
+
+    Only the display node has an answer: its database is swapped in by
+    sync_state.sh, which leaves the snapshot's hash in a marker file beside it.
+    The laptop writes its own database continuously and has no such moment, so
+    it reports None and callers should say nothing rather than invent a time.
+    """
+    marker = pathlib.Path(os.environ.get("IDEAGEN_DB", "")).parent / ".state-sha"
+    try:
+        if not marker.is_file():
+            return None
+        st = marker.stat()
+        return {
+            "sha": marker.read_text().strip()[:12] or None,
+            "installed_at": datetime.fromtimestamp(
+                st.st_mtime, tz=timezone.utc).astimezone(config.TZ).isoformat(),
+            "age_s": max(0, int(time.time() - st.st_mtime)),
+        }
+    except OSError:
+        # `is_file()` raises on EACCES rather than returning False, and this
+        # runs inside the endpoint that would report the problem.
+        return None
+
+
 def state(con=None, p=None) -> dict[str, Any]:
     """The full system state as one JSON document.
 
@@ -552,7 +689,8 @@ def state(con=None, p=None) -> dict[str, Any]:
     p = p or plat.load()
     now = _hkt_now()
     out: dict[str, Any] = {"generated_at": now.isoformat(),
-                           "platform": p.name}
+                           "platform": p.name,
+                           "snapshot": _snapshot_state()}
 
     # -- liveness ---------------------------------------------------------
     hb = None
@@ -643,6 +781,16 @@ def state(con=None, p=None) -> dict[str, Any]:
             con, "SELECT i.batch_id, i.as_of FROM orders o "
                  "JOIN ideas i USING(idea_uid) WHERE o.book_id=? "
                  "ORDER BY i.as_of DESC LIMIT 1", (b["book_id"],))
+        # When this book first held anything, over open *and* closed positions.
+        # `booked_as_of` is the label of the newest batch of ideas, not a date
+        # anything was bought on, and the page was reading it as one — which
+        # dated the book a week late and, because that date is the numerator of
+        # "week N of about 17", quietly understated how far the experiment had
+        # got. Closed positions have to count: a book whose first tranche has
+        # since been sold did not start later than it did.
+        first_open = db.q1(
+            con, "SELECT MIN(opened_d) d FROM positions WHERE book_id=?",
+            (b["book_id"],))
         # A win is a close that made money after costs; ties count as losses,
         # because a method that only breaks even must not clear Jon's >50% bar
         # on rounding. win_rate stays null until something has actually closed —
@@ -660,6 +808,8 @@ def state(con=None, p=None) -> dict[str, Any]:
                                        if latest_batch else None),
                       "booked_as_of": (latest_batch["as_of"]
                                        if latest_batch else None),
+                      "first_opened_d": (first_open["d"] if first_open
+                                         else None),
                       "selector": b["book_id"].replace("sel-", ""),
                       "capital": b["capital"], "equity": eq,
                       "open_positions": pos,
@@ -684,6 +834,22 @@ def state(con=None, p=None) -> dict[str, Any]:
                           (b["book_id"],)) or {"n": 0})["n"],
                       "exits": exits})
     out["books"] = books
+    out["books_aggregate"] = _books_aggregate(books)
+    # The cash rate the page quotes when it explains where the un-deployed
+    # money's return came from. The page used to print a literal "3.72%" and
+    # label it "current" — that literal is config.RISK_FREE_ANNUAL, the
+    # *fallback*, so whenever the shelf actually carried a money-market yield
+    # the page was quoting a number the system was not using. Ship the rate
+    # that was used, and say which of the two it is.
+    try:
+        from .sources import olive as _olive
+        _live = _olive.cash_yield(con, "USD")
+    except Exception:  # noqa: BLE001 - the rate is a caption, never a blocker
+        _live = None
+    out["cash_rate"] = {
+        "annual": _live if _live is not None else config.RISK_FREE_ANNUAL,
+        "source": "shelf_median_7d" if _live is not None else "config_fallback",
+    }
     # The do-nothing alternative, over exactly the dates the books were marked.
     # Jon's frame is not "did it go up" but "did the machinery beat parking the
     # same cash in SPY" — without this series the aggregate return has no zero.
@@ -713,9 +879,32 @@ def state(con=None, p=None) -> dict[str, Any]:
         out["shelf"] = {}
 
     # -- feeds ------------------------------------------------------------
+    # This used to be `LIMIT 12` — a cap on *rows*, on a table whose rows are
+    # (period x feed x attempt). One busy week fills it by itself, and every
+    # earlier period silently vanished: the page's 研报来源 table has a 期次
+    # column that could only ever hold one value, so a reader looking at an
+    # older vintage was told its corpus did not exist. Bound it by period
+    # instead, which is the axis the page actually reads it on.
     out["feeds"] = [dict(r) for r in p.state.q(
         "SELECT feed, kind, as_of, n_rows, ok, error FROM feed_runs "
-        "ORDER BY as_of DESC, run_id DESC, feed ASC LIMIT 12")]
+        "WHERE as_of IN (SELECT as_of FROM ("
+        "  SELECT DISTINCT as_of FROM feed_runs ORDER BY as_of DESC LIMIT 26"
+        ") recent) "
+        "ORDER BY as_of DESC, run_id DESC, feed ASC")]
+
+    # -- which periods have a browsable corpus ----------------------------
+    # feed_runs only records a *fetch*. A week that reused an already-ingested
+    # corpus (2026-08-26) registers no corpus row at all, yet its documents are
+    # right there and `/api/corpus?as_of=` serves them. Counting the stored
+    # documents per period window is the honest answer to "which periods can I
+    # open", and it is the one the drawer's 往期 list is built from.
+    try:
+        out["corpus_periods"] = corpus_period_index(
+            con, p, [r.get("as_of") for r in out.get("periods") or []]
+            + [r["as_of"] for r in out["feeds"] if r.get("kind") == "corpus"])
+    except Exception as e:  # noqa: BLE001 — an index must not take the page down
+        out["corpus_periods"] = []
+        out["corpus_periods_error"] = f"{type(e).__name__}: {e}"
 
     # -- schedule: the server says when, the page only displays -----------
     try:
@@ -737,6 +926,49 @@ def state(con=None, p=None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- corpus API
+def corpus_period_index(con=None, p=None,
+                        as_ofs: list[str] | None = None) -> list[dict]:
+    """How many stored documents each period can show, oldest period last.
+
+    Same window rule as `corpus_list`: a period's corpus is the three days
+    ending on its `as_of`. Counted from whichever store actually holds the
+    documents, so the answer matches what clicking through will render.
+    """
+    from datetime import date as _date, timedelta as _td
+    p = p or plat.load()
+    by_day: dict[str, int] = {}
+    try:
+        rows = [dict(r) for r in p.state.q(
+            "SELECT published_d, COUNT(*) AS n "
+            "FROM corpus_documents GROUP BY published_d")]
+        by_day = {r["published_d"]: int(r["n"] or 0) for r in rows
+                  if r.get("published_d")}
+    except Exception:  # noqa: BLE001 - old schema or unavailable state
+        by_day = {}
+    if not by_day:
+        con = con or db.init()
+        by_day = {r["published_d"]: int(r["n"] or 0)
+                  for r in (dict(x) for x in db.q(
+                      con, "SELECT published_d, COUNT(*) AS n FROM documents "
+                           "GROUP BY published_d"))
+                  if r.get("published_d")}
+
+    seen, out = set(), []
+    for as_of in sorted({a for a in (as_ofs or []) if a}, reverse=True):
+        if as_of in seen:
+            continue
+        seen.add(as_of)
+        try:
+            aof = _date.fromisoformat(as_of)
+        except (TypeError, ValueError):
+            continue
+        days = [(aof - _td(days=i)).isoformat() for i in range(3)]
+        n = sum(by_day.get(d, 0) for d in days)
+        if n:
+            out.append({"as_of": as_of, "n": n, "window": days})
+    return out
+
+
 def corpus_list(con=None, as_of: str | None = None, p=None) -> dict[str, Any]:
     """Every stored document for one period's window — the shelf itself.
 
@@ -859,13 +1091,19 @@ def _proposal_index(p, run: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     key = str(run["run_id"])
     hit = _PROPOSAL_INDEX.get(key)
     if hit is not None:
-        return hit
+        return hit, []
     idx: dict[str, list[dict[str, Any]]] = {}
+    #: Methods whose artifact could not be read, with why. Skipping them
+    #: silently is how "this node cannot reach the store" reaches the reader as
+    #: 「本期生成产物里没有这条的提案记录」 plus a guess about carried-over
+    #: holdings — a specific explanation, offered where none is known.
+    unread: list[str] = []
+    from . import ask as _ask
     for method in ("ai_native", "carl_constraint", "chain", "gap"):
-        try:
-            art = json.loads(p.blobs.get(
-                f"runs/{run['as_of']}/{run['run_id']}/B_generators/{method}.json"))
-        except Exception:  # noqa: BLE001 — a missing method is skipped, not fatal
+        art, why = _ask.artifact_or_reason(
+            p, run, f"B_generators/{method}.json")
+        if not isinstance(art, dict):
+            unread.append(f"{method}：{why or '产物不是一份记录'}")
             continue
         for item in (art.get("produced") or []):
             iid = str(item.get("instrument_id") or "")
@@ -887,8 +1125,12 @@ def _proposal_index(p, run: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
             })
     if len(_PROPOSAL_INDEX) >= _PROPOSAL_INDEX_MAX:
         _PROPOSAL_INDEX.pop(next(iter(_PROPOSAL_INDEX)), None)
-    _PROPOSAL_INDEX[key] = idx
-    return idx
+    # A read failure is not cached: it is a property of this moment, and
+    # caching it would keep answering "no proposals" long after the store came
+    # back. A genuinely empty index is cached as before.
+    if not unread:
+        _PROPOSAL_INDEX[key] = idx
+    return idx, unread
 
 
 def proposals_for(instrument: str, run_id: str | None = None,
@@ -919,7 +1161,7 @@ def proposals_for(instrument: str, run_id: str | None = None,
         return {"error": "缺少标的代码"}
     bare = want.split(".")[-1].upper()
 
-    index = _proposal_index(p, run)
+    index, unread = _proposal_index(p, run)
     found = list(index.get(bare) or [])
     cite_ids: set[str] = set()
     for item in found:
@@ -943,4 +1185,8 @@ def proposals_for(instrument: str, run_id: str | None = None,
     found.sort(key=lambda x: (str(x.get("method")), str(x.get("topic_id"))))
     return {"run_id": run["run_id"], "as_of": run["as_of"],
             "instrument": bare, "n": len(found),
-            "proposals": found, "docs": docs}
+            "proposals": found, "docs": docs,
+            # Present only when something could not be read. An empty list of
+            # proposals means one thing with this absent and another with it
+            # here, and the page has to be able to tell them apart.
+            **({"unread": unread} if unread else {})}

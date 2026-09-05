@@ -69,24 +69,34 @@ PROSE_MIN_CHARS = 40
 _CJK = re.compile(r"[\u4e00-\u9fff]")
 
 
-def _payload(text: str) -> object | None:
-    """The state payload `export_pages` bakes into the published page.
+def _payload(text: str) -> tuple[object | None, str]:
+    """The state payload `export_pages` bakes in, and whether it could be read.
 
-    Returns None when the file is not a baked page — the text scan still runs,
-    so a caller loses nothing by this being absent.
+    Three states, not two. A file with no marker is not a baked page and there
+    is nothing to scan — `absent`. A file that has the marker but whose payload
+    will not parse *is* a baked page whose contents could not be read, and that
+    is `unreadable`, which is not the same as clean.
+
+    This returned a bare None for both, with a docstring saying the text scan
+    covered the gap. It did not: `scan_payload` looks for prose in bookkeeping
+    containers, and there is no text-level equivalent, so the payload check was
+    simply skipped. The same operator's sentence in the same `meta` field was
+    refused when the JSON parsed and published when a byte was missing from the
+    end of it — a safety gate whose verdict turned on whether it could read the
+    thing it was judging, and said nothing about which had happened.
     """
     marker = "window.__STATIC__="
     i = text.find(marker)
     if i < 0:
-        return None
+        return None, "absent"
     j = text.find(";</script>", i)
     if j < 0:
-        return None
+        return None, "unreadable"
     raw = text[i + len(marker):j].replace("<\\/", "</")
     try:
-        return json.loads(raw)
+        return json.loads(raw), "ok"
     except ValueError:
-        return None
+        return None, "unreadable"
 
 
 def scan_payload(obj: object, where: str) -> list[str]:
@@ -142,9 +152,15 @@ def main(argv: list[str]) -> int:
         checked += 1
         text = p.read_text(encoding="utf-8", errors="replace")
         problems += scan(text, p.as_posix())
-        payload = _payload(text)
-        if payload is not None:
+        payload, state = _payload(text)
+        if state == "ok":
             problems += scan_payload(payload, p.as_posix())
+        elif state == "unreadable":
+            # Refusing here is the same rule as refusing when no file was
+            # found: a check that cannot see the content has not cleared it.
+            problems.append(
+                f"{p.as_posix()}: 页面内嵌了状态数据，但无法解析，"
+                f"记账字段检查未能执行——无法确认内容")
 
     if not checked:
         # Nothing found to inspect is not a pass. A path that silently matches no

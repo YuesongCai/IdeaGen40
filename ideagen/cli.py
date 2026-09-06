@@ -1255,6 +1255,29 @@ def cmd_book(args) -> int:
     return 0
 
 
+def cmd_backtest_formal(args) -> int:
+    """Replay stored weekly verdicts through the paper engine, period by period."""
+    from . import backtest_formal
+    con = _con()
+    arms = [a.strip() for a in (args.arms or "").split(",") if a.strip()] or None
+    if args.dry_run:
+        plan = backtest_formal.plan(con, start=args.start, end=args.end, arms=arms)
+        if not plan["periods"]:
+            print("窗口内没有成功完成的周跑"); return 1
+        print(f"将回测 {len(plan['periods'])} 期 × {len(plan['arms'])} 个组合"
+              f"（backtest_id {backtest_formal.backtest_id_for([x['as_of'] for x in plan['periods']], plan['arms'])}）：")
+        for x in plan["periods"]:
+            picks = "、".join(f"{a}:{n}" for a, n in x["arms"].items())
+            print(f"  {x['as_of']} [{x['classification']:<8}] {x['run_id']}  {picks}")
+        return 0
+    try:
+        backtest_formal.run(con, start=args.start, end=args.end, arms=arms,
+                            backtest_id=args.backtest_id)
+    except ValueError as e:
+        print(f"✗ {e}"); return 1
+    return 0
+
+
 def cmd_philosophy(args) -> int:
     """PM 语义注入的四个动作：看、提、生效、停用。
 
@@ -1456,6 +1479,14 @@ def main(argv: list[str] | None = None) -> int:
                    choices=("live", "backfill"),
                    help="backfill = 事后补跑的历史期。文档层面卡死了 as-of，但模型"
                         "权重见过该日期之后的世界，这一点无法用代码消除，只能标注")
+
+    s = add("backtest-formal", cmd_backtest_formal,
+            "正式回测：已存的周跑判决用模拟运行同一套交易规则按当期日历重走一遍")
+    s.add_argument("--from", dest="start", help="起始期次 YYYY-MM-DD（含）")
+    s.add_argument("--to", dest="end", help="截止期次 / 盯市截止 YYYY-MM-DD（含）")
+    s.add_argument("--arms", help="逗号分隔的选取策略；默认窗口内出现过判决的全部")
+    s.add_argument("--backtest-id", help="指定 id（重跑同 id 会先清理再建）")
+    s.add_argument("--dry-run", action="store_true", help="只列期次与组合，不动库")
 
     s = add("book", cmd_book, "book a completed run into the selector paper books")
     s.add_argument("--run-id", help="default: the latest completed weekly run")

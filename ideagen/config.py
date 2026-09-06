@@ -376,6 +376,26 @@ def is_cohort(book_id: str) -> bool:
     return book_id.startswith(COHORT_PREFIX)
 
 
+#: Books the formal backtest engine trades on. One per (backtest, arm), same
+#: spec as the selector books so the two records differ only in *when* the
+#: orders were placed. The prefix is load-bearing in both directions: the daily
+#: marking loop (`paper.all_books`) must never pick these up — it would advance a
+#: replay with today's tick and rewrite a result the run already recorded — and
+#: the replay must never be booked into `sel-` where the live account lives.
+BACKTEST_BOOK_PREFIX = "bt:"
+#: Batches the same engine builds. Ordinary batches are `W<date>-<arm>`; these
+#: carry the backtest id so a rerun can find and remove exactly its own.
+BACKTEST_BATCH_PREFIX = "BT-"
+
+
+def backtest_book(backtest_id: str, arm: str) -> str:
+    return f"{BACKTEST_BOOK_PREFIX}{backtest_id}:{arm}"
+
+
+def is_backtest_book(book_id: str) -> bool:
+    return book_id.startswith(BACKTEST_BOOK_PREFIX)
+
+
 BOOKS = {
     "disciplined": {
         "label": "守纪律组合",

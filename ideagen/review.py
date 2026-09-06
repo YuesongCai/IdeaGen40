@@ -550,11 +550,19 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
             (k["feeds"] if row["ok"] else k["failed"]).append(row["feed"])
         weekly["corpus_total"] = (
             weekly["inputs_by_kind"].get("corpus", {}).get("rows") or None)
+        # `theme_set_sha` names the frozen definition set the scorer read
+        # (`A_theme_set.json`, written before 筛选A). Runs before 2026-09-07
+        # carry none, and that is reported as null rather than invented.
         weekly["topics"] = [
             {"scorer": v["strategy"], "chosen": json.loads(v["chosen"]),
-             "scores": json.loads(v["scores"] or "{}")}
-            for v in p.state.q("SELECT strategy, chosen, scores FROM verdicts "
+             "scores": json.loads(v["scores"] or "{}"),
+             "theme_set_sha": (json.loads(v["meta"] or "{}") or {}).get(
+                 "theme_set_sha")}
+            for v in p.state.q("SELECT strategy, chosen, scores, meta FROM verdicts "
                                "WHERE run_id=? AND kind='topic_scorer'", (rid,))]
+        weekly["theme_set_sha"] = next(
+            (t["theme_set_sha"] for t in weekly["topics"] if t.get("theme_set_sha")),
+            None)
         weekly["generators"] = [
             {"method": v["strategy"], "n": len(json.loads(v["chosen"])),
              "meta": _gen_meta(json.loads(v["meta"] or "{}"), hide_licensed),
@@ -724,6 +732,20 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
                     "origin": th.origin,
                     "registered_d": th.registered_d,
                     "provenance": list(th.provenance or ()),
+                    # How the theme stood to its neighbours when registered,
+                    # in the words written at the time, and the wording it
+                    # has since been found to go by (aliases as of this
+                    # period only — `all_themes(_aof)` already clamped them).
+                    "relation": th.relation or None,
+                    "rationale": th.rationale or None,
+                    "split_from": th.split_from,
+                    "evidence_doc_ids": list(th.evidence_doc_ids or ()),
+                    "alias_terms": list(th.alias_terms or ()),
+                    "aliases": [
+                        {"terms": list(a["terms"]), "as_of": a["as_of"],
+                         "rationale": a.get("rationale") or None}
+                        for a in _tlex.ALIASES
+                        if a["theme_id"] == tid and a["as_of"] <= weekly["as_of"]],
                     "arc": arc,
                 }
             weekly["themes"] = themes

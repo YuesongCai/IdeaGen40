@@ -8,17 +8,36 @@ well-sourced, all live, all invisible.
 
 Discovery runs in two stages, deliberately split by who is good at what.
 
-**Stage A — `candidates()`, mechanical, runs unattended.** Take the items in
-the trailing window that matched *no* registered theme, mine repeated phrases
-from them, keep only phrases that clear hard evidence gates, and cluster
-phrases that travel together into candidate themes. This stage reads no prices
-and makes no judgements; it only says "these N documents from M institutions
-over K days are about something the dictionary has no word for".
+**Stage A — `candidates()`, mechanical, runs unattended.** Take *every* item
+in the trailing window, mine repeated phrases from them, drop the phrases a
+registered theme already owns, keep only phrases that clear hard evidence
+gates, and cluster phrases that travel together into candidate themes. This
+stage reads no prices and makes no judgements; it only says "these N documents
+from M institutions over K days are about something the dictionary has no word
+for" — and, for each cluster, how many of those documents also matched which
+registered theme (`relation`), so Stage B knows whether it is looking at a
+new debate, a neighbour of an old one, or an old one under a new name.
 
-**Stage B — registration, done by the generator.** For each candidate worth
-admitting, the generator writes the theme: label, key question, synonyms,
-price indicator. `register()` validates it and appends one line to
-`themes/registry.jsonl`, stamped with the day it was registered.
+Until 2026-09-07 the mining population was only the items that matched *no*
+registered theme. That had a blind spot Jon's review named directly: a report
+that mentioned 联储 once was claimed by POLICY-PATH and everything else it
+argued — a new driver, a new dispute — never reached discovery. The historical
+registry must align names and track continuity; it must not decide what this
+week is allowed to find.
+
+**Stage B — naming and registration, done by the model.** For each candidate
+the model writes the theme card: label, key question, synonyms, price
+indicator, and its relation to the neighbouring registered themes with the
+reason in words (same driver? same verification condition? same event, cash
+flow or risk?). Three outcomes:
+
+  * `distinct` / `split` — `register()` validates the card and appends one
+    line to `themes/registry.jsonl`, stamped with the day it was registered;
+    a split names its parent in `split_from`.
+  * `same_debate` — the cluster is an existing theme in this week's wording.
+    No new theme: `add_alias()` appends the new words to
+    `themes/aliases.jsonl`, dated, and the theme matches them from that day on.
+  * skip — corpus noise, not a macro debate. A finding, not a failure.
 
 The split matters because Stage B is where hindsight would enter. Two rules
 keep it out, both enforced here rather than by good intentions:
@@ -26,14 +45,20 @@ keep it out, both enforced here rather than by good intentions:
   * `registered_d` may not be backdated, and `lexicon.all_themes(as_of)`
     excludes themes registered after `as_of` — a theme discovered today cannot
     score last week, so it can never be credited with a call it never made.
+    Aliases carry the same stamp and the same clamp.
   * the price indicator must be priceable *and* is chosen from the candidate's
     own evidence, before any return is computed. Picking the instrument that
     already ran is the failure mode; `validate()` cannot detect intent, but
     `registered_d` makes the attempt worthless.
+
+`snapshot(as_of)` freezes the resulting definition set — every theme's id,
+registration day and a hash of the words it matched on — so a period's scores
+can be tied to the exact vocabulary that produced them.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
@@ -58,6 +83,44 @@ MIN_LIFT = 2.0            # frequency vs the pre-window baseline
 MIN_CLUSTER_DOCS = 10     # a cluster needs more evidence than a lone phrase
 JACCARD = 0.34            # phrase doc-set overlap that counts as "same theme"
 MAX_CANDIDATES = 8        # surfaced per day; the rest wait for tomorrow
+
+# ---------------------------------------------------------------------------
+# Mining scope. `all` is the default since 2026-09-07: every document in the
+# window feeds discovery, whether or not a registered theme already claimed
+# it. `unmatched` is the pre-2026-09-07 population, kept so the two can be
+# compared on the same period (the case study in docs/主题形成_从当期研报出发.md
+# is exactly that comparison) and so a caller can still ask the narrower
+# question "what does the dictionary miss entirely".
+# ---------------------------------------------------------------------------
+SCOPE_ALL = "all"
+SCOPE_UNMATCHED = "unmatched"
+
+# ---------------------------------------------------------------------------
+# Relation of a candidate cluster to the registered themes, decided by how
+# many of the cluster's evidence documents *also* matched a registered theme.
+# Mechanical and stated in the output so the model's later judgement (same
+# debate / split / distinct) can be checked against a number:
+#
+#   share >= SPLIT_SHARE     → "possible_split" of that theme: most of the
+#                              cluster lives inside documents the theme already
+#                              claims. Either the theme's wording has moved
+#                              (an alias) or a sub-debate has grown inside it
+#                              (a split). Which one is the model's call.
+#   ADJACENT_SHARE <= share  → "adjacent": the cluster and the theme share a
+#              < SPLIT_SHARE   meaningful slice of evidence but most of the
+#                              cluster stands on its own — a neighbour.
+#   share < ADJACENT_SHARE   → "distinct": what little overlap exists is what
+#                              any two macro debates share.
+#
+# Sharing a document is not the same as being the same debate — a report can
+# argue two things — which is why this is a hint carried into the prompt, not
+# a verdict, and why the thresholds are constants a reader can find.
+# ---------------------------------------------------------------------------
+SPLIT_SHARE = 0.6
+ADJACENT_SHARE = 0.2
+REL_DISTINCT = "distinct"
+REL_ADJACENT = "adjacent"
+REL_POSSIBLE_SPLIT = "possible_split"
 
 #: Phrases that are frequent, generic and never a theme on their own. Without
 #: this the top candidates are "目标价"/"评级"/"预期" — true of every document
@@ -200,10 +263,15 @@ def _text_of(row) -> str:
                                   (row["body"] or "")[:3000])))
 
 
-def unmatched(con, as_of: date, days: int = WINDOW_DAYS) -> list[dict]:
-    """Window items matching no theme registered as of `as_of`.
+def window_items(con, as_of: date, days: int = WINDOW_DAYS) -> list[dict]:
+    """Every window item, each tagged with the registered themes it matched.
 
-    The as-of clamp is not cosmetic: mining against *today's* dictionary would
+    `matched` is the list of theme ids (as of `as_of`) whose vocabulary the
+    document's title/summary/body hits — the same test scoring applies, so a
+    document counted here as claimed by POLICY-PATH is one POLICY-PATH would
+    score. An empty list is a document the dictionary cannot see at all.
+
+    The as-of clamp is not cosmetic: tagging against *today's* dictionary would
     make a historical replay claim it had already discovered themes it had not.
     """
     themes = lexicon.all_themes(as_of)
@@ -215,16 +283,60 @@ def unmatched(con, as_of: date, days: int = WINDOW_DAYS) -> list[dict]:
     out = []
     for r in rows:
         text = _text_of(r)
-        if any(lexicon.match_theme(text, t) >= 1 for t in themes):
-            continue
+        hits = [t.id for t in themes if lexicon.match_theme(text, t) >= 1]
         inst = r["institution"] or lexicon.institution_of(text)
         out.append({
             "doc_id": r["doc_id"], "line": r["line"], "tier": r["tier"],
             "d": r["published_d"], "title": r["title"] or "",
             "institution": inst or f"sig:{lexicon.title_signature(r['title'] or '')[:12]}",
             "text": text,
+            "matched": hits,
         })
     return out
+
+
+def unmatched(con, as_of: date, days: int = WINDOW_DAYS) -> list[dict]:
+    """Window items matching no theme registered as of `as_of`."""
+    return [it for it in window_items(con, as_of, days) if not it["matched"]]
+
+
+def _relation(doc_ids: set[str], by_doc: dict[str, dict]) -> dict:
+    """How a cluster's evidence overlaps the registered themes.
+
+    `overlap` counts, per theme, the cluster documents that theme also
+    matched; `kind`/`of` apply the SPLIT_SHARE / ADJACENT_SHARE rule to the
+    theme with the largest overlap. `n_docs_matched` is how many cluster
+    documents any registered theme had already claimed — the number that was
+    zero by construction before 2026-09-07, and the one that says whether a
+    candidate was found inside old themes' territory or outside it.
+    """
+    overlap: dict[str, int] = defaultdict(int)
+    n_matched = 0
+    for d in doc_ids:
+        hits = (by_doc.get(d) or {}).get("matched") or []
+        if hits:
+            n_matched += 1
+        for tid in hits:
+            overlap[tid] += 1
+    n = max(1, len(doc_ids))
+    kind, of, share = REL_DISTINCT, None, 0.0
+    if overlap:
+        of, top = max(overlap.items(), key=lambda kv: (kv[1], kv[0]))
+        share = top / n
+        if share >= SPLIT_SHARE:
+            kind = REL_POSSIBLE_SPLIT
+        elif share >= ADJACENT_SHARE:
+            kind = REL_ADJACENT
+        else:
+            kind, of = REL_DISTINCT, None
+    return {
+        "overlap": dict(sorted(overlap.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "kind": kind,
+        "of": of,
+        "share": round(share, 2),
+        "n_docs_matched": n_matched,
+        "n_docs_unmatched": len(doc_ids) - n_matched,
+    }
 
 
 #: Baseline phrase frequencies keyed by (window start, corpus size). Building it
@@ -259,9 +371,23 @@ def _baseline(con, as_of: date, days: int) -> tuple[dict[str, int], int]:
 
 
 def candidates(con, as_of: date, days: int = WINDOW_DAYS,
-               limit: int = MAX_CANDIDATES) -> dict:
-    """Candidate themes mined from the items no registered theme matched."""
-    items = unmatched(con, as_of, days)
+               limit: int = MAX_CANDIDATES, scope: str = SCOPE_ALL) -> dict:
+    """Candidate themes mined from the window's documents.
+
+    `scope=SCOPE_ALL` (default) mines every document; `SCOPE_UNMATCHED` mines
+    only the ones no registered theme matched, which is what this function
+    did before 2026-09-07. In both scopes a phrase a registered theme already
+    owns is dropped, so an old theme cannot resurface as its own candidate;
+    what changes is whether a report already claimed by one theme may still
+    contribute the *other* thing it argues.
+    """
+    if scope not in (SCOPE_ALL, SCOPE_UNMATCHED):
+        raise ValueError(f"scope must be {SCOPE_ALL!r} or {SCOPE_UNMATCHED!r}, "
+                         f"got {scope!r}")
+    everything = window_items(con, as_of, days)
+    n_matched_total = sum(1 for it in everything if it["matched"])
+    items = (everything if scope == SCOPE_ALL
+             else [it for it in everything if not it["matched"]])
     base_df, base_n = _baseline(con, as_of, days)
     known = _known_terms(as_of)
 
@@ -333,6 +459,7 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
                 continue
             maximal.append(p)
         maximal.sort(key=lambda p: (-p["n_docs"], -len(p["phrase"])))
+        ordered = sorted(ev, key=lambda e: (e["tier"], e["d"], e["doc_id"]))
         out.append({
             "terms": [p["phrase"] for p in maximal[:12]],
             "n_docs": len(ds),
@@ -340,33 +467,33 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
             "n_days": len({e["d"] for e in ev}),
             "tiers": sorted({e["tier"] for e in ev}),
             "max_lift": max(p["lift"] for p in c["phrases"]),
+            "relation": _relation(ds, by_doc),
+            # Every document, in a stable order, so a registration can cite
+            # its evidence by id rather than by the 14 titles shown below.
+            "doc_ids": [e["doc_id"] for e in ordered],
             "evidence": [{"doc_id": e["doc_id"], "line": e["line"],
                           "tier": e["tier"], "d": e["d"],
-                          "institution": e["institution"], "title": e["title"]}
-                         for e in sorted(ev, key=lambda e: (e["tier"], e["d"]))[:14]],
+                          "institution": e["institution"], "title": e["title"],
+                          "matched": list(e["matched"])}
+                         for e in ordered[:14]],
         })
     out.sort(key=lambda c: (-c["n_docs"], -c["max_lift"]))
 
-    themes = lexicon.all_themes(as_of)
-    matched = len([1 for it in db.q(
-        con, "SELECT title,summary,body FROM documents WHERE published_d IN (%s)"
-        % ",".join("?" * len(_window(as_of, days))), _window(as_of, days))
-        if any(lexicon.match_theme(
-            " ".join(filter(None, (it["title"], it["summary"],
-                                   (it["body"] or "")[:3000]))), t) >= 1
-            for t in themes)])
-    total = matched + len(items)
+    total = len(everything)
     return {
         "as_of": as_of.isoformat(),
         "window_days": days,
-        "registered": len(themes),
+        "scope": scope,
+        "registered": len(lexicon.all_themes(as_of)),
         "corpus_total": total,
-        "corpus_matched": matched,
-        "coverage_pct": lexicon.coverage(matched, total),
-        "unmatched": len(items),
+        "corpus_matched": n_matched_total,
+        "coverage_pct": lexicon.coverage(n_matched_total, total),
+        "unmatched": total - n_matched_total,
+        "mined": len(items),
         "gates": {"min_docs": MIN_DOCS, "min_institutions": MIN_INSTITUTIONS,
                   "min_days": MIN_DAYS, "min_lift": MIN_LIFT,
-                  "min_cluster_docs": MIN_CLUSTER_DOCS},
+                  "min_cluster_docs": MIN_CLUSTER_DOCS,
+                  "split_share": SPLIT_SHARE, "adjacent_share": ADJACENT_SHARE},
         "candidates": out[:limit],
     }
 
@@ -424,6 +551,27 @@ def validate(con, row: dict, as_of: date) -> dict:
             f"{tid} would be registered as of {reg_d} while today is "
             f"{as_of.isoformat()}; registration cannot be backdated")
 
+    # Relation to the themes that already exist. A registry row may say it is
+    # a distinct debate or a split of a named parent; "same_debate" is not a
+    # registration at all (it is an alias — see `add_alias`) and is refused
+    # here so a merge can never arrive as a second row. A split must name a
+    # parent that is registered as of today, because a parent registered
+    # later would make the child older than the debate it split from.
+    relation = str(row.get("relation") or "distinct").strip()
+    if relation not in ("distinct", "split"):
+        raise RegistrationError(
+            f"{tid} relation must be 'distinct' or 'split', got {relation!r}; "
+            f"a same_debate finding is recorded as an alias, not a theme")
+    split_from = str(row.get("split_from") or "").strip() or None
+    legal_parents = {t.id for t in lexicon.all_themes(as_of)}
+    if relation == "split" and split_from not in legal_parents:
+        raise RegistrationError(
+            f"{tid} is a split of {split_from!r}, which is not a theme "
+            f"registered as of {as_of.isoformat()}")
+    if relation == "distinct" and split_from:
+        raise RegistrationError(
+            f"{tid} names split_from={split_from!r} but relation is 'distinct'")
+
     # Checked last: unlike the rules above, this one is fixable outside the
     # theme definition, so reporting it first would bury the real problem.
     # A theme whose indicator cannot be priced produces ideas that cannot be
@@ -452,29 +600,47 @@ def validate(con, row: dict, as_of: date) -> dict:
         "registered_d": reg_d,
         "origin": "discovered",
         "provenance": [str(p) for p in (row.get("provenance") or [])][:20],
+        "relation": relation,
+        "rationale": str(row.get("rationale") or "").strip(),
+        "split_from": split_from,
+        "evidence_doc_ids": [str(d) for d in (row.get("evidence_doc_ids") or [])][:20],
     }
 
 
-MINT_SYSTEM = """你在给一个宏观交易系统命名它自己刚发现的主题。
+MINT_SYSTEM = """你在给一个宏观交易系统整理它自己刚从当周研报里发现的主题。
 
 输入是一簇当周研报里反复出现、且现有主题词典一个都盖不住的短语，外加它们出现的
-标题证据。你的唯一任务是把这簇短语写成一张主题卡。
+标题证据，以及这簇证据与哪些**已注册主题**共享了多少篇研报（邻近主题）。
+你的任务是先判断这簇短语和邻近主题的关系，再决定写不写主题卡。
+
+判断关系时问三件事：驱动是否相同？验证条件（关键问题）是否相同？是否依赖同一个
+事件、同一条现金流、同一种风险？三者都相同就是同一个争论换了叫法；行业相同但
+驱动或验证条件不同，就是要区分的两个主题。共享研报本身不算重复——一篇研报可以
+同时讲两件事。
 
 铁律，逐条服从：
 1. 只依据给出的短语和标题证据。不得使用你对这个日期之后的世界的任何了解——
    这张卡会被用来给当周打分，掺进后来的事就是泄露。
 2. 主题必须是一个**能用做多标的表达的宏观争论**，不是一家公司、一条新闻、
    一个板块名词。写不成争论的，返回 {"skip": "原因"}。
-3. price_indicator 和 related 只能从下面给出的可交易清单里选，原样照抄代码。
-4. terms 至少 6 个中文同义说法，覆盖这个争论在研报里会被叫的各种名字，
+3. 与某个邻近主题是**同一个争论**的，不要写新卡，返回
+   {"skip": "与 X 是同一争论", "relation": "same_debate", "of": "邻近主题id",
+    "new_terms": ["这簇研报里对它的新叫法", ...], "rationale": "中文说明理由"}。
+   new_terms 只放当周研报里真实出现、词典还没有的叫法。
+4. 与邻近主题同一行业但驱动或验证条件不同的，写新卡，relation 填 "split"，
+   of 填被拆出来的那个主题 id；与所有邻近主题都不同的，relation 填 "distinct"。
+   两种情况 rationale 都要用中文说清：驱动、验证条件、事件/现金流/风险哪里不同。
+5. price_indicator 和 related 只能从下面给出的可交易清单里选，原样照抄代码。
+6. terms 至少 6 个中文同义说法，覆盖这个争论在研报里会被叫的各种名字，
    不要只是把给定短语切碎重排。
-5. key_question 必须写成一句 1–6 个月内能被证实或证伪的问题，且句中含「个月」。
-6. id 用大写英文加连字符，看得出主题内容，如 FED-HAWKISH-TURN。
+7. key_question 必须写成一句 1–6 个月内能被证实或证伪的问题，且句中含「个月」。
+8. id 用大写英文加连字符，看得出主题内容，如 FED-HAWKISH-TURN。
 
-只输出一个 JSON 对象：
+写卡时只输出一个 JSON 对象：
 {"id": "...", "label": "中文标题", "key_question": "未来1–6个月，……？",
  "terms": ["...", ...], "price_indicator": "US.XXX", "related": ["US.YYY"],
- "default_direction": "↑ 或 ↓"}"""
+ "default_direction": "↑ 或 ↓", "relation": "distinct 或 split",
+ "of": "split 时填被拆的主题id，否则 null", "rationale": "中文理由"}"""
 
 
 def _priceable_menu(con, as_of: date, limit: int = 200) -> list[dict]:
@@ -491,12 +657,41 @@ def _priceable_menu(con, as_of: date, limit: int = 200) -> list[dict]:
              "ORDER BY futu_code LIMIT ?", [as_of.isoformat(), limit])]
 
 
+#: How many neighbouring registered themes the prompt describes. Three covers
+#: every real cluster seen so far (the largest overlap list on 2026-09-02 had
+#: one clear leader and two tails) without turning the prompt into the whole
+#: registry, which would invite the model to align with a theme it shares two
+#: documents with.
+NEIGHBOURS_IN_PROMPT = 3
+
+
+def neighbours(cluster: dict, as_of: date, limit: int = NEIGHBOURS_IN_PROMPT) -> list[dict]:
+    """The registered themes a cluster's evidence overlaps, most-shared first.
+
+    What the model is shown so it can say "same debate as X", "split of X" or
+    "distinct" against X's actual key question and vocabulary, rather than
+    against a name it may misremember. The as-of clamp keeps a replayed week
+    from being told about a theme it had not yet registered.
+    """
+    overlap = ((cluster.get("relation") or {}).get("overlap") or {})
+    by_id = {t.id: t for t in lexicon.all_themes(as_of)}
+    out = []
+    for tid, n in sorted(overlap.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]:
+        t = by_id.get(tid)
+        if t is None:
+            continue
+        out.append({"id": t.id, "label": t.label, "key_question": t.key_question,
+                    "terms": list(t.terms[:6]), "shared_docs": int(n)})
+    return out
+
+
 def _mint_prompt(con, cluster: dict, as_of: date, note: str = "",
                  minted: list[dict] | None = None) -> str:
     menu = "\n".join(f"  {i['futu_code']}  {i['name'] or ''}".rstrip()
                       for i in _priceable_menu(con, as_of))
     ev = "\n".join(
         f"  [{e['d']}] {e.get('institution') or '未署名'}: {e['title']}"
+        + (f"（已命中 {'、'.join(e['matched'])}）" if e.get("matched") else "")
         for e in (cluster.get("evidence") or [])[:14])
     head = f"当周为 {as_of.isoformat()}。\n\n" + (f"上一次尝试被拒：{note}\n\n" if note else "")
     if minted:
@@ -505,6 +700,21 @@ def _mint_prompt(con, cluster: dict, as_of: date, note: str = "",
                  + "\n".join(f"  {m.get('id')} {m.get('label') or ''}："
                               f"{'、'.join((m.get('terms') or [])[:6])}"
                               for m in minted) + "\n\n")
+    rel = cluster.get("relation") or {}
+    near = neighbours(cluster, as_of)
+    if near:
+        head += (f"邻近的已注册主题（这簇 {cluster['n_docs']} 篇证据里有 "
+                 f"{rel.get('n_docs_matched', '?')} 篇同时命中了它们；机械判定 "
+                 f"{rel.get('kind')}" + (f" of {rel.get('of')}" if rel.get("of") else "")
+                 + "）：\n"
+                 + "\n".join(f"  {t['id']} {t['label']}（共享 {t['shared_docs']} 篇）\n"
+                             f"    关键问题：{t['key_question']}\n"
+                             f"    词项：{'、'.join(t['terms'])}"
+                             for t in near)
+                 + "\n\n请先判断：与其中某个是同一争论（same_debate）、是它的一部分"
+                   "但驱动或验证条件不同（split）、还是都不同（distinct）。\n\n")
+    else:
+        head += "邻近的已注册主题：无（这簇证据没有命中任何已注册主题）。\n\n"
     return (f"{head}反复出现的短语（{cluster['n_docs']} 篇 / "
             f"{cluster['n_institutions']} 家机构 / {cluster['n_days']} 天 / "
             f"lift {cluster['max_lift']}）：\n"
@@ -514,6 +724,21 @@ def _mint_prompt(con, cluster: dict, as_of: date, note: str = "",
 
 class MintSkipped(RegistrationError):
     """The cluster is real corpus noise, not a macro debate. Not a failure."""
+
+
+class MintMerged(MintSkipped):
+    """The cluster is a registered theme under this week's wording.
+
+    A skip with a payload: no new theme, but `theme_id` should now also match
+    `new_terms`, and `rationale` says why the model read the two as one
+    debate. `discover` turns it into an alias line and a journal note.
+    """
+
+    def __init__(self, theme_id: str, new_terms: list[str], rationale: str):
+        super().__init__(f"与 {theme_id} 是同一争论：{rationale[:160]}")
+        self.theme_id = theme_id
+        self.new_terms = new_terms
+        self.rationale = rationale
 
 
 def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
@@ -550,9 +775,20 @@ def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
     the prompt with an instruction to decline. It did decline, on the case
     above. Stating the split rather than implying the check is complete: a
     near-duplicate whose wording does not overlap will get through.
+
+    Since 2026-09-07 the prompt also carries the *registered* themes the
+    cluster's evidence overlaps (`neighbours`), and the model must place the
+    cluster against them. Three answers come back through three channels:
+    `same_debate` raises `MintMerged` carrying the theme id and the new words
+    (an alias, never a card); `split` and `distinct` return a card whose
+    `relation`, `split_from` and `rationale` `validate` then checks. An answer
+    that names a theme the week cannot see, or a split without a parent, is
+    quoted back and retried like any other fixable slip.
     """
     if infer is None:
         raise RegistrationError("命名主题需要模型推理，本次运行没有可用的 inference 端口")
+    near = {t["id"] for t in neighbours(cluster, as_of)}
+    legal = {t.id for t in lexicon.all_themes(as_of)}
     note = ""
     last: Exception | None = None
     for _ in range(max(1, attempts)):
@@ -563,12 +799,47 @@ def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
         except ValueError as e:
             note, last = str(e), e
             continue
-        if row.get("skip"):
-            raise MintSkipped(str(row["skip"])[:200])
+        relation = str(row.get("relation") or "").strip()
+        of = str(row.get("of") or row.get("split_from") or "").strip() or None
+        if row.get("skip") or relation == "same_debate":
+            if relation != "same_debate":
+                raise MintSkipped(str(row["skip"])[:200])
+            # A merge must point at a theme this week can see. Pointing at a
+            # theme registered later, or at an id the model made up, is not a
+            # finding — it is the model misreading the neighbour list, which
+            # a second attempt with the list quoted back usually fixes.
+            if of not in legal:
+                note = (f"relation=same_debate 时 of 必须是邻近主题之一"
+                        f"（{'、'.join(sorted(near)) or '本簇没有邻近主题'}），"
+                        f"得到 {of!r}")
+                last = RegistrationError(note)
+                continue
+            new_terms = [str(t).strip() for t in (row.get("new_terms") or [])
+                         if str(t).strip()]
+            raise MintMerged(of, new_terms, str(row.get("rationale") or
+                                                 row.get("skip") or "").strip())
+        if near and relation not in ("split", "distinct"):
+            note = ("这簇证据与已注册主题有重叠，必须明确 relation 是 "
+                    "same_debate、split 还是 distinct，并给出 rationale")
+            last = RegistrationError(note)
+            continue
+        if near and not str(row.get("rationale") or "").strip():
+            note = "缺少 rationale：请用中文说明与邻近主题在驱动/验证条件/事件上的区别"
+            last = RegistrationError(note)
+            continue
+        row["relation"] = relation or "distinct"
+        row["split_from"] = of if row["relation"] == "split" else None
+        row["evidence_doc_ids"] = list(cluster.get("doc_ids") or
+                                       [e["doc_id"] for e in cluster.get("evidence") or []])[:20]
+        rel = cluster.get("relation") or {}
         row["provenance"] = [
             f"以{as_of.isoformat()}当周 {cluster['n_docs']}篇/"
             f"{cluster['n_institutions']}家机构/{cluster['n_days']}天 "
-            f"lift{cluster['max_lift']} 的零匹配研报簇为依据"]
+            f"lift{cluster['max_lift']} 的研报簇为依据；其中 "
+            f"{rel.get('n_docs_matched', 0)} 篇已命中旧主题"
+            + (f"，机械判定 {rel.get('kind')}"
+               + (f" of {rel.get('of')}" if rel.get("of") else "")
+               if rel.get("kind") else "")]
         try:
             card = validate(con, row, as_of)
         except RegistrationError as e:
@@ -643,6 +914,217 @@ def register(con, row: dict, as_of: date,
         fh.write(json.dumps(clean, ensure_ascii=False, sort_keys=True) + "\n")
     lexicon.reload_registry()
     return lexicon.THEME_BY_ID[clean["id"]]
+
+
+# ---------------------------------------------------------------------------
+# Aliases: merge-by-name, the outcome that is not a registration
+# ---------------------------------------------------------------------------
+def add_alias(con, theme_id: str, terms: list[str], as_of: date, *,
+              rationale: str = "", evidence_doc_ids: list[str] | None = None,
+              candidate_terms: list[str] | None = None,
+              path: Path | None = None) -> dict:
+    """Record that `theme_id` also goes by `terms` from `as_of` on.
+
+    The append-only answer to "same debate, new name". Every rejection below
+    mirrors one in `validate`, because an alias changes what a theme matches
+    exactly as a new registration would:
+
+      * the theme must exist and be registered on or before `as_of` — an
+        alias dated before its theme would let the theme score a day it did
+        not exist for, through the words instead of the id;
+      * a word another theme already owns (as of `as_of`, aliases included) is
+        refused, or the same report would count in D for both — the check
+        `validate` calls `stolen`;
+      * words the theme already has are dropped, and if nothing is left that
+        is an error rather than an empty line: the model said it found new
+        wording, and a no-op alias would record the finding as done.
+
+    `con` is unused today and kept in the signature so a later check that
+    needs the corpus (does the alias actually occur in this week's reports?)
+    does not change every caller.
+    """
+    del con  # see docstring
+    by_id = {t.id: t for t in lexicon.all_themes(as_of)}
+    t = by_id.get(theme_id)
+    if t is None:
+        raise RegistrationError(
+            f"别名指向的主题 {theme_id!r} 在 {as_of.isoformat()} 尚未注册或不存在")
+    clean = []
+    seen = {x.lower() for x in t.terms}
+    for term in terms:
+        s = str(term).strip()
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
+            clean.append(s)
+    if not clean:
+        raise RegistrationError(
+            f"{theme_id} 的别名没有新词：{list(terms)} 都已经是它的词项")
+    others = {x.lower() for o in by_id.values() if o.id != theme_id for x in o.terms}
+    stolen = [s for s in clean if s.lower() in others]
+    if stolen:
+        raise RegistrationError(
+            f"{theme_id} 的别名 {stolen} 已属于其它已注册主题，会让同一篇研报在 D 里"
+            f"被计两次")
+    row = {
+        "theme_id": theme_id,
+        "terms": clean,
+        "as_of": as_of.isoformat(),
+        "rationale": str(rationale or "").strip(),
+        "evidence_doc_ids": [str(d) for d in (evidence_doc_ids or [])][:20],
+        "candidate_terms": [str(x) for x in (candidate_terms or [])][:12],
+    }
+    p = path or lexicon.ALIASES_PATH
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    lexicon.reload_registry()
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Freezing the definition set a period scored with
+# ---------------------------------------------------------------------------
+def _sha(obj) -> str:
+    return hashlib.sha256(
+        json.dumps(obj, ensure_ascii=False, sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+
+
+def snapshot(as_of: date | str) -> dict:
+    """The theme definitions in force on `as_of`, hashed.
+
+    Written as `A_theme_set.json` before 筛选A and carried as `theme_set_sha`
+    on the topics step and the topic verdicts, so any period's scores can be
+    tied to the exact vocabulary that produced them — what Jon asked for as
+    「读取后续价格前冻结当期主题定义与版本」. The hash covers everything that
+    decides a match or a score: id, registration day, key question, indicator,
+    direction, `require`, and the term list *with aliases merged as of that
+    day*. Two runs of the same period with the same registry and alias files
+    get the same sha; a registration or an alias dated on or before the period
+    changes it; one dated after does not, which is the as-of clamp made
+    checkable.
+    """
+    d = as_of if isinstance(as_of, str) else as_of.isoformat()
+    rows = []
+    for t in sorted(lexicon.all_themes(d), key=lambda t: t.id):
+        terms = sorted({x.lower() for x in t.terms})
+        rows.append({
+            "id": t.id, "label": t.label, "registered_d": t.registered_d,
+            "origin": t.origin, "key_question": t.key_question,
+            "price_indicator": t.price_indicator,
+            "default_direction": t.default_direction,
+            "require": sorted(x.lower() for x in t.require),
+            "terms_sha": _sha(terms), "n_terms": len(terms),
+            "n_alias_terms": len(t.alias_terms),
+            "aliases_through": t.aliases_through,
+            "relation": t.relation or None, "split_from": t.split_from,
+        })
+    return {
+        "as_of": d,
+        "lexicon_version": lexicon.LEXICON_VERSION,
+        "n_themes": len(rows),
+        "theme_set_sha": _sha(rows),
+        "themes": rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# The weekly discovery loop
+# ---------------------------------------------------------------------------
+def discover(con, as_of: date, infer, *, step=None, log=None,
+             limit: int = MAX_CANDIDATES, scope: str = SCOPE_ALL,
+             registry_path: Path | None = None,
+             aliases_path: Path | None = None) -> dict:
+    """Mine, name and record this week's themes; report through `step`.
+
+    Lifted out of the orchestrator on 2026-09-07 so the loop can be exercised
+    against a scripted model without a platform, and so the orchestrator's
+    discovery block reads as one call. `step(name, **fields)` is the journal
+    (`RunJournal.step`); `log` is the console line. Journal steps written:
+
+      * `theme_register_failed` — one candidate the model named but
+        `validate` refused, with the reason;
+      * `theme_merge_note` — one candidate judged the same debate as a
+        registered theme: which theme, the new words, the reason, and whether
+        the alias was written (it is not, and the note says so, when the
+        model gave no new words or the words belong to another theme);
+      * `theme_discovery` — the summary, once, last. With `error` set and no
+        registrations when there is no model to name with: said once with the
+        count it cost, not once per candidate.
+
+    Returns the summary the last step carries.
+    """
+    step = step or (lambda name, **f: None)
+    log = log or (lambda *a: None)
+    disc = candidates(con, as_of, limit=limit, scope=scope)
+    cands = disc.get("candidates") or []
+    summary = {"coverage_pct": disc.get("coverage_pct"),
+               "unmatched": disc.get("unmatched"),
+               "mined": disc.get("mined"), "scope": scope,
+               "candidates": len(cands), "registered": [], "merged": [],
+               "skipped": [], "failed": 0}
+    if infer is None and cands:
+        # Naming needs the model. Without it every candidate would raise the
+        # same rejection and the journal would carry one copy per candidate —
+        # the shape of noise that hid the missing naming step in the first
+        # place. Said once, with the count it cost.
+        err = f"本次运行没有 inference 端口，{len(cands)} 个候选无法命名"
+        step("theme_discovery", **summary, error=err)
+        log(f"  主题发现  {len(cands)} 个候选待命名，但本次运行没有模型端口"
+            f"——本周不注册新主题")
+        return {**summary, "error": err}
+    cards: list[dict] = []
+    for c in cands:
+        head = (c.get("terms") or [None])[0]
+        try:
+            card = mint(con, c, as_of, infer, minted=cards)
+            t = register(con, card, as_of, path=registry_path)
+            cards.append(card)
+            summary["registered"].append(t.id)
+        except MintMerged as e:
+            # Same debate, new name. The alias is the record; the note says
+            # what was merged and why, so the merge can be argued with later.
+            note = {"theme_id": e.theme_id, "new_terms": e.new_terms,
+                    "rationale": e.rationale[:400],
+                    "candidate_terms": (c.get("terms") or [])[:6],
+                    "n_docs": c.get("n_docs"),
+                    "relation": c.get("relation"), "alias_written": False}
+            if not e.new_terms:
+                note["error"] = "模型判为同一争论但没有给出新叫法，不写别名"
+            else:
+                try:
+                    add_alias(con, e.theme_id, e.new_terms, as_of,
+                              rationale=e.rationale,
+                              evidence_doc_ids=c.get("doc_ids"),
+                              candidate_terms=c.get("terms"),
+                              path=aliases_path)
+                    note["alias_written"] = True
+                except RegistrationError as err:
+                    note["error"] = str(err)[:200]
+            step("theme_merge_note", **note)
+            summary["merged"].append({"theme_id": e.theme_id,
+                                      "new_terms": e.new_terms,
+                                      "alias_written": note["alias_written"]})
+            log(f"  主题归并  {'、'.join((c.get('terms') or [])[:3])} → "
+                f"{e.theme_id}" + ("" if note["alias_written"]
+                                    else f"（未写别名：{note.get('error')}）"))
+        except MintSkipped as e:
+            # Corpus noise the model declined to call a debate. A finding, not
+            # a failure — 「预览」 recurring in forty titles is not a theme, and
+            # recording it as a failed registration would bury the ones that are.
+            summary["skipped"].append({"terms": (c.get("terms") or [])[:3],
+                                       "why": str(e)[:120]})
+        except Exception as e:  # noqa: BLE001 — one bad candidate must not end the week
+            summary["failed"] += 1
+            step("theme_register_failed", candidate=head, error=str(e)[:200])
+    step("theme_discovery", **summary)
+    if summary["registered"]:
+        log(f"  主题发现  新注册 {len(summary['registered'])} 个: "
+            f"{', '.join(summary['registered'])}")
+    else:
+        log(f"  主题发现  无新主题（研报覆盖率 {disc.get('coverage_pct')}%，"
+            f"归并 {len(summary['merged'])}，跳过 {len(summary['skipped'])}）")
+    return summary
 
 
 def dormant(con, as_of: date, quiet_days: int = 20) -> list[str]:

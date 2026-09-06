@@ -28,7 +28,7 @@ moved, then admire your own ranking of it.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
@@ -54,6 +54,24 @@ class Theme:
     registered_d: str = SEED_REGISTERED_D   # first day this theme may be scored
     origin: str = "seed"                    # "seed" | "discovered"
     provenance: tuple[str, ...] = ()        # doc_ids that justified a discovered theme
+    # How this theme stood to the themes that already existed on the day it was
+    # registered — "distinct" | "split" — and the reason written at the time
+    # (same driver? same verification condition? same event / cash flow /
+    # risk?). Recorded because Jon's 2026-09-06 review asked for exactly this:
+    # a theme without its merge-or-split reasoning cannot be audited against
+    # the one it sits next to. `split_from` names the parent when relation is
+    # "split"; `evidence_doc_ids` are the documents the registration rested on.
+    relation: str = ""
+    rationale: str = ""
+    split_from: str | None = None
+    evidence_doc_ids: tuple[str, ...] = ()
+    # Filled by `all_themes(as_of)`, never by a registry line: the synonyms
+    # merged in from `themes/aliases.jsonl` on or before `as_of`, and the day of
+    # the latest alias merged. Kept apart from the registry text so a page can
+    # say which words the theme was born with and which it was later found to
+    # go by.
+    alias_terms: tuple[str, ...] = ()
+    aliases_through: str | None = None
 
 
 SEED_THEMES: tuple[Theme, ...] = (
@@ -241,7 +259,7 @@ SEED_THEMES: tuple[Theme, ...] = (
 _REGISTRY_FIELDS = {
     "id", "label", "key_question", "terms", "price_indicator", "related",
     "default_direction", "exposures", "require", "registered_d", "origin",
-    "provenance",
+    "provenance", "relation", "rationale", "split_from", "evidence_doc_ids",
 }
 
 
@@ -251,7 +269,8 @@ def _theme_from_row(row: dict) -> Theme:
         raise ValueError(f"registry line for {row.get('id')!r} has unknown "
                          f"fields: {sorted(unknown)}")
     kw = dict(row)
-    for seq in ("terms", "related", "exposures", "require", "provenance"):
+    for seq in ("terms", "related", "exposures", "require", "provenance",
+                "evidence_doc_ids"):
         if seq in kw:
             kw[seq] = tuple(kw[seq] or ())
     kw.setdefault("origin", "discovered")
@@ -295,23 +314,122 @@ THEMES: tuple[Theme, ...] = SEED_THEMES + load_registry()
 THEME_BY_ID = {t.id: t for t in THEMES}
 
 
+# ---------------------------------------------------------------------------
+# Aliases: the same debate under a new name.
+#
+# When discovery finds a phrase cluster and the model judges it to be an
+# existing theme's argument in this week's wording (「算力租赁」 for AI-CAPEX,
+# say), the right record is not a second theme — that would count the same
+# reports twice in D forever, and the registry cannot be edited — but a dated
+# note that the theme now also goes by those words. `themes/aliases.jsonl` is
+# that note: one line per merge, append-only, each stamped with the `as_of` of
+# the run that made it.
+#
+# The stamp is the point. `all_themes(as_of)` merges an alias into its theme's
+# terms only when alias.as_of <= as_of, so a period replayed from before the
+# merge scores with the vocabulary it actually had. Without the clamp an alias
+# added today would retroactively widen last month's match set and hand the
+# theme evidence it never saw at the time — the same hindsight `registered_d`
+# keeps out of the registry, entering through a side door.
+# ---------------------------------------------------------------------------
+ALIASES_PATH = Path(__file__).resolve().parent.parent / "themes" / "aliases.jsonl"
+
+#: Fields an alias line may set. `theme_id`, `terms` and `as_of` are required.
+_ALIAS_FIELDS = {"theme_id", "terms", "as_of", "rationale", "evidence_doc_ids",
+                 "candidate_terms"}
+
+
+def load_aliases(path: Path | None = None,
+                 themes: tuple[Theme, ...] | None = None) -> tuple[dict, ...]:
+    """Read the append-only alias file.
+
+    A missing file means no merge has been recorded yet. A line naming a theme
+    that does not exist, or dated before that theme was registered, is an
+    error rather than a skipped line: an alias silently dropped would look
+    exactly like a merge that was never made, and the dashboard would show a
+    theme missing words the journal says it was given.
+    """
+    p = path or ALIASES_PATH
+    if not p.exists():
+        return ()
+    by_id = {t.id: t for t in (themes if themes is not None else THEMES)}
+    out: list[dict] = []
+    for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{p}:{n} is not valid JSON: {exc}") from exc
+        unknown = set(row) - _ALIAS_FIELDS
+        if unknown:
+            raise ValueError(f"{p}:{n} has unknown fields: {sorted(unknown)}")
+        missing = [k for k in ("theme_id", "terms", "as_of") if not row.get(k)]
+        if missing:
+            raise ValueError(f"{p}:{n} is missing {missing}")
+        t = by_id.get(row["theme_id"])
+        if t is None:
+            raise ValueError(f"{p}:{n} aliases unknown theme {row['theme_id']!r}")
+        if str(row["as_of"]) < t.registered_d:
+            raise ValueError(
+                f"{p}:{n} dates an alias of {t.id} to {row['as_of']}, before the "
+                f"theme was registered on {t.registered_d}")
+        terms = tuple(str(x).strip() for x in row["terms"] if str(x).strip())
+        if not terms:
+            raise ValueError(f"{p}:{n} has no usable terms")
+        out.append({**row, "terms": terms, "as_of": str(row["as_of"]),
+                    "evidence_doc_ids": tuple(row.get("evidence_doc_ids") or ())})
+    return tuple(out)
+
+
+ALIASES: tuple[dict, ...] = load_aliases()
+
+
+def _with_aliases(t: Theme, as_of: str | None) -> Theme:
+    """`t` with every alias dated on or before `as_of` merged into its terms.
+
+    Case-insensitive de-duplication, because `match_theme` matches
+    case-insensitively and a term present twice would not match twice — it
+    would only read as two words on the page.
+    """
+    rows = [a for a in ALIASES
+            if a["theme_id"] == t.id and (as_of is None or a["as_of"] <= as_of)]
+    if not rows:
+        return t
+    seen = {x.lower() for x in t.terms}
+    added: list[str] = []
+    for a in sorted(rows, key=lambda a: a["as_of"]):
+        for term in a["terms"]:
+            if term.lower() not in seen:
+                seen.add(term.lower())
+                added.append(term)
+    if not added:
+        return t
+    return replace(t, terms=t.terms + tuple(added), alias_terms=tuple(added),
+                   aliases_through=max(a["as_of"] for a in rows))
+
+
 def all_themes(as_of: date | str | None = None) -> tuple[Theme, ...]:
     """Themes registered on or before `as_of` — the only set legal to score.
 
     A theme registered after `as_of` is excluded even though it exists now.
-    That exclusion is the whole reason discovery is allowed at all.
+    That exclusion is the whole reason discovery is allowed at all. Aliases are
+    clamped the same way: a theme's terms here are the words it had on `as_of`,
+    not the words it has today.
     """
     if as_of is None:
-        return THEMES
+        return tuple(_with_aliases(t, None) for t in THEMES)
     d = as_of if isinstance(as_of, str) else as_of.isoformat()
-    return tuple(t for t in THEMES if t.registered_d <= d)
+    return tuple(_with_aliases(t, d) for t in THEMES if t.registered_d <= d)
 
 
 def reload_registry() -> tuple[Theme, ...]:
-    """Re-read the registry after a `theme-register`. Returns the new THEMES."""
-    global THEMES, THEME_BY_ID
+    """Re-read the registry and aliases after a change. Returns the new THEMES."""
+    global THEMES, THEME_BY_ID, ALIASES
     THEMES = SEED_THEMES + load_registry()
     THEME_BY_ID = {t.id: t for t in THEMES}
+    ALIASES = load_aliases(themes=THEMES)
     return THEMES
 
 

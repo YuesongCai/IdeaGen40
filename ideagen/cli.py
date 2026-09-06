@@ -666,32 +666,46 @@ def cmd_rebuild_batch(args) -> int:
 def cmd_theme_candidates(args) -> int:
     """Show the macro debates today's corpus contains and the dictionary lacks."""
     con = _con()
-    r = themes.candidates(con, _as_of(args), limit=args.limit)
+    scope = themes.SCOPE_UNMATCHED if args.unmatched_only else themes.SCOPE_ALL
+    r = themes.candidates(con, _as_of(args), limit=args.limit, scope=scope)
     if args.json:
         print(json.dumps(r, ensure_ascii=False, indent=2))
         return 0
-    print(f"  {r['as_of']}  window {r['window_days']}d  "
+    print(f"  {r['as_of']}  window {r['window_days']}d  scope {r['scope']}  "
           f"{r['registered']} themes registered")
     print(f"  dictionary reach {r['coverage_pct']}% "
           f"({r['corpus_matched']}/{r['corpus_total']} items); "
-          f"{r['unmatched']} matched nothing")
+          f"{r['unmatched']} matched nothing; {r['mined']} mined")
     g = r["gates"]
     print(f"  gates: >={g['min_docs']} docs, >={g['min_institutions']} institutions, "
           f">={g['min_days']} days, lift >={g['min_lift']}, "
-          f"cluster >={g['min_cluster_docs']} docs")
+          f"cluster >={g['min_cluster_docs']} docs; "
+          f"relation: share >={g['split_share']} possible_split, "
+          f">={g['adjacent_share']} adjacent, else distinct")
     if not r["candidates"]:
         print("  no candidate clears the gates")
         return 0
     for i, c in enumerate(r["candidates"], 1):
+        rel = c.get("relation") or {}
         print(f"\n  [{i}] {' · '.join(c['terms'][:8])}")
         print(f"      {c['n_docs']} docs / {c['n_institutions']} institutions / "
               f"{c['n_days']} days / lift {c['max_lift']} / tiers {c['tiers']}")
+        # The relation line is what changed on 2026-09-07: how much of this
+        # cluster sits inside documents an old theme already claims, and which.
+        ov = ", ".join(f"{t}={n}" for t, n in list((rel.get("overlap") or {}).items())[:4])
+        print(f"      relation {rel.get('kind')}"
+              + (f" of {rel['of']}" if rel.get("of") else "")
+              + f"  share {rel.get('share')}  "
+              f"matched/unmatched {rel.get('n_docs_matched')}/{rel.get('n_docs_unmatched')}"
+              + (f"  overlap {ov}" if ov else ""))
         for e in c["evidence"][:5]:
             print(f"      T{e['tier']} {e['d']} {e['institution'][:18]:<18} "
-                  f"{(e['title'] or '')[:56]}")
+                  f"{(e['title'] or '')[:56]}"
+                  + (f"  [{','.join(e['matched'][:2])}]" if e.get("matched") else ""))
     print("\n  A candidate is not a theme: these are phrase clusters, and company")
     print("  names and report-series titles do get through. Register only the ones")
     print("  that name a debate a trade can express:  ideagen theme-register <file>")
+    print("  An old debate under new words is an alias, not a theme:  ideagen theme-alias")
     return 0
 
 
@@ -709,8 +723,26 @@ def cmd_theme_register(args) -> int:
         print(f"      key question  {t.key_question}")
         print(f"      indicator     {t.price_indicator}   related {list(t.related)}")
         print(f"      synonyms      {len(t.terms)}: {' · '.join(t.terms[:8])}")
+        if t.relation:
+            print(f"      relation      {t.relation}"
+                  + (f" of {t.split_from}" if t.split_from else "")
+                  + (f" — {t.rationale[:80]}" if t.rationale else ""))
     print(f"\n  {len(rows)} theme(s) appended to {lexicon.REGISTRY_PATH}")
     print("  They score from today forward only. Pick them up with:  ideagen score --force")
+    return 0
+
+
+def cmd_theme_alias(args) -> int:
+    """Record that a registered theme also goes by new words, from today on."""
+    con = _con()
+    as_of = _as_of(args)
+    terms = [t.strip() for t in args.terms.split(",") if t.strip()]
+    row = themes.add_alias(con, args.theme_id, terms, as_of,
+                           rationale=args.rationale or "")
+    print(f"  {row['theme_id']} also matches {' · '.join(row['terms'])}  "
+          f"(as of {row['as_of']})")
+    print(f"  appended to {lexicon.ALIASES_PATH}; periods before {row['as_of']} "
+          f"keep the old vocabulary")
     return 0
 
 
@@ -1522,10 +1554,24 @@ def main(argv: list[str] | None = None) -> int:
             "macro debates the dictionary has no word for")
     s.add_argument("--limit", type=int, default=themes.MAX_CANDIDATES)
     s.add_argument("--json", action="store_true")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--all-docs", dest="unmatched_only", action="store_false",
+                   help="mine every document in the window (default)")
+    g.add_argument("--unmatched-only", dest="unmatched_only", action="store_true",
+                   help="mine only documents no registered theme matched "
+                        "(the pre-2026-09-07 scope)")
+    s.set_defaults(unmatched_only=False)
 
     s = add("theme-register", cmd_theme_register,
             "append discovered theme(s) to themes/registry.jsonl")
     s.add_argument("file", help="JSON object or array, or - for stdin")
+
+    s = add("theme-alias", cmd_theme_alias,
+            "record new wording for a registered theme in themes/aliases.jsonl")
+    s.add_argument("theme_id")
+    s.add_argument("terms", help="comma-separated new synonyms")
+    s.add_argument("--rationale", default="",
+                   help="why these words are the same debate (中文)")
 
     add("brief", cmd_brief, "build the generator briefing pack")
 

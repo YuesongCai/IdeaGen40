@@ -1657,6 +1657,44 @@ body.drawer-lock{overflow:hidden}
 .seg-btn:first-child{border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
 .seg-btn:last-child{border-radius:0 var(--radius-sm) var(--radius-sm) 0;border-left:none}
 .seg-btn.on{background:var(--color-surface-brand);color:var(--color-text-on-brand);border-color:var(--color-surface-brand)}
+/* ── 业绩页 ──────────────────────────────────────────────────────
+   一组 seg-btn 要靠 :first-child / :last-child 收圆角，所以每组各自一个容器。 */
+.pf-seg{display:inline-flex;align-items:center}
+.pf-modes{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin:var(--space-3) 0}
+.pf-sub{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-4)}
+.pf-tools{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap;margin:var(--space-3) 0}
+.pf-link{font:inherit;color:var(--color-text-brand);background:none;border:none;padding:0;cursor:pointer;text-decoration:none}
+.pf-link:hover{text-decoration:underline}
+.pf-legend{display:flex;flex-wrap:wrap;gap:6px var(--space-4);margin:0 0 var(--space-3);font:400 12px/16px var(--font-sans);color:var(--color-text-secondary)}
+.pf-lg{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.pf-lg.off{color:var(--color-text-tertiary);cursor:not-allowed}
+.pf-sw{width:12px;height:12px;border-radius:3px;border:1.5px solid;flex:none}
+.pf-lg.off .pf-sw{opacity:.4}
+.pf-why{font:400 11px/14px var(--font-sans);color:var(--color-text-tertiary)}
+/* 金额与收益率并排时不许在斜杠处折行：折了之后一格三行，读者对不上哪个数是哪个。 */
+td.pf-cell .num{white-space:nowrap}
+#perfTable td.primary .pf-why{display:block}
+.pf-dim{color:var(--color-text-tertiary)}
+.pf-sep{color:var(--color-text-tertiary)}
+/* 周损益格子：可点；未对账的格子右上角挂一个「!」——只靠颜色浅一档读不出「不算数」。 */
+td.pf-cell{cursor:pointer;position:relative}
+td.pf-cell:hover{background:var(--color-surface-brand-muted)}
+td.pf-cell.open{background:var(--color-surface-brand-subtle)}
+td.pf-cell.pf-unrec{outline:1px dashed var(--color-feedback-warning-default);outline-offset:-2px}
+.pf-flag{position:absolute;top:2px;right:4px;font:600 10px/12px var(--font-mono);color:var(--color-feedback-warning-text)}
+tr.pf-break td{background:var(--color-surface-subtle);padding:var(--space-3) var(--space-4)}
+.pf-break-h{font:600 12px/16px var(--font-sans);color:var(--color-text-primary);margin-bottom:var(--space-2)}
+.pf-kv{display:grid;grid-template-columns:max-content 1fr;gap:3px var(--space-4);font:400 12px/16px var(--font-sans)}
+.pf-kv .k{color:var(--color-text-tertiary)}
+.pf-kv .v{color:var(--color-text-primary)}
+tr.pf-total td{border-top:2px solid var(--color-border-strong);font-weight:600}
+.pf-tag{display:inline-block;font:400 11px/14px var(--font-mono);color:var(--color-text-secondary);border:1px solid var(--color-border-default);border-radius:var(--radius-sm);padding:0 5px;margin:1px 3px 1px 0}
+.pf-tag.m{font-family:var(--font-sans)}
+.pf-list{margin:var(--space-2) 0 0;padding-left:18px;font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)}
+.pf-rec-h{font:600 12px/16px var(--font-sans);color:var(--color-text-primary);margin-top:var(--space-3)}
+.pf-rec-h:first-child{margin-top:0}
+.pf-nest>.card{margin-top:var(--space-4)}
+th.sortable.on{color:var(--color-text-primary)}
 /* 选取策略指标条 */
 .medal-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--space-4)}
 .medal{
@@ -2197,6 +2235,7 @@ table.ptbl td.exw{white-space:nowrap}
       <section class="view" id="view-holdings"></section>
       <section class="view" id="view-method"></section>
       <section class="view" id="view-evidence"></section>
+      <section class="view" id="view-perf"></section>
     </div>
   </main>
 </div>
@@ -2516,6 +2555,12 @@ function robustNote(){
     /* r.note 说的就是这句话的前半段，两句并排等于说了两遍。 */
     +(dropped?'<span class="gloss gm" title="被删掉的标的：'+esc(dropped)+'">ⓘ</span>':'')
     +'</div>';
+}
+/* 证据页 → 业绩页。一行，不是一张卡：证据页不重讲任何数字。 */
+function perfCrossLink(){
+  return '<div class="card-note" style="margin:0 0 var(--space-4)">赚了还是亏了、亏赚从哪来——数字看 '
+    +'<a href="#/perf" class="pf-link" onclick="perfGo(\'paper\');return false">业绩页 ›</a>'
+    +'　这一页只回答它管不管用。</div>';
 }
 function backtestArmName(name){
   /* 回测表的策略名须与面板别处一致：同一组合在两处两个名字，
@@ -2919,6 +2964,19 @@ var VIEWS=[
   {id:'holdings',label:'持仓',sub:'现在拿着什么',
    icon:'<path d="M2.5 5.5h11v8h-11z"/><path d="M5.5 5.5V3.5h5v2"/>',
    secs:[{s:'exposure',label:'主题敞口'}]},
+  /* 「业绩」回答「赚了还是亏了、亏赚从哪来」——是数字，不是判定。判定
+     （它管用吗）留在证据页；两页互相链接、不互相复制。段落顺序即阅读顺序：
+     先说清看的是哪一份数据，再净值、再周损益、再全表、再归因；研究检验与
+     运行记录收纳在最后。 */
+  {id:'perf',label:'业绩',sub:'赚了还是亏了',
+   icon:'<path d="M2 13h12"/><path d="M3 10l3-3 3 2 4-5"/><path d="M11 4h2v2"/>',
+   secs:[{s:'mode',label:'模式与区间'},
+         {s:'nav',label:'净值曲线'},
+         {s:'weekly',label:'自然周损益'},
+         {s:'table',label:'全部策略汇总'},
+         {s:'attribution',label:'收益归因'},
+         {s:'research',label:'研究检验'},
+         {s:'records',label:'数据与运行记录'}]},
   {id:'method',label:'方法',sub:'怎么选出来的',
    icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>',
    secs:[{s:'canvas',label:'生成链路'},
@@ -2972,8 +3030,14 @@ function parseRoute(raw){
      说「这一期没有跑成的运行记录」，而不是悄悄退回最新一期。 */
   var pm=/(?:^|&)p=([^&]*)/.exec(q);
   var pv=pm?decodeURIComponent(pm[1]||''):'';
+  /* 业绩页的数据类型与子集。只认白名单里的值——URL 是外部输入，不认识的
+     一律当没给，退回默认（模拟运行 · 按时运行）。 */
+  var mm=/(?:^|&)mode=([^&]*)/.exec(q),sm=/(?:^|&)subset=([^&]*)/.exec(q);
+  var mode=mm?mm[1]:'',subset=sm?sm[1]:'';
   return {view:v.id, sec:sec?sec.s:(secs[0]?secs[0].s:null),
           period:/^\d{4}-\d{2}-\d{2}$/.test(pv)?pv:null,
+          perf:{mode:/^(paper|backtest|live)$/.test(mode)?mode:null,
+                subset:/^(live|backfill|all)$/.test(subset)?subset:null},
           drawers:dm?decDrawers(dm[1]):[]};
 }
 
@@ -3014,6 +3078,10 @@ function routeQuery(){
   var qs=[],dz=encDrawers();
   if(dz)qs.push('d='+dz);
   if(PERIOD)qs.push('p='+encodeURIComponent(PERIOD));
+  if(current==='perf'&&typeof PERF!=='undefined'){
+    qs.push('mode='+PERF.mode);
+    if(PERF.mode==='paper')qs.push('subset='+PERF.subset);
+  }
   return qs.length?'?'+qs.join('&'):'';
 }
 function syncRoute(){
@@ -3032,6 +3100,10 @@ function applyRoute(r){
   try{
     var np=r.period||null;
     if(np!==PERIOD){PERIOD=np;pChanged=true}
+    if(r.view==='perf'&&r.perf&&typeof PERF!=='undefined'){
+      var pm2=r.perf.mode||PERF.mode,ps2=r.perf.subset||PERF.subset;
+      if(pm2!==PERF.mode||ps2!==PERF.subset){PERF.mode=pm2;PERF.subset=ps2;PERF_UI.curves=null;PERF_UI.wkOpen=null;pChanged=true}
+    }
     if(r.view!==current)switchView(r.view,r.sec);
     else if(r.sec&&r.sec!==activeSec)setActiveSection(r.sec);
     drawerStack=r.drawers||[];
@@ -3161,6 +3233,7 @@ function switchView(id,sec){
   activeSec=null;
   buildNav();
   try{history.replaceState(null,'',buildRoute(id,sec)+routeQuery())}catch(e){}
+  if(id==='perf'&&typeof renderPerf==='function')renderPerf();
 }
 /* cross-link: jump to a view and anchor within it */
 function goto(view,anchor){
@@ -3784,6 +3857,7 @@ function renderAll(){
   renderHoldings();
   renderMethod();
   renderEvidence();
+  renderPerf();
   /* 准则不再有自己的视图：它是「方法」页里紧挨着流水线画布的一段，
      renderMethod 已经把它画出来了，这里不能再画一遍。 */
   /* 抽屉打开时刷新其内容。写准则的表单就在抽屉里，正在往里打字时轮询让路——
@@ -5132,6 +5206,9 @@ function renderEvidence(){
   var books=(typeof currentBooks==='function')?currentBooks():[];
   root.innerHTML=
      evidenceLede(evLedgerRows())
+    /* 这一页只做判定。赚亏的数字（净值、周损益、全表、归因）在业绩页，
+       两页各答各的问题，互相链接、不互相复制。 */
+    +perfCrossLink()
     /* 「能不能读」排在「读到了什么」前面：六期里只有一期算数，这件事不先
        说清，下面每一段的样本量都会被读大五倍。 */
     +secWrap('evidence','verdict',evidenceProgressCard())
@@ -7034,10 +7111,10 @@ function backtestCard(){
     ? '<span class="gloss" title="事后补跑的期：文档卡在当期，但模型权重见过之后的世界，货架上还有没有上架日期的标的无法按期过滤。结论以实跑的那几期为准。">'
       +sum.n_live_periods+' 期当期实跑 + '+nBack+' 期事后补跑 ⓘ</span>'
     : '<span>'+(sum.n_live_periods||sum.periods)+' 期全部为当期实跑</span>';
-  var rows=names.sort(function(x,y){
-      var ax=arms[x].hit_rate,ay=arms[y].hit_rate;
-      return (ay==null?-1:ay)-(ax==null?-1:ax);
-    }).slice(0,4).map(function(n){
+  /* Jon 第 9 条：此前按胜率排完只取前四行，而折叠盖子上的数量标签写的是
+     全部策略数——标签说 11 个、表里只有 4 个。现在全部显示，不截取；
+     排序键可切，默认胜率降序；名字相近的策略按 key 分开，不合并。 */
+  var rows=names.sort(function(x,y){return btArmCmp(arms,x,y)}).map(function(n){
       var a=arms[n];
       return '<tr><td class="primary">'+esc(backtestArmName(n))+robustBadge(n)+'</td>'
         +'<td class="r">'+fmtWinRate(
@@ -7079,9 +7156,15 @@ function backtestCard(){
         :'')
     +'</div>'
     +foldBlock('week.backtest.detail','各策略明细','胜率 · 平均收益 · 口径说明',
-      '<div class="table-wrap"><table>'
-        +'<thead><tr><th>选取策略</th><th class="r">胜率</th><th class="r">平均收益</th><th class="r">选中</th></tr></thead>'
+      '<div class="card-note" style="margin-bottom:var(--space-2)">按<b>'+esc(btSortLabel())+'</b>'+(BT_SORT.dir>0?'升序':'降序')
+        +' · 显示全部 '+fmtInt(names.length)+' / '+fmtInt(names.length)+' 个策略 · 点表头换排序'
+        +' · <a href="#/perf?mode=backtest" class="pf-link" onclick="perfGo(\'backtest\');return false">赚亏数字看业绩页 ›</a></div>'
+      /* 表头和 <table> 写在同一个字面量里：tests/test_dash_layout.py 用
+         「加号 + 单独一个 thead-tr 字面量」这个片段定位候选池表，这里若也
+         这么写就会被先抓到。 */
+      +'<div class="table-wrap"><table id="btTable"><thead><tr>'+btTh('name','选取策略','')+btTh('hit_rate','胜率','r')+btTh('mean_return_pct','平均收益','r')+'<th class="r">选中</th></tr></thead>'
         +'<tbody>'+rows+'</tbody></table></div>'
+      +backtestRosterNote(names,sum)
       +horizonNote()
       +robustNote()
       +(function(){
@@ -7098,6 +7181,695 @@ function backtestCard(){
       +'<div style="margin-top:var(--space-5);padding-top:var(--space-4);border-top:1px solid var(--color-border-subtle)">'
       +backtestSection()+'</div>',
       Object.keys(arms).length?(Object.keys(arms).length+' 个策略'):'')
+    +'</div>';
+}
+
+/* 回测明细表的排序状态与表头。键固定三种：胜率 / 平均收益 / 名称。 */
+var BT_SORT={k:'hit_rate',dir:-1};
+function btSortLabel(){return {hit_rate:'胜率',mean_return_pct:'平均收益',name:'名称'}[BT_SORT.k]||BT_SORT.k}
+function btSort(k){
+  if(BT_SORT.k===k)BT_SORT.dir*=-1;else{BT_SORT.k=k;BT_SORT.dir=(k==='name')?1:-1}
+  renderEvidence();
+}
+function btTh(k,label,align){
+  var on=BT_SORT.k===k;
+  return '<th class="sortable '+(align||'')+'" data-k="'+k+'" onclick="btSort(\''+k+'\')" aria-sort="'+(on?(BT_SORT.dir>0?'ascending':'descending'):'none')+'">'
+    +esc(label)+(on?' <span class="arr">'+(BT_SORT.dir>0?'↑':'↓')+'</span>':'')+'</th>';
+}
+function btArmCmp(arms,x,y){
+  var k=BT_SORT.k,d=BT_SORT.dir;
+  if(k==='name')return backtestArmName(x).localeCompare(backtestArmName(y),'zh')*d;
+  var ax=arms[x][k],ay=arms[y][k];
+  ax=(ax==null)?-Infinity:ax;ay=(ay==null)?-Infinity:ay;
+  return (ax-ay)*d;
+}
+/* 策略名单对照：回测名单 vs 模拟账户名单（S.books）。按 key 比，不按名字比——
+   「来源限定 · AI 端到端」(generated_ai_native) 和「AI 端到端选取」(ai_native)
+   名字相近，却是两个策略。缺席原因只认记录：skipped_need_model 里有就写它，
+   没有就写「原因未记录」，不填推测。 */
+function backtestRosterNote(names,sum){
+  var books=((S||{}).books||[]).map(function(b){return b.selector}).filter(Boolean);
+  if(!books.length)return '';
+  var inBt={};names.forEach(function(n){inBt[n]=1});
+  var inBk={};books.forEach(function(n){inBk[n]=1});
+  var added=names.filter(function(n){return !inBk[n]});
+  var absent=books.filter(function(n){return !inBt[n]});
+  var skipped=sum.skipped_need_model||{};
+  var excluded=sum.excluded_arms||[];
+  var why=function(k){
+    if(skipped[k])return humanizeKeys(String(skipped[k]));
+    if(excluded.indexOf(k)>=0)return '列在 excluded_arms 里，原因未记录';
+    return '原因未记录';
+  };
+  var nm=function(k){return esc(backtestArmName(k))};
+  return '<div class="card-note" style="margin-top:var(--space-3)"><b>策略名单对照</b>：回测 '+fmtInt(names.length)+' 个，模拟账户 '+fmtInt(books.length)+' 个'
+    +'（'+fmtInt(books.length)+' + '+fmtInt(added.length)+' − '+fmtInt(absent.length)+' = '+fmtInt(books.length+added.length-absent.length)+'）。'
+    +'回测新增：'+(added.length?added.map(nm).join('、'):'无')
+    +'；回测缺席：'+(absent.length?absent.map(function(k){return nm(k)+'（'+esc(why(k))+'）'}).join('、'):'无')+'。'
+    +'<span class="gloss gm" title="按策略 key 比对，不按名字。名字相近的仍是不同策略，例如「来源限定 · AI 端到端」保留某生成方法提出过的标的，而「AI 端到端选取」让模型从候选池里挑组合。">ⓘ</span>'
+    +'</div>';
+}
+
+/* ════════════════════ 业绩页 — 赚了还是亏了、亏赚从哪来 ════════════════════
+   Jon 2026-09-06 第 10 条（已认可）。这一页和「证据」页分工：证据页回答
+   「它管用吗」（判定），这一页回答「赚了还是亏了、亏赚从哪来」（数字）。
+   两页互相链接，不互相复制——两个 tab 顶同一个问题必错其一。
+
+   数据边界是这一页的第一原则：模拟运行 / 历史回测 / 实盘各是一份完整的
+   PerfView 文档（GET /api/perf?mode=&subset=），切换时整份换掉。任何一张图、
+   一张表只读当前那一份，不拼接、不合计、不用上一模式的数据垫底。
+   模拟运行内部再按「按时运行 / 事后补跑 / 全部」隔离，默认只看按时运行——
+   事后补跑不能伪装成当期已经完成的投资决策。
+
+   状态：数据层还没就绪（/api/perf 404）、载入中、失败，都要显示成那个状态，
+   不能画成零收益（「绿着的失败」是本仓最常见的缺陷形状）。 */
+var PERF={mode:'paper',subset:'live'};
+var PERF_CACHE={};        /* perfKey() -> {data,err,at,loading} */
+var PERF_TTL_MS=60000;    /* 与状态文档同节奏：每分钟最多重取一次 */
+/* 实盘那一格的文案写着「未接入」：这套系统的实盘通道是故意没有接的
+   （tests/test_glossary.py 只允许「实盘」出现在否定里）。真接入那天，
+   perf_index.live.available 变 true，按钮改用它自报的 label。 */
+var PERF_MODES=[{mode:'paper',label:'模拟运行'},{mode:'backtest',label:'历史回测'},{mode:'live',label:'实盘（未接入）'}];
+var PERF_SUBSETS=[{s:'live',label:'按时运行'},{s:'backfill',label:'事后补跑'},{s:'all',label:'全部'}];
+/* 方法学的中文写法只此一处。stock-picking-study-30d 是现有 30 天持有的简化
+   回测，只能标成「选股能力研究」，不能当完整账户表现——Jon 原话。 */
+var PERF_METHOD={
+  'paper-rules':{label:'模拟运行规则',warn:false,
+    plain:'按周三下单、分批资金、仓位分配、交易成本、止盈止损与到期退出，逐日按真实收盘计价。'},
+  'formal-paper-rules':{label:'正式回测 · 规则同模拟运行',warn:false,
+    plain:'复用模拟运行的交易规则回放历史，成交价与交易时点按披露的假设。'},
+  'stock-picking-study-30d':{label:'选股能力研究 · 30 天持有简化回测',warn:true,
+    plain:'每条想法按当时收盘价买入、30 天后卖出，不含仓位分配、止损与现金约束。它检验的是候选或排序有没有信息，不是完整系统的账户表现。'}
+};
+/* 页内交互状态。全部挂在一个对象上，是因为这一页每 60 秒随轮询重画一次：
+   勾了哪几条曲线、展开了哪一格、按哪列排序，都得活过重画。 */
+var PERF_UI={curves:null,align:'common',wk:'both',wkOpen:null,attr:'topic',sort:{k:'cum_ret_pct',dir:-1}};
+
+/* 夹具开关：地址栏 ?fixture=1（在 # 之前）时改读 fixtures/perf_<mode>_sample.json，
+   供后端接口合并前自测。默认关闭；文件在 tests/fixtures/ 下，要用得先把它们
+   放到（或软链到）web/fixtures/。不做成「接口 404 就自动退回夹具」——
+   那会把「数据层未就绪」画成一份看起来很像真的数据。 */
+function perfFixtureOn(){try{return /(?:^|[?&])fixture=1(?:&|$)/.test(location.search||'')}catch(e){return false}}
+function perfSubsetOf(mode){return mode==='paper'?PERF.subset:'all'}
+function perfKey(){return PERF.mode+'/'+perfSubsetOf(PERF.mode)}
+function perfUrl(){
+  if(perfFixtureOn())return 'fixtures/perf_'+encodeURIComponent(PERF.mode)+'_sample.json';
+  return '/api/perf?mode='+encodeURIComponent(PERF.mode)+'&subset='+encodeURIComponent(perfSubsetOf(PERF.mode));
+}
+function perfEntry(){return PERF_CACHE[perfKey()]||null}
+function perfIndexLive(){
+  var pi=(S||{}).perf_index;
+  if(!pi||!pi.live)return {available:false,label:'实盘（未接入）',reason:'状态文档没有 perf_index（数据层未就绪）'};
+  return pi.live;
+}
+function perfIndexMode(mode){
+  var pi=(S||{}).perf_index;
+  return ((pi&&pi.modes)||[]).find(function(m){return m.mode===mode})||null;
+}
+function perfFetch(force){
+  var key=perfKey(),e=PERF_CACHE[key];
+  if(e&&e.loading)return;
+  if(e&&!force&&e.at&&(Date.now()-e.at)<PERF_TTL_MS)return;
+  if(PERF.mode==='live'){
+    var lv=perfIndexLive();
+    PERF_CACHE[key]={data:null,err:'实盘未接入：'+(lv.reason||'原因未记录'),at:Date.now()};
+    renderPerf();return;
+  }
+  /* 静态快照没有后端：快照里带了这一模式就用，没带就说没带。 */
+  if(window.__STATIC__){
+    var st=((window.__STATIC__.perf)||{})[key]||null;
+    PERF_CACHE[key]={data:st,err:st?null:'静态快照不含「'+key+'」这一模式的业绩数据',at:Date.now()};
+    renderPerf();return;
+  }
+  var url=perfUrl();
+  /* 同一键的旧数据在重取期间留着——它就是这一模式的，只是可能旧一分钟。
+     换模式不会走到这里：另一模式是另一个键，从不共用。 */
+  PERF_CACHE[key]={data:(e&&e.data)||null,err:null,at:(e&&e.at)||0,loading:true};
+  renderPerf();
+  fetch(url,{cache:'no-store'})
+    .then(function(r){
+      return r.text().then(function(t){
+        var j=null;try{j=JSON.parse(t)}catch(_){}
+        if(!r.ok){
+          var why=r.status===404
+            ? '数据层未就绪：'+(perfFixtureOn()?url+' 不存在（夹具文件没放到 web/fixtures/）':'/api/perf 返回 404，后端还没提供这个接口')
+            : 'HTTP '+r.status+((j&&j.error)?'：'+String(j.error):(t?'：'+String(t).slice(0,160):''));
+          throw new Error(why);
+        }
+        if(!j)throw new Error('响应不是 JSON');
+        if(j.error)throw new Error(String(j.error));
+        return j;
+      });
+    })
+    .then(function(j){
+      /* 响应里自报的 mode 必须等于请求的 mode。后端若把两套数据串了，这里是
+         最后一道闸——宁可显示成失败，也不能把历史回测画在模拟运行名下。 */
+      if(j.mode&&j.mode!==PERF.mode&&key===perfKey())throw new Error('响应的 mode='+j.mode+' 与请求的 '+PERF.mode+' 不一致，拒绝显示');
+      PERF_CACHE[key]={data:j,err:null,at:Date.now()};
+    })
+    .catch(function(err){
+      var old=PERF_CACHE[key]||{};
+      PERF_CACHE[key]={data:old.data||null,err:String(err&&err.message||err),at:Date.now(),stale:!!old.data};
+    })
+    .then(function(){renderPerf()});
+}
+function perfGo(mode,subset){
+  if(mode)PERF.mode=mode;
+  if(subset)PERF.subset=subset;
+  PERF_UI.curves=null;PERF_UI.wkOpen=null;
+  if(current!=='perf')switchView('perf');
+  try{syncRoute()}catch(e){}
+  renderPerf();
+}
+function perfSetMode(m){
+  if(m===PERF.mode)return;
+  if(m==='live'&&!perfIndexLive().available)return;
+  perfGo(m,null);
+}
+function perfSetSubset(s){if(s!==PERF.subset)perfGo(null,s)}
+function perfSetUI(k,v){PERF_UI[k]=v;renderPerf()}
+function perfToggleCurve(key){
+  var P=(perfEntry()||{}).data;if(!P)return;
+  var sel=perfCurveSel(P);
+  if(sel[key])delete sel[key];else sel[key]=1;
+  PERF_UI.curves=sel;renderPerf();
+}
+function perfSort(k){
+  var s=PERF_UI.sort;
+  if(s.k===k)s.dir*=-1;else{s.k=k;s.dir=(k==='name'||k==='status')?1:-1}
+  renderPerf();
+}
+function perfWkOpen(week,key){
+  var o=PERF_UI.wkOpen;
+  PERF_UI.wkOpen=(o&&o.week===week&&o.key===key)?null:{week:week,key:key};
+  renderPerf();
+}
+function perfAmt(v){
+  if(v===null||v===undefined||isNaN(v))return '—';
+  var n=Number(v),sign=n>0?'+':(n<0?'−':'');
+  return sign+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});
+}
+function perfPp(v){
+  if(v===null||v===undefined||isNaN(v))return '—';
+  var n=Number(v),sign=n>0?'+':(n<0?'−':'');
+  return sign+Math.abs(n).toFixed(2)+' pp';
+}
+function perfStatusBadge(st,reason){
+  if(!st||st==='ok')return badge('success','正常');
+  var kind=st==='失败'?'error':(st==='缺数据'?'warning':'neutral');
+  return '<span title="'+esc(reason||'原因未记录')+'">'+badge(kind,st)+'</span>';
+}
+function perfModeLabel(mode){var m=PERF_MODES.find(function(x){return x.mode===mode});return m?m.label:mode}
+function perfSubsetLabel(s){var m=PERF_SUBSETS.find(function(x){return x.s===s});return m?m.label:s}
+function perfWhat(){
+  return perfModeLabel(PERF.mode)+(PERF.mode==='paper'?' · '+perfSubsetLabel(PERF.subset):'');
+}
+
+function renderPerf(){
+  var root=$('view-perf');if(!root)return;
+  if(!S){root.innerHTML='';return}
+  /* 只在这一页真的被看着时取数据：别的页每分钟轮询已经够多了。 */
+  if(current==='perf')perfFetch(false);
+  var e=perfEntry(),P=e&&e.data;
+  var html=secWrap('perf','mode',perfModeCard(e));
+  if(P){
+    html+=grpH('主内容','净值 · 自然周损益 · 全部策略汇总 · 收益归因——都只读「'+perfWhat()+'」这一份数据')
+      +secWrap('perf','nav',perfNavCard(P))
+      +secWrap('perf','weekly',perfWeeklyCard(P))
+      +secWrap('perf','table',perfTableCard(P))
+      +secWrap('perf','attribution',perfAttrCard(P))
+      +grpH('收纳','研究检验与运行记录：看得到，但不占主页面')
+      +secWrap('perf','research',perfResearchCard(P))
+      +secWrap('perf','records',perfRecordsCard(P));
+  }
+  root.innerHTML=html;
+  if(current==='perf')buildNav();
+}
+
+/* ── 页首：模式与区间 ───────────────────────────────────────────
+   模式切换就是这一组按钮，全页只此一处（一个动作一个入口）。实盘从
+   perf_index.live 读，不可用就禁用并把原因写在旁边——不做成「灰掉但不说为什么」。 */
+function perfModeCard(e){
+  var P=e&&e.data,lv=perfIndexLive();
+  var modes='<div class="pf-seg" role="group" aria-label="业绩数据类型">'
+    +PERF_MODES.map(function(m){
+      var dis=(m.mode==='live')&&!lv.available;
+      var idx=perfIndexMode(m.mode);
+      var tip=m.mode==='live'?(lv.reason||''):(idx&&idx.available===false?(idx.reason||'索引标记为不可用'):'');
+      return '<button type="button" class="seg-btn'+(PERF.mode===m.mode?' on':'')+'"'
+        +(dis?' disabled aria-disabled="true"':'')
+        +' data-el="perf.mode.'+m.mode+'" title="'+esc(tip)+'"'
+        +' onclick="perfSetMode(\''+m.mode+'\')">'+esc((m.mode==='live'&&lv.available&&lv.label)?lv.label:m.label)+'</button>';
+    }).join('')+'</div>'
+    +(lv.available?'':'<span class="card-note" style="margin-left:var(--space-2)">实盘未接入，不可选：'+esc(lv.reason||'原因未记录')+'</span>');
+  var subs=PERF.mode==='paper'
+    ? '<div class="pf-sub"><span class="card-note">模拟运行内再分：</span>'
+      +'<div class="pf-seg" role="group" aria-label="模拟运行子集">'
+      +PERF_SUBSETS.map(function(s){
+        return '<button type="button" class="seg-btn'+(PERF.subset===s.s?' on':'')+'"'
+          +' data-el="perf.subset.'+s.s+'" onclick="perfSetSubset(\''+s.s+'\')">'+esc(s.label)+'</button>';
+      }).join('')+'</div>'
+      +'<span class="card-note">默认只看按时运行；补跑单独看、单独标——它不是当期做出的决定</span></div>'
+    : '';
+  var lead,meta='',disc='',sample='';
+  if(e&&e.loading&&!P){
+    lead='<div class="quiet">正在载入「'+esc(perfWhat())+'」的数据…这一页不显示上一模式的任何数字。</div>';
+  }else if(e&&e.err&&!P){
+    lead='<div class="quiet" style="color:var(--color-feedback-warning-text)">「'+esc(perfWhat())+'」没有可显示的数据：'+esc(e.err)
+      +' <button type="button" class="pf-link" onclick="perfFetch(true)">重试</button></div>';
+  }else if(P){
+    var mth=PERF_METHOD[P.methodology]||{label:P.methodology||'方法学未标注',warn:true,plain:'契约之外的方法学值，按未知处理。'};
+    var w=P.window||{};
+    lead='<div class="quiet">现在看的是 <b style="color:var(--color-text-primary)">'+esc(P.label||perfModeLabel(P.mode))
+      +(P.mode==='paper'?' · '+esc(perfSubsetLabel(P.subset)):'')+'</b>'
+      +'，方法学 <b style="color:'+(mth.warn?'var(--color-feedback-warning-text)':'var(--color-text-primary)')+'">'+esc(mth.label)+'</b>'
+      +'<span class="gloss gm" title="'+esc(mth.plain)+'">ⓘ</span>'
+      +(mth.warn?'——它不能当完整账户表现读':'')+'。'
+      +(e&&e.err?' <span style="color:var(--color-feedback-warning-text)">本次刷新失败（'+esc(e.err)+'），下面是这一模式上一次取到的数据。</span>':'')
+      +(e&&e.loading?' <span>正在刷新…</span>':'')
+      +'</div>';
+    meta='<div class="bt-meta">'
+      +'<div class="meta-kv"><div class="k">区间</div><div class="v num">'+esc(w.start||'—')+' → '+esc(w.end||'—')+'</div></div>'
+      +'<div class="meta-kv"><div class="k">资本（每个账户期初）</div><div class="v num">'+(P.capital==null?'—':fmtInt(P.capital))+'</div></div>'
+      +'<div class="meta-kv"><div class="k">策略</div><div class="v num">'+fmtInt((P.strategies||[]).length)+' 个 · '+fmtInt((P.strategies||[]).filter(function(s){return s.available}).length)+' 个有数据</div></div>'
+      +'<div class="meta-kv"><div class="k">来源</div><div class="v num">'+esc(P.source_id||'—')+'</div></div>'
+      +'<div class="meta-kv"><div class="k">生成于</div><div class="v num">'+hktFmt(P.generated_at,true)+'</div></div>'
+      +'</div>';
+    var r=P.research||{};
+    sample='<div class="card-note">样本：'+fmtInt(r.n_periods||0)+' 期 · '+fmtInt(r.n_days||0)+' 个交易日'
+      +(r.sample_note?' · '+esc(r.sample_note):'')+'</div>';
+    var ds=P.disclosures||[];
+    if(ds.length){
+      disc=noteFold('perf.disclosures','口径与差异（'+ds.length+' 条）',
+        '<ul class="pf-list">'+ds.map(function(d){return '<li>'+esc(d)+'</li>'}).join('')+'</ul>');
+    }
+  }else{
+    lead='<div class="quiet">还没有取过「'+esc(perfWhat())+'」的数据。</div>';
+  }
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">赚了还是亏了</h2>'
+    +'<span class="card-note">这一页只报数字；它管不管用的判定在 <a href="#/evidence" class="pf-link" onclick="goto(\'evidence\');return false">证据页 ›</a></span></div>'
+    +lead
+    +'<div class="pf-modes">'+modes+'</div>'
+    +subs
+    +meta
+    +sample
+    +disc
+    +'</div>';
+}
+
+/* ── 净值曲线 ─────────────────────────────────────────────────── */
+function perfSeries(P){
+  var out=[];
+  (P.strategies||[]).forEach(function(s){
+    out.push({key:s.key,name:s.name,role:s.role||'',kind:'策略',col:bookColor(s.key),
+              avail:!!s.available&&(s.curve||[]).length>=2,reason:s.reason||(s.status&&s.status!=='ok'?s.status:''),
+              status:s.status,curve:s.curve||[]});
+  });
+  var bm=P.benchmarks||{};
+  if(bm.buy_all){
+    var ba=bm.buy_all;
+    out.push({key:'bm:buy_all',name:'基准 · '+(ba.name||'全量基准'),role:'',kind:'基准',col:'var(--color-text-secondary)',
+              avail:ba.available!==false&&(ba.curve||[]).length>=2,reason:ba.reason||'',curve:ba.curve||[],dash:true});
+  }
+  if(bm.spy){
+    out.push({key:'bm:spy',name:'基准 · '+(bm.spy.name||'SPY'),role:'',kind:'基准',col:'var(--color-text-primary)',
+              avail:(bm.spy.curve||[]).length>=2,reason:'',curve:bm.spy.curve||[],dash:true});
+  }
+  return out;
+}
+/* 默认勾主策略 + 两条基准。「主策略」按数据里的 role 判，不按名字猜；
+   数据里一个主策略都没有时，退回前三条可用的，而不是一条都不画。 */
+function perfCurveSel(P){
+  if(PERF_UI.curves)return PERF_UI.curves;
+  var sel={},ser=perfSeries(P);
+  ser.forEach(function(s){if(s.avail&&(s.role==='主策略'||s.key==='bm:buy_all'||s.key==='bm:spy'))sel[s.key]=1});
+  if(!Object.keys(sel).length)ser.filter(function(s){return s.avail}).slice(0,3).forEach(function(s){sel[s.key]=1});
+  return sel;
+}
+function perfNavCard(P){
+  var ser=perfSeries(P),sel=perfCurveSel(P);
+  var chosen=ser.filter(function(s){return sel[s.key]&&s.avail});
+  var legend='<div class="pf-legend">'+ser.map(function(s){
+    var on=!!sel[s.key];
+    return '<label class="pf-lg'+(s.avail?'':' off')+'" title="'+esc(s.avail?(s.kind+' · '+(s.role||'')):('不可用：'+(s.reason||'原因未记录')))+'">'
+      +'<input type="checkbox"'+(on&&s.avail?' checked':'')+(s.avail?'':' disabled')+' onchange="perfToggleCurve(\''+jss(s.key)+'\')">'
+      +'<span class="pf-sw" style="background:'+(s.avail?s.col:'transparent')+';border-color:'+s.col+'"></span>'
+      +'<span>'+esc(s.name)+'</span>'
+      +(s.avail?'':'<span class="pf-why">'+esc(s.reason||'原因未记录')+'</span>')
+      +'</label>';
+  }).join('')+'</div>';
+  var align='<div class="pf-seg" role="group" aria-label="起点口径">'
+    +'<button type="button" class="seg-btn'+(PERF_UI.align==='common'?' on':'')+'" onclick="perfSetUI(\'align\',\'common\')" title="所有勾选序列从共同起点开始，各自归一化为 100">共同起点</button>'
+    +'<button type="button" class="seg-btn'+(PERF_UI.align==='own'?' on':'')+'" onclick="perfSetUI(\'align\',\'own\')" title="每条从它自己的第一天开始归一化为 100；样本长度不同">各自起点</button>'
+    +'</div>';
+  var body,note='';
+  if(!chosen.length){
+    body='<div class="empty-sm">没有勾选任何可画的序列。</div>';
+  }else{
+    var firsts=chosen.map(function(s){return s.curve[0].d}),lasts=chosen.map(function(s){return s.curve[s.curve.length-1].d});
+    var start=PERF_UI.align==='common'?firsts.slice().sort().pop():firsts.slice().sort()[0];
+    var norm=chosen.map(function(s){
+      var pts=s.curve.filter(function(p){return p.d>=start});
+      var base=pts.length?pts[0].v:null;
+      if(!base)return null;
+      return {name:s.name,col:s.col,dash:!!s.dash,
+              pts:pts.map(function(p){return {d:p.d,v:p.v/base*100}})};
+    }).filter(Boolean);
+    body=perfLineSVG(norm,{ranges:((P.records||{}).affected_ranges)||[],label:'净值指数（起点 = 100）'})
+      +perfDrawdownSVG(norm);
+    var diff=firsts.some(function(d){return d!==firsts[0]})||lasts.some(function(d){return d!==lasts[0]});
+    note='<div class="card-note" style="margin-top:var(--space-2)">起点归一化为 100'
+      +(PERF_UI.align==='common'?'，共同起点 <span class="num">'+esc(start)+'</span>（勾选序列里最晚开始的那条）':'，各自从第一天起')
+      +'；回撤 = 距此前最高点的跌幅。</div>'
+      +(diff?'<div class="card-note" style="margin-top:var(--space-1);color:var(--color-feedback-warning-text)">样本长度不同：'
+          +chosen.map(function(s){return esc(s.name)+' '+esc(s.curve[0].d)+'→'+esc(s.curve[s.curve.length-1].d)+'（'+s.curve.length+' 天）'}).join('；')
+          +'。归一化到 100 不改变这一点——短的那条只说明它那一段。</div>':'');
+    var ar=((P.records||{}).affected_ranges)||[];
+    if(ar.length)note+='<div class="card-note" style="margin-top:var(--space-1)">斜纹区间 = 数据与运行记录里标出的受影响区间（'+ar.length+' 段），见页尾。</div>';
+  }
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">净值曲线</h2>'
+    +'<span class="card-note">'+fmtInt(chosen.length)+' / '+fmtInt(ser.filter(function(s){return s.avail}).length)+' 条可用序列在图上 · '
+      +fmtInt(ser.filter(function(s){return !s.avail}).length)+' 条不可用</span></div>'
+    +'<div class="quiet">每条都是那个账户的净值，不是某一批想法的回报；勾谁画谁，全部策略都在名单里。</div>'
+    +'<div class="pf-tools">'+align+'</div>'
+    +legend
+    +body
+    +note
+    +'</div>';
+}
+/* 折线画法沿用 pairedEquitySVG：统一日期轴、末端直标、逐个下压避免叠字。
+   多加的只有斜纹区间（受影响区间）和虚线基准。 */
+function perfLineSVG(list,opts){
+  opts=opts||{};
+  var dates={};list.forEach(function(s){s.pts.forEach(function(p){dates[p.d]=1})});
+  var ds=Object.keys(dates).sort();
+  if(ds.length<2)return '<div class="quiet">序列不足两天，画不成曲线。</div>';
+  var W=760,H=240,pl=44,pr=150,pt=12,pb=24,mn=Infinity,mx=-Infinity;
+  var idx={};ds.forEach(function(d,i){idx[d]=i});
+  list.forEach(function(s){s.pts.forEach(function(p){if(p.v<mn)mn=p.v;if(p.v>mx)mx=p.v})});
+  if(mx-mn<0.5){mn-=0.5;mx+=0.5}
+  var xw=(W-pl-pr)/Math.max(1,ds.length-1);
+  function X(i){return pl+i*xw}
+  function Y(v){return pt+(mx-v)/(mx-mn)*(H-pt-pb)}
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:820px" role="img" aria-label="'+esc(opts.label||'净值曲线')+'">'+hatchDefs('pfHatch');
+  (opts.ranges||[]).forEach(function(r){
+    var a=ds.filter(function(d){return d>=r.start})[0],b=ds.filter(function(d){return d<=r.end}).pop();
+    if(!a||!b||idx[b]<idx[a])return;
+    svg+='<rect x="'+X(idx[a]).toFixed(1)+'" y="'+pt+'" width="'+Math.max(2,X(idx[b])-X(idx[a])).toFixed(1)+'" height="'+(H-pt-pb)+'" fill="url(#pfHatch)"><title>'+esc(r.why||'')+'</title></rect>';
+  });
+  [mx,100,mn].forEach(function(g){
+    if(g<mn-0.01||g>mx+0.01)return;
+    svg+='<line x1="'+pl+'" y1="'+Y(g)+'" x2="'+(W-pr)+'" y2="'+Y(g)+'" stroke="var(--color-border-subtle)" stroke-width="1"'+(g===100?' stroke-dasharray="4 3"':'')+'/>'
+      +'<text x="'+(pl-6)+'" y="'+(Y(g)+4)+'" text-anchor="end" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+g.toFixed(1)+'</text>';
+  });
+  var ends=[];
+  list.forEach(function(s){
+    var pts=s.pts.map(function(p){return X(idx[p.d]).toFixed(1)+','+Y(p.v).toFixed(1)});
+    if(pts.length<2)return;
+    svg+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+s.col+'" stroke-width="'+(s.dash?1.2:1.6)+'"'+(s.dash?' stroke-dasharray="5 3"':'')+' stroke-linejoin="round" stroke-linecap="round"/>';
+    var last=s.pts[s.pts.length-1];
+    ends.push({s:s,x:X(idx[last.d]),y:Y(last.v),v:last.v});
+  });
+  ends.sort(function(a,b){return a.y-b.y});
+  var lastY=-99;
+  ends.forEach(function(e){
+    var ly=Math.max(e.y,lastY+12);lastY=ly;
+    svg+='<circle cx="'+e.x.toFixed(1)+'" cy="'+e.y.toFixed(1)+'" r="2.5" fill="'+e.s.col+'"/>'
+      +'<text x="'+(e.x+8).toFixed(1)+'" y="'+(ly+4).toFixed(1)+'" font-family="var(--font-sans)" font-size="11" fill="'+e.s.col+'">'+esc(e.s.name)+' '+e.v.toFixed(1)+'</text>';
+  });
+  svg+='<text x="'+pl+'" y="'+(H-6)+'" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+esc(ds[0])+'</text>'
+    +'<text x="'+(W-pr)+'" y="'+(H-6)+'" text-anchor="end" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+esc(ds[ds.length-1])+'</text>'
+    +'</svg>';
+  return '<div class="funnel-wrap">'+svg+'</div>';
+}
+/* 回撤单独一张小图：画在主图里会把 0 附近压成一条线。 */
+function perfDrawdownSVG(list){
+  var dates={};list.forEach(function(s){s.pts.forEach(function(p){dates[p.d]=1})});
+  var ds=Object.keys(dates).sort();if(ds.length<2)return '';
+  var idx={};ds.forEach(function(d,i){idx[d]=i});
+  var W=760,H=90,pl=44,pr=150,pt=8,pb=6,mn=0;
+  var dd=list.map(function(s){
+    var pk=-Infinity;
+    return {col:s.col,dash:s.dash,pts:s.pts.map(function(p){pk=Math.max(pk,p.v);var v=(p.v/pk-1)*100;if(v<mn)mn=v;return {d:p.d,v:v}})};
+  });
+  if(mn>-0.5)mn=-0.5;
+  var xw=(W-pl-pr)/Math.max(1,ds.length-1);
+  function X(i){return pl+i*xw}
+  function Y(v){return pt+(0-v)/(0-mn)*(H-pt-pb)}
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:820px" role="img" aria-label="回撤">';
+  svg+='<line x1="'+pl+'" y1="'+Y(0)+'" x2="'+(W-pr)+'" y2="'+Y(0)+'" stroke="var(--color-border-subtle)"/>'
+    +'<text x="'+(pl-6)+'" y="'+(Y(0)+4)+'" text-anchor="end" font-family="var(--font-mono)" font-size="10" fill="var(--color-text-tertiary)">0%</text>'
+    +'<text x="'+(pl-6)+'" y="'+(Y(mn)+2)+'" text-anchor="end" font-family="var(--font-mono)" font-size="10" fill="var(--color-text-tertiary)">'+mn.toFixed(1)+'%</text>'
+    +'<text x="'+(W-pr+8)+'" y="'+(pt+10)+'" font-family="var(--font-sans)" font-size="11" fill="var(--color-text-tertiary)">回撤</text>';
+  dd.forEach(function(s){
+    var pts=s.pts.map(function(p){return X(idx[p.d]).toFixed(1)+','+Y(p.v).toFixed(1)});
+    if(pts.length<2)return;
+    var first=s.pts[0],last=s.pts[s.pts.length-1];
+    svg+='<polygon points="'+X(idx[first.d]).toFixed(1)+','+Y(0).toFixed(1)+' '+pts.join(' ')+' '+X(idx[last.d]).toFixed(1)+','+Y(0).toFixed(1)+'" fill="'+s.col+'" opacity="0.08"/>'
+      +'<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+s.col+'" stroke-width="1"'+(s.dash?' stroke-dasharray="5 3"':'')+'/>';
+  });
+  svg+='</svg>';
+  return '<div class="funnel-wrap" style="margin-top:2px">'+svg+'</div>';
+}
+
+/* ── 自然周 × 策略 PNL ───────────────────────────────────────── */
+function perfWeeklyCard(P){
+  var wp=P.weekly_pnl||{},weeks=wp.weeks||[],by=wp.by_strategy||{},strats=P.strategies||[];
+  var mode=PERF_UI.wk;
+  var seg='<div class="pf-seg" role="group" aria-label="损益口径">'
+    +[['amt','金额'],['pct','收益率'],['both','并排']].map(function(o){
+      return '<button type="button" class="seg-btn'+(mode===o[0]?' on':'')+'" onclick="perfSetUI(\'wk\',\''+o[0]+'\')">'+o[1]+'</button>';
+    }).join('')+'</div>';
+  function cell(r){
+    if(!r)return '—';
+    var a='<span class="num '+pctCls(r.pnl_amt)+'">'+perfAmt(r.pnl_amt)+'</span>';
+    var p='<span class="num '+pctCls(r.pnl_pct)+'">'+fmtPct(r.pnl_pct)+'</span>';
+    return mode==='amt'?a:(mode==='pct'?p:a+'<span class="pf-sep"> / </span>'+p);
+  }
+  var open=PERF_UI.wkOpen;
+  var head='<tr><th>自然周<span class="gloss gm" title="ISO 周；起止日为该周内有净值的第一天与最后一天。">ⓘ</span></th>'
+    +strats.map(function(s){
+      var has=!!by[s.key];
+      return '<th class="r'+(has?'':' pf-dim')+'" title="'+esc(has?(s.role||''):('无周损益数据：'+(s.reason||s.status||'原因未记录')))+'">'+esc(s.name)+(has?'':'<br><span class="pf-why">'+esc(s.status||'无数据')+'</span>')+'</th>';
+    }).join('')+'</tr>';
+  var rows=weeks.map(function(w){
+    var tr='<tr><td class="primary"><span class="num">'+esc(w.week)+'</span><br><span class="pf-why num">'+esc(w.start)+' → '+esc(w.end)+'</span></td>'
+      +strats.map(function(s){
+        var r=(by[s.key]||[]).find(function(x){return x.week===w.week});
+        var isOpen=open&&open.week===w.week&&open.key===s.key;
+        var unrec=r&&r.reconciled===false;
+        return '<td class="r pf-cell'+(isOpen?' open':'')+(unrec?' pf-unrec':'')+(r?'':' pf-dim')+'"'
+          +(r?' onclick="perfWkOpen(\''+jss(w.week)+'\',\''+jss(s.key)+'\')" title="'+esc(unrec?('未对账：残差 '+perfAmt(r.residual)+'。点开看分解'):'点开看分解')+'"':' title="本周该策略没有记录"')+'>'
+          +cell(r)+(unrec?'<span class="pf-flag" aria-label="未对账">!</span>':'')+'</td>';
+      }).join('')+'</tr>';
+    if(open&&open.week===w.week){
+      var r2=(by[open.key]||[]).find(function(x){return x.week===w.week});
+      var s2=strats.find(function(s){return s.key===open.key});
+      if(r2){
+        var kv=[['期初净值',fmtInt(r2.equity_start)],['期末净值',fmtInt(r2.equity_end)],['本周盈亏',perfAmt(r2.pnl_amt)+'（'+fmtPct(r2.pnl_pct)+'）'],
+                ['已实现',perfAmt(r2.realized)],['未实现变动',perfAmt(r2.unrealized_chg)],['现金收益',perfAmt(r2.cash_income)],
+                ['费用',perfAmt(r2.fees)],['资金流（出入金）',perfAmt(r2.flows)],
+                ['对账',r2.reconciled?'已对上：已实现 + 未实现变动 + 现金收益 + 费用 + 资金流 = 期末 − 期初':'<span style="color:var(--color-feedback-warning-text)">未对上：残差 '+perfAmt(r2.residual)+'</span>']];
+        tr+='<tr class="pf-break"><td colspan="'+(1+strats.length)+'">'
+          +'<div class="pf-break-h">'+esc(s2?s2.name:open.key)+' · '+esc(w.week)+' 的分解</div>'
+          +'<div class="pf-kv">'+kv.map(function(x){return '<div class="k">'+x[0]+'</div><div class="v num">'+x[1]+'</div>'}).join('')+'</div>'
+          +'</td></tr>';
+      }
+    }
+    return tr;
+  }).join('');
+  var nUnrec=0;Object.keys(by).forEach(function(k){(by[k]||[]).forEach(function(r){if(r.reconciled===false)nUnrec++})});
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">自然周 × 策略损益</h2>'
+    +'<span class="card-note">'+fmtInt(weeks.length)+' 周 × '+fmtInt(strats.length)+' 个策略'+(nUnrec?' · <span style="color:var(--color-feedback-warning-text)">'+nUnrec+' 格未对账</span>':' · 全部对账')+'</span></div>'
+    +'<div class="quiet">'+esc(wp.note||'本周该策略账户的盈亏，含旧仓新仓、已实现未实现；批次未来一个月回报见批次分析，不在此表。')+'</div>'
+    +'<div class="pf-tools">'+seg+'<span class="card-note">金额为账户货币；收益率 = 本周盈亏 ÷ 周初净值。点任一格展开分解。</span></div>'
+    +(weeks.length&&strats.length
+      ? '<div class="table-wrap"><table id="perfWeekly"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>'
+      : '<div class="empty-sm">这一模式没有自然周损益记录。</div>')
+    +'</div>';
+}
+
+/* ── 全部策略汇总表 ─────────────────────────────────────────────
+   全部行，不截取。列定义只此一处：表头和每一行都从它生成，加一列不会错位。 */
+var PERF_COLS=[
+  {k:'name',label:'策略',align:'',tip:'与面板别处同名同键；名字相近的是不同策略（如「来源限定 · AI 端到端」≠「AI 端到端选取」）'},
+  {k:'status',label:'状态',align:'',tip:'ok / 缺数据 / 未运行 / 失败——失败不画成零收益'},
+  {k:'cum_ret_pct',label:'累计收益',align:'r',tip:'区间内期末净值 ÷ 期初资本 − 1'},
+  {k:'excess_spy_pp',label:'超额 vs SPY',align:'r',tip:'与 SPY 同一区间、同一收益定义的差，单位百分点'},
+  {k:'excess_buy_all_pp',label:'超额 vs 全量基准',align:'r',tip:'与全量基准账户同一区间的差，单位百分点'},
+  {k:'max_dd_pct',label:'最大回撤',align:'r',tip:'区间内距此前最高净值的最大跌幅'},
+  {k:'cash_share',label:'现金占比',align:'r',tip:'现金占账户净值的比例，口径见表头括号'},
+  {k:'n_periods',label:'期数 / 天数',align:'r',tip:'该策略在区间内有账户记录的期数与交易日数'}
+];
+function perfColLabel(c,P){
+  if(c.k!=='cash_share')return c.label;
+  var basis=((P.summary||{}).cash_share_basis)||'end';
+  return c.label+'（'+(basis==='avg'?'期间平均':'期末')+'）';
+}
+function perfCashKey(P){return (((P.summary||{}).cash_share_basis)||'end')==='avg'?'cash_share_avg_pct':'cash_share_end_pct'}
+function perfTh(c,P){
+  var s=PERF_UI.sort,on=s.k===c.k;
+  return '<th class="sortable '+c.align+(on?' on':'')+'" data-k="'+c.k+'" onclick="perfSort(\''+c.k+'\')" aria-sort="'+(on?(s.dir>0?'ascending':'descending'):'none')+'">'
+    +esc(perfColLabel(c,P))+glossMark(c.tip)+(on?' <span class="arr">'+(s.dir>0?'↑':'↓')+'</span>':'')+'</th>';
+}
+function perfTableCard(P){
+  var sm=P.summary||{},rows=(sm.rows||[]).slice(),ck=perfCashKey(P);
+  var s=PERF_UI.sort,k=s.k===('cash_share')?ck:s.k;
+  rows.sort(function(a,b){
+    var x=a[k],y=b[k];
+    if(k==='name'||k==='status'){return String(x||'').localeCompare(String(y||''),'zh')*s.dir}
+    x=(x===null||x===undefined||isNaN(x))?-Infinity:Number(x);y=(y===null||y===undefined||isNaN(y))?-Infinity:Number(y);
+    return (x-y)*s.dir;
+  });
+  var sortCol=PERF_COLS.find(function(c){return c.k===s.k})||PERF_COLS[2];
+  var trs=rows.map(function(r){
+    var ok=r.status==='ok';
+    return '<tr>'
+      +'<td class="primary">'+esc(r.name||r.key)+(r.role?'<span class="pf-why"> · '+esc(r.role)+'</span>':'')+'</td>'
+      +'<td>'+perfStatusBadge(r.status,r.reason)+(ok?'':'<span class="pf-why"> '+esc(r.reason||'原因未记录')+'</span>')+'</td>'
+      +'<td class="r num '+pctCls(r.cum_ret_pct)+'">'+fmtPct(r.cum_ret_pct)+'</td>'
+      +'<td class="r num '+pctCls(r.excess_spy_pp)+'">'+perfPp(r.excess_spy_pp)+'</td>'
+      +'<td class="r num '+pctCls(r.excess_buy_all_pp)+'">'+perfPp(r.excess_buy_all_pp)+'</td>'
+      +'<td class="r num '+(r.max_dd_pct==null?'':'down')+'">'+fmtPct(r.max_dd_pct)+'</td>'
+      +'<td class="r num">'+fmtRate(r[ck])+'</td>'
+      +'<td class="r num">'+fmtInt(r.n_periods)+' / '+fmtInt(r.n_days)+'</td>'
+      +'</tr>';
+  }).join('');
+  var rd=sm.roster_diff||null,roster='';
+  if(rd){
+    var nm=function(key){var st=(P.strategies||[]).find(function(x){return x.key===key});return st?st.name:selMetaOf(key)[1]};
+    roster='<div class="card-note" style="margin-top:var(--space-3)"><b>与'+esc(perfModeLabel(rd.other_mode||''))+'名单相比</b>：'
+      +'新增 '+((rd.added||[]).length?(rd.added||[]).map(function(x){return esc(nm(x))}).join('、'):'无')
+      +'；缺席 '+((rd.absent||[]).length?(rd.absent||[]).map(function(a){return esc(nm(a.key))+'（'+esc(a.reason||'原因未记录')+'）'}).join('、'):'无')
+      +'。</div>';
+  }
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">全部策略汇总</h2>'
+    +'<span class="card-note num">'+fmtInt(rows.length)+' / '+fmtInt(rows.length)+' 个策略 · 截至 '+esc(sm.as_of||'—')+'</span></div>'
+    +'<div class="quiet">按<b>'+esc(perfColLabel(sortCol,P))+'</b>'+(s.dir>0?'升序':'降序')+' · 显示全部 '+fmtInt(rows.length)+' / '+fmtInt(rows.length)+' 个策略；点表头换排序。超额收益与基准同区间、同收益定义。</div>'
+    +(rows.length
+      ? '<div class="table-wrap"><table id="perfTable"><thead><tr>'+PERF_COLS.map(function(c){return perfTh(c,P)}).join('')+'</tr></thead>'
+        +'<tbody>'+trs+'</tbody></table></div>'
+      : '<div class="empty-sm">这一模式的汇总表没有任何行。</div>')
+    +roster
+    +'</div>';
+}
+
+/* ── 收益归因 ───────────────────────────────────────────────────
+   两列并排：完整计入（一个标的的全部盈亏计入它的每个主题/方法，跨行不可相加）
+   与均分（按来源数等分，跨行可相加、有合计行）。规则原文来自数据，不在这里编。 */
+function perfAttrCard(P){
+  var at=P.attribution||{},dim=PERF_UI.attr;
+  var DIMS=[['topic','主题','by_topic'],['instrument','标的','by_instrument'],['method','生成方法','by_method']];
+  var cur=DIMS.find(function(d){return d[0]===dim})||DIMS[0];
+  var rows=(at[cur[2]]||[]).slice().sort(function(a,b){return (b.pnl_split_equal||0)-(a.pnl_split_equal||0)});
+  var seg='<div class="pf-seg" role="group" aria-label="归因维度">'+DIMS.map(function(d){
+    return '<button type="button" class="seg-btn'+(dim===d[0]?' on':'')+'" onclick="perfSetUI(\'attr\',\''+d[0]+'\')">按'+d[1]+'</button>';
+  }).join('')+'</div>';
+  function jump(r){
+    if(dim==='topic')return 'filterPool(\'topic\',\''+jss(r.key)+'\',\'主题 '+jss(r.name||r.key)+'\')';
+    if(dim==='instrument')return 'filterPoolCode(\''+jss(r.key)+'\')';
+    return 'filterPool(\'method\',\''+jss(r.key)+'\',\'方法 '+jss(r.name||r.key)+'\')';
+  }
+  var sumN=0,sumSplit=0;
+  var trs=rows.map(function(r){
+    sumN+=(r.n_positions||0);sumSplit+=(r.pnl_split_equal||0);
+    var tags=dim==='instrument'
+      ? (r.topics||[]).map(function(t){return '<span class="pf-tag" title="主题">'+esc(t)+'</span>'}).join('')
+        +(r.methods||[]).map(function(m){return '<span class="pf-tag m" title="生成方法">'+esc(typeof methodName==='function'?methodName(m):m)+'</span>'}).join('')
+      : '—';
+    return '<tr>'
+      +'<td class="primary"><button type="button" class="pf-link" onclick="'+jump(r)+'" title="到方法页候选池里只看它">'+esc(r.name||r.key)+'</button>'+(dim!=='instrument'&&r.name&&r.name!==r.key?'<span class="pf-why num"> '+esc(r.key)+'</span>':'')+'</td>'
+      +'<td class="r num">'+fmtInt(r.n_positions)+'</td>'
+      +'<td class="r num '+pctCls(r.pnl_full_credit)+'">'+perfAmt(r.pnl_full_credit)+'</td>'
+      +'<td class="r num '+pctCls(r.pnl_split_equal)+'">'+perfAmt(r.pnl_split_equal)+'</td>'
+      +'<td>'+tags+'</td>'
+      +'</tr>';
+  }).join('');
+  var total='<tr class="pf-total">'
+    +'<td class="primary">合计</td>'
+    +'<td class="r num">'+fmtInt(sumN)+'</td>'
+    +'<td class="r"><span class="pf-why">不可相加</span></td>'
+    +'<td class="r num '+pctCls(sumSplit)+'">'+perfAmt(sumSplit)+'</td>'
+    +'<td>—</td>'
+    +'</tr>';
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">收益归因</h2>'
+    +'<span class="card-note">按'+esc(cur[1])+' · '+fmtInt(rows.length)+' 行</span></div>'
+    +'<div class="quiet">亏赚从哪来。同一个标的常被多个主题、多个方法共同提出，所以给两列：<b>完整计入</b>只能一行一行地看，<b>均分</b>才能相加。</div>'
+    +'<div class="pf-tools">'+seg+'<span class="card-note">金额为账户货币 · 点名称跳到方法页候选池</span></div>'
+    +(rows.length
+      ? '<div class="table-wrap"><table id="perfAttr"><thead><tr>'
+          +'<th>'+esc(cur[1])+'</th>'
+          +'<th class="r">仓位数</th>'
+          +'<th class="r">完整计入'+glossMark('该标的的全部盈亏计入它的每一个来源；跨行相加会重复计数')+'</th>'
+          +'<th class="r">均分'+glossMark('按来源数等分；跨行可相加，合计 = 账户投资盈亏')+'</th>'
+          +'<th>来源标签'+glossMark('仅标的行：它被哪些主题、哪些方法提出过')+'</th>'
+        +'</tr></thead><tbody>'+trs+total+'</tbody></table></div>'
+      : '<div class="empty-sm">这一模式没有按'+esc(cur[1])+'的归因记录。</div>')
+    +'<div class="card-note" style="margin-top:var(--space-3)"><b>分配规则</b>：'+esc(at.rule||'数据未给出规则原文')+'</div>'
+    +'</div>';
+}
+
+/* ── 研究检验（折叠） ────────────────────────────────────────────
+   夏普区间、排序力、多重检验那几张卡读的是 S.backtest，所以只在历史回测模式
+   下放进来；模拟运行在样本够之前只给样本说明。卡本身只在折叠打开且本页在看
+   时才渲染——它们带着自己的 DOM id，和证据页同时存在两份会互相找错。 */
+function perfResearchCard(P){
+  var r=P.research||{},open=!!FOLD['perf.research'];
+  var inner;
+  if(P.mode==='backtest'&&S&&S.backtest&&S.backtest.backtest_id){
+    inner=(open&&current==='perf')
+      ? '<div class="pf-nest">'+tearsheetCard()+rankingPowerCard()+selectionCard()+'</div>'
+      : '<div class="quiet">展开后渲染业绩表、排序力、挑选过程三张检验卡（与证据页同一份回测）。</div>';
+  }else if(P.mode==='backtest'){
+    inner='<div class="empty-sm">状态文档里没有这次回测的检验块，统计检验画不出来。</div>';
+  }else{
+    inner='<div class="quiet">模拟运行的统计检验在样本够之前只给样本说明。</div>';
+  }
+  var stats=r.stats||{},sk=Object.keys(stats);
+  var statsHtml=sk.length
+    ? '<div class="pf-kv" style="margin-top:var(--space-3)">'+sk.map(function(k){
+        var v=stats[k];return '<div class="k">'+esc(k)+'</div><div class="v">'+esc(typeof v==='object'?JSON.stringify(v):String(v))+'</div>';
+      }).join('')+'</div>'
+    : '';
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">研究检验</h2>'
+    +'<span class="card-note">'+fmtInt(r.n_periods||0)+' 期 · '+fmtInt(r.n_days||0)+' 天</span></div>'
+    +'<div class="quiet">'+esc(r.sample_note||'样本说明未给出。')+'</div>'
+    +foldBlock('perf.research','统计检验','夏普区间 · 排序力 · 多重检验 · 前推检验',
+      inner+statsHtml,
+      P.mode==='backtest'?'3 张卡':'样本说明')
+    +'</div>';
+}
+
+/* ── 数据与运行记录（折叠） ──────────────────────────────────────
+   失败、缺数、补跑、卡住的批次、受影响区间。失败或没运行不显示成零收益的
+   成功期次——它们在这里列出来，并在净值图上以斜纹标出区间。 */
+function perfRecordsCard(P){
+  var rc=P.records||{};
+  var fr=rc.failed_runs||[],gaps=rc.gaps||[],bf=rc.backfill_periods||[],sb=rc.stuck_batches||[],ar=rc.affected_ranges||[];
+  var n=fr.length+gaps.length+bf.length+sb.length+ar.length;
+  function ul(items){return items.length?'<ul class="pf-list">'+items.join('')+'</ul>':'<div class="pf-why">无</div>'}
+  var body='<div class="pf-rec"><div class="pf-rec-h">运行失败 <span class="num">'+fr.length+'</span></div>'
+    +ul(fr.map(function(x){return '<li><span class="num">'+esc(x.as_of)+'</span> · '+esc(x.run_id||'—')+' · '+esc(x.error||'错误未记录')+'</li>'}))
+    +'<div class="pf-rec-h">缺数的期 <span class="num">'+gaps.length+'</span></div>'
+    +ul(gaps.map(function(x){return '<li class="num">'+esc(x)+'</li>'}))
+    +'<div class="pf-rec-h">事后补跑的期 <span class="num">'+bf.length+'</span></div>'
+    +ul(bf.map(function(x){return '<li class="num">'+esc(x)+'</li>'}))
+    +'<div class="pf-rec-h">卡住的批次 <span class="num">'+sb.length+'</span></div>'
+    +ul(sb.map(function(x){return '<li><span class="num">'+esc(x.as_of)+'</span> · '+esc(x.batch_id)+' · '+fmtInt(x.n_ideas)+' 条想法 · 卡在：'+esc((x.blocked_by||[]).join('、')||'未记录')+'</li>'}))
+    +'<div class="pf-rec-h">受影响的业绩区间 <span class="num">'+ar.length+'</span>（净值图上的斜纹）</div>'
+    +ul(ar.map(function(x){return '<li><span class="num">'+esc(x.start)+' → '+esc(x.end)+'</span> · '+esc(x.why||'原因未记录')+'</li>'}))
+    +'</div>';
+  return '<div class="card section"><div class="card-title-row">'
+    +'<h2 class="card-title">数据与运行记录</h2>'
+    +'<span class="card-note">'+fmtInt(n)+' 条记录</span></div>'
+    +'<div class="quiet">'+(n?'上面的数字里有 '+fmtInt(ar.length)+' 段区间受这些记录影响。':'这一模式没有失败、缺数或补跑记录。')+'</div>'
+    +foldBlock('perf.records','逐条记录','失败 · 缺数 · 补跑 · 卡住的批次 · 受影响区间',body,n?(n+' 条'):'')
     +'</div>';
 }
 
@@ -11056,7 +11828,7 @@ document.addEventListener('keydown',function(e){
  * 也就是说纯键盘的人到不了。
  * 不去改每一个生成器（它们散在十几处），统一在渲染之后补上：可聚焦 + 回车/空格
  * 触发 + 同一套焦点环。 */
-var ROW_CLICKABLE='.doc-row[onclick],.cal-main.expandable[onclick],tr.expandable[onclick],#candTable th.sortable';
+var ROW_CLICKABLE='.doc-row[onclick],.cal-main.expandable[onclick],tr.expandable[onclick],#candTable th.sortable,#btTable th.sortable,#perfTable th.sortable,#perfWeekly td.pf-cell[onclick]';
 function armRowKeys(){
   var list=document.querySelectorAll(ROW_CLICKABLE);
   for(var i=0;i<list.length;i++){
@@ -11693,7 +12465,7 @@ function whatIsThisHTML(){
     +line('钱是纸面的','1 亿本金、纸面成交（已计佣金与滑点），不是实盘。数字可以当参考，不能当账单。')
     +line('这是一个对照实验','10 个组合吃<b>同一份候选池</b>，唯一的差别是选取策略。净值之差即策略之差——这也是为什么会有「全量基准」「随机基准」这种明显不聪明的组合：它们是对照组。')
     +line('现在还不能下结论','第 '+weekIndex(currentBooks())+' 周，主策略里最慢的一条约需 '+targetWeeks()+' 期才够判定。此前的排名都在噪声里。')
-    +'<h3 style="font:600 16px/24px var(--font-sans);color:var(--color-text-primary);margin:var(--space-5) 0 var(--space-2)">左边五格各回答一问</h3>'
+    +'<h3 style="font:600 16px/24px var(--font-sans);color:var(--color-text-primary);margin:var(--space-5) 0 var(--space-2)">左边'+cnZh(VIEWS.length)+'格各回答一问</h3>'
     +VIEWS.map(function(v){
       return line(v.label,esc(v.sub));
     }).join('')

@@ -59,6 +59,10 @@ def book_spec(book_id: str) -> dict:
         return config.COHORT_SPEC
     if config.is_selector_book(book_id):
         return config.SELECTOR_SPEC
+    if config.is_backtest_book(book_id):
+        # The formal backtest trades the selector spec verbatim. A separate
+        # spec here would be the first place the two records could drift apart.
+        return config.SELECTOR_SPEC
     return config.BOOKS[book_id]
 
 
@@ -88,12 +92,27 @@ def selector_books(con) -> list[str]:
         (config.SELECTOR_PREFIX + "%",))]
 
 
+def backtest_books(con, backtest_id: str | None = None) -> list[str]:
+    """Books owned by the formal backtest engine, optionally one run's."""
+    prefix = (config.backtest_book(backtest_id, "") if backtest_id
+              else config.BACKTEST_BOOK_PREFIX)
+    return [r["book_id"] for r in db.q(
+        con, "SELECT book_id FROM books WHERE book_id LIKE ? ORDER BY book_id",
+        (prefix + "%",))]
+
+
 def all_books(con) -> list[str]:
     # Selector books are included because "all" means all: this list is what the
     # daily marking loop walks, and a book family missing from it is a family
     # whose orders sit pending forever while prices move on — 114 orders sat
     # unfilled for two sessions exactly this way.
-    return [*config.BOOKS, *cohort_books(con), *selector_books(con)]
+    #
+    # Backtest books (`bt:`) are the one deliberate exception, filtered here
+    # explicitly rather than by relying on the LIKE patterns above missing them:
+    # a replay is stepped by its own engine over its own window, and a daily
+    # tick advancing it afterwards would silently rewrite a recorded result.
+    return [b for b in (*config.BOOKS, *cohort_books(con), *selector_books(con))
+            if not config.is_backtest_book(b)]
 
 
 def _cost_bps(code: str, kind: str) -> float:

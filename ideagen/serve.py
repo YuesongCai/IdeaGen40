@@ -468,6 +468,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json({"as_of": as_of, "weekly": None,
                                    "reason": "no weekly run for this period"})
             return self._json({"as_of": as_of, "weekly": blk})
+        if path == "/api/perf":
+            # The performance page, one mode per request. Not part of the
+            # polled state document: a full view carries ten daily curves plus
+            # the research block, and the page only ever shows one mode at a
+            # time. `perf_index` in /api/state says which modes exist.
+            from urllib.parse import parse_qs, urlparse
+            from . import performance
+            q = parse_qs(urlparse(self.path).query)
+            mode = (q.get("mode") or ["paper"])[0]
+            subset = (q.get("subset") or ["live"])[0]
+            source = (q.get("source") or [None])[0]
+            if mode not in performance.MODES:
+                return self._json({"error": f"mode 必须是 {sorted(performance.MODES)}",
+                                   "mode": mode}, status=400)
+            if subset not in performance.SUBSETS:
+                return self._json({"error": f"subset 必须是 {list(performance.SUBSETS)}",
+                                   "subset": subset}, status=400)
+            try:
+                if mode == "paper":
+                    doc = performance.paper_view(db.init(), None, subset)
+                else:
+                    doc = performance.backtest_view(db.init(), None, source)
+            except Exception as e:  # noqa: BLE001 — bounded error, no traceback to the page
+                traceback.print_exc()
+                return self._json({"error": f"{type(e).__name__}: {e}", "mode": mode,
+                                   "subset": subset, "source": source}, status=500)
+            return self._json(doc)
         if path == "/api/olive/status":
             from . import olive_web
             return self._json(olive_web.status())
@@ -1071,6 +1098,7 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = False) -> None:
     print(f"  /account       账号管理：改口令、增删用户、踢设备")
     print(f"  /legacy        本地 SQLite 旧版报表")
     print(f"  /api/period    单期流水线 JSON（?as_of=YYYY-MM-DD）")
+    print(f"  /api/perf      业绩分析 JSON（?mode=paper|backtest&subset=live|backfill|all&source=）")
     print(f"  /api/status    紧凑摘要 JSON")
     print(f"  /api/report    完整归因 JSON")
     print(f"  Ctrl-C 停止\n")

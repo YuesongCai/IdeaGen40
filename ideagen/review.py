@@ -1105,6 +1105,16 @@ def state(con=None, p=None) -> dict[str, Any]:
         except Exception:  # noqa: BLE001 - pre-migration deployments stay readable
             out["books"] = []
     out["backtest"] = _backtest_state(p)
+    # The performance page's entry block: which modes exist, their windows and
+    # sizes. Counts only — the curves themselves come from /api/perf on demand,
+    # so this document, polled every minute, does not carry ten daily series.
+    try:
+        from . import performance as _perf
+        out["perf_index"] = _perf.perf_index(con)
+    except Exception as e:  # noqa: BLE001 — an index must not take the page down
+        out["perf_index"] = {"modes": [], "error": f"{type(e).__name__}: {e}",
+                             "live": {"available": False, "label": "实盘（未接入）",
+                                      "reason": "尚未接入真实资金"}}
     try:
         out["shelf"] = shelf_store.dashboard_state(
             p.state,

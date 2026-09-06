@@ -228,7 +228,8 @@ ASSUMPTIONS = [
     ("σ×2 止损 / σ×3 止盈", "先验", "由只改止损的两个组合之差检验"),
     ("去集中上限 主题3/敞口3/方式4", "先验", "实测能选满 10；上限收到 1 只能选 5"),
     ("ρ≈0.8（配对相关）", "整个验证时间表的地基", "第一个月实测"),
-    ("赚亏比下限 1.5", "先验", "本周中位数 1.82，未触发；低赔率周才生效"),
+    ("赚亏比下限 1.5（仅赔率排序两条策略；候选池无统一门槛）", "先验",
+     "本周中位数 1.82，未触发；低赔率周才生效"),
     ("1 个月单一持有期", "决策（Jon 原设计是 1m+6m 双期限）", "被覆盖的立场，未正式对比"),
 ]
 
@@ -476,6 +477,70 @@ def _gen_meta(meta: dict, hide_licensed: bool) -> dict:
     return out
 
 
+def _cand_topics(c: dict[str, Any]) -> list[str]:
+    """All source topics of a merged candidate, primary one included."""
+    ts = [str(t) for t in (c.get("topics") or []) if t]
+    if c.get("topic_id") and str(c["topic_id"]) not in ts:
+        ts.append(str(c["topic_id"]))
+    return sorted(ts)
+
+
+def _cand_proposals(c: dict[str, Any], gen_ids: dict[str, list[str]],
+                    hide_licensed: bool) -> dict[str, Any]:
+    """The proposals behind one merged candidate, for the pool payload.
+
+    Runs merged after 2026-09-07 store them on the candidate itself. Earlier
+    runs stored only `topics` and one thesis per method, but their generator
+    verdicts list every idea id as `method:topic:instrument`, so which method
+    proposed the instrument under which topic is still on record — only the
+    thesis and the odds of each are not. Those are rebuilt here as
+    `partial` rows with the numbers left empty, rather than filled from the
+    merged median: a median printed fourteen times would look like fourteen
+    measurements. The panel says so and points at `/api/proposals`, which
+    reads the full text from the run's artifacts when they are reachable.
+    """
+    ps = c.get("proposals")
+    partial = False
+    if not isinstance(ps, list):
+        partial = True
+        bare = str(c.get("instrument_id") or "").split(".")[-1].upper()
+        ps = []
+        for method, ids in gen_ids.items():
+            for pid in ids:
+                parts = str(pid).split(":", 2)
+                if len(parts) != 3:
+                    continue
+                if parts[2].split(".")[-1].upper() != bare:
+                    continue
+                ps.append({"id": pid, "method": parts[0] or method,
+                           "topic_id": parts[1], "thesis": None,
+                           "upside_pct": None, "downside_pct": None,
+                           "p_up": None, "p_base": None, "p_down": None,
+                           "horizon_days": None})
+    counts: dict[str, int] = {}
+    for x in ps:
+        t = str(x.get("topic_id"))
+        counts[t] = counts.get(t, 0) + 1
+    if not counts:
+        counts = dict(c.get("topic_counts") or {})
+    out = []
+    for x in ps:
+        row = {k: x.get(k) for k in
+               ("topic_id", "method", "thesis", "upside_pct", "downside_pct",
+                "p_up", "p_base", "p_down", "horizon_days", "vehicle",
+                "exposure")}
+        if hide_licensed:
+            # The id names the instrument and the thesis quotes the corpus;
+            # both are what the classification says must not leave.
+            row["thesis"] = None
+        else:
+            row["id"] = x.get("id")
+            row["citations"] = list(x.get("citations") or [])
+        out.append(row)
+    return {"proposals": out, "topic_counts": counts,
+            "proposals_partial": partial}
+
+
 def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
     """One weekly run, all three stages, for `as_of` or the newest period.
 
@@ -555,13 +620,16 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
              "scores": json.loads(v["scores"] or "{}")}
             for v in p.state.q("SELECT strategy, chosen, scores FROM verdicts "
                                "WHERE run_id=? AND kind='topic_scorer'", (rid,))]
+        gen_rows = p.state.q("SELECT strategy, chosen, meta, rejected FROM "
+                             "verdicts WHERE run_id=? AND kind='idea_generator'",
+                             (rid,))
         weekly["generators"] = [
             {"method": v["strategy"], "n": len(json.loads(v["chosen"])),
              "meta": _gen_meta(json.loads(v["meta"] or "{}"), hide_licensed),
              "rejected": len(json.loads(v["rejected"] or "{}"))}
-            for v in p.state.q("SELECT strategy, chosen, meta, rejected FROM "
-                               "verdicts WHERE run_id=? AND kind='idea_generator'",
-                               (rid,))]
+            for v in gen_rows]
+        gen_ids = {v["strategy"]: list(json.loads(v["chosen"] or "[]"))
+                   for v in gen_rows}
         cands = [json.loads(c["payload"]) for c in p.state.q(
             "SELECT payload FROM candidates WHERE run_id=?", (rid,))]
         candidate_alias = {
@@ -574,7 +642,12 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
             "candidates": [{
                 **{k: c.get(k) for k in
                    ("topic_id", "upside_pct", "downside_pct", "p_up", "p_base",
-                    "p_down", "proposed_by", "n_proposals")},
+                    "p_down", "proposed_by", "n_proposals", "n_methods")},
+                # Every source topic, not the one `_merge_pool` elected as
+                # primary. The table used to print `topic_id` alone, and GLD —
+                # proposed under four topics — read as a single-topic idea.
+                "topics": _cand_topics(c),
+                **_cand_proposals(c, gen_ids, hide_licensed),
                 "id": (candidate_alias[str(c.get("id"))]
                        if hide_licensed else c.get("id")),
                 "instrument_id": (

@@ -508,8 +508,20 @@ def weekly(
                 # if they agree on this, and it is deliberately not stage B's hash:
                 # what stage C must agree on is the pool, not how the pool was made.
                 csha = strat.RunContext.sha([c.get("id") for c in candidates])
+                # Stage A priced the themes' indicators; stage C's momentum
+                # control ranks *candidates* on their own trailing return, and
+                # with only indicator codes in `prices` it chose nothing in all
+                # six 2026-09-07 replays (「筛选C mom_21 0 持仓」) while every
+                # other arm chose ten. The backtest context has always priced
+                # the pool; the live run now does the same, after the pool
+                # exists and before any selector reads it.
+                extra, psumm = _candidate_prices(p, as_of, candidates, prices, dry_run)
+                if extra:
+                    prices = {**prices, **extra}
+                j.step("prices:candidates", **psumm)
                 cctx = ctx.with_(topics=topics, universe=universe,
-                                 candidates=candidates, inputs_sha=csha)
+                                 candidates=candidates, inputs_sha=csha,
+                                 prices=prices)
                 names = list(selectors) if selectors else \
                     [r["name"] for r in strat.available("idea_selector")]
                 verdicts = strat.run_all("idea_selector", cctx, names=names)
@@ -778,6 +790,49 @@ def _price_inputs(p, as_of: date, prices: dict[str, Any] | None,
                     "source": "none",
                     "error": f"读取 K 线失败：{type(e).__name__}: {e}"}
     return built, {**summ, "source": "built:prices-table"}
+
+
+def _candidate_prices(p, as_of: date, candidates: list[dict[str, Any]],
+                      have: dict[str, Any], dry_run: bool
+                      ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Price view for the pool's listed instruments, on top of `have`.
+
+    Same clamp and same recipe as the stage-A view (`pricing.price_view`), so
+    a selector reading `ret_21s` for a candidate gets the number the backtest
+    would have handed it. Codes already in `have` are not fetched twice; a
+    candidate that resolves to no listed code (an Olive fund) is counted as
+    unlisted rather than silently absent.
+    """
+    from . import backtest as _bt, pricing, universe as uni
+    summ: dict[str, Any] = {"candidates": len(candidates), "codes": 0,
+                            "measured": 0, "unlisted": 0, "source": "none"}
+    if dry_run:
+        return {}, {**summ, "skipped": "dry_run，未读取行情"}
+    codes: set[str] = set()
+    for c in candidates:
+        code = c.get("futu_code")
+        if not code:
+            hit = uni.resolve(str(c.get("instrument_id") or ""))
+            code = getattr(hit, "futu_code", None) if hit else None
+        if not code:
+            summ["unlisted"] += 1
+            continue
+        if code not in have:
+            codes.add(str(code))
+    summ["codes"] = len(codes)
+    if not codes:
+        return {}, summ
+    con = getattr(p.state, "connection", None)
+    if con is None:
+        return {}, {**summ, "error": f"状态库引擎 {getattr(p.state, 'dialect', '?')} "
+                                     f"没有本地 K 线表可读"}
+    try:
+        view = pricing.price_view(con, as_of, sorted(codes), _bt.clamp_dates(as_of))
+    except Exception as e:  # noqa: BLE001 — a selector without prices must say so, not crash the run
+        return {}, {**summ, "error": f"读取候选行情失败：{type(e).__name__}: {e}"}
+    summ["measured"] = sum(1 for v in view.values()
+                           if v.get("priced_in_source") == "return_percentile_21s")
+    return view, {**summ, "source": "built:prices-table"}
 
 
 def _topic_rows(tv, as_of: date) -> list[dict[str, Any]]:

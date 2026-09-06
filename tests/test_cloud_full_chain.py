@@ -35,10 +35,10 @@ def _doc(i, title, d="2026-09-02"):
 class DiscoveryReadsTheRunsCorpus(unittest.TestCase):
     def test_candidates_come_from_injected_rows_when_the_table_is_empty(self):
         con = db.init(":memory:")          # no documents at all
-        titles = ["人形机器人量产元年开启", "人形机器人供应链梳理", "人形机器人：谁在受益",
-                  "人形机器人产业链深度", "人形机器人订单落地", "人形机器人估值框架",
-                  "人形机器人零部件国产化", "人形机器人海外进展", "人形机器人成本曲线",
-                  "人形机器人政策催化", "人形机器人：三季度展望", "人形机器人龙头梳理"]
+        titles = ["量子计算机量产元年开启", "量子计算机供应链梳理", "量子计算机：谁在受益",
+                  "量子计算机产业链深度", "量子计算机订单落地", "量子计算机估值框架",
+                  "量子计算机零部件国产化", "量子计算机海外进展", "量子计算机成本曲线",
+                  "量子计算机政策催化", "量子计算机：三季度展望", "量子计算机龙头梳理"]
         days = ["2026-08-31", "2026-09-01", "2026-09-02"]
         corpus = [_doc(i, t, d=days[i % 3]) for i, t in enumerate(titles)]
         out = themes.candidates(con, AS_OF, corpus=corpus)
@@ -47,13 +47,13 @@ class DiscoveryReadsTheRunsCorpus(unittest.TestCase):
                          "skipped: no documents before the window")
         self.assertEqual(out["gates"]["baseline_docs"], 0)
         phrases = {t for c in out["candidates"] for t in c["terms"]}
-        self.assertTrue(any("人形机器人" in t for t in phrases), phrases)
+        self.assertTrue(any("量子计算机" in t for t in phrases), phrases)
         # Without rows the same call sees nothing — the table is empty.
         self.assertEqual(themes.candidates(con, AS_OF)["corpus_total"], 0)
 
     def test_rows_outside_the_window_are_not_mined(self):
         con = db.init(":memory:")
-        corpus = [_doc(i, "人形机器人量产元年 %d" % i, d="2026-08-01") for i in range(6)]
+        corpus = [_doc(i, "量子计算机量产元年 %d" % i, d="2026-08-01") for i in range(6)]
         out = themes.candidates(con, AS_OF, corpus=corpus)
         self.assertEqual(out["corpus_total"], 0)
 

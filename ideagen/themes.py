@@ -871,6 +871,12 @@ def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
             + (f"，机械判定 {rel.get('kind')}"
                + (f" of {rel.get('of')}" if rel.get("of") else "")
                if rel.get("kind") else "")]
+        if minted_note:
+            # A theme named in a replay is named by a model that has seen the
+            # weeks after `as_of`. The registry row says so in its own words,
+            # so a reader of the theme card can tell a live discovery from a
+            # backfilled one without consulting the run that made it.
+            row["provenance"].append(minted_note)
         try:
             card = validate(con, row, as_of)
         except RegistrationError as e:

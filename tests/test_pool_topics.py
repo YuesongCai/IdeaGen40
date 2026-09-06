@@ -209,6 +209,10 @@ class RealPeriodNumbersAreTwoNumbers(unittest.TestCase):
             self.skipTest("库里没有 2026-09-02 期的候选池")
         cands = blk["pool"]["candidates"]
         for g in blk["generators"]:
+            if not g["n"]:
+                # A generator that produced nothing this period (lookthrough
+                # without a snapshot) has no counts to compare.
+                continue
             k = sum(1 for c in cands if g["method"] in (c.get("proposed_by") or []))
             self.assertLess(k, g["n"],
                             f"{g['method']}：去重标的 {k} 应少于想法 {g['n']}")

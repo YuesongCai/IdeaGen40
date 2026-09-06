@@ -164,7 +164,29 @@
 - 选股能力研究改为直接读该期最新完成周跑的候选池（不再依赖建仓批次），正式回测按新判决重走。
 - 命令：`python3 scripts/backfill_weeks.py --no-trade --supersede --param claims_model=0 <六个日期>`，随后 `ideagen backtest-formal` 与 `scripts/run_real_backtest.py`。
 
-重跑结果在跑完后追加到本文末尾。
+### 重跑结果（2026-09-07 深夜，本机，ModelArk deepseek-v4-pro）
+
+六期全部完成，每期 32–38 次模型调用（命名主题 + 四种生成方法写想法；G 的模型抽取路径关闭）。旧运行改记 `weekly_superseded`，面板「各期」把它们计为尝试。
+
+| 期 | 主题发现 | 筛选 A 前五 | 候选 |
+|---|---|---|---|
+| 07-29 | 归并 1，跳过 3 | INFLATION, COMMODITY-CYCLE, EARNINGS-QUALITY, AI-CAPEX, TERM-PREMIUM | 78 |
+| 08-05 | **新注册 US-JAPAN-FX-INTERVENTION** | INFLATION, POLICY-PATH, EARNINGS-QUALITY, COMMODITY-CYCLE, JAPAN-RESET | 84 |
+| 08-12 | 归并 1，跳过 2 | AI-CAPEX, POLICY-PATH, EARNINGS-QUALITY, INFLATION, GEOPOLITICS | 81 |
+| 08-19 | **新注册 ROBOTICS-BOOM、CHINA-PROPERTY-STABILIZATION、GOLDILOCKS-PRICING-RISK** | DOLLAR-FX, INFLATION, EARNINGS-QUALITY, POLICY-PATH, HOUSING-RATES | 78 |
+| 08-26 | **新注册 MEMORY-SUPER-CYCLE、US-CONSUMER-SLOWDOWN** | GEOPOLITICS, DOLLAR-FX, EARNINGS-QUALITY, AI-POWER, COMMODITY-CYCLE | 73 |
+| 09-02 | 归并 2（含「沃什」→ POLICY-PATH），跳过 5，覆盖率 90.3% | EARNINGS-QUALITY, GEOPOLITICS, CREDIT-STRESS, INFLATION, POLICY-PATH | 79 |
+
+- 六个新主题全部来自当期研报，注册行带 relation/rationale 与「于 2026-09-07 事后补跑中命名（模型已见过该期之后的世界）」标注；CHINA-PROPERTY-STABILIZATION 正是案例核验里「该拆分」那条。
+- 别名：6 行写入（如 EARNINGS-QUALITY ←「业绩超预期」、POLICY-PATH ←「美联储沟通困境」、TERM-PREMIUM ←「长端收益率」）。守卫把碎片按证据标题补全、拒绝短于 3 字的通用词与既有词项的片段；代价是「沃什」这种两字人名也被拒（记为归并说明，不写别名）。模型仍会把泛化描述当新叫法（如「表现平淡」），这类别名无害但无用，是待改进项。
+- 每期 P 全部实测（54–57 个指示标的，0 缺数）；G 与 G_keyword、E 与 E_category_legacy 并排落盘；`theme_set_sha` 每期不同（定义集随注册变化）。
+- 穿透反查生成方法在六期均为 0 条（没有当期穿透快照），如实记录。
+
+**选股能力研究（30 天持有，无模型，`bt-real-20260902-e1622692c7`，六期全为补跑）**：ev_rank 胜率 87% / 均值 +3.75%，random_pick 90% / +2.13%，buy_all 74% / +1.78%，spread 74% / +1.64%，mom_21 67% / +1.43%，omega_loose 76% / +1.42%，calib 80% / +0.88%，left_tail 84% / +0.86%，omega_strict 71% / +0.38%；两个「来源限定」组合 0 行（见下）。前推检验：剔除事后设计的组合后，跟随领先者 −0.05%/期 vs 随机挑一条 +0.56%。
+
+**正式回测（模拟运行规则，`bt-formal-20260902-2265dcde0c`，盯市至 09-04）**：ev_rank +5.60%、omega_loose +4.11%、buy_all +3.01%、random_pick +2.77%、omega_strict +2.50%、spread +2.27%、calib +2.10%、left_tail +1.50%；六期全部成交、0 挂单、0 错误，退出以到期为主、止盈 4 笔、止损 0。**ai_native、generated_ai_native、generated_carl_constraint、mom_21 六期均无仓位**——前三者选中的几乎全是 Olive 货架基金，本机没有它们的净值序列（每期「当日无价剔除」写在 summary 里，业绩页显示为未运行并给原因）；mom_21 在周跑里选 0 条，根因是行情只为主题指示标的构建、没给候选标的，已修（筛选 C 前补上候选行情），下一期生效。
+
+两套回测的名次再次不同（random_pick 在研究里第二、正式回测里第四），这就是「名单一致 ≠ 业绩可比」。
 
 ---
 

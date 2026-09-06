@@ -168,9 +168,12 @@
 
 ---
 
-## 云端：两处必须修的地方（本轮已查清，尚未修）
+## 云端：查清的两处问题与本轮的修法
 
-1. **生产节点的例行周跑是 POC 瘦模式**：`deploy/compose.yaml` 给 scheduler 的 `IDEAGEN_POC_WEEKLY_MODE=wisburg-auto`，对应 `poc_workflow.weekly_kwargs` 只跑 2 种生成方法（ai_native、carl_constraint）、2 个选取策略（buy_all、spread）、3 个主题，并且 `skip_theme_discovery=True`。不改配置，周三云端那期不会跑主题发现，也不会跑完整的十个组合。
-2. **生产节点 RDS 里的语料只有 09-05 起三天**（`corpus_periods`），7–8 月研报只在本机库里；要在云端重跑历史必须先把冻结语料送上去，并给调度器一个「重跑请求队列」。
+1. **生产节点的例行周跑曾是 POC 瘦模式**：`deploy/compose.yaml` 给 scheduler 的 `IDEAGEN_POC_WEEKLY_MODE=wisburg-auto` 对应只跑 2 种生成方法、2 个选取策略、3 个主题，且 `skip_theme_discovery=True`——不改配置，周三云端那期不会跑主题发现，也不是面板描述的那条链。**已修**：compose 新增 `IDEAGEN_WEEKLY_FULL_CHAIN` 默认 `1`，`poc_workflow.weekly_kwargs` 在开关打开时跑与本机同一条链（全部注册的生成方法与选取策略、5 个主题、每主题 20 条、主题发现开）；要回到瘦模式显式设 0。
+2. **主题发现在云端读的是空表**：`themes.candidates` 读本机 `documents` 表，而云端研报在状态库的 `corpus_documents` 里、只以 `corpus` 行的形式进入运行。**已修**：发现流程改为读运行自己拿到的语料；云端没有窗口前的历史（RDS 语料只有 09-05 起三天）时，lift 闸门明确记为 `skipped: no documents before the window` 而不是静默放行或静默拒绝。
+3. **镜像没拷 `themes/`**：云端只认 16 个种子主题，08-08 后发现的都看不见。**已修**：`COPY themes`；容器里注册表与别名写到 `IDEAGEN_DB` 旁的持久目录（读 seed + 持久两份并集，写持久那份），换容器不丢。
+4. **本机重跑的结果怎么到云端**：状态库走 `seed_cloud_state export → TOS → 节点启动时 import`。导入是按主键「已有的赢」，而 MySQL 对「一期只能完成一次」有唯一键，所以**已改为先把种子里标为 `weekly_superseded` 的旧运行改掉，再插入新运行**，否则重跑结果会被静默丢弃。主题注册表与别名随 git 进镜像。
 
-另：镜像此前没有拷 `themes/` 目录（云端只认 16 个种子主题，08-08 后发现的都看不见），本轮已加 `COPY themes` 并让注册表在容器里落到 `IDEAGEN_DB` 旁的持久目录（读 seed + 持久两份并集，写持久那份）。
+仍未做：云端节点没有 K 线表（无 OpenD），P 在云端仍是带标注的默认值；正式回测只写本机状态库。
+

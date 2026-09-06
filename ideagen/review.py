@@ -76,6 +76,13 @@ def _backtest_state(p) -> dict[str, Any]:
             "SELECT backtest_id, as_of, window_start, window_end, methodology, "
             "data_classification, inputs_sha, artifact_uri, started_at, ended_at, "
             "summary FROM backtest_runs WHERE ok=1 "
+            # The formal replay (paper rules, `backtest_formal`) has its own
+            # surface — the 业绩 page reads it through /api/perf. This block
+            # feeds the 证据 page, whose funnel, ranking-power and tearsheet
+            # cards read the stock-picking study's summary shape; handing them
+            # the formal run's summary would blank every card the moment the
+            # formal replay finished later than the study.
+            "AND methodology <> 'formal-paper-rules' "
             "ORDER BY as_of DESC, ended_at DESC LIMIT 1")
         if not rows:
             return {}

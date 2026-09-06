@@ -427,7 +427,13 @@ def content_fingerprint() -> str:
                  one("select max(started_at) from orch_runs"),
                  one("select count(*) from orch_runs"),
                  one("select count(*) from positions"),
-                 one("select count(*) from alerts")]
+                 one("select count(*) from alerts"),
+                 # A backtest is its own row family: the 2026-09-07 formal
+                 # replay finished ninety seconds after the snapshot that
+                 # carried the re-run periods, and nothing above moved, so the
+                 # display node kept showing the study as the newest backtest.
+                 one("select max(ended_at) from backtest_runs"),
+                 one("select count(*) from backtest_runs")]
     finally:
         con.close()
     return "|".join("" if p is None else str(p) for p in parts)

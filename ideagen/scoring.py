@@ -506,7 +506,7 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
     longer on the page. Pass `force=True` to accept that and re-score anyway; the
     batch keeps its own snapshot either way.
     """
-    traded = db.q1(con, "SELECT batch_id FROM batches WHERE as_of=? AND status='traded'",
+    traded = db.q1(con, "SELECT batch_id FROM batches WHERE as_of=? AND status='traded' AND batch_id NOT LIKE 'BT-%'",
                    (as_of.isoformat(),))
     if traded and not force:
         existing = db.q1(con, "SELECT COUNT(*) n FROM themes WHERE as_of=?",

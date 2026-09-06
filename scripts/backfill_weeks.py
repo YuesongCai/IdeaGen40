@@ -68,6 +68,20 @@ def main(argv: list[str]) -> int:
     if "--no-trade" in argv:
         trade = False
         argv = [a for a in argv if a != "--no-trade"]
+    # `--param k=v` pairs go straight through to `ideagen weekly`.
+    extra: list[str] = []
+    rest: list[str] = []
+    it = iter(argv)
+    for a in it:
+        if a == "--supersede":
+            extra.append("--supersede")
+        elif a == "--param":
+            extra += ["--param", next(it, "")]
+        elif a.startswith("--param="):
+            extra += ["--param", a.split("=", 1)[1]]
+        else:
+            rest.append(a)
+    argv = rest
     if not argv:
         raise SystemExit(
             "用法: backfill_weeks.py [--no-trade] YYYY-MM-DD [YYYY-MM-DD ...]")
@@ -107,6 +121,7 @@ def main(argv: list[str]) -> int:
               f"{'' if trade else ', 不建仓'})\n{'=' * 60}", flush=True)
         cmd = [PYBIN, "-u", "-m", "ideagen.cli", "weekly", "--as-of",
                d.isoformat(), "--classification", "backfill"]
+        cmd += extra
         if trade:
             cmd.append("--trade")
         r = subprocess.run(cmd, cwd=ROOT, env=env)

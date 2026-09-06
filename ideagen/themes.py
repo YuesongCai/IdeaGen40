@@ -742,7 +742,8 @@ class MintMerged(MintSkipped):
 
 
 def mint(con, cluster: dict, as_of: date, infer, *, attempts: int = 2,
-         minted: list[dict] | None = None) -> dict:
+         minted: list[dict] | None = None,
+         minted_note: str = "") -> dict:
     """Write a registrable theme card for a discovered phrase cluster.
 
     `candidates` returns evidence, not a theme: terms, counts and doc ids, with
@@ -908,7 +909,7 @@ def register(con, row: dict, as_of: date,
              path: Path | None = None) -> lexicon.Theme:
     """Validate and append one theme to the registry, then reload the lexicon."""
     clean = validate(con, row, as_of)
-    p = path or lexicon.REGISTRY_PATH
+    p = path or lexicon.registry_write_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(clean, ensure_ascii=False, sort_keys=True) + "\n")
@@ -973,7 +974,7 @@ def add_alias(con, theme_id: str, terms: list[str], as_of: date, *,
         "evidence_doc_ids": [str(d) for d in (evidence_doc_ids or [])][:20],
         "candidate_terms": [str(x) for x in (candidate_terms or [])][:12],
     }
-    p = path or lexicon.ALIASES_PATH
+    p = path or lexicon.aliases_write_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
@@ -1034,7 +1035,8 @@ def snapshot(as_of: date | str) -> dict:
 def discover(con, as_of: date, infer, *, step=None, log=None,
              limit: int = MAX_CANDIDATES, scope: str = SCOPE_ALL,
              registry_path: Path | None = None,
-             aliases_path: Path | None = None) -> dict:
+             aliases_path: Path | None = None,
+             minted_note: str = "") -> dict:
     """Mine, name and record this week's themes; report through `step`.
 
     Lifted out of the orchestrator on 2026-09-07 so the loop can be exercised
@@ -1077,7 +1079,8 @@ def discover(con, as_of: date, infer, *, step=None, log=None,
     for c in cands:
         head = (c.get("terms") or [None])[0]
         try:
-            card = mint(con, c, as_of, infer, minted=cards)
+            card = mint(con, c, as_of, infer, minted=cards,
+                        minted_note=minted_note)
             t = register(con, card, as_of, path=registry_path)
             cards.append(card)
             summary["registered"].append(t.id)

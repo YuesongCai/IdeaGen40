@@ -39,6 +39,44 @@ SEED_REGISTERED_D = "2026-07-26"
 
 REGISTRY_PATH = Path(__file__).resolve().parent.parent / "themes" / "registry.jsonl"
 
+# Where a registration made *by a running node* has to land so it survives the
+# node. The repo's `themes/` is the seed: it ships in git and (since 2026-09-07)
+# in the container image. But the weekly run registers themes as it goes, and a
+# container's copy of the repo is rebuilt on every deploy — so a theme minted on
+# the cloud on Wednesday was gone by the next code sync, and Jon's question
+# 「线上某一期的完整主题名单」 had no durable answer. The durable copy lives
+# beside the state database (`IDEAGEN_DB`) whenever that is outside the repo,
+# or wherever `IDEAGEN_THEMES_DIR` points. Reads take the union of seed and
+# durable files; writes go to the durable one. A local checkout, whose database
+# sits inside the repo, keeps writing to `themes/` as before.
+_ROOT = Path(__file__).resolve().parent.parent
+
+
+def durable_themes_dir() -> Path | None:
+    import os
+    env = os.environ.get("IDEAGEN_THEMES_DIR")
+    if env:
+        return Path(env)
+    dbp = os.environ.get("IDEAGEN_DB")
+    if not dbp:
+        return None
+    d = Path(dbp).resolve().parent
+    try:
+        d.relative_to(_ROOT.resolve())
+        return None
+    except ValueError:
+        return d / "themes"
+
+
+def registry_write_path() -> Path:
+    d = durable_themes_dir()
+    return (d / "registry.jsonl") if d else REGISTRY_PATH
+
+
+def aliases_write_path() -> Path:
+    d = durable_themes_dir()
+    return (d / "aliases.jsonl") if d else ALIASES_PATH
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -284,25 +322,37 @@ def load_registry(path: Path | None = None) -> tuple[Theme, ...]:
     malformed or duplicate line is not: a silently-dropped theme would look
     exactly like a theme that never fired.
     """
-    p = path or REGISTRY_PATH
-    if not p.exists():
-        return ()
+    if path is not None:
+        paths = [path]
+    else:
+        d = durable_themes_dir()
+        paths = [REGISTRY_PATH] + ([d / "registry.jsonl"] if d else [])
     out: list[Theme] = []
-    seen: set[str] = set()
-    for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
+    known: set[str] = set()          # ids taken by files read earlier
+    for p in paths:
+        if not p.exists():
             continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{p}:{n} is not valid JSON: {exc}") from exc
-        t = _theme_from_row(row)
-        if t.id in seen or any(s.id == t.id for s in SEED_THEMES):
-            raise ValueError(f"{p}:{n} re-registers theme id {t.id!r}; the "
-                             f"registry is append-only, not editable")
-        seen.add(t.id)
-        out.append(t)
+        seen_here: set[str] = set()
+        for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{p}:{n} is not valid JSON: {exc}") from exc
+            t = _theme_from_row(row)
+            if t.id in seen_here or any(s.id == t.id for s in SEED_THEMES):
+                raise ValueError(f"{p}:{n} re-registers theme id {t.id!r}; the "
+                                 f"registry is append-only, not editable")
+            seen_here.add(t.id)
+            if t.id in known:
+                # The durable file repeating a row the seed file later gained
+                # through git — a theme minted on a node, then committed — is
+                # the same registration seen twice, not an edit. Keep the first.
+                continue
+            known.add(t.id)
+            out.append(t)
     return tuple(out)
 
 
@@ -349,10 +399,21 @@ def load_aliases(path: Path | None = None,
     exactly like a merge that was never made, and the dashboard would show a
     theme missing words the journal says it was given.
     """
-    p = path or ALIASES_PATH
-    if not p.exists():
-        return ()
+    if path is not None:
+        paths = [path]
+    else:
+        d = durable_themes_dir()
+        paths = [ALIASES_PATH] + ([d / "aliases.jsonl"] if d else [])
     by_id = {t.id: t for t in (themes if themes is not None else THEMES)}
+    out: list[dict] = []
+    for p in paths:
+        if not p.exists():
+            continue
+        out.extend(_read_alias_file(p, by_id))
+    return tuple(out)
+
+
+def _read_alias_file(p: Path, by_id: dict) -> list[dict]:
     out: list[dict] = []
     for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
@@ -380,7 +441,7 @@ def load_aliases(path: Path | None = None,
             raise ValueError(f"{p}:{n} has no usable terms")
         out.append({**row, "terms": terms, "as_of": str(row["as_of"]),
                     "evidence_doc_ids": tuple(row.get("evidence_doc_ids") or ())})
-    return tuple(out)
+    return out
 
 
 ALIASES: tuple[dict, ...] = load_aliases()

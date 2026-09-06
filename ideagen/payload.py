@@ -210,7 +210,7 @@ def _cohorts(con) -> dict:
 def _dates(con) -> list[str]:
     """Every date the dashboard can show: any day with a scoring or a batch."""
     seen = {r["as_of"] for r in db.q(con, "SELECT DISTINCT as_of FROM themes")}
-    seen |= {r["as_of"] for r in db.q(con, "SELECT DISTINCT as_of FROM batches")}
+    seen |= {r["as_of"] for r in db.q(con, "SELECT DISTINCT as_of FROM batches WHERE batch_id NOT LIKE 'BT-%'")}
     return sorted(seen)
 
 
@@ -454,7 +454,7 @@ def _corpus(con, d: str) -> dict:
     kv = db.q1(con, "SELECT k FROM kv WHERE k LIKE 'replay:%' ORDER BY k DESC LIMIT 1")
     if kv:
         replay_at = "2026-08-08"
-    b = db.q1(con, "SELECT generator FROM batches WHERE as_of=?", (d,))
+    b = db.q1(con, "SELECT generator FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%'", (d,))
     if b:
         authored = not str(b["generator"] or "").startswith("rules:")
 
@@ -531,7 +531,7 @@ def _charts(con, d: str) -> list[dict]:
 
 
 def _batch(con, d: str) -> dict | None:
-    b = db.q1(con, "SELECT * FROM batches WHERE as_of=? ORDER BY generated_at DESC "
+    b = db.q1(con, "SELECT * FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%' ORDER BY generated_at DESC "
                    "LIMIT 1", (d,))
     if not b:
         return None

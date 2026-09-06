@@ -226,6 +226,53 @@ def _methods_of(raw: dict[str, Any]) -> list[str]:
     return []
 
 
+def _run_candidates(con, as_of: date, inst: dict[str, dict[str, Any]]
+                    ) -> list[dict[str, Any]]:
+    """The merged pool the period's weekly run actually handed to stage C.
+
+    Read from the `candidates` table of the newest completed weekly run for
+    the date, before falling back to `ideas` rows. The fallback is the booked
+    batches — `W<date>-<selector>` — which only exist for periods that were
+    booked, and which are the *selections*, not the pool: a period replayed
+    with `--no-trade` (every 2026-09-07 re-run of the corpus-first chain) has
+    a pool and no batches, and reading `ideas` there would silently score the
+    superseded run's picks under the new run's name. Empty when the state
+    store has no such run (a database without `orch_runs`, say).
+    """
+    try:
+        run = db.q1(con, "SELECT run_id FROM orch_runs WHERE kind='weekly' AND ok=1 "
+                         "AND as_of=? ORDER BY started_at DESC LIMIT 1",
+                    (as_of.isoformat(),))
+        if not run:
+            return []
+        rows = db.q(con, "SELECT candidate_id, payload FROM candidates WHERE run_id=? "
+                         "ORDER BY candidate_id", (run["run_id"],))
+    except Exception:  # noqa: BLE001 — no such tables here: fall back to ideas
+        return []
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        c = db.jl(r["payload"], {}) or {}
+        if not c:
+            continue
+        key = str(c.get("instrument_id") or "")
+        u = inst.get(key, {})
+        out.append({
+            **c,
+            "id": str(c.get("id") or r["candidate_id"]),
+            "as_of": as_of.isoformat(),
+            "instrument_id": key,
+            "instrument_name": c.get("instrument_name") or u.get("name") or key,
+            "kind": c.get("kind") or u.get("kind") or "listed",
+            "futu_code": c.get("futu_code") or u.get("futu_code"),
+            "olive_key": c.get("olive_key") or u.get("olive_key"),
+            "currency": c.get("currency") or u.get("currency") or "USD",
+            "exposure": c.get("exposure") or u.get("exposure"),
+            "vehicle": c.get("vehicle") or u.get("vehicle"),
+            "horizon_days": int(c.get("horizon_days") or 30),
+        })
+    return out
+
+
 def _candidates(con, as_of: date) -> list[dict[str, Any]]:
     """Stage-B output for the period, in the shape stage C reads.
 
@@ -242,10 +289,13 @@ def _candidates(con, as_of: date) -> list[dict[str, Any]]:
     comparison would be measuring a bug.
     """
     inst = {u["instrument_id"]: u for u in _universe(con)}
+    pooled = _run_candidates(con, as_of, inst)
+    if pooled:
+        return pooled
     gen = {r["batch_id"]: r["generator"] for r in
            db.q(con, "SELECT batch_id, generator FROM batches")}
     out: list[dict[str, Any]] = []
-    for r in db.q(con, "SELECT * FROM ideas WHERE as_of=? ORDER BY local_id",
+    for r in db.q(con, "SELECT * FROM ideas WHERE as_of=? AND batch_id NOT LIKE 'BT-%' ORDER BY local_id",
                   (as_of.isoformat(),)):
         p = db.jl(r["central_p"], []) or []
         ret = db.jl(r["central_r"], []) or []
@@ -1071,7 +1121,7 @@ def periods(con) -> list[dict[str, Any]]:
     and the corpus and price columns say whether stages A and B are replayable too.
     """
     out = []
-    for r in db.q(con, "SELECT as_of, COUNT(*) n FROM ideas GROUP BY as_of "
+    for r in db.q(con, "SELECT as_of, COUNT(*) n FROM ideas WHERE batch_id NOT LIKE 'BT-%' GROUP BY as_of "
                        "ORDER BY as_of"):
         as_of = date.fromisoformat(r["as_of"])
         clamp = clamp_dates(as_of)

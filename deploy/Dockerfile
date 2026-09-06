@@ -64,6 +64,10 @@ COPY tests ./tests
 COPY prompts ./prompts
 COPY seed ./seed
 COPY web ./web
+# The theme registry and alias notes are read at import time by ideagen.lexicon;
+# without them the image scores with the 16 seed themes only and every theme
+# discovered since 2026-08-08 is invisible on the node (Jon 2026-09-06, item 1).
+COPY themes ./themes
 COPY deploy/entrypoint.sh ./deploy/entrypoint.sh
 COPY deploy/dashboard_entrypoint.sh ./deploy/dashboard_entrypoint.sh
 RUN chmod +x ./deploy/entrypoint.sh ./deploy/dashboard_entrypoint.sh

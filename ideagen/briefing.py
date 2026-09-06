@@ -173,7 +173,7 @@ def build(con, as_of: date, verbose: bool = True,
         },
         "prior_batches": [dict(r) for r in db.q(
             con, "SELECT batch_id, as_of, n_ideas, status FROM batches "
-                 "ORDER BY as_of DESC LIMIT 8")],
+                 "WHERE batch_id NOT LIKE 'BT-%' ORDER BY as_of DESC LIMIT 8")],
         "open_positions": _open_positions(con),
     }
 

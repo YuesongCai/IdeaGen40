@@ -2557,6 +2557,12 @@ function robustNote(){
     +'</div>';
 }
 /* 证据页 → 业绩页。一行，不是一张卡：证据页不重讲任何数字。 */
+/* 数据层给的角色是注册表里的英文词（primary / control / exploratory），
+   面板别处（SEL_META）说的是「主策略 / 对照 / 常驻探索」。这里统一成中文，
+   默认勾选也按中文判——否则净值图默认只剩两条基准，像是主策略都没数据。 */
+var PERF_ROLE_ZH={primary:'主策略',control:'对照',exploratory:'常驻探索',
+  '主策略':'主策略','对照':'对照','常驻探索':'常驻探索'};
+function perfRoleZh(r){r=String(r||'');return PERF_ROLE_ZH[r]||r}
 function perfCrossLink(){
   return '<div class="card-note" style="margin:0 0 var(--space-4)">赚了还是亏了、亏赚从哪来——数字看 '
     +'<a href="#/perf" class="pf-link" onclick="perfGo(\'paper\');return false">业绩页 ›</a>'
@@ -7482,7 +7488,7 @@ function perfModeCard(e){
 function perfSeries(P){
   var out=[];
   (P.strategies||[]).forEach(function(s){
-    out.push({key:s.key,name:s.name,role:s.role||'',kind:'策略',col:bookColor(s.key),
+    out.push({key:s.key,name:s.name,role:perfRoleZh(s.role),kind:'策略',col:bookColor(s.key),
               avail:!!s.available&&(s.curve||[]).length>=2,reason:s.reason||(s.status&&s.status!=='ok'?s.status:''),
               status:s.status,curve:s.curve||[]});
   });
@@ -7652,7 +7658,7 @@ function perfWeeklyCard(P){
   var head='<tr><th>自然周<span class="gloss gm" title="ISO 周；起止日为该周内有净值的第一天与最后一天。">ⓘ</span></th>'
     +strats.map(function(s){
       var has=!!by[s.key];
-      return '<th class="r'+(has?'':' pf-dim')+'" title="'+esc(has?(s.role||''):('无周损益数据：'+(s.reason||s.status||'原因未记录')))+'">'+esc(s.name)+(has?'':'<br><span class="pf-why">'+esc(s.status||'无数据')+'</span>')+'</th>';
+      return '<th class="r'+(has?'':' pf-dim')+'" title="'+esc(has?perfRoleZh(s.role):('无周损益数据：'+(s.reason||s.status||'原因未记录')))+'">'+esc(s.name)+(has?'':'<br><span class="pf-why">'+esc(s.status||'无数据')+'</span>')+'</th>';
     }).join('')+'</tr>';
   var rows=weeks.map(function(w){
     var tr='<tr><td class="primary"><span class="num">'+esc(w.week)+'</span><br><span class="pf-why num">'+esc(w.start)+' → '+esc(w.end)+'</span></td>'
@@ -7728,7 +7734,7 @@ function perfTableCard(P){
   var trs=rows.map(function(r){
     var ok=r.status==='ok';
     return '<tr>'
-      +'<td class="primary">'+esc(r.name||r.key)+(r.role?'<span class="pf-why"> · '+esc(r.role)+'</span>':'')+'</td>'
+      +'<td class="primary">'+esc(r.name||r.key)+(r.role?'<span class="pf-why"> · '+esc(perfRoleZh(r.role))+'</span>':'')+'</td>'
       +'<td>'+perfStatusBadge(r.status,r.reason)+(ok?'':'<span class="pf-why"> '+esc(r.reason||'原因未记录')+'</span>')+'</td>'
       +'<td class="r num '+pctCls(r.cum_ret_pct)+'">'+fmtPct(r.cum_ret_pct)+'</td>'
       +'<td class="r num '+pctCls(r.excess_spy_pp)+'">'+perfPp(r.excess_spy_pp)+'</td>'
@@ -10488,6 +10494,35 @@ function themeIdentity(tid,r){
     +'</div>'
     +(prov.length?'<div class="card-note" style="margin-top:4px">注册当时写下的依据：「'+esc(prov.join('；'))+'」（原文照录）</div>':'')
     +'<div class="card-note" style="margin-top:4px">注册日之前的期次它不参与打分——上面那条轨迹里的「注册前」就是这条规则，不是那几期它没人谈。</div>';
+
+  /* 它和邻近主题是什么关系：Jon 2026-09-06 的第一条——同一逻辑换个名字不能算成两个
+     主题，同行业不同驱动的又要分开。注册那一刻模型写下的 relation / rationale 就是
+     这个判断的原文；之后发现的「同一争论的新叫法」走别名，不开新行。这里把两样都
+     摆出来，读者才有办法核「归并没归过头、拆分没拆过细」，而不是只看一个标签。
+     种子主题没有这段记录（它们先于这套规则），如实写「无」，不补一句像样的话。 */
+  var relZh={same_debate:'与已有主题是同一争论',split:'从已有主题拆分出来',distinct:'独立争论'};
+  var aliases=(t.aliases||[]).filter(function(a){return a&&(a.terms||[]).length});
+  var relRow='';
+  if(t.relation||t.rationale||t.split_from){
+    relRow='<div class="derive-kv" style="margin-top:var(--space-3)">'
+      +'<span>与邻近主题：'+esc(relZh[t.relation]||t.relation||'未记录')+'</span>'
+      +(t.split_from?'<span class="kv-t">拆自 <button type="button" class="exp-btn" style="padding:0 4px" onclick="openTopicDrawer(\''+jss(t.split_from)+'\')">'+esc(topicName(t.split_from))+' ›</button></span>':'')
+      +'</div>'
+      +(t.rationale?'<div class="card-note" style="margin-top:4px">归并／拆分理由（注册时原文）：「'+esc(t.rationale)+'」</div>':'');
+  }else{
+    relRow='<div class="card-note" style="margin-top:var(--space-3)">与邻近主题的关系：'
+      +(t.origin==='discovered'?'注册时没有留下归并／拆分记录（早于 2026-09-07 的发现流程不写这一项）。':'开局词表自带，没有归并／拆分记录——它先于这套规则存在。')
+      +'</div>';
+  }
+  html+=relRow;
+  if(aliases.length){
+    html+='<div style="margin-top:var(--space-3);font:400 12px/18px var(--font-sans);color:var(--color-text-secondary)">'
+      +'同一争论后来的叫法（归并成别名，没有开新主题）：'
+      +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle;margin-left:2px">'
+      +aliases.map(function(a){return '<span class="tw" title="'+esc(a.as_of+' 起生效'+(a.rationale?'：'+a.rationale:''))+'">'+esc((a.terms||[]).join('、'))+'<b>'+esc(a.as_of)+'</b></span>'}).join('')
+      +'</span></div>'
+      +'<div class="card-note" style="margin-top:4px">别名从它的生效日起才参与命中；更早的期次回放时看不到它——和注册日的规则同一条。</div>';
+  }
 
   /* 敞口标签不是持仓，也不是建议，它是筛选B 在货架里找标的的入口。
      这一条同样早就在注册表里，页面此前一个字都没提。 */

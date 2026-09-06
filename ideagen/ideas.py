@@ -547,9 +547,10 @@ def load_batch(con, batch_id: str) -> list[dict]:
 def latest_batch(con, as_of: date | None = None) -> str | None:
     if as_of:
         r = db.q1(con, "SELECT batch_id FROM batches WHERE as_of=? "
+                       "AND batch_id NOT LIKE 'BT-%' "
                        "ORDER BY generated_at DESC LIMIT 1", (as_of.isoformat(),))
     else:
-        r = db.q1(con, "SELECT batch_id FROM batches ORDER BY as_of DESC, "
+        r = db.q1(con, "SELECT batch_id FROM batches WHERE batch_id NOT LIKE 'BT-%' ORDER BY as_of DESC, "
                        "generated_at DESC LIMIT 1")
     return r["batch_id"] if r else None
 

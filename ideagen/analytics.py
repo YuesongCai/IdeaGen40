@@ -87,7 +87,7 @@ def settle(con, book_id: str = "naive", verbose: bool = True) -> dict:
             f"Settling would mark one asset's entry against another's close. "
             f"Fix with:  ideagen rebuild-batch {batches[0]}")
 
-    rows = db.q(con, "SELECT * FROM ideas ORDER BY as_of, local_id")
+    rows = db.q(con, "SELECT * FROM ideas WHERE batch_id NOT LIKE 'BT-%' ORDER BY as_of, local_id")
     bench = config.BENCHMARKS["SPY"]
     out, settled = [], 0
     today = futu_px.complete_through("US")
@@ -407,7 +407,7 @@ def full_report(con) -> dict:
         "ideas_disciplined_fills": disc_outcomes,
         "batches": [dict(r) for r in db.q(
             con, "SELECT batch_id, as_of, generator, n_ideas, status FROM batches "
-                 "ORDER BY as_of")],
+                 "WHERE batch_id NOT LIKE 'BT-%' ORDER BY as_of")],
         "coverage": coverage(con),
     }
 

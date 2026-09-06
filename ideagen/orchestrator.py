@@ -179,6 +179,24 @@ def weekly(
                     "journal_uri": None, "calls": 0,
                     "data_classification": params.get(
                         "data_classification", "live")}, replace=False)
+                if params.get("supersede_completed"):
+                    # A deliberate re-run of a period that already completed —
+                    # the 2026-09-07 replay of every stored week through the
+                    # corpus-first theme formation and the rebuilt G/E/P. The
+                    # `orch_runs_done` index allows exactly one completed
+                    # weekly per period, so without this the new run would
+                    # spend every model call and then fail at close. The old
+                    # row is not deleted or edited: its kind becomes
+                    # `weekly_superseded`, it keeps its verdicts, candidates
+                    # and journal, and the spine still counts it as an attempt.
+                    old = supersede_completed(p.state, as_of.isoformat(),
+                                              by=j.run_id)
+                    if old:
+                        j.step("superseded", run_ids=old,
+                               reason=str(params.get("supersede_reason") or
+                                          "同期重跑：旧运行改记为 weekly_superseded"))
+                        log(f"  取代  {as_of} 已有 {len(old)} 次完成的运行改记为 "
+                            f"weekly_superseded: {', '.join(old)}")
 
             # Feeds run through the registry unless inputs were injected. Injection
             # is what lets a replay of an old week reuse stored rows instead of
@@ -313,9 +331,16 @@ def weekly(
             if not dry_run and corpus and not params.get("skip_theme_discovery"):
                 try:
                     from . import db as _db
+                    # A backfilled period names its themes today, with a
+                    # model that has read the weeks after `as_of`. The
+                    # registry row carries that fact (see `themes.mint`), the
+                    # same way the run row carries `data_classification`.
+                    note = ("" if params.get("data_classification", "live") == "live"
+                            else f"于 {config.today_hkt().isoformat()} 事后补跑中命名"
+                                 f"（模型已见过 {as_of.isoformat()} 之后的世界）")
                     _themes.discover(_db.init(), as_of,
                                      getattr(p, "inference", None),
-                                     step=j.step, log=log)
+                                     step=j.step, log=log, minted_note=note)
                 except Exception as e:  # noqa: BLE001 — discovery must not cost the run
                     j.step("theme_discovery", error=f"{type(e).__name__}: {e}")
                     log(f"  ⚠ 主题发现失败（本周用既有注册表继续）: {e}")
@@ -567,6 +592,23 @@ def weekly(
                     pass
             log(f"  ! {res.error}")
             return res
+
+
+def supersede_completed(state, as_of: str, *, by: str) -> list[str]:
+    """Retire the completed weekly runs of `as_of` so a re-run can complete.
+
+    Returns the run ids retired. Rows are re-labelled, never removed: a
+    superseded run is still the run that produced last month's books, and a
+    reader of the spine has to be able to see that the period was produced
+    twice and by which run each time.
+    """
+    rows = state.q("SELECT run_id FROM orch_runs WHERE kind='weekly' AND as_of=? "
+                   "AND ok=1 AND run_id<>? ORDER BY started_at", (as_of, by))
+    ids = [str(dict(r)["run_id"]) for r in rows]
+    for rid in ids:
+        state.execute("UPDATE orch_runs SET kind='weekly_superseded' "
+                      "WHERE run_id=?", (rid,))
+    return ids
 
 
 def _merge_pool(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -157,6 +157,7 @@ def run(con, start: date, end: date, verbose: bool = True) -> dict:
     # rebuilt record; it just has no book step.
     batch_days = [r["as_of"] for r in db.q(
         con, "SELECT DISTINCT as_of FROM batches WHERE as_of>=? AND as_of<=? "
+             "AND batch_id NOT LIKE 'BT-%' "
              "ORDER BY as_of", (start.isoformat(), end.isoformat()))]
     days = sorted(set(sessions) | set(batch_days))
     unpriced = sorted(set(days) - set(sessions))

@@ -35,7 +35,11 @@ DASH = Path(__file__).resolve().parent.parent / "web" / "dash.html"
 #: 就是这几个，任何一边改名而另一边不改，这张表让它红。
 CONTRACT = ("label", "key_question", "direction", "indicator", "related",
             "exposures", "terms", "require", "origin", "registered_d",
-            "provenance", "arc")
+            "provenance", "arc",
+            # Jon 2026-09-06 第 1 条：主题和邻近主题是什么关系、归并/拆分的理由、
+            # 拆自谁、后来被归并进来的叫法——注册时写下的原文，页面照录。
+            "relation", "rationale", "split_from", "evidence_doc_ids",
+            "alias_terms", "aliases")
 
 
 class TestThemeIdentityPayload(unittest.TestCase):

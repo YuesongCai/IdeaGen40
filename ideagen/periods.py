@@ -160,14 +160,21 @@ def _run_index(p) -> dict[str, dict]:
     not the verdict. Ordering by time alone would report the newest attempt,
     which after a retry storm is often a failure that a later run fixed.
     """
+    # `weekly_superseded` rows are periods produced a second time on purpose
+    # (see `orchestrator.supersede_completed`): counted as attempts, and
+    # listed, but never the period's run — that is the row that replaced them.
     rows = _rows(p.state.q(
-        "SELECT run_id, as_of, ok, ended_at, data_classification "
-        "FROM orch_runs WHERE kind='weekly' ORDER BY as_of, ok DESC, started_at DESC"))
+        "SELECT run_id, as_of, kind, ok, ended_at, data_classification "
+        "FROM orch_runs WHERE kind IN ('weekly','weekly_superseded') "
+        "ORDER BY as_of, ok DESC, started_at DESC"))
     index: dict[str, dict] = {}
     for r in rows:
         as_of = str(r["as_of"])
-        cur = index.setdefault(as_of, {"attempts": 0})
+        cur = index.setdefault(as_of, {"attempts": 0, "superseded": []})
         cur["attempts"] += 1
+        if r.get("kind") == "weekly_superseded":
+            cur["superseded"].append(r["run_id"])
+            continue
         if "run_id" in cur:
             continue
         cur.update({

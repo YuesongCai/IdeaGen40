@@ -846,7 +846,7 @@ def cmd_backfill(args) -> int:
     rep = backfill.run(con, date.fromisoformat(args.start),
                        date.fromisoformat(args.end),
                        ingest=not args.no_ingest, fetch_bodies=args.bodies)
-    for b in db.q(con, "SELECT batch_id FROM batches WHERE status='traded'"):
+    for b in db.q(con, "SELECT batch_id FROM batches WHERE status='traded' AND batch_id NOT LIKE 'BT-%'"):
         paper.open_cohort(con, b["batch_id"])
     report_mod.build(con)
     return 0 if not rep["failed"] else 1
@@ -1226,6 +1226,29 @@ def cmd_status(args) -> int:
 
 
 
+def _kv_params(items: list[str]) -> dict:
+    """`--param k=v` → run params. `0/1/true/false` become bools, digits ints.
+
+    Exists so an operator can switch a strategy's optional model path off for
+    one replay (`claims_model=0`) without editing code or the env file.
+    """
+    out: dict = {}
+    for it in items:
+        if "=" not in it:
+            raise SystemExit(f"--param 要写成 k=v，收到 {it!r}")
+        k, v = it.split("=", 1)
+        lv = v.strip().lower()
+        if lv in ("1", "true", "yes"):
+            out[k.strip()] = True
+        elif lv in ("0", "false", "no"):
+            out[k.strip()] = False
+        elif lv.lstrip("-").isdigit():
+            out[k.strip()] = int(lv)
+        else:
+            out[k.strip()] = v
+    return out
+
+
 def cmd_weekly(args) -> int:
     """Run one weekly period through 筛选A → 筛选B → 筛选C.
 
@@ -1246,7 +1269,9 @@ def cmd_weekly(args) -> int:
         # weights have seen the world after this date even when the documents
         # have not. `backfill` is how a chart, an export or a PM conversation
         # can tell the two apart without asking anybody.
-        params={"data_classification": args.classification},
+        params={"data_classification": args.classification,
+                **({"supersede_completed": True} if getattr(args, "supersede", False) else {}),
+                **_kv_params(getattr(args, "param", None) or [])},
         dry_run=args.dry_run)
     if res.skipped:
         print(f"\n跳过：{res.skipped}")
@@ -1511,6 +1536,11 @@ def main(argv: list[str] | None = None) -> int:
                    choices=("live", "backfill"),
                    help="backfill = 事后补跑的历史期。文档层面卡死了 as-of，但模型"
                         "权重见过该日期之后的世界，这一点无法用代码消除，只能标注")
+    s.add_argument("--supersede", action="store_true",
+                   help="这一期已经有完成的运行时仍然重跑：旧运行改记为 weekly_superseded"
+                        "（保留其判决与日志），新运行成为这一期的记录")
+    s.add_argument("--param", action="append", metavar="K=V",
+                   help="额外运行参数，可重复；如 claims_model=0 关掉 G 的模型抽取路径")
 
     s = add("backtest-formal", cmd_backtest_formal,
             "正式回测：已存的周跑判决用模拟运行同一套交易规则按当期日历重走一遍")

@@ -1072,7 +1072,8 @@ def state(con=None, p=None) -> dict[str, Any]:
              (_json_value(r["validation"], {}) or {}).get("checks", [])
              if not c.get("ok") and c.get("severity") == "error"})}
         for r in db.q(con, "SELECT batch_id, as_of, n_ideas, status, validation "
-                           "FROM batches WHERE status!='traded' ORDER BY as_of, batch_id")]
+                           "FROM batches WHERE status!='traded' AND batch_id NOT LIKE 'BT-%' "
+                           "ORDER BY as_of, batch_id")]
     # The cash rate the page quotes when it explains where the un-deployed
     # money's return came from. The page used to print a literal "3.72%" and
     # label it "current" — that literal is config.RISK_FREE_ANNUAL, the

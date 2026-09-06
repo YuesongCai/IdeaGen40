@@ -605,6 +605,34 @@ def _merge_pool(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
             vals = [float(r[key]) for r in rows if r.get(key) is not None]
             return round(median(vals), 4) if vals else 0.0
 
+        # Every contributing proposal, whole. `theses` below keys by method and
+        # so keeps one thesis per method; a method that reached GLD through four
+        # topics had three of its arguments overwritten, and the panel then
+        # showed the instrument under a single "main" topic. Jon's reading
+        # (2026-09-06): the topics must not be collapsed — a reader has to be
+        # able to see which topic produced which idea by which method, with the
+        # direction, horizon and scenario odds each one was written with. The
+        # merged row stays the unit of selection; this list is the unit of
+        # explanation, and it is stored with the row so no later reader has to
+        # reopen four generator artifacts to recover it.
+        proposals = [{
+            "id": r.get("id"),
+            "topic_id": str(r.get("topic_id")),
+            "method": str(r.get("method")),
+            "thesis": r.get("thesis"),
+            "upside_pct": r.get("upside_pct"),
+            "downside_pct": r.get("downside_pct"),
+            "p_up": r.get("p_up"), "p_base": r.get("p_base"),
+            "p_down": r.get("p_down"),
+            "horizon_days": r.get("horizon_days"),
+            "vehicle": r.get("vehicle"), "exposure": r.get("exposure"),
+            "citations": [str(x) for x in (r.get("citations") or []) if x],
+        } for r in rows]
+        topic_counts: dict[str, int] = {}
+        for r in rows:
+            t = str(r.get("topic_id"))
+            topic_counts[t] = topic_counts.get(t, 0) + 1
+
         base = dict(rows[0])
         base.update({
             "id": f"pool:{iid}",
@@ -625,6 +653,12 @@ def _merge_pool(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "n_methods": len(methods),
             "n_proposals": len(rows),
             "topics": topics,
+            # Proposals per source topic — the number the topic filter reports
+            # as «想法», next to the instrument count it reports as «标的».
+            "topic_counts": topic_counts,
+            "proposals": proposals,
+            # Kept for readers written against it; `proposals` is the complete
+            # record and this is a per-method sample of it.
             "theses": {str(r.get("method")): r.get("thesis") for r in rows},
         })
         out.append(base)

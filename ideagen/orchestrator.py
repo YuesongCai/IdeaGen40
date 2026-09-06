@@ -286,77 +286,35 @@ def weekly(
             # rather than living in a frozen dictionary — and a discovery step
             # that exists only as a manual CLI command is a frozen dictionary
             # with extra steps, because nobody runs it (the registry sat still
-            # from 08-08 until this was wired). Candidates passing every gate
-            # (docs/institutions/days/lift) are registered append-only with
-            # registered_d = as_of, so replays of earlier weeks still cannot
-            # see them.
+            # from 08-08 until this was wired). The loop itself lives in
+            # `themes.discover` since 2026-09-07 so it can be tested against a
+            # scripted model; what it writes — new themes append-only with
+            # registered_d = as_of, aliases for old themes under new wording,
+            # dated the same way — replays of earlier weeks still cannot see.
+            from . import themes as _themes
             if not dry_run and corpus and not params.get("skip_theme_discovery"):
                 try:
-                    from . import db as _db, themes as _themes
-                    _con = _db.init()
-                    disc = _themes.candidates(_con, as_of)
-                    newly, skipped, cards = [], [], []
-                    # Naming needs the model. Without it, every candidate would
-                    # raise the same rejection and the journal would carry one
-                    # copy per candidate — the shape of noise that hid the
-                    # missing naming step in the first place. Said once, with
-                    # the count it cost.
-                    if getattr(p, "inference", None) is None and disc.get("candidates"):
-                        j.step("theme_discovery",
-                               coverage_pct=disc.get("coverage_pct"),
-                               unmatched=disc.get("unmatched"),
-                               candidates=len(disc["candidates"]),
-                               registered=[],
-                               error="本次运行没有 inference 端口，"
-                                     f"{len(disc['candidates'])} 个候选无法命名")
-                        log(f"  主题发现  {len(disc['candidates'])} 个候选待命名，"
-                            f"但本次运行没有模型端口——本周不注册新主题")
-                        raise _SkipDiscovery
-                    for c in (disc.get("candidates") or []):
-                        # `candidates` returns evidence — terms, counts, doc
-                        # ids — and `validate` requires an id, a label, a key
-                        # question and a price indicator, none of which a
-                        # phrase cluster carries. Every candidate proposed
-                        # since this was wired on 2026-08-26 was therefore
-                        # rejected on arrival, and the registry stood still at
-                        # its two hand-curated rows while `theme_register_failed`
-                        # absorbed the evidence. `mint` is the naming step that
-                        # was missing: it is a semantic judgement (is this a
-                        # macro debate, what else is it called, which listed
-                        # instrument expresses it) and so it needs the model.
-                        try:
-                            card = _themes.mint(_con, c, as_of, p.inference,
-                                                minted=cards)
-                            t = _themes.register(_con, card, as_of)
-                            cards.append(card)
-                            newly.append(t.id)
-                        except _themes.MintSkipped as e:
-                            # Corpus noise the model declined to call a debate.
-                            # A finding, not a failure — 「预览」 recurring in
-                            # forty titles is not a theme, and recording it as
-                            # a failed registration would bury the ones that are.
-                            skipped.append({"terms": (c.get("terms") or [])[:3],
-                                            "why": str(e)[:120]})
-                        except Exception as e:  # noqa: BLE001 — one bad candidate
-                            j.step("theme_register_failed",
-                                   candidate=(c.get("terms") or [None])[0],
-                                   error=str(e)[:200])
-                    j.step("theme_discovery",
-                           coverage_pct=disc.get("coverage_pct"),
-                           unmatched=disc.get("unmatched"),
-                           candidates=len(disc.get("candidates") or []),
-                           skipped=skipped,
-                           registered=newly)
-                    if newly:
-                        log(f"  主题发现  新注册 {len(newly)} 个: {', '.join(newly)}")
-                    else:
-                        log(f"  主题发现  无新主题（研报覆盖率 "
-                            f"{disc.get('coverage_pct')}%）")
-                except _SkipDiscovery:
-                    pass  # already reported, with its own reason
+                    from . import db as _db
+                    _themes.discover(_db.init(), as_of,
+                                     getattr(p, "inference", None),
+                                     step=j.step, log=log)
                 except Exception as e:  # noqa: BLE001 — discovery must not cost the run
                     j.step("theme_discovery", error=f"{type(e).__name__}: {e}")
                     log(f"  ⚠ 主题发现失败（本周用既有注册表继续）: {e}")
+
+            # Freeze the definitions this period scores with, after discovery
+            # has had its say and before 筛选A reads a single document. The
+            # artifact is the full set; `theme_set_sha` travels on the topics
+            # step and every topic verdict, so a score can always be matched to
+            # the vocabulary that produced it. A later registration or alias
+            # dated after this period leaves the sha unchanged — that is the
+            # as-of clamp, made checkable.
+            theme_set = _themes.snapshot(as_of)
+            theme_set_sha = theme_set["theme_set_sha"]
+            j.step("theme_set", sha=theme_set_sha, n_themes=theme_set["n_themes"])
+            if not dry_run:
+                res.artifacts.append(j.artifact("A_theme_set.json", _blob(theme_set)))
+            log(f"  主题定义  {theme_set['n_themes']} 个，sha={theme_set_sha}")
 
             # A run with no corpus is a failed run, not a successful empty one.
             # Every input validates cleanly at zero rows, so without this check the
@@ -405,8 +363,11 @@ def weekly(
                 topics = _topic_rows(tv, as_of)
                 res.topics = tv.chosen
                 res.calls += tv.calls
+                # The verdict names the definition set it scored against.
+                tv.meta["theme_set_sha"] = theme_set_sha
                 j.step("topics", strategy=tv.strategy, version=tv.version,
-                       chosen=tv.chosen, calls=tv.calls)
+                       chosen=tv.chosen, calls=tv.calls,
+                       theme_set_sha=theme_set_sha)
                 res.steps.append("topics")
                 if not dry_run:
                     res.artifacts.append(j.artifact(
@@ -431,6 +392,7 @@ def weekly(
                     except Exception as e:  # noqa: BLE001 — a control must not cost the run
                         j.step(f"topics:{r['name']}", error=f"{type(e).__name__}: {e}")
                         continue
+                    cv.meta["theme_set_sha"] = theme_set_sha
                     if not dry_run:
                         res.artifacts.append(j.artifact(
                             f"A_topics_{r['name']}.json",

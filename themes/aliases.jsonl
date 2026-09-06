@@ -1,0 +1,2 @@
+# 主题别名（append-only）。每行：{"theme_id","terms","as_of","rationale","evidence_doc_ids","candidate_terms"}
+# 同一争论在当期研报里的新叫法归到已注册主题名下；as_of 之前的期看不到这一行。

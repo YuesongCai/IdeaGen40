@@ -300,20 +300,51 @@ def pct_from_52w_high(con, code: str, upto: str) -> float | None:
     return lc[1] / float(r["h"]) - 1
 
 
-def return_percentile(con, code: str, upto: str, window: int, lookback_days: int = 252) -> float | None:
-    """Where the trailing `window`-session return sits in its own 1-year
-    distribution. 0 = worst, 100 = best. Feeds M and C."""
+def return_percentile_detail(con, code: str, upto: str, window: int,
+                             lookback_days: int = 252) -> dict:
+    """`return_percentile`, plus the facts that make its number checkable.
+
+    The bare float could not say *why* it was None, nor how many rolling
+    returns the percentile was taken over, nor which bar was the last one it
+    saw — and a scorer handed a None fills in 50 and moves on. Jon's ask
+    (2026-09-06 §4) is that a P of 50 that was *measured* and a P of 50 that
+    was *filled in* be distinguishable all the way to the panel, and that each
+    theme record its indicator, the date it was clamped to, the sample size,
+    the value and the method. Those facts are born here, so they are returned
+    here rather than reconstructed by a caller that no longer has the rows.
+
+    Keys: `value` (None when not computable), `n_samples` (rolling returns the
+    percentile is taken over), `n_bars` (closes read), `last_d` (newest bar
+    used, ≤ `upto`), `method`, `ok`, and `reason` when not ok.
+    """
     rows = db.q(con, "SELECT d, close FROM prices WHERE code=? AND d<=? ORDER BY d DESC LIMIT ?",
                 (code, upto, lookback_days + window + 1))
+    out = {"value": None, "n_samples": 0, "n_bars": len(rows),
+           "last_d": rows[0]["d"] if rows else None,
+           "method": f"return_percentile_{window}s", "ok": False, "reason": None}
     if len(rows) < window + 30:
-        return None
+        out["reason"] = (f"只有 {len(rows)} 根 K 线，不足 {window + 30} 根"
+                         if rows else "库里没有这个标的的 K 线")
+        return out
     px = [float(r["close"]) for r in reversed(rows)]
     rolls = [px[i] / px[i - window] - 1 for i in range(window, len(px)) if px[i - window]]
+    out["n_samples"] = len(rolls)
     if len(rolls) < 20:
-        return None
+        out["reason"] = f"滚动收益样本只有 {len(rolls)} 个，不足 20 个"
+        return out
     cur = rolls[-1]
     below = sum(1 for x in rolls if x <= cur)
-    return 100.0 * below / len(rolls)
+    out.update(value=100.0 * below / len(rolls), ok=True)
+    return out
+
+
+def return_percentile(con, code: str, upto: str, window: int, lookback_days: int = 252) -> float | None:
+    """Where the trailing `window`-session return sits in its own 1-year
+    distribution. 0 = worst, 100 = best. Feeds M and C.
+
+    Thin wrapper kept for the callers that only want the number; the sample
+    size and cut-off date live in `return_percentile_detail`."""
+    return return_percentile_detail(con, code, upto, window, lookback_days)["value"]
 
 
 def vol_percentile(con, code: str, upto: str, window: int = 20,

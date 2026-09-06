@@ -375,6 +375,24 @@ DDL: tuple[str, ...] = (
        )""",
     "CREATE INDEX IF NOT EXISTS paper_alerts_d "
     "ON paper_alerts (d, level)",
+
+    # Model-extracted opinions (G 分歧), keyed by content hash + extractor
+    # version + theme-set fingerprint. A document is sent to the model once per
+    # question set, however many periods or themes read it afterwards; the
+    # token usage is kept so the cost of the model path is a measured number.
+    # Only successful model output is stored — see `claims.ClaimCache`.
+    """CREATE TABLE IF NOT EXISTS claim_cache (
+         cache_key   TEXT PRIMARY KEY,
+         doc_id      TEXT,
+         extractor   TEXT NOT NULL,
+         theme_fp    TEXT NOT NULL,
+         source      TEXT NOT NULL,
+         model       TEXT,
+         claims      TEXT NOT NULL,
+         usage       TEXT,
+         created_at  TEXT NOT NULL
+       )""",
+    "CREATE INDEX IF NOT EXISTS claim_cache_doc ON claim_cache (doc_id)",
 )
 
 
@@ -694,6 +712,19 @@ MYSQL_DDL: tuple[str, ...] = (
          acknowledged  INTEGER DEFAULT 0,
          KEY paper_alerts_d (d, level)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+    """CREATE TABLE IF NOT EXISTS claim_cache (
+         cache_key   VARCHAR(96) PRIMARY KEY,
+         doc_id      VARCHAR(160),
+         extractor   VARCHAR(40) NOT NULL,
+         theme_fp    VARCHAR(40) NOT NULL,
+         source      VARCHAR(32) NOT NULL,
+         model       VARCHAR(128),
+         claims      LONGTEXT NOT NULL,
+         `usage`     TEXT,
+         created_at  VARCHAR(40) NOT NULL,
+         KEY claim_cache_doc (doc_id)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
 
 
@@ -731,6 +762,7 @@ OWNED: dict[str, tuple[str, ...]] = {
     "paper_marks": ("pos_id", "d", "nav", "market_value"),
     "paper_equity": ("book_id", "d", "cash", "equity", "drawdown"),
     "paper_alerts": ("alert_id", "book_id", "d", "level", "kind"),
+    "claim_cache": ("cache_key", "extractor", "theme_fp", "source", "claims"),
 }
 
 
@@ -879,6 +911,7 @@ CONFLICT_KEY: dict[str, tuple[str, ...]] = {
     "paper_marks": ("pos_id", "d"),
     "paper_equity": ("book_id", "d"),
     "paper_alerts": ("alert_id",),
+    "claim_cache": ("cache_key",),
 }
 
 

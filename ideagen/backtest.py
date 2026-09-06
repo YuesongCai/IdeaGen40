@@ -286,41 +286,16 @@ def _candidates(con, as_of: date) -> list[dict[str, Any]]:
 
 def _prices(con, as_of: date, codes: Iterable[str],
             clamp: dict[str, str]) -> dict[str, Any]:
-    """Per-code price view as of the clamp, plus the statistics stage A reads.
+    """Per-code price view as of the clamp. Compatibility name.
 
-    Every query underneath is bounded by the clamped date, so `priced_in` — where
-    the trailing one-month return sits in its own one-year distribution — cannot
-    be computed from a bar the decision had not seen. That number is the one place
-    a price series feeds a *scoring* decision rather than a mark, which makes it
-    the most valuable thing in this dict and the most damaging to get wrong.
+    The recipe moved to `pricing.price_view` on 2026-09-06 so the live weekly
+    run could build the same view — until then only the backtest ever computed
+    `priced_in`, and every live period scored P = 50 for every theme. Kept here
+    under the old name so the call below, and anything else that reached for
+    it, keeps working; the one recipe now has one home.
     """
-    out: dict[str, Any] = {}
-    for code in sorted({c for c in codes if c}):
-        upto = clamp.get(futu_px.market_of(code), as_of.isoformat())
-        last = futu_px.last_close_on_or_before(con, code, upto)
-        if not last:
-            continue
-        d, close = last
-        pctl = futu_px.return_percentile(con, code, upto, window=21)
-        out[code] = {
-            "d": d, "close": close, "clamped_to": upto,
-            # Two different one-month readings, and they disagree. `priced_in`
-            # normalises the move against the instrument's own year, which is
-            # what stage A wants — "how much of this is already in the price".
-            # `ret_21s` is the raw move, which is what a cross-sectional ranking
-            # wants: over 105 weekly periods the percentile picks the calmest
-            # names at the top of their own range and loses (30% of periods),
-            # the raw return picks the strongest and wins (66%). Carrying only
-            # one of them is what let a "momentum" arm be written against the
-            # wrong one.
-            "priced_in": pctl if pctl is not None else 50.0,
-            "ret_21s": futu_px.trailing_return(con, code, upto, 21),
-            "priced_in_source": "return_percentile_21s" if pctl is not None
-                                else "neutral_default",
-            "vol_pctl": futu_px.vol_percentile(con, code, upto),
-            "sigma_1m": futu_px.horizon_sigma(con, code, upto, months=1),
-        }
-    return out
+    from . import pricing
+    return pricing.price_view(con, as_of, codes, clamp)
 
 
 def _calendar(con, as_of: date) -> tuple[list[dict[str, Any]], int]:

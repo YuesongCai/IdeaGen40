@@ -169,6 +169,25 @@ def cmd_import(args) -> int:
     # nobody can read, the visible result was "the first tables arrived and
     # the later ones silently did not" — which looks like a schema mismatch and is
     # not. Each table now reports its own outcome.
+    # Supersessions first. A period re-run on the laptop (2026-09-07: every
+    # stored week through the corpus-first chain) leaves the old run as
+    # `weekly_superseded` and the new one as the completed `weekly`. The cloud
+    # still holds the old row as `weekly`, and MySQL's unique key on
+    # completed_weekly_as_of would make INSERT IGNORE drop the new row without
+    # a word — the replay would arrive as "nothing changed". Relabel the old
+    # rows the seed says are superseded before any insert touches orch_runs.
+    superseded = 0
+    if "orch_runs" in have:
+        try:
+            ids = [r[0] for r in src.execute(
+                "SELECT run_id FROM orch_runs WHERE kind='weekly_superseded'")]
+            for rid in ids:
+                superseded += p.state.execute(
+                    "UPDATE orch_runs SET kind='weekly_superseded' "
+                    "WHERE run_id=? AND kind='weekly'", (rid,))
+            print(f"  orch_runs: 已取代 {superseded} 行（种子里 {len(ids)} 行标为 superseded）")
+        except Exception as e:  # noqa: BLE001 — reported, then the inserts still run
+            print(f"  orch_runs: 取代标记失败 {type(e).__name__}: {e}")
     moved, report = 0, {}
     for t in TABLES:
         if t not in have:
@@ -205,7 +224,8 @@ def cmd_import(args) -> int:
     try:
         import datetime as _dt
         blob = json.dumps({"at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-                           "added": moved, "tables": report},
+                           "added": moved, "superseded": superseded,
+                           "tables": report},
                           ensure_ascii=False, indent=1).encode()
         p.blobs._c().put_object(p.blobs.bucket, p.blobs._k("seed/last_import.json"),
                                 content=blob)

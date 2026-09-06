@@ -74,6 +74,10 @@ services:
       # 货架侧使用 fixture，真实快照落库后自动切换，不由 scheduler 触发 OAuth。
       IDEAGEN_POC_WEEKLY_MODE: "${IDEAGEN_POC_WEEKLY_MODE:-wisburg-auto}"
       IDEAGEN_CLOUD_WISBURG_ENABLED: "${IDEAGEN_CLOUD_WISBURG_ENABLED:-true}"
+      # 完整链路：全部生成方法与选取策略、5 个主题、每主题 20 条、主题发现开。
+      # 此前默认是 POC 瘦模式（2 生成 / 2 选取 / 3 主题、跳过主题发现），和本机跑的
+      # 不是同一条链，面板上写的也不是它。要回到瘦模式显式设成 0。
+      IDEAGEN_WEEKLY_FULL_CHAIN: "${IDEAGEN_WEEKLY_FULL_CHAIN:-1}"
     volumes:
       - /opt/ideagen/oauth:/run/ideagen-oauth
     restart: always

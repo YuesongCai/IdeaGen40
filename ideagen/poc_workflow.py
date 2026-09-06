@@ -106,6 +106,13 @@ def public_inputs(as_of: date) -> dict[str, list[dict[str, Any]]]:
     return {"corpus": corpus, "universe": universe, "calendar": calendar}
 
 
+def full_chain_enabled() -> bool:
+    """Whether the cloud weekly runs the laptop's full chain (see weekly_kwargs)."""
+    import os
+    v = (os.environ.get("IDEAGEN_WEEKLY_FULL_CHAIN") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
 def classification_for_mode(mode: str) -> str:
     return {
         "public-synthetic": WEEKLY_CLASSIFICATION,
@@ -177,6 +184,16 @@ def weekly_kwargs(as_of: date, *, p: plat.Platform | None = None,
             shelf_mode = "shelf-fixture"
             classification = WISBURG_SHELF_FIXTURE_WEEKLY_CLASSIFICATION
             source = f"wisburg-mcp-rds+{shelf_store.PUBLIC_FIXTURE_SOURCE}"
+        # The POC shape — two generators, two selectors, three topics, no
+        # theme discovery — was the cloud's weekly until 2026-09-07, and it was
+        # not what the laptop ran or what the panel describes. With
+        # IDEAGEN_WEEKLY_FULL_CHAIN set (compose sets it), the node runs the
+        # same chain as the laptop: every registered generator and selector,
+        # five topics, twenty ideas per topic, discovery on. Prices are not
+        # injected here (no OpenD on the node): `orchestrator.weekly` builds
+        # them from the local price table when one exists and marks P as a
+        # default when not.
+        full = full_chain_enabled()
         return {
             "corpus": corpus,
             "universe": universe,
@@ -184,17 +201,18 @@ def weekly_kwargs(as_of: date, *, p: plat.Platform | None = None,
             # feed is more honest than mixing demonstration events into a live
             # research run.
             "calendar": [],
-            "generators": ["ai_native", "carl_constraint"],
-            "selectors": ["buy_all", "spread"],
-            "prices": {},
+            "generators": None if full else ["ai_native", "carl_constraint"],
+            "selectors": None if full else ["buy_all", "spread"],
+            "prices": None if full else {},
             "params": {
-                "top_n": 3,
-                "n": 6,
+                "top_n": 5 if full else 3,
+                "n": 20 if full else 6,
                 "data_classification": classification,
                 "input_source": source,
-                "skip_theme_discovery": True,
+                "skip_theme_discovery": not full,
                 "fixture_id": None,
                 "weekly_mode": "wisburg-auto",
+                "chain": "full" if full else "poc",
                 "shelf_mode": shelf_mode,
                 "requested_weekly_mode": requested_mode,
             },

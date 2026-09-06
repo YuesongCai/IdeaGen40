@@ -340,7 +340,8 @@ def weekly(
                                  f"（模型已见过 {as_of.isoformat()} 之后的世界）")
                     _themes.discover(_db.init(), as_of,
                                      getattr(p, "inference", None),
-                                     step=j.step, log=log, minted_note=note)
+                                     step=j.step, log=log, minted_note=note,
+                                     corpus=corpus)
                 except Exception as e:  # noqa: BLE001 — discovery must not cost the run
                     j.step("theme_discovery", error=f"{type(e).__name__}: {e}")
                     log(f"  ⚠ 主题发现失败（本周用既有注册表继续）: {e}")

@@ -263,7 +263,8 @@ def _text_of(row) -> str:
                                   (row["body"] or "")[:3000])))
 
 
-def window_items(con, as_of: date, days: int = WINDOW_DAYS) -> list[dict]:
+def window_items(con, as_of: date, days: int = WINDOW_DAYS,
+                 corpus: list[dict] | None = None) -> list[dict]:
     """Every window item, each tagged with the registered themes it matched.
 
     `matched` is the list of theme ids (as of `as_of`) whose vocabulary the
@@ -276,10 +277,24 @@ def window_items(con, as_of: date, days: int = WINDOW_DAYS) -> list[dict]:
     """
     themes = lexicon.all_themes(as_of)
     wdays = _window(as_of, days)
-    rows = db.q(con,
-                "SELECT doc_id,line,tier,title,institution,published_d,summary,body "
-                "FROM documents WHERE published_d IN (%s)" % ",".join("?" * len(wdays)),
-                wdays)
+    if corpus is not None:
+        # The run's own corpus, already windowed and as-of clamped by the feed
+        # that produced it. On the cloud node the `documents` table below is
+        # empty — research lives in the state store's `corpus_documents` and
+        # reaches the run only as these rows — so reading the table there
+        # would report 「无新主题」 every week for want of anything to read.
+        wset = set(wdays)
+        rows = [{"doc_id": r.get("doc_id"), "line": r.get("line"),
+                 "tier": int(r.get("tier") or 3), "title": r.get("title"),
+                 "institution": r.get("institution"),
+                 "published_d": r.get("published_d"), "summary": r.get("summary"),
+                 "body": r.get("body")}
+                for r in corpus if str(r.get("published_d") or "") in wset]
+    else:
+        rows = db.q(con,
+                    "SELECT doc_id,line,tier,title,institution,published_d,summary,body "
+                    "FROM documents WHERE published_d IN (%s)" % ",".join("?" * len(wdays)),
+                    wdays)
     out = []
     for r in rows:
         text = _text_of(r)
@@ -371,7 +386,8 @@ def _baseline(con, as_of: date, days: int) -> tuple[dict[str, int], int]:
 
 
 def candidates(con, as_of: date, days: int = WINDOW_DAYS,
-               limit: int = MAX_CANDIDATES, scope: str = SCOPE_ALL) -> dict:
+               limit: int = MAX_CANDIDATES, scope: str = SCOPE_ALL,
+               corpus: list[dict] | None = None) -> dict:
     """Candidate themes mined from the window's documents.
 
     `scope=SCOPE_ALL` (default) mines every document; `SCOPE_UNMATCHED` mines
@@ -384,7 +400,7 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
     if scope not in (SCOPE_ALL, SCOPE_UNMATCHED):
         raise ValueError(f"scope must be {SCOPE_ALL!r} or {SCOPE_UNMATCHED!r}, "
                          f"got {scope!r}")
-    everything = window_items(con, as_of, days)
+    everything = window_items(con, as_of, days, corpus=corpus)
     n_matched_total = sum(1 for it in everything if it["matched"])
     items = (everything if scope == SCOPE_ALL
              else [it for it in everything if not it["matched"]])
@@ -415,18 +431,25 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
         # "光模块" is new, "算力投资" is AI-CAPEX wearing a different collar.
         if any(p in k or k in p for k in known):
             continue
-        lift = (len(ds) / n_win) / ((base_df.get(p, 0) + 1) / (base_n + 1))
-        if lift < MIN_LIFT:
-            continue
+        if base_n:
+            lift = (len(ds) / n_win) / ((base_df.get(p, 0) + 1) / (base_n + 1))
+            if lift < MIN_LIFT:
+                continue
+        else:
+            # No history to compare against (a node whose corpus starts this
+            # week). The lift gate cannot say anything, so it says nothing —
+            # recorded in `gates` below rather than silently passing everyone
+            # as if they had been tested.
+            lift = None
         kept.append({"phrase": p, "docs": ds, "n_docs": len(ds),
                      "n_inst": len(insts[p]), "n_days": len(days_seen[p]),
-                     "lift": round(lift, 2)})
+                     "lift": (round(lift, 2) if lift is not None else None)})
 
     kept = _maximal(kept)
     # Boilerplate is judged only now, on whole phrases. 维持买入评级 is rejected
     # here and takes its fragments with it, because they were absorbed above.
     kept = [k for k in kept if not _noise_composite(k["phrase"])]
-    kept.sort(key=lambda k: (-k["n_docs"], -k["lift"], k["phrase"]))
+    kept.sort(key=lambda k: (-k["n_docs"], -(k["lift"] or 0.0), k["phrase"]))
 
     # Cluster phrases that travel through the same documents. "GLP-1", "减肥药"
     # and "司美格鲁肽" are one theme with three names, and admitting them as
@@ -466,7 +489,8 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
             "n_institutions": len({e["institution"] for e in ev}),
             "n_days": len({e["d"] for e in ev}),
             "tiers": sorted({e["tier"] for e in ev}),
-            "max_lift": max(p["lift"] for p in c["phrases"]),
+            "max_lift": (max((p["lift"] or 0.0) for p in c["phrases"])
+                         if base_n else None),
             "relation": _relation(ds, by_doc),
             # Every document, in a stable order, so a registration can cite
             # its evidence by id rather than by the 14 titles shown below.
@@ -477,7 +501,7 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
                           "matched": list(e["matched"])}
                          for e in ordered[:14]],
         })
-    out.sort(key=lambda c: (-c["n_docs"], -c["max_lift"]))
+    out.sort(key=lambda c: (-c["n_docs"], -(c["max_lift"] or 0.0)))
 
     total = len(everything)
     return {
@@ -493,6 +517,9 @@ def candidates(con, as_of: date, days: int = WINDOW_DAYS,
         "gates": {"min_docs": MIN_DOCS, "min_institutions": MIN_INSTITUTIONS,
                   "min_days": MIN_DAYS, "min_lift": MIN_LIFT,
                   "min_cluster_docs": MIN_CLUSTER_DOCS,
+                  "lift_gate": ("applied" if base_n else
+                                "skipped: no documents before the window"),
+                  "baseline_docs": base_n,
                   "split_share": SPLIT_SHARE, "adjacent_share": ADJACENT_SHARE},
         "candidates": out[:limit],
     }
@@ -626,7 +653,10 @@ MINT_SYSTEM = """你在给一个宏观交易系统整理它自己刚从当周研
 3. 与某个邻近主题是**同一个争论**的，不要写新卡，返回
    {"skip": "与 X 是同一争论", "relation": "same_debate", "of": "邻近主题id",
     "new_terms": ["这簇研报里对它的新叫法", ...], "rationale": "中文说明理由"}。
-   new_terms 只放当周研报里真实出现、词典还没有的叫法。
+   new_terms 只放当周研报标题里逐字出现的**完整词组**（「绩超预期」要写成「业绩超预期」，
+   不能是切碎的片段），而且必须是这个争论的**专有叫法**——「平淡」「议前」这种通用词、
+   以及已被词典里某个词覆盖的说法（含「业绩」的词组对 EARNINGS-QUALITY 就是多余的）
+   都不要写；没有真正的新叫法就把 new_terms 留空。
 4. 与邻近主题同一行业但驱动或验证条件不同的，写新卡，relation 填 "split"，
    of 填被拆出来的那个主题 id；与所有邻近主题都不同的，relation 填 "distinct"。
    两种情况 rationale 都要用中文说清：驱动、验证条件、事件/现金流/风险哪里不同。
@@ -920,10 +950,107 @@ def register(con, row: dict, as_of: date,
 # ---------------------------------------------------------------------------
 # Aliases: merge-by-name, the outcome that is not a registration
 # ---------------------------------------------------------------------------
+# One character, not a run: `_CJK` above is the n-gram tokenizer and takes
+# whole runs. Shadowing it here silently turned every mined phrase into single
+# characters on 2026-09-07 — zero candidates, no error. Named for what it is.
+_CJK_CHAR = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _is_cjk(s: str) -> bool:
+    return bool(_CJK_CHAR.search(s))
+
+
+def complete_phrase(term: str, titles: list[str], *, share: float = 0.8,
+                    max_ext: int = 4) -> str:
+    """Grow an n-gram fragment back into the phrase the titles actually use.
+
+    Discovery mines character n-grams, so a real phrase arrives cut: 「绩超预期」
+    for 业绩超预期, 「期并」 for 预期并上调. Written as an alias, the fragment
+    would match everything the phrase matches *and* whatever else happens to
+    contain the fragment. The repair is mechanical: while one and the same
+    neighbouring character precedes (or follows) at least `share` of the
+    term's occurrences in the evidence titles, that character belongs to the
+    phrase. A neighbour that varies is a word boundary.
+    """
+    t = term
+    for side in ("left", "right"):
+        for _ in range(max_ext):
+            neigh: dict[str, int] = {}
+            total = 0
+            for title in titles:
+                start = 0
+                while True:
+                    i = title.find(t, start)
+                    if i < 0:
+                        break
+                    total += 1
+                    ch = title[i - 1] if side == "left" and i > 0 else (
+                        title[i + len(t)] if side == "right" and i + len(t) < len(title)
+                        else "")
+                    if ch and _CJK_CHAR.match(ch):
+                        neigh[ch] = neigh.get(ch, 0) + 1
+                    start = i + 1
+            if total < 2 or not neigh:
+                break
+            ch, n = max(neigh.items(), key=lambda kv: kv[1])
+            if n / total < share:
+                break
+            t = (ch + t) if side == "left" else (t + ch)
+    return t
+
+
+def alias_terms_ok(theme: "lexicon.Theme", terms: list[str],
+                   titles: list[str] | None) -> tuple[list[str], dict[str, str]]:
+    """Which of the model's `new_terms` may become aliases, and why not the rest.
+
+    Rules, each of which caught a real line on 2026-07-29 before it was
+    written: a fragment is completed against the evidence titles; anything
+    under three CJK characters (four otherwise) is a generic word, not a
+    name (「平淡」「议前」「期并」); a term that contains one of the theme's
+    existing words is kept (redundant for matching, harmless, and real
+    wording); one contained in an existing word is a fragment of it; and when titles are
+    supplied the term must occur verbatim in at least two of them, or it is
+    the model's paraphrase rather than the corpus's wording.
+    """
+    have = [x.lower() for x in theme.terms]
+    ok: list[str] = []
+    why: dict[str, str] = {}
+    for raw in terms:
+        t = str(raw).strip()
+        if not t:
+            continue
+        if titles:
+            t = complete_phrase(t, titles)
+        low = t.lower()
+        if low in have:
+            why[raw] = f"「{t}」已经是它的词项"
+            continue
+        n_min = 3 if _is_cjk(t) else 4
+        if len(t) < n_min:
+            why[raw] = f"「{t}」太短，是通用词不是叫法"
+            continue
+        # A term that *contains* an existing word (「业绩超预期」 for a theme
+        # that already has 「业绩」) is redundant for matching, but harmless,
+        # and it is still the corpus's real wording — written, not refused.
+        outer = [h for h in have if low in h]
+        if outer:
+            why[raw] = f"「{t}」只是词项「{outer[0]}」的片段"
+            continue
+        if titles is not None:
+            hits = sum(1 for x in titles if t in x)
+            if hits < 2:
+                why[raw] = f"「{t}」在证据标题里只逐字出现 {hits} 次"
+                continue
+        if low not in {x.lower() for x in ok}:
+            ok.append(t)
+    return ok, why
+
+
 def add_alias(con, theme_id: str, terms: list[str], as_of: date, *,
               rationale: str = "", evidence_doc_ids: list[str] | None = None,
               candidate_terms: list[str] | None = None,
-              path: Path | None = None) -> dict:
+              path: Path | None = None,
+              titles: list[str] | None = None) -> dict:
     """Record that `theme_id` also goes by `terms` from `as_of` on.
 
     The append-only answer to "same debate, new name". Every rejection below
@@ -950,22 +1077,23 @@ def add_alias(con, theme_id: str, terms: list[str], as_of: date, *,
     if t is None:
         raise RegistrationError(
             f"别名指向的主题 {theme_id!r} 在 {as_of.isoformat()} 尚未注册或不存在")
-    clean = []
-    seen = {x.lower() for x in t.terms}
-    for term in terms:
-        s = str(term).strip()
-        if s and s.lower() not in seen:
-            seen.add(s.lower())
-            clean.append(s)
-    if not clean:
-        raise RegistrationError(
-            f"{theme_id} 的别名没有新词：{list(terms)} 都已经是它的词项")
+    # Ownership first, on the raw words: a word another theme holds is refused
+    # loudly whatever else is wrong with it. Filtering for length or fragments
+    # before this check would let 「通胀」 (two characters) slip past as
+    # "too short" instead of "belongs to INFLATION", and the log would say
+    # the wrong thing about why nothing was written.
+    raw = [str(x).strip() for x in terms if str(x).strip()]
     others = {x.lower() for o in by_id.values() if o.id != theme_id for x in o.terms}
-    stolen = [s for s in clean if s.lower() in others]
+    stolen = [s for s in raw if s.lower() in others]
     if stolen:
         raise RegistrationError(
             f"{theme_id} 的别名 {stolen} 已属于其它已注册主题，会让同一篇研报在 D 里"
             f"被计两次")
+    clean, why = alias_terms_ok(t, raw, titles)
+    if not clean:
+        raise RegistrationError(
+            f"{theme_id} 的别名没有可写的新词：" + ("；".join(why.values())
+                                                if why else f"{raw} 都已经是它的词项"))
     row = {
         "theme_id": theme_id,
         "terms": clean,
@@ -1036,7 +1164,8 @@ def discover(con, as_of: date, infer, *, step=None, log=None,
              limit: int = MAX_CANDIDATES, scope: str = SCOPE_ALL,
              registry_path: Path | None = None,
              aliases_path: Path | None = None,
-             minted_note: str = "") -> dict:
+             minted_note: str = "",
+             corpus: list[dict] | None = None) -> dict:
     """Mine, name and record this week's themes; report through `step`.
 
     Lifted out of the orchestrator on 2026-09-07 so the loop can be exercised
@@ -1058,7 +1187,7 @@ def discover(con, as_of: date, infer, *, step=None, log=None,
     """
     step = step or (lambda name, **f: None)
     log = log or (lambda *a: None)
-    disc = candidates(con, as_of, limit=limit, scope=scope)
+    disc = candidates(con, as_of, limit=limit, scope=scope, corpus=corpus)
     cands = disc.get("candidates") or []
     summary = {"coverage_pct": disc.get("coverage_pct"),
                "unmatched": disc.get("unmatched"),
@@ -1100,7 +1229,9 @@ def discover(con, as_of: date, infer, *, step=None, log=None,
                               rationale=e.rationale,
                               evidence_doc_ids=c.get("doc_ids"),
                               candidate_terms=c.get("terms"),
-                              path=aliases_path)
+                              path=aliases_path,
+                              titles=[str(ev.get("title") or "")
+                                      for ev in (c.get("evidence") or [])])
                     note["alias_written"] = True
                 except RegistrationError as err:
                     note["error"] = str(err)[:200]

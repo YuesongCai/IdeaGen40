@@ -66,7 +66,13 @@ class TheCloudWeeklyIsTheFullChain(unittest.TestCase):
             self.assertFalse(poc_workflow.full_chain_enabled())
 
     def test_compose_turns_it_on_for_the_scheduler(self):
-        text = (ROOT / "deploy" / "compose.yaml").read_text(encoding="utf-8")
+        # `deploy/` is not in the image (the Dockerfile copies six directories
+        # and two entrypoints) and not in the sync gate's checkout either, so
+        # this assertion is about the repository and skips where there is none.
+        path = ROOT / "deploy" / "compose.yaml"
+        if not path.exists():
+            raise unittest.SkipTest("no deploy/compose.yaml here (image or gate checkout)")
+        text = path.read_text(encoding="utf-8")
         self.assertIn('IDEAGEN_WEEKLY_FULL_CHAIN: "${IDEAGEN_WEEKLY_FULL_CHAIN:-1}"', text)
 
     def test_full_chain_means_every_arm_five_topics_and_discovery(self):

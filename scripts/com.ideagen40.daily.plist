@@ -20,7 +20,12 @@
   </array>
   <key>StandardOutPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/daily.log</string>
   <key>StandardErrorPath</key><string>/Users/yuesongcai/IdeaGen40/data/logs/daily.err</string>
-  <key>RunAtLoad</key><false/>
+  <!-- 登录即补跑。日历触发有个不写在文档里的洞：LaunchAgent 只在有人登录之后
+       才存在，而错过的日历任务 launchd 不会补 —— 登录晚于 07:23 的那一天，这一
+       枪就打在空处，没有任何报错。本机的登录时间并不保证早于 07:23。daily.sh
+       自己按 runs 表判断今天跑没跑过（周末直接退出），所以这里可以放心每次加载
+       都敲一次门。 -->
+  <key>RunAtLoad</key><true/>
   <!-- If the Mac was asleep at the fire time, run as soon as it wakes. -->
   <key>StartCalendarIntervalIgnoresSystemSleep</key><true/>
 </dict>

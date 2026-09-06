@@ -25,6 +25,44 @@ for f in data/logs/daily.log data/logs/scheduler_tick.log; do
   }
 done
 [ -f "$HOME/.ideagen.env" ] && set -a && . "$HOME/.ideagen.env" && set +a
+
+# 只跑一次，但一定要跑到。
+#
+# launchd 的日历触发有个洞：LaunchAgent 只在有人登录之后才存在，而错过的日历
+# 任务它不会补 —— 登录晚于 07:23 的那一天，这一枪就打在空处，`runs` 不动、没有
+# 任何报错。这台机器的登录时间并不保证早于 07:23（2026-09-05 是 04:51 开机、
+# 09:03 才登录控制台；那天是周六没轮到它，同样的时间差落在工作日就是一次静默
+# 漏跑）。所以 plist 配了 RunAtLoad=true：每次加载都来敲一次门，由这里判断今天
+# 该不该开门。
+#
+# 判据是**结果**（runs 表里今天有没有一次成功），不是本脚本自己记的账：自己记的
+# 账会在「记完了但活没干成」的那半秒里说谎。已经跑过就整段退出，因为下面的快照
+# 发布和状态推送都不便宜（一次 65MB），每次登录重跑一遍是另一种坏掉。
+TODAY="$(TZ=Asia/Hong_Kong date +%F)"
+if [ "${IDEAGEN_DAILY_FORCE:-0}" != "1" ]; then
+  if [ "$(TZ=Asia/Hong_Kong date +%u)" -gt 5 ]; then
+    echo "$TODAY 是周末，daily 不跑（要强制：IDEAGEN_DAILY_FORCE=1）"
+    exit 0
+  fi
+  if "$PYBIN" - "$TODAY" <<'PYEOF'
+import os, pathlib, sqlite3, sys
+db = pathlib.Path(os.environ.get("IDEAGEN_DB", "data/ideagen.db"))
+if not db.exists():
+    raise SystemExit(1)                      # 没有库 = 今天当然还没跑过
+con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+try:
+    row = con.execute("SELECT 1 FROM runs WHERE as_of=? AND status='ok' "
+                      "LIMIT 1", (sys.argv[1],)).fetchone()
+except sqlite3.Error:
+    raise SystemExit(1)                      # 读不到 ≠ 跑过了，宁可多跑一次
+raise SystemExit(0 if row else 1)
+PYEOF
+  then
+    echo "$TODAY 已经有一次成功的 daily，跳过（要强制：IDEAGEN_DAILY_FORCE=1）"
+    exit 0
+  fi
+fi
+
 echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
 
 # doctor is informational: it prints what is reachable and exits non-zero only if
@@ -69,18 +107,17 @@ if ! "$PYBIN" scripts/push_state_to_cloud.py; then
   echo "WARN: 状态快照未发布到对象存储；云端页面会停在上一份快照"
 fi
 
-# The artifacts travel separately from the state, and until 2026-09-05 they did
-# not travel at all: the display node reads a different bucket from the one the
-# weekly run writes to, so every 运行日志 opened empty and 「问它为什么这么选」
-# had nothing but the verdicts row the database carried over. Same non-fatal
-# treatment — the objects are immutable and already-present ones are skipped, so
-# a failed pass costs nothing but a retry tomorrow.
-if ! "$PYBIN" scripts/push_runs_to_cloud.py --kinds weekly --runs 4; then
-  echo "WARN: 周跑产物未镜像到云端桶；云端的运行日志与追问材料会缺当期产物"
-fi
-# Monitor journals are small and there are ~96 a day, so this bounds itself to
-# the last day rather than the whole history: enough that a reader opening
-# 「最近一次盯市」 on the cloud node sees the same timeline the runner sees.
-if ! "$PYBIN" scripts/push_runs_to_cloud.py --kinds monitor --runs 100; then
-  echo "WARN: 盯市日志未镜像到云端桶；云端只能看到 orch_runs 的起止行"
-fi
+# The artifacts used to be mirrored here, bounded to the newest four weekly
+# runs — and that bound is narrower than the gap between two firings of this
+# script, which is how a window loses things. Five weekly backfills ran on
+# 2026-09-04 after that morning's 07:23; by the next scheduled firing (Monday
+# 09-08) the two oldest had already fallen out of `--runs 4` and no timer would
+# ever have carried them. The leg now lives on the ten-minute tick, where a
+# window of four cannot be outrun, and where a failure raises the same
+# throttled alert as the code and data legs instead of a WARN in this log:
+#
+#   python3 scripts/sync_to_cloud.py --only artifacts
+#
+# Deliberately not also called from here. Two mirrors racing on the same new
+# object would have one of them refused by the destination's no-overwrite rule
+# and reported as a failure that is not one.

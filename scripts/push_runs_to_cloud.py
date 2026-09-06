@@ -59,6 +59,72 @@ def runs_to_mirror(p, n: int, kinds: tuple[str, ...]) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def mirror(runs: int, kinds: tuple[str, ...], dry_run: bool = False,
+           say=print) -> dict:
+    """Move the artifacts of the last `runs` runs of `kinds` into production.
+
+    Returns counts rather than only printing them, because the caller is a
+    machine now: `sync_to_cloud.py` runs this on its ten-minute tick.
+    """
+    from ideagen import platform as plat
+    src = plat.load().blobs
+    dst = production_blobs()
+    if getattr(src, "bucket", None) == dst.bucket and \
+            getattr(src, "prefix", "") == dst.prefix:
+        say("源与目标是同一个桶和前缀，无需镜像")
+        return {"ok": True, "moved": 0, "skipped": 0, "failed": 0,
+                "absent": 0, "runs": 0, "noop": True,
+                "detail": "源与目标同桶，无需镜像"}
+
+    p = plat.load()
+    found = runs_to_mirror(p, runs, kinds)
+    if not found:
+        say(f"orch_runs 里没有 kind in {kinds} 的成功运行")
+        return {"ok": False, "moved": 0, "skipped": 0, "failed": 0,
+                "absent": 0, "runs": 0,
+                "detail": f"orch_runs 里没有 kind in {kinds} 的成功运行"}
+
+    moved = skipped = failed = absent = 0
+    for r in found:
+        prefix = f"runs/{r['as_of']}/{r['run_id']}/"
+        keys = sorted(src.list(prefix))
+        if not keys:
+            # Runs from before journals were written have nothing to mirror.
+            # That is an absence, not a failure — see the BlobMissing split.
+            absent += 1
+            say(f"⚠ {r['run_id']}（{r['as_of']} 期）在源桶里没有产物")
+            continue
+        say(f"{r['run_id']} · {r['as_of']} 期 · {len(keys)} 件")
+        for k in keys:
+            # The destination refuses overwrites by design, and an artifact is
+            # immutable, so an object already there is already correct.
+            if dst.exists(k):
+                skipped += 1
+                continue
+            if dry_run:
+                say(f"  会发 {k}")
+                moved += 1
+                continue
+            try:
+                dst.put(k, src.get(k), content_type="application/json")
+                moved += 1
+            except Exception as e:  # noqa: BLE001 — one bad object, not the batch
+                failed += 1
+                say(f"  ✗ {k}: {type(e).__name__}: {e}")
+    verb = "会发" if dry_run else "已发"
+    say(f"{verb} {moved} 件 · 已存在跳过 {skipped} 件"
+        + (f" · 失败 {failed} 件" if failed else ""))
+    say(f"目标 tos://{dst.bucket}/{dst.prefix}")
+    detail = f"{verb} {moved} 件，已在云端 {skipped} 件"
+    if absent:
+        detail += f"，{absent} 次运行本就没有产物"
+    if failed:
+        detail += f"，失败 {failed} 件"
+    return {"ok": not failed, "moved": moved, "skipped": skipped,
+            "failed": failed, "absent": absent, "runs": len(found),
+            "detail": detail}
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=1,
@@ -68,50 +134,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    from ideagen import platform as plat
-    src = plat.load().blobs
-    dst = production_blobs()
-    if getattr(src, "bucket", None) == dst.bucket and \
-            getattr(src, "prefix", "") == dst.prefix:
-        print("源与目标是同一个桶和前缀，无需镜像")
-        return 0
-
-    p = plat.load()
     kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
-    runs = runs_to_mirror(p, args.runs, kinds)
-    if not runs:
-        print(f"orch_runs 里没有 kind in {kinds} 的成功运行")
-        return 1
-
-    moved = skipped = failed = 0
-    for r in runs:
-        prefix = f"runs/{r['as_of']}/{r['run_id']}/"
-        keys = sorted(src.list(prefix))
-        if not keys:
-            print(f"⚠ {r['run_id']}（{r['as_of']} 期）在源桶里没有产物")
-            continue
-        print(f"{r['run_id']} · {r['as_of']} 期 · {len(keys)} 件")
-        for k in keys:
-            # The destination refuses overwrites by design, and an artifact is
-            # immutable, so an object already there is already correct.
-            if dst.exists(k):
-                skipped += 1
-                continue
-            if args.dry_run:
-                print(f"  会发 {k}")
-                moved += 1
-                continue
-            try:
-                dst.put(k, src.get(k), content_type="application/json")
-                moved += 1
-            except Exception as e:  # noqa: BLE001 — one bad object, not the batch
-                failed += 1
-                print(f"  ✗ {k}: {type(e).__name__}: {e}")
-    verb = "会发" if args.dry_run else "已发"
-    print(f"{verb} {moved} 件 · 已存在跳过 {skipped} 件"
-          + (f" · 失败 {failed} 件" if failed else ""))
-    print(f"目标 tos://{dst.bucket}/{dst.prefix}")
-    return 1 if failed else 0
+    out = mirror(args.runs, kinds, args.dry_run)
+    return 0 if out["ok"] and (out["runs"] or out.get("noop")) else 1
 
 
 if __name__ == "__main__":

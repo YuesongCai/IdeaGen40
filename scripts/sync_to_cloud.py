@@ -20,7 +20,7 @@ and to make drift audible. A sync that cannot prove it worked reports failure.
     python3 scripts/sync_to_cloud.py --dry-run  # decide, don't act
     python3 scripts/sync_to_cloud.py --status   # what happened last time
 
-Two legs, deliberately different in how brave they are:
+Three legs, deliberately different in how brave they are:
 
   code  local `main` ahead of `origin/main` -> run the full suite against a
         clean export of HEAD -> push -> re-fetch and confirm `origin/main` now
@@ -33,6 +33,13 @@ Two legs, deliberately different in how brave they are:
         upload 65MB every tick forever: the dashboard process writes to the
         database on every page view, so the byte-level "unchanged?" test in
         `push_state_to_cloud` almost never fires.
+
+  artifacts  the journals and candidate pools a run writes go to a different
+        bucket from the one the display node reads, so they need mirroring of
+        their own. This lived in `daily.sh` until 2026-09-06 and was bounded to
+        the newest four weekly runs — a window narrower than the gap between
+        two firings of a weekday-morning timer, which is a window that loses
+        things. See `artifacts_leg`.
 
 Neither leg carries configuration. `runtime.env` and the boot script reach the
 instances through cloud-init and need a reboot; nothing here changes that, and
@@ -453,6 +460,113 @@ def data_leg(st: dict, dry_run: bool, force: bool) -> dict:
     return out
 
 
+#: How far back each kind of run is re-scanned when that kind gains a run. The
+#: mirror skips objects the destination already holds, so these bound the
+#: *scan*, not the upload. Twelve weekly runs is every weekly run this project
+#: has ever had; the old bound of four is what let a five-run backfill push two
+#: of them out of reach forever. One hundred monitor runs is about a day at one
+#: every fifteen minutes.
+ARTIFACT_SCAN = (("weekly", 12), ("monitor", 100))
+
+
+def artifacts_fingerprint() -> dict[str, str]:
+    """The newest successful run of each mirrored kind, kind by kind.
+
+    Same reasoning as `content_fingerprint`: without a gate this leg would ask
+    the object store several hundred "do you already have this?" questions
+    every ten minutes forever. Kept per kind rather than as one combined string
+    because monitor runs land every fifteen minutes and weekly runs land once a
+    week — sharing a fingerprint would make every monitor run trigger a full
+    weekly rescan for nothing.
+    """
+    src = ROOT / "data" / "ideagen.db"
+    if not src.exists():
+        raise RuntimeError(f"找不到状态库 {src}")
+    con = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    try:
+        out = {}
+        for kind, _ in ARTIFACT_SCAN:
+            try:
+                row = con.execute("SELECT max(started_at) FROM orch_runs "
+                                  "WHERE kind=? AND ok=1", (kind,)).fetchone()
+                out[kind] = str(row[0]) if row and row[0] else ""
+            except sqlite3.Error:
+                out[kind] = ""  # a table this build lacks is not a change
+    finally:
+        con.close()
+    return out
+
+
+def artifacts_leg(st: dict, dry_run: bool, force: bool) -> dict:
+    """Mirror run artifacts into the bucket the display node reads.
+
+    This used to hang off `daily.sh`, which fires at 07:23 on weekdays and
+    mirrors the newest four weekly runs. Those two numbers are incompatible:
+    a burst of runs between two firings loses whatever the burst pushes past
+    position four, permanently, because the next firing scans a window that
+    has already moved past it.
+
+    That is not hypothetical. Five weekly backfills ran on 2026-09-04 between
+    09:18 and 14:02 — after that morning's 07:23. The next scheduled firing
+    was Monday 09-08, by which time the two oldest (2026-08-19 期 and
+    2026-08-26 期) had fallen out of `--runs 4` and would never have been
+    mirrored by any timer at all. All six sat unmirrored across the weekend,
+    which on the display node reads as six empty 运行日志 and a 追问 with no
+    candidate pool behind it. Found by hand on 09-06: 88 objects.
+
+    A ten-minute tick cannot be outrun by a window of four the way a
+    once-a-weekday tick can, and it puts this under the same throttled failure
+    alert as the code and data legs instead of a WARN in a log nobody opens.
+    """
+    out: dict = {"leg": "artifacts", "at": now()}
+    fp = artifacts_fingerprint()
+    out["fingerprint"] = fp
+    seen = st.get("artifacts_fingerprint")
+    if not isinstance(seen, dict):
+        seen = {}                      # an older run stored one combined string
+    todo = [(k, n) for k, n in ARTIFACT_SCAN if force or seen.get(k) != fp[k]]
+    if not todo:
+        out.update(action="none", ok=True, detail="没有新的运行产物")
+        return out
+
+    import push_runs_to_cloud as runs_mirror
+    ok, moved, details = True, 0, []
+    done: dict[str, str] = {}
+    for kind, n in todo:
+        try:
+            r = runs_mirror.mirror(n, (kind,), dry_run)
+        except Exception as e:  # noqa: BLE001 — one kind must not kill the other
+            ok = False
+            details.append(f"{kind} 出错：{type(e).__name__}: {e}"[:150])
+            continue
+        if not r["runs"] and not r.get("noop"):
+            # Nothing of this kind has ever run successfully. Not this leg's
+            # failure — it moves what exists — but worth saying out loud.
+            details.append(f"{kind} 没有可镜像的运行")
+            continue
+        if r["ok"]:
+            # Record per kind, and only the kinds that actually finished. A
+            # kind that failed keeps its old fingerprint so the next tick
+            # retries it instead of concluding, from its own bookkeeping, that
+            # the work is done.
+            done[kind] = fp[kind]
+        ok = ok and r["ok"]
+        moved += r["moved"]
+        details.append(f"{kind} {r['detail']}")
+
+    detail = "；".join(details)[:300]
+    if dry_run:
+        out.update(action="would-mirror", ok=ok, detail=detail)
+        return out
+    if done:
+        st["artifacts_fingerprint"] = {**seen, **done}
+    if not ok:
+        out.update(action="mirror-failed", ok=False, detail=detail)
+        return out
+    out.update(action="mirrored" if moved else "none", ok=True, detail=detail)
+    return out
+
+
 # ----------------------------------------------------------------------- main
 
 def holder_alive() -> bool:
@@ -480,7 +594,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--status", action="store_true", help="打印上次结果后退出")
     ap.add_argument("--force-data", action="store_true",
                     help="内容指纹未变也发布快照")
-    ap.add_argument("--only", choices=("code", "data"), help="只跑一条腿")
+    ap.add_argument("--force-artifacts", action="store_true",
+                    help="指纹未变也重扫一遍运行产物")
+    ap.add_argument("--only", choices=("code", "data", "artifacts"),
+                    help="只跑一条腿")
     args = ap.parse_args(argv)
 
     st = load_state()
@@ -522,18 +639,26 @@ def main(argv: list[str]) -> int:
 
     results = []
     try:
-        if args.only != "data":
+        if args.only not in ("data", "artifacts"):
             try:
                 results.append(code_leg(st, args.dry_run))
             except Exception as e:  # noqa: BLE001 — one leg must not kill the other
                 results.append({"leg": "code", "at": now(), "ok": False,
                                 "action": "error",
                                 "detail": f"{type(e).__name__}: {e}"[:300]})
-        if args.only != "code":
+        if args.only not in ("code", "artifacts"):
             try:
                 results.append(data_leg(st, args.dry_run, args.force_data))
             except Exception as e:  # noqa: BLE001 — see above
                 results.append({"leg": "data", "at": now(), "ok": False,
+                                "action": "error",
+                                "detail": f"{type(e).__name__}: {e}"[:300]})
+        if args.only not in ("code", "data"):
+            try:
+                results.append(
+                    artifacts_leg(st, args.dry_run, args.force_artifacts))
+            except Exception as e:  # noqa: BLE001 — see above
+                results.append({"leg": "artifacts", "at": now(), "ok": False,
                                 "action": "error",
                                 "detail": f"{type(e).__name__}: {e}"[:300]})
     finally:

@@ -221,7 +221,25 @@ def weekly(
             generating = candidates is None
             candidates = candidates or []
             calendar = calendar or []
-            prices = prices or {}
+            # P 已定价 is computed from stored bars, and until 2026-09-06 no
+            # live entry point handed any in: `cli weekly`, `clauderun` and
+            # `poc_workflow` all arrived here with `prices=None`, the line
+            # below turned it into `{}`, and every live period scored P = 50
+            # for every theme while the panel drew it as a reading (Jon §4).
+            # None now means "build it the way the backtest does"; an explicit
+            # `{}` still means "score with no prices" — the public synthetic
+            # path wants exactly that — but it is journaled as such, so a
+            # period whose P was never measured says so in its own record.
+            prices, price_step = _price_inputs(p, as_of, prices, dry_run)
+            j.step("prices", **price_step)
+            if price_step.get("error") or price_step.get("skipped"):
+                log(f"  行情  {price_step.get('error') or price_step.get('skipped')}"
+                    f"——本期 P 已定价全部为缺数默认值，不是读数")
+            else:
+                log(f"  行情  {price_step['codes']} 个指示标的，实测 "
+                    f"{price_step['measured']} · 缺数默认 {price_step['defaulted']}"
+                    f" · 无序列 {price_step['missing']}"
+                    f"（截止 {price_step.get('last_d')}，来源 {price_step['source']}）")
 
             # The mandate limits expression to funds, ETFs and daily-dealing hedge
             # funds. Applying that here, once, is what stops it from becoming four
@@ -393,10 +411,15 @@ def weekly(
             log(f"  inputs  corpus={len(corpus)} candidates={len(candidates)} "
                 f"calendar={len(calendar)} sha={inputs_sha}")
 
+            # The claim cache rides on the state store so a document the
+            # model has already read for G is not paid for again next period;
+            # a dry run writes nothing, so it gets none.
+            from . import claims as _claims
             ctx = strat.RunContext(
                 as_of=as_of, inputs_sha=inputs_sha, corpus=corpus,
                 candidates=candidates, prices=prices, calendar=calendar,
-                params=params, infer=(None if dry_run else p.inference))
+                params=params, infer=(None if dry_run else p.inference),
+                claim_cache=(None if dry_run else _claims.ClaimCache(p.state)))
 
             # ---- 筛选A: corpus → 5 topics ----------------------------------
             topics: list[dict[str, Any]] = []
@@ -669,6 +692,53 @@ def _reason_counts(excluded: dict[str, str]) -> dict[str, int]:
     for r in excluded.values():
         out[r] = out.get(r, 0) + 1
     return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+
+def _price_inputs(p, as_of: date, prices: dict[str, Any] | None,
+                  dry_run: bool) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The price view stage A scores P from, and the journal line that says
+    where it came from.
+
+    Three inputs are told apart because they used to collapse into one `{}`:
+
+      * `prices` given (even empty) — injected by the caller; a replay or the
+        synthetic path. Used as is, and counted, so an injected `{}` is
+        recorded as "0 measured" rather than looking like a quiet week.
+      * `prices` None, live run — built from stored bars for every indicator
+        of every theme registered as of `as_of`, with the backtest's clamp.
+      * `prices` None, but no bar table is reachable (a state engine with no
+        sqlite connection, or a database that has never had prices) — an
+        empty view, with `error` naming the reason. This is the case that
+        must not return quietly: an empty dict here means every theme's P is
+        a fill, and a summary that said `codes=0` without a reason would read
+        as "nothing to price" rather than "could not price".
+
+    The connection is the state store's own, read-only. `futu_px` only reads
+    here, so the transaction-mode mismatch that makes `scheduler._legacy_con`
+    insist on `db.init()` for *writes* does not apply — and reaching for
+    `db.init()` would open whatever `IDEAGEN_DB` points at, which is not the
+    store this run is writing its verdicts to.
+    """
+    from . import pricing
+    if prices is not None:
+        summ = pricing.summarize(prices)
+        return prices, {**summ, "source": "injected"}
+    if dry_run:
+        return {}, {"codes": 0, "measured": 0, "defaulted": 0, "missing": 0,
+                    "source": "none", "skipped": "dry_run，未读取行情"}
+    con = getattr(p.state, "connection", None)
+    if con is None:
+        return {}, {"codes": 0, "measured": 0, "defaulted": 0, "missing": 0,
+                    "source": "none",
+                    "error": f"状态库引擎 {getattr(p.state, 'dialect', '?')} "
+                             f"没有本地 K 线表可读"}
+    try:
+        built, summ = pricing.build_prices(con, as_of)
+    except Exception as e:  # noqa: BLE001 — P must degrade to "unmeasured", loudly
+        return {}, {"codes": 0, "measured": 0, "defaulted": 0, "missing": 0,
+                    "source": "none",
+                    "error": f"读取 K 线失败：{type(e).__name__}: {e}"}
+    return built, {**summ, "source": "built:prices-table"}
 
 
 def _topic_rows(tv, as_of: date) -> list[dict[str, Any]]:

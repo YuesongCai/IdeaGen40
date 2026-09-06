@@ -17,10 +17,28 @@ import statistics as st
 from collections import defaultdict
 from typing import Any
 
+from .. import claims as _claims
 from ..strategy import RunContext, Verdict, register
 
 WEIGHTS = {"H": 0.30, "G": 0.25, "E": 0.25, "P": 0.20}
+
+#: The category → score table E used until 2026-09-06. Kept only to compute
+#: `E_category_legacy`, the control. It is the coding Jon showed inverting the
+#: evidence order: 「政策尚未落地」 → policy → 100, 「盈利预测缺乏依据」 →
+#: earnings → 75, 「订单已签署并完成交付」 → orders, unmapped → 25.
 DEPTH = {"policy": 100, "earnings": 75, "price": 50, "other": 25}
+
+#: How many documents per period the claim model may be asked to read. Beyond
+#: it, documents take the clause path and the cap is reported in `meta`, so a
+#: period that was partly mechanical says so. A cap rather than "all": the
+#: first period after a theme change misses the cache for every document, and
+#: an unbounded pass would put several hundred sequential calls in front of
+#: stage B.
+CLAIMS_MODEL_MAX_DOCS = 300
+
+#: Value P takes when it was not measured. It is not a reading and every row
+#: that carries it says so (`P_measured=False`, `p_source="neutral_default"`).
+P_NEUTRAL = 50.0
 
 
 def _partition_factors(dispersion: dict) -> tuple[list, float, list, list]:
@@ -46,12 +64,18 @@ def _partition_factors(dispersion: dict) -> tuple[list, float, list, list]:
 
 
 def _ranking_note(inert: list[str], inert_weight: float,
-                  live: list[str], unmeasured: list[str]) -> str:
+                  live: list[str], unmeasured: list[str],
+                  defaulted: dict[str, tuple[int, int]] | None = None) -> str:
     """What actually decided the ranking, with every factor accounted for.
 
     Each factor lands in exactly one of three states and every state is said
     out loud, so `len(inert) + len(live) + len(unmeasured) == len(WEIGHTS)`
     holds by construction rather than by a number someone typed.
+
+    `defaulted` — {factor: (n_default, n_total)} — is a fourth thing to say
+    that is not a fourth state: a factor can be inert *because* every topic
+    got the same fill-in value, and 「P 对所有主题取值相同」 alone would let
+    that read as a measurement that happened to agree. The fill is named.
     """
     parts = []
     if inert:
@@ -59,6 +83,10 @@ def _ranking_note(inert: list[str], inert_weight: float,
                      f"{inert_weight:.2f} 不参与排序")
     if unmeasured:
         parts.append(f"{'、'.join(unmeasured)} 没有取到值，未参与打分")
+    for f, (n_def, n_tot) in sorted((defaulted or {}).items()):
+        if n_def:
+            parts.append(f"{f} 有 {n_def}/{n_tot} 个主题是缺数默认值（不是读数）"
+                         + ("，全部未测量" if n_def == n_tot else ""))
     if not parts:
         return f"本期 {len(WEIGHTS)} 个因子都有区分度"
     # Every factor inert or unmeasured is not a weaker version of the normal
@@ -87,15 +115,56 @@ def hgep(ctx: RunContext) -> Verdict:
                        meta={"error": "no topics registered as of this date"})
 
     hits: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    doc_themes: dict[int, list[Any]] = defaultdict(list)
     for doc in ctx.corpus:
-        text = " ".join(filter(None, (doc.get("title"), doc.get("summary"),
-                                      (doc.get("body") or "")[:3000])))
+        text = _claims.doc_text(doc)
         for t in topics:
             n = _match(text, t.terms)
             # A single keyword is a mention, not evidence: require two terms, or
             # one plus enough body to be a scoreable document.
             if n >= 2 or (n == 1 and len(text) >= 400):
                 hits[t.id].append({**doc, "hits": n})
+                doc_themes[id(doc)].append(t)
+
+    # G's input: every matched document read once, against every theme it
+    # matched, into object-anchored claims (see `claims.py`). The model path
+    # is taken when a real inference port is present and the run has not
+    # opted out; a replay port is excluded because its FIFO fallback would
+    # hand a claim prompt a generator's recorded answer.
+    use_model = (ctx.infer is not None
+                 and bool(ctx.params.get("claims_model", True))
+                 and not getattr(ctx.infer, "replay_only", False))
+    max_docs = int(ctx.params.get("claims_model_max_docs", CLAIMS_MODEL_MAX_DOCS))
+    claims_by_theme: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    receipts = {"docs": 0, "model": 0, "model_cache": 0, "clause": 0,
+                "fallback": 0, "capped": 0, "calls": 0,
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+                          "total_tokens": 0}}
+    model_calls = 0
+    for doc in ctx.corpus:
+        themes_for = doc_themes.get(id(doc))
+        if not themes_for:
+            continue
+        receipts["docs"] += 1
+        infer = ctx.infer if use_model and model_calls < max_docs else None
+        if use_model and infer is None:
+            receipts["capped"] += 1
+        rows, rc = _claims.extract_claims_detailed(
+            doc, themes_for, infer=infer, cache=ctx.claim_cache if infer else None)
+        model_calls += rc["calls"]
+        receipts["calls"] += rc["calls"]
+        if rc["error"]:
+            receipts["fallback"] += 1
+        elif rc["source"] == "model":
+            receipts["model"] += 1
+        elif rc["source"] == "model:cache":
+            receipts["model_cache"] += 1
+        else:
+            receipts["clause"] += 1
+        for k in receipts["usage"]:
+            receipts["usage"][k] += int((rc.get("usage") or {}).get(k) or 0)
+        for c in rows:
+            claims_by_theme[c["theme_id"]].append(c)
 
     counts = {tid: len(v) for tid, v in hits.items()}
     loudest = max(counts.values()) if counts else 0
@@ -116,31 +185,93 @@ def hgep(ctx: RunContext) -> Verdict:
         accel = 100.0 * len([e for e in ev if e.get("published_d") == newest]) / len(ev)
         H = 0.60 * level + 0.40 * accel
 
-        # G — disagreement. Mechanical fallback: spread of stance across evidence.
+        # G — disagreement, from the claims attributed to *this* theme: one
+        # institution, one direction, one vote (框架 §12). The whole-document
+        # word-list coding is kept beside it as `G_keyword`, the control —
+        # on a single-object document the two agree, and where they part is
+        # exactly the multi-object / rate-object case the claim path exists for.
+        titles = {e.get("doc_id"): e.get("title") or "" for e in ev}
+        g_detail = _claims.disagreement(claims_by_theme.get(t.id, []), titles)
+        G = _claims.g_score(g_detail["n_pos"], g_detail["n_neg"])
         stances = [lexicon.stance_of(
             " ".join(filter(None, (e.get("title"), e.get("summary"))))) for e in ev]
-        pos, neg = stances.count(1), stances.count(-1)
-        G = 0.0 if not (pos + neg) else 100.0 * (1 - abs(pos - neg) / (pos + neg))
+        kpos, kneg = stances.count(1), stances.count(-1)
+        G_keyword = _claims.g_score(kpos, kneg)
+        g_source = ("model" if g_detail["source_mix"].get("model")
+                    else "clause" if g_detail["n_claims"] else "none")
 
         # E — how far down the causal chain the strongest evidence sits.
-        depths = sorted((DEPTH.get(lexicon.fact_type_of(
-            " ".join(filter(None, (e.get("title"), e.get("summary"))))), 25)
-            for e in ev if int(e.get("tier") or 3) <= 2), reverse=True)[:3]
-        E = float(st.mean(depths)) if depths else 25.0
+        # Causal depth per docs/scoring_a_hgep.xml (25 叙事 / 50 价格已动 /
+        # 75 订单收入 / 100 利润实现·政策落地·签约), read clause by clause
+        # with the unrealised downgrade, then the three strongest *distinct*
+        # facts — one per institution (or title signature), so a fact retold
+        # by four outlets is one fact, not four (H already counts the outlets).
+        #
+        # What is NOT settled here: the 0.25 weight, and whether E should
+        # filter for "solid" themes at all — Jon (2026-09-06 §3) has not
+        # accepted any replacement and an early-stage theme may be the
+        # better research object. Only the confirmed implementation faults
+        # are fixed (inverted ordering, missing orders tier, retell
+        # inflation). Both codings are recorded so the comparison can be run
+        # on real periods before either is argued for.
+        e_by_key: dict[str, dict[str, Any]] = {}
+        legacy_depths = []
+        for e in ev:
+            if int(e.get("tier") or 3) > 2:
+                continue
+            etext = " ".join(filter(None, (e.get("title"), e.get("summary"))))
+            legacy_depths.append(DEPTH.get(lexicon.fact_type_of(etext), 25))
+            dd = lexicon.depth_detail(etext)
+            key = (f"inst:{e['institution']}" if e.get("institution")
+                   else "sig:" + lexicon.title_signature(e.get("title") or ""))
+            row = {"doc_id": e.get("doc_id"), "title": (e.get("title") or "")[:80],
+                   "tier": int(e.get("tier") or 3), "depth": dd["depth"],
+                   "raw_depth": dd["raw_depth"], "matched": dd["matched"],
+                   "clause": dd["clause"], "downgraded": dd["downgraded"],
+                   "marker": dd["marker"], "institution": e.get("institution"),
+                   "fact_type_legacy": lexicon.fact_type_of(etext),
+                   "dedupe_key": key}
+            if key not in e_by_key or row["depth"] > e_by_key[key]["depth"]:
+                e_by_key[key] = row
+        e_detail = sorted(e_by_key.values(), key=lambda r: -r["depth"])[:3]
+        E = float(st.mean(r["depth"] for r in e_detail)) if e_detail else 25.0
+        legacy_top = sorted(legacy_depths, reverse=True)[:3]
+        E_category_legacy = float(st.mean(legacy_top)) if legacy_top else 25.0
 
-        # P — how much is already in the price. Without a price series in context
-        # this stays neutral rather than guessing, and neutral is recorded as such.
+        # P — how much is already in the price. The view arrives from
+        # `pricing.price_view` with its own provenance; a code the view has no
+        # series for, or a series too short to rank, scores the neutral fill
+        # and says so. The fill enters the formula unchanged (the weight is
+        # not the question here), but a measured 50 and a filled 50 leave
+        # this function as different rows and stay different to the panel.
         px = ctx.prices.get(t.price_indicator) or {}
-        P = float(px.get("priced_in", 50.0))
+        measured = px.get("priced_in_source") == "return_percentile_21s"
+        P = float(px["priced_in"]) if measured else P_NEUTRAL
+        p_detail = {
+            "indicator": t.price_indicator,
+            "clamped_to": px.get("clamped_to"),
+            "as_of_used": px.get("priced_in_last_d") or px.get("d"),
+            "n_samples": int(px.get("priced_in_n") or 0),
+            "value": round(P, 1) if measured else None,
+            "method": "return_percentile_21s",
+            "source": ("return_percentile_21s" if measured
+                       else "neutral_default"),
+            "reason": (None if measured else
+                       (px.get("priced_in_reason") if px else "行情视图里没有这个标的的序列")),
+        }
 
         total = (WEIGHTS["H"] * H + WEIGHTS["G"] * G + WEIGHTS["E"] * E
                  + WEIGHTS["P"] * (100.0 - P))
         scores[t.id] = {
             "label": t.label, "score": round(total, 1),
             "H": round(H, 1), "G": round(G, 1), "E": round(E, 1), "P": round(P, 1),
+            "G_keyword": round(G_keyword, 1), "g_detail": g_detail,
+            "g_source": g_source,
+            "E_category_legacy": round(E_category_legacy, 1), "e_detail": e_detail,
+            "P_measured": measured, "p_detail": p_detail,
             "n_evidence": len(ev), "n_institutions": len(insts),
             "indicator": t.price_indicator,
-            "p_source": "prices" if px else "neutral_default",
+            "p_source": p_detail["source"],
             # The audit trail for "为什么读了这些就选了它": exactly which
             # documents scored this topic, strongest match first. Without this
             # list, ask-the-run can only *re-derive* the evidence set and prove
@@ -153,15 +284,14 @@ def hgep(ctx: RunContext) -> Verdict:
 
     # A factor that takes the same value for every topic adds a constant to
     # every score and cannot move the ranking, however much weight it carries.
-    # This period E is 100 everywhere and P is 50 everywhere, so 0.45 of the
-    # declared weight decided nothing and the ordering came from H and G alone
-    # — while the panel names four factors and draws four coloured segments.
-    #
-    # Not corrected here: what E and P should measure is a methodology question,
-    # and a scorer is not where it gets answered. Reported instead, every period,
-    # so the condition is visible as it happens rather than noticed by someone
-    # reading an answer the ask-endpoint gave about something else. `spread` is
-    # zero exactly when a factor is inert.
+    # On 2026-09-02 E was 100 everywhere and P was 50 everywhere, so 0.45 of
+    # the declared weight decided nothing and the ordering came from H and G
+    # alone — while the panel named four factors and drew four coloured
+    # segments. P's constant turned out to be the fill: no live entry point
+    # passed prices. E's was the category coding. Both are addressed above;
+    # the dispersion is still reported every period, because "it is measured
+    # now" is a claim the next period has to keep earning. `spread` is zero
+    # exactly when a factor is inert.
     dispersion = {}
     for factor in WEIGHTS:
         seen = [row[factor] for row in scores.values() if row.get(factor) is not None]
@@ -174,17 +304,37 @@ def hgep(ctx: RunContext) -> Verdict:
             "discriminates": len(set(seen)) > 1,
         }
     inert, inert_weight, live, unmeasured = _partition_factors(dispersion)
+    # A P that is inert because every topic got the fill is not a P that
+    # was measured and agreed. Counted here and said in the note, so the
+    # sentence 「P 对所有主题取值相同」 cannot pass for a measurement.
+    n_p_default = sum(1 for row in scores.values() if not row.get("P_measured"))
+    defaulted = {"P": (n_p_default, len(scores))} if scores else {}
+    if "P" in dispersion:
+        dispersion["P"]["n_default"] = n_p_default
+        dispersion["P"]["n_measured"] = len(scores) - n_p_default
 
     ranked = sorted(scores.items(), key=lambda kv: -kv[1]["score"])
     top = int(ctx.params.get("top_n", 5))
     chosen = [tid for tid, _ in ranked[:top]]
     return Verdict(
         strategy="hgep", version="1.0", chosen=chosen, scores=scores,
+        calls=receipts["calls"],
         rejected={tid: f"rank {i+1}" for i, (tid, _) in enumerate(ranked[top:], top)},
         meta={"weights": WEIGHTS, "registered_topics": len(topics),
               "topics_with_evidence": len(scores), "loudest_count": loudest,
               "top_n": top, "factor_dispersion": dispersion,
               "inert_factors": inert, "inert_weight": inert_weight,
               "unmeasured_factors": unmeasured,
+              "p_defaulted": n_p_default, "p_measured": len(scores) - n_p_default,
+              # What G was computed from this period, and what it cost: how
+              # many documents were read by the model, served from the cache,
+              # coded mechanically, or fell back after a bad response, plus
+              # the token counts the port reported. `claims_model` says
+              # whether the model path was even on.
+              "claims": {**receipts, "model_enabled": use_model,
+                         "max_docs": max_docs,
+                         "extractor": _claims.EXTRACTOR_VERSION,
+                         "cache_hits": getattr(ctx.claim_cache, "hits", None),
+                         "cache_misses": getattr(ctx.claim_cache, "misses", None)},
               "ranking_note": _ranking_note(inert, inert_weight, live,
-                                            unmeasured)})
+                                            unmeasured, defaulted)})

@@ -709,9 +709,13 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
                         continue
                     arc.append({"as_of": d, "state": "scored",
                                 "chosen": tid in hist[d]["chosen"],
+                                # P travels with its provenance: an arc
+                                # point whose 50 was a fill must not be
+                                # drawn as a reading that happened to be 50.
                                 **{k: sc.get(k) for k in
                                    ("H", "G", "E", "P", "score",
-                                    "n_evidence", "n_institutions")}})
+                                    "n_evidence", "n_institutions",
+                                    "P_measured", "p_source")}})
                 themes[tid] = {
                     "label": th.label,
                     "key_question": th.key_question,

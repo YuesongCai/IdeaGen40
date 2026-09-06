@@ -81,6 +81,11 @@ class RunContext:
     calendar: list[dict[str, Any]] = field(default_factory=list)
     params: dict[str, Any] = field(default_factory=dict)
     infer: Any = None            # platform.Inference, or None for mechanical-only
+    # `claims.ClaimCache` or None. Not a database handle: a strategy can only
+    # ask "was this exact text already extracted against this exact question
+    # set" and store the answer, which cannot read the future. Without it every
+    # period would re-send every document the model has already read.
+    claim_cache: Any = None
 
     def with_(self, **kw: Any) -> "RunContext":
         """A copy with fields replaced, for handing stage B's output to stage C.

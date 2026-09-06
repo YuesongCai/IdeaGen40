@@ -2297,18 +2297,24 @@ function hgepBreakdown(r){
      中性值 50，而数据里 p_source 已经如实记着 neutral_default——页面却把
      这个 50 和 H 的 62.1 并排画成两个同样的读数。一个兜底值被显示成一个
      测量值，是这块最容易误导的地方，而依据一直就在 payload 里。 */
-  var fellBack=(String(r.p_source||'')==='neutral_default');
+  /* 2026-09-06 起后端每个主题都带 P_measured 与 p_detail（指示标的、截止日、
+     样本量、方法、缺数原因）。「实测得到的 50」和「缺数填的 50」是两个事实：
+     前者写样本量和截止日，后者写「缺数 · 默认 50，未测量」，不能画成读数。 */
+  var fellBack=(r.P_measured===false)||(String(r.p_source||'')==='neutral_default');
+  var pd=r.p_detail||null;
   var rows=comps.map(function(c,i){
     var isK=konst[K[i]]!==undefined;
     var isFB=(i===3&&fellBack);
-    var tag=isFB?'未取到行情':(isK?'本期常数':'');
+    var isPM=(i===3&&!fellBack&&pd);
+    var tag=isFB?'缺数 · 默认 50，未测量':(isPM?'实测 n='+fmtInt(pd.n_samples)+' · 截止 '+(pd.as_of_used||'—'):(isK?'本期常数':''));
     var why=isFB
-      ? '　本期没有行情序列，这一项退回中性值 '+numOr(raw[3])+'（p_source=neutral_default），不是一个读数。'
-      : (isK?'　本期所有主题在这一项上都是 '+konst[K[i]]+'，因此它不影响谁入选。':'');
+      ? '　这一项没有测出来：'+(pd&&pd.reason?pd.reason:'本期没有行情序列')+'。'+numOr(raw[3])+' 是缺数默认值（p_source=neutral_default），不是一个读数。'
+      : (isPM?'　实测：'+(pd.indicator||'')+' 最近 21 个交易日收益率在自身约一年滚动分布中的百分位，样本 '+fmtInt(pd.n_samples)+' 个，价格截止 '+(pd.as_of_used||'—')+'（方法 '+(pd.method||'')+'）。'
+        :(isK?'　本期所有主题在这一项上都是 '+konst[K[i]]+'，因此它不影响谁入选。':''));
     return '<span class="fk" title="'+esc(G[i]+why)+'">'+L[i]
       +(tag?'<span style="margin-left:5px;font:400 10px/14px var(--font-sans);color:'
              +(isFB?'var(--color-feedback-warning-text)':'var(--color-text-tertiary)')
-             +'">'+tag+'</span>':'')
+             +'">'+esc(tag)+'</span>':'')
       +'</span>'
       +'<span class="fv">'+numOr(raw[i])+((has[i]&&i===3&&Math.abs(eff[i]-Number(raw[i]))>0.05)?'<span style="color:var(--color-text-tertiary)" title="反向计分：参与加权的是 100−P"> → '+eff[i].toFixed(1)+'</span>':'')+'</span>'
       +'<span class="fw">×'+W[i].toFixed(2)+'</span>'
@@ -2331,7 +2337,7 @@ function hgepBreakdown(r){
        return '<div class="card-note" style="color:var(--color-feedback-warning-text);margin-top:6px">'
          +ks.join(' 与 ')+' 本期对所有主题同值，合计 '+(wsum*100).toFixed(0)
          +'% 的权重不参与排序——入选实际由 '+live.join(' 和 ')+' 决定。'
-         +(fellBack?'其中 P 是因为本期没有行情序列而退回中性值，不是一个读数。':'')
+         +(fellBack?'其中 P 是缺数默认值 50（未测量），不是一个读数。':'')
          +'</div>';
      })();
   return '<div class="fbd" title="原始分 × 权重 = 贡献分；P 已定价反向计分，实际参与加权的是 100−P">'+rows+'</div>'
@@ -9515,6 +9521,53 @@ function themeIdentity(tid,r){
   return html;
 }
 
+/* G / E 的构成——拆解只给了每个因子的分，这里给分是从哪几条读出来的。
+   G 自 2026-09-06 起按「对象归属的观点」计：一篇「黄金看多、白银看空」给黄金 +1、
+   给白银 −1，而不是整篇一个正负号；利率/收益率/央行这类对象的升降不判向。
+   E 按因果深度取最强三条、转述去重。两者都把旧算法留作对照（G_keyword、
+   E_category_legacy），因为「新法更好」是要在真实期次上比出来的，不是宣布的。 */
+function hgepFactorDetail(r){
+  if(!r)return '';
+  var out='';
+  var g=r.g_detail;
+  if(g){
+    var dirTxt=function(c){return c.unresolved?'未判向':(c.direction>0?'看多':(c.direction<0?'看空':'中性'))};
+    var dirCol=function(c){return c.unresolved?'var(--color-text-tertiary)':(c.direction>0?'var(--color-feedback-success-default)':(c.direction<0?'var(--color-feedback-error-text)':'var(--color-text-secondary)'))};
+    out+='<div class="card-note" style="margin-top:8px"><b>G 分歧的构成</b>：看多 '+fmtInt(g.n_pos)+' 家 · 看空 '+fmtInt(g.n_neg)+' 家 · 中性 '+fmtInt(g.n_neutral)+' 条 · 未判向 '+fmtInt(g.n_unresolved)+' 条'
+      +'（观点来源 '+esc(r.g_source||'—')+(r.G_keyword!==undefined&&r.G_keyword!==null?'；旧词表法对照 G_keyword='+numOr(r.G_keyword):'')+'）。'
+      +'同一机构同方向只计一次；「未判向」是利率、收益率、央行这类对象的升降——方向取决于主题在问什么，机械路径不替它判。</div>';
+    var ss=(g.samples||[]);
+    if(ss.length){
+      out+='<div class="ev-list scroll-thin" style="max-height:190px">'+ss.map(function(c){
+        return '<div style="font:400 12px/17px var(--font-sans);padding:3px 0;border-bottom:1px solid var(--color-border-subtle)">'
+          +'<span style="color:'+dirCol(c)+';font-weight:600">'+dirTxt(c)+'</span>'
+          +(c.institution?' <span class="mono">'+esc(c.institution)+'</span>':'')
+          +(c.object?' · '+esc(c.object):'')
+          +(c.horizon?' · '+esc(c.horizon):'')
+          +(c.condition?' · 有条件':'')
+          +(c.source&&String(c.source).indexOf('model')===0?' · 模型抽取':'')
+          +'<div style="color:var(--color-text-secondary)">「'+esc(c.quote||'')+'」</div></div>';
+      }).join('')+'</div>';
+    }
+  }
+  var e=r.e_detail;
+  if(e&&e.length){
+    out+='<div class="card-note" style="margin-top:8px"><b>E 实据用的 '+fmtInt(e.length)+' 条</b>（因果深度 25 叙事 / 50 价格已动 / 75 订单收入 / 100 利润实现·政策落地·签约；只认一手与卖方；同一事实的转述只算一次'
+      +(r.E_category_legacy!==undefined&&r.E_category_legacy!==null?'；旧类别法对照 E_category_legacy='+numOr(r.E_category_legacy):'')+'）：</div>'
+      +'<div class="ev-list scroll-thin" style="max-height:150px">'+e.map(function(x){
+        return '<div style="font:400 12px/17px var(--font-sans);padding:3px 0;border-bottom:1px solid var(--color-border-subtle)">'
+          +'<span class="mono" style="font-weight:600">'+numOr(x.depth)+'</span>'
+          +(x.downgraded?' <span style="color:var(--color-feedback-warning-text)">未实现，由 '+numOr(x.raw_depth)+' 降为 25（'+esc(x.marker||'')+'）</span>':'')
+          +(x.matched?' · 命中「'+esc(x.matched)+'」':' · 无实据词，按叙事计')
+          +(x.institution?' · <span class="mono">'+esc(x.institution)+'</span>':'')
+          +'<div style="color:var(--color-text-secondary)">'+esc(x.title||x.doc_id||'')+'</div></div>';
+      }).join('')+'</div>';
+  }else if(r.e_detail){
+    out+='<div class="card-note" style="margin-top:8px">E 实据：本期没有一手或卖方来源的证据进入计分，按叙事 25 计。</div>';
+  }
+  return out;
+}
+
 /* ── 主题证据抽屉（第 2/3 层） ── */
 function topicDrawerBody(tid,embedded){
   var w=S.weekly||{};
@@ -9548,6 +9601,7 @@ function topicDrawerBody(tid,embedded){
     /* 「P 来源」删掉：上面拆解里那个「未取到行情」标签说的是同一件事，
      * 同一个抽屉里同一个事实不讲两遍。 */
     html+=hgepBreakdown(r)
+      +hgepFactorDetail(r)
       +'<div class="derive-kv">'
       +'<span>证据 '+fmtInt(r.n_evidence)+' 条 · '+fmtInt(r.n_institutions)+' 家机构</span>'
       /* 指示标的搬到上面「这是什么」那一格去了：它是主题的属性（注册表里写死的

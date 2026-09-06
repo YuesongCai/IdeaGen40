@@ -597,7 +597,69 @@ def stance_of(text: str) -> int:
     return 1 if pos > neg else -1
 
 
+#: Markers that a fact named in the same clause has *not happened*: it is
+#: expected, planned, lacking, pending. A tier-100 word next to one of these is
+#: narrative, not realisation — 「政策尚未落地」 says the policy has not landed,
+#: and coding it 100 because it contains 「政策」 is the inversion Jon found
+#: (2026-09-06 §3). Bare 「未」 is deliberately absent: it is the first character
+#: of 「未来」, which every outlook sentence contains.
+UNREALISED_MARKERS = (
+    "尚未", "并未", "还未", "未能", "未落地", "未实施", "未生效", "未签", "未完成",
+    "未见", "没有", "缺乏", "预计", "预期", "预测", "或将", "可能", "拟", "计划",
+    "有待", "待定", "尚待", "有望", "估计", "展望", "设想", "考虑",
+    "not yet", "pending", "expected", "expects", "plans to", "planned", "may ",
+    "could ", "might ", "proposed", "forecast", "outlook", "guidance", "considering",
+)
+
+_DEPTH_CLAUSE_SPLIT = ("，", "。", "；", "！", "？", "\n", ",", ";", "!", "?")
+
+
+def depth_detail(text: str) -> dict:
+    """Causal depth of the strongest *realised* fact in `text`, with its trail.
+
+    `depth_of` takes the first tier whose word appears anywhere. That coding
+    cannot tell 「订单已签署并完成交付」 from 「预计将签署订单」: both contain
+    a signing word. Here the text is read clause by clause; a clause whose
+    strongest word sits next to an unrealised marker (`UNREALISED_MARKERS`)
+    is downgraded to 25, narrative, and the document's depth is the maximum
+    over clauses. The returned trail — which clause, which word, whether it
+    was downgraded — is what `topic_hgep` records as `e_detail`, so a reader
+    can check the coding against the text instead of trusting the number.
+
+    Keys: `depth`, `matched` (the word), `clause`, `downgraded` (bool),
+    `raw_depth` (the tier before any downgrade), `marker` (the unrealised
+    marker that caused it, if any).
+    """
+    best = {"depth": 25, "matched": None, "clause": None, "downgraded": False,
+            "raw_depth": 25, "marker": None}
+    if not text:
+        return best
+    clauses = [text]
+    for ch in _DEPTH_CLAUSE_SPLIT:
+        clauses = [piece for c in clauses for piece in c.split(ch)]
+    for clause in (c.strip() for c in clauses if c.strip()):
+        low = clause.lower()
+        for score, terms in DEPTH_TERMS:
+            hit = next((t for t in terms if t.lower() in low), None)
+            if hit is None:
+                continue
+            marker = (next((m for m in UNREALISED_MARKERS if m.lower() in low), None)
+                      if score > 25 else None)
+            eff = 25 if marker else score
+            if eff > best["depth"] or (eff == best["depth"] and best["matched"] is None):
+                best = {"depth": eff, "matched": hit, "clause": clause[:120],
+                        "downgraded": bool(marker), "raw_depth": score,
+                        "marker": marker}
+            break  # highest tier in this clause found; lower tiers add nothing
+    return best
+
+
 def depth_of(text: str) -> int:
+    """First-tier-wins depth, kept for the callers that only want a number.
+
+    Does *not* apply the unrealised downgrade; `depth_detail` does. The two
+    are kept apart so the legacy coding stays reproducible as a control.
+    """
     if not text:
         return 25
     low = text.lower()
@@ -615,9 +677,15 @@ def fact_type_of(text: str) -> str:
     return "other"
 
 
-def all_indicators() -> list[str]:
+def all_indicators(as_of: date | str | None = None) -> list[str]:
+    """Every price code a theme reads — primary indicator plus related codes.
+
+    With `as_of`, only themes registered by that date contribute, which is the
+    set a scoring run is allowed to look at; without it, every theme ever
+    registered, which is what a price warm-up wants.
+    """
     codes = set()
-    for t in THEMES:
+    for t in all_themes(as_of):
         codes.add(t.price_indicator)
         codes.update(t.related)
     return sorted(codes)

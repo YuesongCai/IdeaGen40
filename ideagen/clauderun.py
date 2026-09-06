@@ -106,6 +106,12 @@ class ReplayInference:
     matching is how an answer ends up graded against the wrong question).
     """
 
+    #: Read by `topic_hgep`: a prompt this port has no recorded answer for
+    #: falls through to the FIFO, so an unqueued claim-extraction request
+    #: would *consume a generator's answer* and hand the generator the wrong
+    #: one. Claim extraction therefore stays on the clause path here.
+    replay_only = True
+
     def __init__(self, qdir: Path):
         self.by_sha: dict[str, Any] = {}
         self.fifo: list[Any] = []

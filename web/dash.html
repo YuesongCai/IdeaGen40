@@ -1676,6 +1676,28 @@ body.drawer-lock{overflow:hidden}
 /* 金额与收益率并排时不许在斜杠处折行：折了之后一格三行，读者对不上哪个数是哪个。 */
 td.pf-cell .num{white-space:nowrap}
 #perfTable td.primary .pf-why{display:block}
+/* 净值图交互。容器 position:relative 是给数值卡定位用的；数值卡 pointer-events:none，
+   否则它一跟到鼠标底下，线就"离开"了，十字线跟着消失。 */
+.pf-charts{position:relative;outline:none;border-radius:var(--radius-md)}
+.pf-charts:focus-visible{box-shadow:0 0 0 2px var(--color-focus-ring)}
+.pf-svg{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:crosshair}
+.pf-svg .pf-clk{cursor:pointer}
+.pf-hit{pointer-events:stroke}
+.pf-ln{transition:stroke-width 80ms var(--ease-standard),opacity 80ms var(--ease-standard)}
+.pf-ln.hi{stroke-width:2.4}
+.pf-ln.dim,.pf-area.dim,.pf-end.dim,.pf-xd.dim{opacity:.35}
+.pf-end.hi text{font-weight:600}
+.pf-lg.hi{color:var(--color-text-primary);font-weight:600}
+.pf-sel{fill:var(--color-fill-brand);opacity:.12}
+.pf-tip{position:absolute;top:8px;z-index:5;pointer-events:none;background:var(--color-surface-white);
+  border:1px solid var(--color-border-default);border-radius:var(--radius-md);box-shadow:var(--shadow-dark);
+  padding:8px 10px;font:400 12px/17px var(--font-sans);color:var(--color-text-secondary);min-width:240px}
+.pf-tip .pf-td{font:500 11px/14px var(--font-mono);color:var(--color-text-tertiary);margin-bottom:4px}
+.pf-tr{display:grid;grid-template-columns:12px minmax(90px,1fr) auto auto auto;gap:0 10px;align-items:center;white-space:nowrap}
+.pf-tr .num{text-align:right}
+.pf-tr.pf-th{font:400 10px/14px var(--font-sans);color:var(--color-text-tertiary)}
+.pf-tr.hi{font-weight:600;color:var(--color-text-primary)}
+.pf-zoombar{margin-top:var(--space-2);display:flex;align-items:center;flex-wrap:wrap}
 .pf-dim{color:var(--color-text-tertiary)}
 .pf-sep{color:var(--color-text-tertiary)}
 /* 周损益格子：可点；未对账的格子右上角挂一个「!」——只靠颜色浅一档读不出「不算数」。 */
@@ -3212,7 +3234,7 @@ function applyRoute(r){
     if(np!==PERIOD){PERIOD=np;pChanged=true}
     if(r.view==='perf'&&r.perf&&typeof PERF!=='undefined'){
       var pm2=r.perf.mode||PERF.mode,ps2=r.perf.subset||PERF.subset;
-      if(pm2!==PERF.mode||ps2!==PERF.subset){PERF.mode=pm2;PERF.subset=ps2;PERF_UI.curves=null;PERF_UI.wkOpen=null;pChanged=true}
+      if(pm2!==PERF.mode||ps2!==PERF.subset){PERF.mode=pm2;PERF.subset=ps2;PERF_UI.curves=null;PERF_UI.wkOpen=null;PERF_UI.zoom=null;PERF_UI.cur=null;pChanged=true}
     }
     if(r.view!==current)switchView(r.view,r.sec);
     else if(r.sec&&r.sec!==activeSec)setActiveSection(r.sec);
@@ -8425,8 +8447,10 @@ var PERF_METHOD={
     plain:'每条想法按当时收盘价买入、30 天后卖出，不含仓位分配、止损与现金约束。它检验的是候选或排序有没有信息，不是完整系统的账户表现。'}
 };
 /* 页内交互状态。全部挂在一个对象上，是因为这一页每 60 秒随轮询重画一次：
-   勾了哪几条曲线、展开了哪一格、按哪列排序，都得活过重画。 */
-var PERF_UI={curves:null,align:'common',wk:'both',wkOpen:null,attr:'topic',sort:{k:'cum_ret_pct',dir:-1}};
+   勾了哪几条曲线、展开了哪一格、按哪列排序，都得活过重画。
+   zoom / hi / cur 是净值图上的交互：拖选出的区间 {start,end}、高亮的那条序列的 key、
+   十字线停在哪一天——人用方向键把十字线挪到某天，重画不能把它挪回去。 */
+var PERF_UI={curves:null,align:'common',wk:'both',wkOpen:null,attr:'topic',sort:{k:'cum_ret_pct',dir:-1},zoom:null,hi:null,cur:null};
 
 /* 夹具开关：地址栏 ?fixture=1（在 # 之前）时改读 fixtures/perf_<mode>_sample.json，
    供后端接口合并前自测。默认关闭；文件在 tests/fixtures/ 下，要用得先把它们
@@ -8500,6 +8524,7 @@ function perfGo(mode,subset){
   if(mode)PERF.mode=mode;
   if(subset)PERF.subset=subset;
   PERF_UI.curves=null;PERF_UI.wkOpen=null;
+  PERF_UI.zoom=null;PERF_UI.cur=null; /* 区间是对着这一份数据拖出来的，换数据就作废 */
   if(current!=='perf')switchView('perf');
   try{syncRoute()}catch(e){}
   renderPerf();
@@ -8566,6 +8591,7 @@ function renderPerf(){
       +secWrap('perf','records',perfRecordsCard(P));
   }
   root.innerHTML=html;
+  perfChartRestore();
   if(current==='perf')buildNav();
 }
 
@@ -8645,22 +8671,31 @@ function perfModeCard(e){
 }
 
 /* ── 净值曲线 ─────────────────────────────────────────────────── */
+/* sel = 点这条线该打开哪个组合抽屉（openBookDrawer 的参数）。策略序列的 key 就是
+   选取策略名：performance.py 按 config.selector_book(name) 建 sel-<name> 组合、用 name
+   做 key，bookDrawerBody 又按 selector 找——三处同一个名字，不另做映射表。
+   基准序列没有自己的组合：SPY 是指数；全量基准按后端披露「= sel-buy_all 组合本身」，
+   数据里有可用的 buy_all 策略就指到它，没有就只能说明它是什么（what）。 */
 function perfSeries(P){
   var out=[];
   (P.strategies||[]).forEach(function(s){
     out.push({key:s.key,name:s.name,role:perfRoleZh(s.role),kind:'策略',col:bookColor(s.key),
               avail:!!s.available&&(s.curve||[]).length>=2,reason:s.reason||(s.status&&s.status!=='ok'?s.status:''),
-              status:s.status,curve:s.curve||[]});
+              status:s.status,curve:s.curve||[],sel:s.key,what:null});
   });
   var bm=P.benchmarks||{};
   if(bm.buy_all){
     var ba=bm.buy_all;
+    var hasBA=(P.strategies||[]).some(function(s){return s.key==='buy_all'&&s.available&&(s.curve||[]).length>=2});
     out.push({key:'bm:buy_all',name:'基准 · '+(ba.name||'全量基准'),role:'',kind:'基准',col:'var(--color-text-secondary)',
-              avail:ba.available!==false&&(ba.curve||[]).length>=2,reason:ba.reason||'',curve:ba.curve||[],dash:true});
+              avail:ba.available!==false&&(ba.curve||[]).length>=2,reason:ba.reason||'',curve:ba.curve||[],dash:true,
+              sel:hasBA?'buy_all':null,
+              what:hasBA?null:'全量基准本应就是 buy_all 组合本身（同一子集、同一账规则，买入候选池全部标的），但这一份数据里没有可用的 buy_all 组合：'+(ba.reason||'原因未记录')});
   }
   if(bm.spy){
     out.push({key:'bm:spy',name:'基准 · '+(bm.spy.name||'SPY'),role:'',kind:'基准',col:'var(--color-text-primary)',
-              avail:(bm.spy.curve||[]).length>=2,reason:'',curve:bm.spy.curve||[],dash:true});
+              avail:(bm.spy.curve||[]).length>=2,reason:'',curve:bm.spy.curve||[],dash:true,sel:null,
+              what:(bm.spy.name||'SPY')+(bm.spy.code?'（'+bm.spy.code+'）':'')+'同期收盘价归一：满仓持有、不扣费，作市场基准。它是指数，没有对应的组合。'});
   }
   return out;
 }
@@ -8678,7 +8713,7 @@ function perfNavCard(P){
   var chosen=ser.filter(function(s){return sel[s.key]&&s.avail});
   var legend='<div class="pf-legend">'+ser.map(function(s){
     var on=!!sel[s.key];
-    return '<label class="pf-lg'+(s.avail?'':' off')+'" title="'+esc(s.avail?(s.kind+' · '+(s.role||'')):('不可用：'+(s.reason||'原因未记录')))+'">'
+    return '<label class="pf-lg'+(s.avail?'':' off')+'"'+(s.avail?' data-key="'+esc(s.key)+'"':'')+' title="'+esc(s.avail?(s.kind+' · '+(s.role||'')):('不可用：'+(s.reason||'原因未记录')))+'">'
       +'<input type="checkbox"'+(on&&s.avail?' checked':'')+(s.avail?'':' disabled')+' onchange="perfToggleCurve(\''+jss(s.key)+'\')">'
       +'<span class="pf-sw" style="background:'+(s.avail?s.col:'transparent')+';border-color:'+s.col+'"></span>'
       +'<span>'+esc(s.name)+'</span>'
@@ -8695,17 +8730,39 @@ function perfNavCard(P){
   }else{
     var firsts=chosen.map(function(s){return s.curve[0].d}),lasts=chosen.map(function(s){return s.curve[s.curve.length-1].d});
     var start=PERF_UI.align==='common'?firsts.slice().sort().pop():firsts.slice().sort()[0];
-    var norm=chosen.map(function(s){
-      var pts=s.curve.filter(function(p){return p.d>=start});
+    function normed(s,pts){
       var base=pts.length?pts[0].v:null;
-      if(!base)return null;
-      return {name:s.name,col:s.col,dash:!!s.dash,
+      if(!base||pts.length<2)return null;
+      return {key:s.key,name:s.name,col:s.col,dash:!!s.dash,kind:s.kind,sel:s.sel,what:s.what,
               pts:pts.map(function(p){return {d:p.d,v:p.v/base*100}})};
+    }
+    var norm=chosen.map(function(s){
+      return normed(s,s.curve.filter(function(p){return p.d>=start}));
     }).filter(Boolean);
-    body=perfLineSVG(norm,{ranges:((P.records||{}).affected_ranges)||[],label:'净值指数（起点 = 100）'})
-      +perfDrawdownSVG(norm);
+    /* 拖选出的区间：只画这一段，并按这段的第一天重新归一到 100——看的是
+       「从那天起谁跑赢」，不是全程曲线的局部放大；回撤也只算这段里的。
+       区间里凑不齐两天的序列不画、数出来写在按钮旁；一条都凑不齐（多半是
+       换了起点口径或勾选之后区间落空）就退回全程，不留一张空图。 */
+    var z=PERF_UI.zoom,zoomed=null;
+    if(z){
+      zoomed=norm.map(function(s){
+        return normed(s,s.pts.filter(function(p){return p.d>=z.start&&p.d<=z.end}));
+      }).filter(Boolean);
+      if(!zoomed.length){PERF_UI.zoom=null;z=null;zoomed=null}
+    }
+    var drawn=zoomed||norm;
+    body='<div class="pf-charts" tabindex="0" role="group" aria-label="净值曲线与回撤。鼠标或左右方向键移动十字线读数；点一条线打开它的组合；在主图上按住拖一段放大到该区间；Esc 清除。">'
+      +perfLineSVG(drawn,{ranges:((P.records||{}).affected_ranges)||[],label:'净值指数（起点 = 100）'})
+      +perfDrawdownSVG(drawn)
+      +'<div class="pf-tip" hidden></div></div>'
+      +(z?'<div class="pf-zoombar"><button type="button" class="pf-link" onclick="perfZoomClear()" title="退出区间，回到全程">'
+          +'<span class="num">'+esc(z.start)+' → '+esc(z.end)+'</span> · 回到全程</button>'
+          +(zoomed.length<norm.length?'<span class="card-note" style="margin-left:var(--space-3)">'+fmtInt(norm.length-zoomed.length)+' 条序列在这段里不足两天，没画</span>':'')
+          +'</div>':'');
     var diff=firsts.some(function(d){return d!==firsts[0]})||lasts.some(function(d){return d!==lasts[0]});
-    note='<div class="card-note" style="margin-top:var(--space-2)">起点归一化为 100'
+    note='<div class="card-note" style="margin-top:var(--space-2)">'
+      +(z?'区间内起点 <span class="num">'+esc(z.start)+'</span> 归一化为 100；全程的':'')
+      +'起点归一化为 100'
       +(PERF_UI.align==='common'?'，共同起点 <span class="num">'+esc(start)+'</span>（勾选序列里最晚开始的那条）':'，各自从第一天起')
       +'；回撤 = 距此前最高点的跌幅。</div>'
       +(diff?'<div class="card-note" style="margin-top:var(--space-1);color:var(--color-feedback-warning-text)">样本长度不同：'
@@ -8718,7 +8775,8 @@ function perfNavCard(P){
     +'<h2 class="card-title">净值曲线</h2>'
     +'<span class="card-note">'+fmtInt(chosen.length)+' / '+fmtInt(ser.filter(function(s){return s.avail}).length)+' 条可用序列在图上 · '
       +fmtInt(ser.filter(function(s){return !s.avail}).length)+' 条不可用</span></div>'
-    +'<div class="quiet">每条都是那个账户的净值，不是某一批想法的回报；勾谁画谁，全部策略都在名单里。</div>'
+    +'<div class="quiet">每条都是那个账户的净值，不是某一批想法的回报；勾谁画谁，全部策略都在名单里。'
+      +'鼠标移到图上读数，点一条线看它的组合，在主图上拖一段放大。</div>'
     +'<div class="pf-tools">'+align+'</div>'
     +legend
     +body
@@ -8726,20 +8784,38 @@ function perfNavCard(P){
     +'</div>';
 }
 /* 折线画法沿用 pairedEquitySVG：统一日期轴、末端直标、逐个下压避免叠字。
-   多加的只有斜纹区间（受影响区间）和虚线基准。 */
-function perfLineSVG(list,opts){
-  opts=opts||{};
+   多加的只有斜纹区间（受影响区间）和虚线基准。
+   交互元素（命中线、末端标签组、十字线、拖选框）在这里一次画好，之后只改属性、
+   不重画整张图：60 秒一次的全量重画已经够多，鼠标每动一下再画一张 760 宽的 SVG
+   就卡了。几何量（日期轴、每条线逐日的值）登记进 PERF_CHART，事件处理从那里查，
+   不从 DOM 反推。 */
+function perfAxis(list){
   var dates={};list.forEach(function(s){s.pts.forEach(function(p){dates[p.d]=1})});
   var ds=Object.keys(dates).sort();
-  if(ds.length<2)return '<div class="quiet">序列不足两天，画不成曲线。</div>';
-  var W=760,H=240,pl=44,pr=150,pt=12,pb=24,mn=Infinity,mx=-Infinity;
+  if(ds.length<2)return null;
   var idx={};ds.forEach(function(d,i){idx[d]=i});
+  return {ds:ds,idx:idx};
+}
+function perfLineSVG(list,opts){
+  opts=opts||{};
+  var ax=perfAxis(list);
+  if(!ax)return '<div class="quiet">序列不足两天，画不成曲线。</div>';
+  var ds=ax.ds,idx=ax.idx;
+  var W=760,H=240,pl=44,pr=150,pt=12,pb=24,mn=Infinity,mx=-Infinity;
   list.forEach(function(s){s.pts.forEach(function(p){if(p.v<mn)mn=p.v;if(p.v>mx)mx=p.v})});
   if(mx-mn<0.5){mn-=0.5;mx+=0.5}
   var xw=(W-pl-pr)/Math.max(1,ds.length-1);
   function X(i){return pl+i*xw}
   function Y(v){return pt+(mx-v)/(mx-mn)*(H-pt-pb)}
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:820px" role="img" aria-label="'+esc(opts.label||'净值曲线')+'">'+hatchDefs('pfHatch');
+  /* 登记：主图几何 + 每条序列按日期轴对齐的值（缺那天的是 null，各自起点时会有）。
+     回撤那张随后在 perfDrawdownSVG 里把 dd 填进同一条记录。 */
+  PERF_CHART={ds:ds,main:{W:W,H:H,pl:pl,pr:pr,pt:pt,pb:pb,xw:xw,top:mx,bot:mn,field:'v'},dd:null,
+    series:list.map(function(s){
+      var by={};s.pts.forEach(function(p){by[p.d]=p.v});
+      return {key:s.key,name:s.name,col:s.col,kind:s.kind,sel:s.sel||null,what:s.what||null,dash:!!s.dash,
+              v:ds.map(function(d){return by[d]==null?null:by[d]}),dd:null};
+    })};
+  var svg='<svg class="pf-svg" data-pf="main" viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:820px" role="img" aria-label="'+esc(opts.label||'净值曲线')+'">'+hatchDefs('pfHatch');
   (opts.ranges||[]).forEach(function(r){
     var a=ds.filter(function(d){return d>=r.start})[0],b=ds.filter(function(d){return d<=r.end}).pop();
     if(!a||!b||idx[b]<idx[a])return;
@@ -8750,55 +8826,278 @@ function perfLineSVG(list,opts){
     svg+='<line x1="'+pl+'" y1="'+Y(g)+'" x2="'+(W-pr)+'" y2="'+Y(g)+'" stroke="var(--color-border-subtle)" stroke-width="1"'+(g===100?' stroke-dasharray="4 3"':'')+'/>'
       +'<text x="'+(pl-6)+'" y="'+(Y(g)+4)+'" text-anchor="end" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+g.toFixed(1)+'</text>';
   });
-  var ends=[];
+  var ends=[],hits='';
   list.forEach(function(s){
     var pts=s.pts.map(function(p){return X(idx[p.d]).toFixed(1)+','+Y(p.v).toFixed(1)});
     if(pts.length<2)return;
-    svg+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+s.col+'" stroke-width="'+(s.dash?1.2:1.6)+'"'+(s.dash?' stroke-dasharray="5 3"':'')+' stroke-linejoin="round" stroke-linecap="round"/>';
+    svg+='<polyline class="pf-ln" data-key="'+esc(s.key)+'" points="'+pts.join(' ')+'" fill="none" stroke="'+s.col+'" stroke-width="'+(s.dash?1.2:1.6)+'"'+(s.dash?' stroke-dasharray="5 3"':'')+' stroke-linejoin="round" stroke-linecap="round"/>';
+    /* 命中线：同一条折线加宽到 10、画成透明，叠在所有可见线之上——1.6 宽的线
+       鼠标是停不住的。pointer-events=stroke 让它只在线附近接事件，不挡整张图。 */
+    hits+='<polyline class="pf-hit pf-clk" data-key="'+esc(s.key)+'" points="'+pts.join(' ')+'" fill="none" stroke="transparent" stroke-width="10" pointer-events="stroke" stroke-linejoin="round" stroke-linecap="round"/>';
     var last=s.pts[s.pts.length-1];
     ends.push({s:s,x:X(idx[last.d]),y:Y(last.v),v:last.v});
   });
+  svg+=hits;
   ends.sort(function(a,b){return a.y-b.y});
   var lastY=-99;
   ends.forEach(function(e){
     var ly=Math.max(e.y,lastY+12);lastY=ly;
-    svg+='<circle cx="'+e.x.toFixed(1)+'" cy="'+e.y.toFixed(1)+'" r="2.5" fill="'+e.s.col+'"/>'
-      +'<text x="'+(e.x+8).toFixed(1)+'" y="'+(ly+4).toFixed(1)+'" font-family="var(--font-sans)" font-size="11" fill="'+e.s.col+'">'+esc(e.s.name)+' '+e.v.toFixed(1)+'</text>';
+    svg+='<g class="pf-end pf-clk" data-key="'+esc(e.s.key)+'"><circle cx="'+e.x.toFixed(1)+'" cy="'+e.y.toFixed(1)+'" r="2.5" fill="'+e.s.col+'"/>'
+      +'<text x="'+(e.x+8).toFixed(1)+'" y="'+(ly+4).toFixed(1)+'" font-family="var(--font-sans)" font-size="11" fill="'+e.s.col+'">'+esc(e.s.name)+' '+e.v.toFixed(1)+'</text></g>';
   });
-  svg+='<text x="'+pl+'" y="'+(H-6)+'" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+esc(ds[0])+'</text>'
+  svg+=perfCrossMarkup(list,pt,H-pb)
+    +'<rect class="pf-sel" x="0" y="'+pt+'" width="0" height="'+(H-pt-pb)+'" style="display:none" pointer-events="none"/>'
+    +'<text x="'+pl+'" y="'+(H-6)+'" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+esc(ds[0])+'</text>'
     +'<text x="'+(W-pr)+'" y="'+(H-6)+'" text-anchor="end" font-family="var(--font-mono)" font-size="11" fill="var(--color-text-tertiary)">'+esc(ds[ds.length-1])+'</text>'
     +'</svg>';
   return '<div class="funnel-wrap">'+svg+'</div>';
 }
+/* 十字线那一组：一条竖线 + 每条序列一个点，先画好藏起来，之后只挪位置。 */
+function perfCrossMarkup(list,y1,y2){
+  return '<g class="pf-x" pointer-events="none" style="display:none">'
+    +'<line class="pf-xl" x1="0" x2="0" y1="'+y1+'" y2="'+y2+'" stroke="var(--color-border-strong)" stroke-width="1" stroke-dasharray="3 3"/>'
+    +list.map(function(s){return '<circle class="pf-xd" data-key="'+esc(s.key)+'" cx="0" cy="0" r="3" fill="'+s.col+'" stroke="var(--color-surface-white)" stroke-width="1.2"/>'}).join('')
+    +'</g>';
+}
 /* 回撤单独一张小图：画在主图里会把 0 附近压成一条线。 */
 function perfDrawdownSVG(list){
-  var dates={};list.forEach(function(s){s.pts.forEach(function(p){dates[p.d]=1})});
-  var ds=Object.keys(dates).sort();if(ds.length<2)return '';
-  var idx={};ds.forEach(function(d,i){idx[d]=i});
+  var ax=perfAxis(list);if(!ax)return '';
+  var ds=ax.ds,idx=ax.idx;
   var W=760,H=90,pl=44,pr=150,pt=8,pb=6,mn=0;
   var dd=list.map(function(s){
     var pk=-Infinity;
-    return {col:s.col,dash:s.dash,pts:s.pts.map(function(p){pk=Math.max(pk,p.v);var v=(p.v/pk-1)*100;if(v<mn)mn=v;return {d:p.d,v:v}})};
+    return {key:s.key,col:s.col,dash:s.dash,pts:s.pts.map(function(p){pk=Math.max(pk,p.v);var v=(p.v/pk-1)*100;if(v<mn)mn=v;return {d:p.d,v:v}})};
   });
   if(mn>-0.5)mn=-0.5;
   var xw=(W-pl-pr)/Math.max(1,ds.length-1);
   function X(i){return pl+i*xw}
   function Y(v){return pt+(0-v)/(0-mn)*(H-pt-pb)}
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:820px" role="img" aria-label="回撤">';
+  /* 与主图同一条日期轴（perfAxis 算的是同一个 list），几何登记到同一份 PERF_CHART。 */
+  if(PERF_CHART.ds===ds||PERF_CHART.ds.join()===ds.join()){
+    PERF_CHART.dd={W:W,H:H,pl:pl,pr:pr,pt:pt,pb:pb,xw:xw,top:0,bot:mn,field:'dd'};
+    dd.forEach(function(s){
+      var rec=PERF_CHART.series.filter(function(r){return r.key===s.key})[0];if(!rec)return;
+      var by={};s.pts.forEach(function(p){by[p.d]=p.v});
+      rec.dd=ds.map(function(d){return by[d]==null?null:by[d]});
+    });
+  }
+  var svg='<svg class="pf-svg" data-pf="dd" viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;max-width:820px" role="img" aria-label="回撤">';
   svg+='<line x1="'+pl+'" y1="'+Y(0)+'" x2="'+(W-pr)+'" y2="'+Y(0)+'" stroke="var(--color-border-subtle)"/>'
     +'<text x="'+(pl-6)+'" y="'+(Y(0)+4)+'" text-anchor="end" font-family="var(--font-mono)" font-size="10" fill="var(--color-text-tertiary)">0%</text>'
     +'<text x="'+(pl-6)+'" y="'+(Y(mn)+2)+'" text-anchor="end" font-family="var(--font-mono)" font-size="10" fill="var(--color-text-tertiary)">'+mn.toFixed(1)+'%</text>'
     +'<text x="'+(W-pr+8)+'" y="'+(pt+10)+'" font-family="var(--font-sans)" font-size="11" fill="var(--color-text-tertiary)">回撤</text>';
+  var hits='';
   dd.forEach(function(s){
     var pts=s.pts.map(function(p){return X(idx[p.d]).toFixed(1)+','+Y(p.v).toFixed(1)});
     if(pts.length<2)return;
     var first=s.pts[0],last=s.pts[s.pts.length-1];
-    svg+='<polygon points="'+X(idx[first.d]).toFixed(1)+','+Y(0).toFixed(1)+' '+pts.join(' ')+' '+X(idx[last.d]).toFixed(1)+','+Y(0).toFixed(1)+'" fill="'+s.col+'" opacity="0.08"/>'
-      +'<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+s.col+'" stroke-width="1"'+(s.dash?' stroke-dasharray="5 3"':'')+'/>';
+    svg+='<polygon class="pf-area" data-key="'+esc(s.key)+'" points="'+X(idx[first.d]).toFixed(1)+','+Y(0).toFixed(1)+' '+pts.join(' ')+' '+X(idx[last.d]).toFixed(1)+','+Y(0).toFixed(1)+'" fill="'+s.col+'" opacity="0.08"/>'
+      +'<polyline class="pf-ln" data-key="'+esc(s.key)+'" points="'+pts.join(' ')+'" fill="none" stroke="'+s.col+'" stroke-width="1"'+(s.dash?' stroke-dasharray="5 3"':'')+'/>';
+    hits+='<polyline class="pf-hit pf-clk" data-key="'+esc(s.key)+'" points="'+pts.join(' ')+'" fill="none" stroke="transparent" stroke-width="10" pointer-events="stroke"/>';
   });
-  svg+='</svg>';
+  svg+=hits+perfCrossMarkup(dd,pt,H-pb)+'</svg>';
   return '<div class="funnel-wrap" style="margin-top:2px">'+svg+'</div>';
 }
+
+/* ── 净值图的交互引擎 ──────────────────────────────────────────
+   一张卡内四种动作：十字线（读数）、高亮（认线）、点线（进组合抽屉 / 看基准是什么）、
+   拖选（缩放区间）。全部走 document 上的事件委托——卡每 60 秒重画一次，绑在元素上的
+   监听器会跟着元素一起没；委托只绑一次，靠 class 认目标。十字线只改现有元素的属性；
+   数值卡是 SVG 之外的一小块 HTML，重写它比重画 SVG 便宜两个量级。
+   状态在 PERF_UI（zoom / hi / cur），重画后由 perfChartRestore 放回去。 */
+var PERF_CHART={ds:[],series:[],main:null,dd:null};
+var PF_DRAG=null,PF_CLICK_EATEN=false,PF_POP=false;
+function perfChartWrap(){return document.querySelector('#view-perf .pf-charts')}
+function perfChartGeom(svg){return PERF_CHART[svg.getAttribute('data-pf')]||null}
+function perfChartX(g,i){return g.pl+i*g.xw}
+function perfChartY(g,v){return g.pt+(g.top-v)/(g.top-g.bot)*(g.H-g.pt-g.pb)}
+/* 鼠标横坐标 → 最近的日期点下标。viewBox 等比缩放，用真实宽度换算回 SVG 坐标。 */
+function perfChartIndexAt(svg,clientX){
+  var g=perfChartGeom(svg);if(!g||!PERF_CHART.ds.length)return -1;
+  var r=svg.getBoundingClientRect();if(!r.width)return -1;
+  var x=(clientX-r.left)*g.W/r.width;
+  return Math.max(0,Math.min(PERF_CHART.ds.length-1,Math.round((x-g.pl)/g.xw)));
+}
+function perfCursorTo(i){
+  var wrap=perfChartWrap(),ds=PERF_CHART.ds;
+  if(!wrap||i<0||i>=ds.length)return;
+  PERF_UI.cur=ds[i];
+  var svgs=wrap.querySelectorAll('.pf-svg');
+  for(var k=0;k<svgs.length;k++){
+    var svg=svgs[k],g=perfChartGeom(svg);if(!g)continue;
+    var gx=svg.querySelector('.pf-x');if(!gx)continue;
+    var x=perfChartX(g,i).toFixed(1);
+    gx.style.display='';
+    var ln=gx.querySelector('.pf-xl');ln.setAttribute('x1',x);ln.setAttribute('x2',x);
+    var dots=gx.querySelectorAll('.pf-xd');
+    for(var j=0;j<dots.length;j++){
+      var s=PERF_CHART.series.filter(function(r){return r.key===dots[j].getAttribute('data-key')})[0];
+      var arr=s?s[g.field]:null,v=arr?arr[i]:null;
+      if(v==null){dots[j].style.display='none';continue}
+      dots[j].style.display='';dots[j].setAttribute('cx',x);dots[j].setAttribute('cy',perfChartY(g,v).toFixed(1));
+    }
+  }
+  var tip=wrap.querySelector('.pf-tip');
+  if(tip){tip.innerHTML=perfTipHTML(i);perfTipPlace(tip,wrap,i)}
+}
+function perfCursorClear(){
+  PERF_UI.cur=null;
+  var wrap=perfChartWrap();if(!wrap)return;
+  var gs=wrap.querySelectorAll('.pf-x');for(var k=0;k<gs.length;k++)gs[k].style.display='none';
+  var tip=wrap.querySelector('.pf-tip');if(tip)tip.hidden=true;
+}
+/* 数值卡：日期、每条序列那天的净值指数、较起点的涨跌、当日回撤；按净值从高到低排，
+   色块同线色。全部从 PERF_CHART 里登记的数算，不读 SVG 上的字。 */
+function perfTipHTML(i){
+  var ds=PERF_CHART.ds;
+  var rows=PERF_CHART.series.map(function(s){return {s:s,v:s.v[i],dd:s.dd?s.dd[i]:null}});
+  rows.sort(function(a,b){return (b.v==null?-Infinity:b.v)-(a.v==null?-Infinity:a.v)});
+  var h='<div class="pf-td num">'+esc(ds[i])+'</div>'
+    +'<div class="pf-tr pf-th"><span></span><span></span><span>净值</span><span>较起点</span><span>回撤</span></div>';
+  rows.forEach(function(r){
+    var s=r.s;
+    h+='<div class="pf-tr'+(PERF_UI.hi===s.key?' hi':'')+'" data-key="'+esc(s.key)+'">'
+      +'<span class="pf-sw" style="background:'+s.col+';border-color:'+s.col+'"></span>'
+      +'<span class="pf-tn">'+esc(s.name)+'</span>'
+      +'<span class="num">'+(r.v==null?'—':r.v.toFixed(1))+'</span>'
+      +'<span class="num '+(r.v==null?'flat':pctCls(r.v-100))+'">'+(r.v==null?'—':perfPp(r.v-100))+'</span>'
+      +'<span class="num">'+(r.dd==null?'—':r.dd.toFixed(1)+'%')+'</span></div>';
+  });
+  return h;
+}
+/* 数值卡跟着十字线走，落在竖线的另一侧：左半图放右边、右半图放左边，不盖住正在读的那段线。 */
+function perfTipPlace(tip,wrap,i){
+  var svg=wrap.querySelector('.pf-svg[data-pf="main"]'),g=PERF_CHART.main;
+  if(!svg||!g)return;
+  var r=svg.getBoundingClientRect(),wr=wrap.getBoundingClientRect();
+  if(!r.width){tip.hidden=true;return}
+  var px=(r.left-wr.left)+perfChartX(g,i)*r.width/g.W;
+  tip.hidden=false;
+  if(px<wr.width/2){tip.style.left=Math.round(px+14)+'px';tip.style.right='auto'}
+  else{tip.style.right=Math.round(wr.width-px+14)+'px';tip.style.left='auto'}
+}
+function perfHi(key){
+  key=key||null;
+  if(key===PERF_UI.hi)return;
+  PERF_UI.hi=key;perfApplyHi();
+}
+/* 高亮 = 给现有元素换 class：线、回撤面、末端标签、十字线上的点、图例项、数值卡那行。 */
+function perfApplyHi(){
+  var root=$('view-perf');if(!root)return;
+  var hi=PERF_UI.hi;
+  var els=root.querySelectorAll('.pf-ln,.pf-area,.pf-end,.pf-xd,.pf-lg[data-key],.pf-tr[data-key]');
+  for(var k=0;k<els.length;k++){
+    var on=!!hi&&els[k].getAttribute('data-key')===hi;
+    els[k].classList.toggle('hi',on);
+    els[k].classList.toggle('dim',!!hi&&!on);
+  }
+}
+function perfZoomSet(a,b){
+  if(a>b){var t=a;a=b;b=t}
+  PERF_UI.zoom={start:a,end:b};PERF_UI.cur=null;renderPerf();
+}
+function perfZoomClear(){PERF_UI.zoom=null;PERF_UI.cur=null;renderPerf()}
+function perfSelDraw(svg,i0,i1){
+  var g=PERF_CHART.main,rc=svg.querySelector('.pf-sel');if(!g||!rc)return;
+  var a=Math.min(i0,i1),b=Math.max(i0,i1);
+  if(b<=a){rc.style.display='none';return}
+  rc.setAttribute('x',perfChartX(g,a).toFixed(1));
+  rc.setAttribute('width',(perfChartX(g,b)-perfChartX(g,a)).toFixed(1));
+  rc.style.display='';
+}
+/* 点线：策略序列进它的组合抽屉；基准没有组合，就用现有的速览气泡说它是什么，
+   点别处或 Esc 收起。 */
+function perfSeriesClick(key,e){
+  var s=PERF_CHART.series.filter(function(r){return r.key===key})[0];if(!s)return;
+  if(s.sel){openBookDrawer(s.sel);return}
+  hidePop();
+  showPop('<div style="font:600 13px/18px var(--font-sans);color:var(--color-text-primary)">'+esc(s.name)+'</div>'
+    +'<div style="margin-top:4px;white-space:normal">'+esc(s.what||'基准序列，没有对应的组合。')+'</div>'
+    +'<div class="card-note num" style="margin-top:6px">'+esc(PERF_CHART.ds[0])+' → '+esc(PERF_CHART.ds[PERF_CHART.ds.length-1])+' · '+fmtInt(PERF_CHART.ds.length)+' 个交易日</div>',
+    e.clientX,e.clientY);
+  PF_POP=true;
+}
+/* 重画之后把交互状态放回去：十字线停的那天还在数据里就停回去，不在就作罢。 */
+function perfChartRestore(){
+  if(!perfChartWrap())return;
+  if(PERF_UI.cur){var i=PERF_CHART.ds.indexOf(PERF_UI.cur);if(i>=0)perfCursorTo(i);else PERF_UI.cur=null}
+  perfApplyHi();
+}
+document.addEventListener('mousemove',function(e){
+  if(PF_DRAG){
+    var di=perfChartIndexAt(PF_DRAG.svg,e.clientX);
+    if(di>=0){PF_DRAG.i1=di;perfSelDraw(PF_DRAG.svg,PF_DRAG.i0,di);perfCursorTo(di)}
+    return;
+  }
+  var t=e.target,svg=(t&&t.closest)?t.closest('.pf-svg'):null;
+  if(!svg)return;
+  var i=perfChartIndexAt(svg,e.clientX);
+  if(i>=0&&PERF_CHART.ds[i]!==PERF_UI.cur)perfCursorTo(i);
+});
+document.addEventListener('mouseout',function(e){
+  var t=e.target,w=(t&&t.closest)?t.closest('.pf-charts'):null;
+  if(!w||PF_DRAG)return;
+  var to=e.relatedTarget;
+  if(to&&w.contains(to))return;
+  perfCursorClear();
+});
+document.addEventListener('mouseover',function(e){
+  var t=e.target,el=(t&&t.closest)?t.closest('.pf-clk,.pf-lg[data-key]'):null;
+  perfHi(el?el.getAttribute('data-key'):null);
+});
+document.addEventListener('mousedown',function(e){
+  if(e.button!==0)return;
+  var t=e.target,svg=(t&&t.closest)?t.closest('.pf-svg[data-pf="main"]'):null;
+  if(!svg)return;
+  var i=perfChartIndexAt(svg,e.clientX);if(i<0)return;
+  PF_DRAG={svg:svg,i0:i,i1:i};
+  e.preventDefault(); /* 不让浏览器把拖动当成选文字 */
+  var w=svg.closest('.pf-charts');if(w&&w.focus)try{w.focus({preventScroll:true})}catch(_){w.focus()}
+});
+document.addEventListener('mouseup',function(e){
+  if(!PF_DRAG)return;
+  var d=PF_DRAG;PF_DRAG=null;
+  var rc=d.svg.querySelector('.pf-sel');if(rc)rc.style.display='none';
+  var a=Math.min(d.i0,d.i1),b=Math.max(d.i0,d.i1);
+  if(b-a<2)return;            /* 不足 3 个日期点：当点击，click 随后照常到达 */
+  /* 松手处若正好在线上，随后的 click 不能当成点线；重画会让那次 click 落在
+     已摘下的节点上、到不了 document，所以下一拍无论如何都把标记放掉。 */
+  PF_CLICK_EATEN=true;setTimeout(function(){PF_CLICK_EATEN=false},0);
+  perfZoomSet(PERF_CHART.ds[a],PERF_CHART.ds[b]);
+});
+document.addEventListener('click',function(e){
+  if(PF_CLICK_EATEN){PF_CLICK_EATEN=false;e.stopPropagation();e.preventDefault();return}
+  var t=e.target,el=(t&&t.closest)?t.closest('.pf-clk'):null;
+  if(!el){if(PF_POP){PF_POP=false;hidePop()}return}
+  perfSeriesClick(el.getAttribute('data-key'),e);
+});
+/* 触屏没有 hover：手指按到哪、拖到哪，十字线就跟到哪；不拦默认行为，纵向滚页照旧。 */
+function perfTouch(e){
+  var t=e.target,svg=(t&&t.closest)?t.closest('.pf-svg'):null;
+  if(!svg||!e.touches||!e.touches.length)return;
+  var i=perfChartIndexAt(svg,e.touches[0].clientX);
+  if(i>=0)perfCursorTo(i);
+}
+document.addEventListener('touchstart',perfTouch,{passive:true});
+document.addEventListener('touchmove',perfTouch,{passive:true});
+/* 键盘：图容器可聚焦（tabindex=0），← → 挪一天，Esc 依次收气泡、清十字线、退出区间。
+   这几件都处理了才拦住 Esc；都没有就放行给抽屉那一层。 */
+document.addEventListener('keydown',function(e){
+  var t=e.target,w=(t&&t.closest)?t.closest('.pf-charts'):null;
+  if(!w)return;
+  var ds=PERF_CHART.ds;if(!ds.length)return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+    var i=ds.indexOf(PERF_UI.cur);
+    i=(i<0)?ds.length-1:i+(e.key==='ArrowLeft'?-1:1);
+    perfCursorTo(Math.max(0,Math.min(ds.length-1,i)));
+    e.preventDefault();return;
+  }
+  if(e.key==='Escape'){
+    if(PF_POP){PF_POP=false;hidePop();e.stopImmediatePropagation();return}
+    if(PERF_UI.cur){perfCursorClear();e.stopImmediatePropagation();return}
+    if(PERF_UI.zoom){perfZoomClear();e.stopImmediatePropagation();return}
+  }
+});
 
 /* ── 自然周 × 策略 PNL ───────────────────────────────────────── */
 function perfWeeklyCard(P){
@@ -14779,6 +15078,29 @@ function tourBubble(){
 function tourNB(){
   try{var a=aggBooks();return (a&&a.books&&a.books.length)||10}catch(e){return 10}
 }
+/* 方法页流水线画布是横向可滚动的 SVG：一步指一个环节，先把那个环节滚进可视
+   区，再取它所有节点的并集矩形与可视区求交——否则高亮框会落在被裁掉的地方。
+   环节按 onclick 里的 openStageDrawer(N) / goSelector 认，不靠坐标。 */
+function tourPipeNode(re){
+  var wrap=document.querySelector('#pipeCard .pipe-wrap');
+  if(!wrap)return null;
+  var gs=[].slice.call(document.querySelectorAll('#pipeCard g.pc-click')).filter(function(g){
+    return re.test(g.getAttribute('onclick')||'');
+  });
+  if(!gs.length)return null;
+  var wr=wrap.getBoundingClientRect();
+  var l=1e9,tp=1e9,r=-1e9,b=-1e9;
+  gs.forEach(function(g){var q=g.getBoundingClientRect();
+    l=Math.min(l,q.left);tp=Math.min(tp,q.top);r=Math.max(r,q.right);b=Math.max(b,q.bottom)});
+  /* 先滚：让并集矩形的左缘落在可视区左侧 40px 处（右侧放不下就尽量靠左）。 */
+  var need=(l-wr.left)-40;
+  if(need<0||r>wr.right){wrap.scrollLeft=Math.max(0,wrap.scrollLeft+need)}
+  l=1e9;tp=1e9;r=-1e9;b=-1e9;
+  gs.forEach(function(g){var q=g.getBoundingClientRect();
+    l=Math.min(l,q.left);tp=Math.min(tp,q.top);r=Math.max(r,q.right);b=Math.max(b,q.bottom)});
+  return tourIntersect({left:l,top:tp,right:r,bottom:b},wrap.getBoundingClientRect());
+}
+function tourPipeStage(n){return function(){return tourPipeNode(new RegExp('openStageDrawer\\('+n+'[,)]'))}}
 function tourIntersect(a,b){
   var l=Math.max(a.left,b.left),t=Math.max(a.top,b.top);
   var r=Math.min(a.right,b.right),bo=Math.min(a.bottom,b.bottom);
@@ -14818,17 +15140,28 @@ overview:[
 ],
 periods:[
 {t:'各期：这一页答「那一期发生了什么」',
- h:'每一期是一次完整的周跑：主题、想法、组合、建仓。切顶栏的日期就切到那一期；这一页三段：四周阶梯、主题进出、逐期明细。'},
-{t:'四周阶梯',
+ h:'每一期 = 一次完整的周跑：读研报、定主题、写想法、各策略选取、建仓。这一页把所有期并排放，三段：四周阶梯、主题进出、逐期明细。'
+  +'切顶栏日期或点明细里任一行，全站都切到那一期。'},
+{t:'四周阶梯：横轴是日历',
  find:function(){return $(secDomId('periods','ladder'))},
- h:'每一期建的仓在场四周，第五周换掉第一周。阶梯上每一格是一期的仓位，横着看是它还剩多少，竖着看是现在同时在场的四期。'},
-{t:'主题进出',
+ h:'一行一期，从建仓日画到到期日（约四周）；今天是那根竖线。同一时刻竖着数，就是现在同时在场的期数——正常是四期，第五期进来时第一期滚出。'
+  +'灰掉的行已滚出，虚框的行是没建仓的期（原因在明细里）。'},
+{t:'阶梯上每一行都可点',
+ find:function(){return document.querySelector('#'+secDomId('periods','ladder')+' svg')},
+ h:'点某一行 = 切到那一期：持仓页只亮那期建的仓，方法页显示那期的链路，证据页的数据截至芯片也跟着走。'
+  +'行末的收益是那一期建的仓到今天的合计，不是账户合计。'},
+{t:'主题进出：谁续了、谁换了',
  find:function(){return $(secDomId('periods','themes'))},
- h:'这一期新进了哪些宏观主题、哪些退了、哪些续了。主题名点开是那一层：为什么选它、评分构成、证据研报。'},
-{t:'逐期明细',
+ h:'横轴是期，纵轴是出现过的宏观主题；格子里的数是那一期在该主题下建了几仓。连续几期都在的是被反复确认的主题，只出现一期的是当期研报里冒出来的。'
+  +'主题名点开是它那一层：为什么选它、评分构成、证据研报。'},
+{t:'逐期明细：先看两枚标签',
+ find:function(){return document.querySelector('#'+secDomId('periods','roster')+' tbody tr')},
+ h:'每行一期。第一枚标签是仓位状态（在场 / 已滚出 / 未建仓）；第二枚是数据分类：<b>当周实时</b>是那周三跑出来的，<b>事后补跑</b>是事后按已有行情回放的。'
+  +'只有当周实时的期计入证据——这是整站最重要的一枚标签。'},
+{t:'逐期明细：往右读',
  find:function(){return $(secDomId('periods','roster'))},
- h:'这一期每个组合各选了什么、建了多少。想知道「那一期到底选了什么、为什么」，从这里点进去，一路能追到当时的研报。'
-  +'<br><br>下一页：<b>持仓</b>，现在拿着什么。'}
+ h:'到期日、距到期天数、建仓数、在场数、收益。到期日已过但仓还在场，多半是到期落在周末或假日、等下一个交易日结算，不是异常。'
+  +'点一行切到那一期，再去持仓 / 方法页看那期的现场。<br><br>下一页：<b>持仓</b>，现在拿着什么。'}
 ],
 holdings:[
 {t:'持仓：这一页答「现在拿着什么」',
@@ -14886,60 +15219,80 @@ holdings:[
 perf:[
 {t:'业绩：这一页答「赚了还是亏了」',
  h:'每个组合的净值、回撤、周损益、跟基准的差，以及收益从哪来。只报数字，不下判定——判定在证据页。'},
-{t:'先说清看的是哪一份数据',
+{t:'第一步：选看哪一份账',
+ find:function(){return document.querySelector('#'+secDomId('perf','mode')+' .pf-seg')||$(secDomId('perf','mode'))},
+ h:'<b>纸面组合</b>是向前下单的账，<b>历史回测</b>是同一引擎把过去几期回放出来的账。两者规则一样，区别只在「下单时知不知道后面的行情」。'},
+{t:'第二步：选看哪些期',
  find:function(){return $(secDomId('perf','mode'))},
- h:'模式：<b>纸面组合</b>是向前下单的账，<b>历史回测</b>是同一引擎回放的账。子集：<b>实时运行</b>的期还是<b>历史回补</b>的期。'
-  +'回补的期是事后按已存在的行情回放出来的，不算证据。'},
-{t:'净值曲线',
- find:function(){return $(secDomId('perf','nav'))},
- h:'各组合对同期 SPY。灰色的是对照组（等权全池、随机选择）——它们故意不聪明，主策略要先赢过它们才谈得上赢过市场。'},
+ h:'子集：<b>实时运行</b>的期、<b>历史回补</b>的期、或全部。回补的期是事后回放的，不算证据；页面默认子集由数据决定——没有实时期时默认全部，并写明原因。'},
+{t:'净值曲线：勾谁画谁',
+ find:function(){return document.querySelector('#'+secDomId('perf','nav')+' .pf-legend')||$(secDomId('perf','nav'))},
+ h:'图例里每条序列一个勾选框；灰掉的是画不出来的（原因写在旁边）。「共同起点 / 各自起点」决定归一化到 100 的那一天：样本长度不同时先看共同起点。'},
+{t:'净值曲线：怎么读',
+ find:function(){return document.querySelector('#'+secDomId('perf','nav')+' .funnel-wrap')||$(secDomId('perf','nav'))},
+ h:'虚线是基准（SPY、等权全池）。等权全池是把候选池全买下，随机选择是闭着眼挑——它们故意不聪明，主策略要先赢过它们才谈得上赢过市场。'
+  +'鼠标放上去看当天各条的数，点某条线进那个组合的抽屉，拖一段放大。斜纹区间是运行记录里标出的受影响区间。'},
+{t:'回撤',
+ find:function(){var w=document.querySelectorAll('#'+secDomId('perf','nav')+' .funnel-wrap');return w.length>1?w[w.length-1]:null},
+ h:'距此前最高点的跌幅，单独一张小图——画进主图会把 0 附近压成一条线。看的是「最难受的那段有多深、多久」。'},
 {t:'自然周损益',
  find:function(){return $(secDomId('perf','weekly'))},
- h:'按周拆开的损益，看的是「哪一周赚的、哪一周亏的」，而不是只看一个累计数。'},
+ h:'按 ISO 周拆开的损益，一列一个策略。金额 / 收益率 / 并排三种口径切换。看的是「哪一周赚的、哪一周亏的」，而不是只看一个累计数。'},
 {t:'全部策略汇总',
  find:function(){return $(secDomId('perf','table'))},
- h:'每个组合一行：收益、回撤、夏普、胜率、仓位数，可按列排序。组合名点开是那一层：选取规则、持仓、损益。'},
+ h:'每个组合一行：收益、回撤、夏普、胜率、仓位数、现金占比，点列头排序。灰行是这一模式下没跑起来的组合，原因写在状态列。组合名点开是它那一层：选取规则、持仓、损益。'},
 {t:'收益归因',
  find:function(){return $(secDomId('perf','attribution'))},
- h:'收益按来源拆：主题层拿到的 vs 选标的这一段拿到的。这一页到此为止都是数字；'
-  +'<br><br>下一页：<b>方法</b>，怎么选出来的。'}
+ h:'按主题 / 标的 / 生成方法三个维度拆损益。同一标的常被多个主题、多个方法共同提出，所以有两列：<b>完整计入</b>只能一行一行看，<b>均分</b>才能相加、合计等于账户盈亏。点名称跳到方法页候选池只看它。'},
+{t:'研究检验与运行记录',
+ find:function(){return $(secDomId('perf','research'))||$(secDomId('perf','records'))},
+ h:'页尾两段折叠：统计检验（夏普区间、排序能力、前推）和数据与运行记录（失败、缺数、回补、卡住的批次）。'
+  +'失败的期不会显示成零收益的成功期——它们在记录里列出来，并在净值图上以斜纹标出。<br><br>下一页：<b>方法</b>，怎么选出来的。'}
 ],
 method:[
 {t:'方法：这一页答「怎么选出来的」',
- h:'从研报到建仓的整条链路，每一段都能点开看现场。这一页三段：生成链路、我的准则、本期输入。'},
-{t:'这些仓是怎么被选出来的',
- before:function(){if(drawerStack.length)closeDrawers();switchView('method')},
- find:function(){return $('pipeCard')},
- h:'一条线六段：<b>研报 → 筛选A 定主题 → 筛选B 各方法写想法 → 合并成候选池 → '
-  +'筛选C 各策略挑 → 建仓</b>。每一段的收敛倍数，就是这一段淘汰掉了多少。'
-  +'<br><br>图上每个方块<b>本身就是入口</b>：点它看那一段的现场——研报原文、主题评分、逐条提案。'},
-
-{t:'这一列，就是持仓页那个共识度',
- before:function(){
-   var w=document.querySelector('#pipeCard .pipe-wrap');
-   if(w)w.scrollLeft=w.scrollWidth;
- },
- find:function(){
-   var wrap=document.querySelector('#pipeCard .pipe-wrap');
-   if(!wrap)return null;
-   var gs=[].slice.call(document.querySelectorAll('#pipeCard g.pc-click')).filter(function(g){
-     return /goSelector/.test(g.getAttribute('onclick')||'');
-   });
-   if(!gs.length)return null;
-   var l=1e9,t=1e9,r=-1e9,b=-1e9;
-   gs.forEach(function(g){var q=g.getBoundingClientRect();
-     l=Math.min(l,q.left);t=Math.min(t,q.top);r=Math.max(r,q.right);b=Math.max(b,q.bottom)});
-   return tourIntersect({left:l,top:t,right:r,bottom:b},wrap.getBoundingClientRect());
- },
+ h:'从研报到建仓一条线六段，下面一步一步走。每一段的收敛倍数就是它淘汰了多少；每个方块本身是入口，点开是那一段的现场。'},
+{t:'第 1 段：读研报',
+ before:function(){if(drawerStack.length)closeDrawers()},
+ find:tourPipeStage(0),
+ h:'块内的数是本期读进来的研报篇数（投行日报与研报），其下是同期的其他输入：宏观日历、货架。这是整条线的原料——研报没读够，后面每一段都会缺。'
+  +'点它看研报清单与来源分布。'},
+{t:'第 2 段：筛选A · 选主题',
+ find:tourPipeStage(1),
+ h:'模型从研报里收敛出候选宏观主题并逐个打分（H 热度、G 分歧、E 实据、P 已定价反向计分），综合分过线的入选，每期只留几个。圆内的数是命中研报篇数。'
+  +'落选的也留着（虚框），点开能看落选理由——这是「为什么没选它」的答案。'},
+{t:'第 3 段：筛选B · 写想法',
+ find:tourPipeStage(2),
+ h:'同一批主题交给几种<b>不同的生成方法</b>各写一遍交易想法：AI 端到端、约束边界、传导链、共识缺口、穿透反查……框内大数是提出的不同标的数、小字是想法条数。'
+  +'方法之间互不商量，所以后面能比较「哪种方法提出的标的更好」。点一个方法看它逐条的提案与引用的研报。'},
+{t:'第 4 段：合并成候选池',
+ find:tourPipeStage(3),
+ h:'把各方法的想法按标的合并：同一标的被几种方法提出就记几次——这就是<b>跨方法共识度</b>的来源。环内的数是候选标的只数。'
+  +'无法盯市的候选（没有行情或净值）会带「无净值」标签，不进下一段。点开是候选池全表。'},
+{t:'第 5 段：筛选C · 选取策略',
+ find:function(){return tourPipeNode(/goSelector\(/)},
  h:function(){var nb=tourNB();
-  return nb+' 个选取策略，各自从<b>同一个候选池</b>里挑，各管一个组合。一个标的被越多策略选中，'
-  +'持仓页上它的 <b>n/'+nb+'</b> 就越大。<br><br>倒着走就是完整链路：'
-  +'<b>圆点 ← 组合 ← 候选池 ← 想法 ← 主题 ← 研报</b>，每一步都点得开、都能回到当时那份材料。'}},
-
-{t:'我的准则与本期输入',
- find:function(){return $(secDomId('method','rules'))||$(secDomId('method','inputs'))},
- h:'<b>我的准则</b>：你写一句话，它变成一条选取规则参与下一期。<b>本期输入</b>：这一期用了哪些研报、哪些行情、哪些参数。'
-  +'<br><br>下一页：<b>证据</b>，它管用吗。'}
+  return nb+' 个选取策略各自从<b>同一个候选池</b>里挑，各管一个纸面组合——这才是被比较的对象。行末的数是该策略选中的条数。'
+  +'里面有几条故意不聪明的：等权全池、随机选择，它们是对照组。点一条策略看它放行了哪些标的、按什么规则。'}},
+{t:'第 6 段：建仓',
+ find:tourPipeStage(5),
+ h:'每个策略的选中名单等权买入，进场即挂 σ×2 止损 / σ×3 止盈，持有约一个月到期平仓，没投出去的钱放货币市场基金。'
+  +'块内的数是本期建仓仓位数。点开是建仓详情与风控参数。'},
+{t:'点开一段看现场',
+ before:function(){if(!drawerStack.length){openStageDrawer(1);tourOpenedDrawer=true}},
+ find:function(){return document.querySelector('#drawerRoot .drawer:not(.under) .drawer-head')},
+ h:'这是筛选A 那一层：每个主题的评分构成、入选线、命中的研报。每一段的抽屉都长这样——当时的材料、当时的判断，都能回到原文。'
+  +'<kbd>Esc</kbd> 退一层。'},
+{t:'我的准则',
+ before:function(){if(drawerStack.length)closeDrawers()},
+ /* 「我的准则」段只在有准则在跑时才渲染；平时它的入口是流水线画布上筛选C 那
+    列末尾的「写一条准则」节点，所以先找段、找不到就指那个节点。 */
+ find:function(){return $(secDomId('method','rules'))||tourPipeNode(/openRulesDrawer\(/)},
+ h:'你用一句话写一条准则，它被翻译成一条选取规则，从下一期起参与筛选C，和其他策略一起被比较。写过的准则和它的成绩都留在这里。'},
+{t:'本期输入',
+ find:function(){return $(secDomId('method','inputs'))},
+ h:'这一期用了哪些研报、哪些行情、哪些参数、哪个模型——是复现这一期的清单。倒着走就是完整链路：'
+  +'<b>圆点 ← 组合 ← 候选池 ← 想法 ← 主题 ← 研报</b>。<br><br>下一页：<b>证据</b>，它管用吗。'}
 ],
 evidence:[
 {t:'证据：这一页答「这算不算本事」',

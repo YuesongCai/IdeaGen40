@@ -861,6 +861,13 @@ def _candidate_prices(p, as_of: date, candidates: list[dict[str, Any]],
         if not code:
             hit = uni.resolve(str(c.get("instrument_id") or ""))
             code = getattr(hit, "futu_code", None) if hit else None
+            if code:
+                # The selectors look prices up by `futu_code` on the candidate
+                # row (select_momentum does exactly that), and a live pool row
+                # carries only `instrument_id`. Resolving it here, once, is
+                # what lets the momentum control see the view built for it —
+                # it chose nothing in every 2026-09-07 reselect until then.
+                c["futu_code"] = str(code)
         if not code:
             summ["unlisted"] += 1
             continue
@@ -877,8 +884,10 @@ def _candidate_prices(p, as_of: date, candidates: list[dict[str, Any]],
         view = pricing.price_view(con, as_of, sorted(codes), _bt.clamp_dates(as_of))
     except Exception as e:  # noqa: BLE001 — a selector without prices must say so, not crash the run
         return {}, {**summ, "error": f"读取候选行情失败：{type(e).__name__}: {e}"}
-    summ["measured"] = sum(1 for v in view.values()
-                           if v.get("priced_in_source") == "return_percentile_21s")
+    # "Measured" for a candidate means the trailing return a selector ranks
+    # on exists; the one-year percentile (`priced_in`) is stage A's need and
+    # a young ETF can lack it while its 21-session return is perfectly real.
+    summ["measured"] = sum(1 for v in view.values() if v.get("ret_21s") is not None)
     return view, {**summ, "source": "built:prices-table"}
 
 

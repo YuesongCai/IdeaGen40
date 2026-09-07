@@ -477,7 +477,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             from . import performance
             q = parse_qs(urlparse(self.path).query)
             mode = (q.get("mode") or ["paper"])[0]
-            subset = (q.get("subset") or ["live"])[0]
+            # No subset named = the one the index says the page should open
+            # on (「按时运行」 only while it has positions; see perf_index).
+            subset = (q.get("subset") or [None])[0]
+            if not subset:
+                try:
+                    idx = performance.perf_index(db.init())
+                    subset = next((m.get("default_subset") for m in idx["modes"]
+                                   if m["mode"] == "paper"), None) or "live"
+                except Exception:  # noqa: BLE001 — a default is a caption
+                    subset = "live"
             source = (q.get("source") or [None])[0]
             if mode not in performance.MODES:
                 return self._json({"error": f"mode 必须是 {sorted(performance.MODES)}",

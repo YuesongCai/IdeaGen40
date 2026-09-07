@@ -1249,6 +1249,16 @@ def _kv_params(items: list[str]) -> dict:
     return out
 
 
+def cmd_reselect(args) -> int:
+    """Re-run stage C for named arms on stored periods (see ideagen/reselect.py)."""
+    from . import platform as plat, reselect as rs
+    p = plat.load()
+    rep = rs.reselect(p, arms=args.arms.split(","), start=args.start, end=args.end,
+                      params=_kv_params(getattr(args, "param", None) or []))
+    print(json.dumps(rep, ensure_ascii=False, indent=1, default=str))
+    return 0
+
+
 def cmd_restate_books(args) -> int:
     """Archive the selector paper books and rebuild them from the current runs.
 
@@ -1575,6 +1585,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--arms", help="逗号分隔的选取策略；默认窗口内出现过判决的全部")
     s.add_argument("--backtest-id", help="指定 id（重跑同 id 会先清理再建）")
     s.add_argument("--dry-run", action="store_true", help="只列期次与组合，不动库")
+
+    s = add("reselect", cmd_reselect,
+            "对已存期次重做若干选取策略的筛选C（只对可盯市候选、带候选行情），替换判决")
+    s.add_argument("--arms", required=True, help="逗号分隔的选取策略")
+    s.add_argument("--from", dest="start", help="起始期次 YYYY-MM-DD（含）")
+    s.add_argument("--to", dest="end", help="截止期次 YYYY-MM-DD（含）")
+    s.add_argument("--param", action="append", metavar="K=V", help="传给策略的参数")
 
     s = add("restate-books", cmd_restate_books,
             "同期重跑之后：归档旧模拟组合，按各期最新完成运行的判决用模拟运行规则重建")

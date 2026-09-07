@@ -597,7 +597,7 @@ def paper_view(con, p=None, subset: str = "live") -> dict[str, Any]:
         periods_by_key[key] = periods
         m = meta.get(key, {"name": key, "role": "?"})
         if not led["points"]:
-            status, reason = "缺数据", "组合存在但没有任何盯市记录"
+            status, reason = "缺数据", _empty_book_reason(con, key)
         elif not led["positions"]:
             status = "缺数据"
             cc = led["class_counts"]
@@ -1098,6 +1098,46 @@ def backtest_view(con, p=None, source: str | None = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- index
+def _empty_book_reason(con, key: str) -> str:
+    """Why a selector book has no marks at all, from the newest run's verdict.
+
+    「组合存在但没有任何盯市记录」 was the whole answer, and Jon read it as a
+    bug. The record can say more: what the arm chose last period and whether
+    any of it could be held. 2026-09-07: the two source-restricted arms chose
+    46–48 shelf funds and zero listed instruments, because their generators
+    propose funds only and this node has no NAV series for a fund.
+    """
+    try:
+        run = db.q1(con, "SELECT run_id, as_of FROM orch_runs WHERE kind='weekly' "
+                         "AND ok=1 ORDER BY as_of DESC, ended_at DESC LIMIT 1")
+        if not run:
+            return "组合存在但没有任何盯市记录（没有完成的周跑）"
+        v = db.q1(con, "SELECT chosen FROM verdicts WHERE run_id=? AND kind='idea_selector' "
+                       "AND strategy=?", (run["run_id"], key))
+        if not v:
+            return f"组合存在但没有任何盯市记录（{run['as_of']} 那期没有这个组合的判决）"
+        chosen = db.jl(v["chosen"], []) or []
+        ok = {r["key"] for r in db.q(
+            con, "SELECT key FROM instruments WHERE COALESCE(priceable,0)=1")}
+        cands = {str(r["candidate_id"]): db.jl(r["payload"], {}) for r in db.q(
+            con, "SELECT candidate_id, payload FROM candidates WHERE run_id=?",
+            (run["run_id"],))}
+        if not chosen:
+            n_ok = sum(1 for c in cands.values() if str(c.get("instrument_id")) in ok)
+            return (f"{run['as_of']} 那期在可盯市的 {n_ok}/{len(cands)} 只候选里没有选中"
+                    f"任何想法（其余候选没有价格或净值序列，不进筛选C；来源限定类组合"
+                    f"只认它那种方法提出的标的，而那种方法本期只提出了货架基金）")
+        markable = sum(1 for c in chosen
+                       if str((cands.get(str(c)) or {}).get("instrument_id")) in ok)
+        if markable == 0:
+            return (f"{run['as_of']} 那期选中 {len(chosen)} 只，全部没有价格或净值序列"
+                    f"（该组合来源方法只提出货架基金，本机没有基金净值），建仓时被剔除")
+        return (f"组合存在但没有任何盯市记录（{run['as_of']} 那期选中 {len(chosen)} 只，"
+                f"其中 {markable} 只可盯市，却没有建仓记录）")
+    except Exception as e:  # noqa: BLE001 — a caption never blocks the page
+        return f"组合存在但没有任何盯市记录（原因查询失败：{type(e).__name__}）"
+
+
 def perf_index(con) -> dict[str, Any]:
     """The cheap entry-point block for the state document: what modes exist.
 

@@ -651,13 +651,23 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
             str(candidate.get("id")): _opaque("CAND", candidate.get("id"))
             for candidate in cands
         }
+        # Runs before 2026-09-07 stored no `markable` flag; derive it from the
+        # instrument table so the pool can still say which candidates a book
+        # could hold. A missing instrument is reported as unknown (None), not
+        # as markable.
+        _uni_ok = {r["key"]: bool(r["priceable"]) for r in db.q(
+            con, "SELECT key, COALESCE(priceable,0) AS priceable FROM instruments")}
+        for c in cands:
+            if "markable" not in c:
+                c["markable"] = _uni_ok.get(str(c.get("instrument_id")))
         weekly["pool"] = {
             "n": len(cands),
+            "n_unmarkable": sum(1 for c in cands if c.get("markable") is False),
             "convergence": {},
             "candidates": [{
                 **{k: c.get(k) for k in
                    ("topic_id", "upside_pct", "downside_pct", "p_up", "p_base",
-                    "p_down", "proposed_by", "n_proposals", "n_methods")},
+                    "p_down", "proposed_by", "n_proposals", "n_methods", "markable")},
                 # Every source topic, not the one `_merge_pool` elected as
                 # primary. The table used to print `topic_id` alone, and GLD —
                 # proposed under four topics — read as a single-topic idea.

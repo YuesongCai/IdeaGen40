@@ -1110,11 +1110,30 @@ def perf_index(con) -> dict[str, Any]:
         (config.SELECTOR_PREFIX + "%",))]
     span = db.q1(con, "SELECT MIN(d) a, MAX(d) b FROM equity WHERE book_id LIKE ?",
                  (config.SELECTOR_PREFIX + "%",))
+    # Which subset the page should open on. 「按时运行」 is the honest default
+    # only while it has something in it: after the 2026-09-07 rebuild every
+    # position descends from a backfill run, and a page that opens on an empty
+    # subset with thirteen greyed-out strategies reads as broken rather than as
+    # "no live period yet". Say which and why, and let the page open on 全部.
+    try:
+        live_any = db.q1(
+            con, "SELECT 1 x FROM positions p JOIN ideas i ON i.idea_uid=p.idea_uid "
+                 "JOIN batches b ON b.batch_id=i.batch_id "
+                 "LEFT JOIN orch_runs r ON r.run_id=substr(b.generator, 8) "
+                 "WHERE p.book_id LIKE ? AND b.generator LIKE 'weekly:%' "
+                 "AND COALESCE(r.data_classification, 'live')='live' LIMIT 1",
+            (config.SELECTOR_PREFIX + "%",))
+    except Exception:  # noqa: BLE001 — a default is a caption, never a blocker
+        live_any = None
+    default_subset = "live" if live_any else "all"
+    default_reason = (None if live_any else
+                      "还没有按时运行建的仓位（现有仓位都来自事后补跑的期次），先看全部")
     modes.append({"mode": "paper", "label": MODES["paper"], "available": bool(books),
                   "window": ({"start": span["a"], "end": span["b"]}
                              if span and span["a"] else None),
                   "n_strategies": len(books), "methodology": PAPER_METHODOLOGY,
-                  "source_id": None, "subsets": list(SUBSETS), "default_subset": "live"})
+                  "source_id": None, "subsets": list(SUBSETS),
+                  "default_subset": default_subset, "default_reason": default_reason})
     runs = [dict(r) for r in db.q(
         con, "SELECT backtest_id, as_of, window_start, window_end, methodology "
              "FROM backtest_runs WHERE ok=1 ORDER BY as_of DESC, ended_at DESC")]

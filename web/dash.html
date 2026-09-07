@@ -3086,7 +3086,7 @@ function routeQuery(){
   if(PERIOD)qs.push('p='+encodeURIComponent(PERIOD));
   if(current==='perf'&&typeof PERF!=='undefined'){
     qs.push('mode='+PERF.mode);
-    if(PERF.mode==='paper')qs.push('subset='+PERF.subset);
+    if(PERF.mode==='paper'&&PERF.subset)qs.push('subset='+PERF.subset);
   }
   return qs.length?'?'+qs.join('&'):'';
 }
@@ -7249,7 +7249,13 @@ function backtestRosterNote(names,sum){
 
    状态：数据层还没就绪（/api/perf 404）、载入中、失败，都要显示成那个状态，
    不能画成零收益（「绿着的失败」是本仓最常见的缺陷形状）。 */
-var PERF={mode:'paper',subset:'live'};
+/* subset 为 null = 「用数据层说的默认子集」。此前写死 'live'，2026-09-07 组合按补跑
+   期次重建之后这个子集是空的，页面打开就是十三条灰掉的策略——看起来像坏了，
+   其实只是还没有按时运行的期次。默认由 perf_index.modes[paper].default_subset 决定，
+   带原因；用户点过哪个子集就用哪个。 */
+var PERF={mode:'paper',subset:null};
+function perfPaperIndex(){var pi=(S||{}).perf_index;return ((pi&&pi.modes)||[]).find(function(m){return m.mode==='paper'})||{}}
+function perfDefaultSubset(){return perfPaperIndex().default_subset||'live'}
 var PERF_CACHE={};        /* perfKey() -> {data,err,at,loading} */
 var PERF_TTL_MS=60000;    /* 与状态文档同节奏：每分钟最多重取一次 */
 /* 实盘那一格的文案写着「未接入」：这套系统的实盘通道是故意没有接的
@@ -7276,7 +7282,7 @@ var PERF_UI={curves:null,align:'common',wk:'both',wkOpen:null,attr:'topic',sort:
    放到（或软链到）web/fixtures/。不做成「接口 404 就自动退回夹具」——
    那会把「数据层未就绪」画成一份看起来很像真的数据。 */
 function perfFixtureOn(){try{return /(?:^|[?&])fixture=1(?:&|$)/.test(location.search||'')}catch(e){return false}}
-function perfSubsetOf(mode){return mode==='paper'?PERF.subset:'all'}
+function perfSubsetOf(mode){return mode==='paper'?(PERF.subset||perfDefaultSubset()):'all'}
 function perfKey(){return PERF.mode+'/'+perfSubsetOf(PERF.mode)}
 function perfUrl(){
   if(perfFixtureOn())return 'fixtures/perf_'+encodeURIComponent(PERF.mode)+'_sample.json';
@@ -7432,10 +7438,13 @@ function perfModeCard(e){
     ? '<div class="pf-sub"><span class="card-note">模拟运行内再分：</span>'
       +'<div class="pf-seg" role="group" aria-label="模拟运行子集">'
       +PERF_SUBSETS.map(function(s){
-        return '<button type="button" class="seg-btn'+(PERF.subset===s.s?' on':'')+'"'
+        return '<button type="button" class="seg-btn'+(perfSubsetOf('paper')===s.s?' on':'')+'"'
           +' data-el="perf.subset.'+s.s+'" onclick="perfSetSubset(\''+s.s+'\')">'+esc(s.label)+'</button>';
       }).join('')+'</div>'
-      +'<span class="card-note">默认只看按时运行；补跑单独看、单独标——它不是当期做出的决定</span></div>'
+      +'<span class="card-note">'+(perfDefaultSubset()==='live'
+          ?'默认只看按时运行；补跑单独看、单独标——它不是当期做出的决定'
+          :'默认看全部：'+esc(perfPaperIndex().default_reason||'还没有按时运行建的仓位')+'。补跑单独标——它不是当期做出的决定')
+      +'</span></div>'
     : '';
   var lead,meta='',disc='',sample='';
   if(e&&e.loading&&!P){
@@ -10800,6 +10809,9 @@ function stagePoolBody(d){
       +'<span class="big">'+fmtInt(pool.n)+'</span><span class="quiet">只候选标的</span>'
       +'</div>'
       +'<div class="gm-row">'+gmCards+'</div>'
+      +(pool.n_unmarkable
+        ?'<div class="card-note" style="margin-bottom:var(--space-2);color:var(--color-feedback-warning-text)">其中 <b>'+fmtInt(pool.n_unmarkable)+'</b> 只没有净值序列（本机 navs 表为空的 Olive 基金）：不进筛选C、建仓时剔除，表里带「无净值」标签。这就是「池子里一堆基金、组合里没几个」的原因；要让它们回到组合，需要 Olive 净值腿提供历史净值。</div>'
+        :'')
       +'<div class="card-note" style="margin-bottom:var(--space-3)">各方法的标的数不能相加当作候选池规模：方法之间会提出同一标的，跨方法再按标的去重一次，才是 '+fmtInt(pool.n)+' 只。'
       +'一只标的可能来自多个主题、多种方法、多条不同的逻辑——它们都保留在全表的「详情」里。</div>'
       +'<div class="card-note" style="margin-bottom:var(--space-2)">按跨方法共识度分档 '+glossMark(convGloss())+'</div>';
@@ -11984,8 +11996,13 @@ function renderCandBody(){
     var pickers=sels.map(function(s,si){return {s:s,si:si}}).filter(function(o){
       return ((o.s.chosen)||[]).some(function(ch){return selChosenId(ch)===c.instrument_id});
     });
+    /* 无净值序列的候选（本机 navs 表里没有的 Olive 基金）建仓时会被剔除、也不进
+       筛选C。不标出来，读者只看到「池子里一堆基金，组合里没几个」。 */
+    var unmark=(c.markable===false)
+      ?' <span class="tag" style="font-size:10px" title="本机没有这只标的的净值序列：不进筛选C、建仓时剔除。要让它回到组合，需要 Olive 净值腿提供历史净值。">无净值</span>'
+      :'';
     return '<tr>'
-      +'<td class="primary mono">'+esc(c.instrument_id)+'</td>'
+      +'<td class="primary mono">'+esc(c.instrument_id)+unmark+'</td>'
       /* 全名任其换行时，「Invesco S&P 500 Low Volatility」会把那一行撑到三行高，
        * 73 行的表因此忽高忽低、还比可视区宽出 90px。名称是辅助信息：一行放不下
        * 就省略，全名挂 title。行高齐了，表也收得进画面。 */

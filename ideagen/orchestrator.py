@@ -504,6 +504,25 @@ def weekly(
 
             # ---- 筛选C: every selector over the identical pool -------------
             if candidates:
+                # Only what a book can actually hold. 51 of the 79 candidates of
+                # 2026-09-02 were shelf funds with no NAV series on this node;
+                # every selector was ranking them, three arms picked nothing
+                # else, and booking then dropped the lot as 「当日无价」 — so
+                # the arms were compared on a pool most of which could never
+                # be owned. The pool keeps every candidate (flagged), the
+                # selectors see the markable ones, and the count is recorded.
+                markable_ids, unmark = _markable_candidates(p, as_of, candidates, dry_run)
+                for c in candidates:
+                    c["markable"] = str(c.get("id")) in markable_ids
+                sel_pool = [c for c in candidates if c["markable"]]
+                j.step("selectors:markable", pool=len(candidates),
+                       markable=len(sel_pool), unmarkable=len(unmark),
+                       unmarkable_ids=unmark[:80])
+                if unmark:
+                    log(f"  可盯市  {len(sel_pool)}/{len(candidates)} 只候选有价格或净值序列，"
+                        f"其余 {len(unmark)} 只不进筛选C")
+                candidates_all = candidates
+                candidates = sel_pool
                 # Stage C hashes its own inputs. Two selectors are comparable only
                 # if they agree on this, and it is deliberately not stage B's hash:
                 # what stage C must agree on is the pool, not how the pool was made.
@@ -552,11 +571,15 @@ def weekly(
                         + (f"   {str(v.meta.get('error'))[:60]}"
                            if v.meta.get("error") else ""))
 
-                res.n_candidates = len(candidates)
+                # The pool that is recorded is the whole pool, flagged — the
+                # unmarkable candidates are still the generators' output and
+                # the panel shows them with their tag. Only stage C's input
+                # was narrowed.
+                res.n_candidates = len(candidates_all)
                 if not dry_run:
-                    _save_candidates(p, j.run_id, cctx, candidates)
+                    _save_candidates(p, j.run_id, cctx, candidates_all)
                     res.artifacts.append(j.artifact(
-                        "B_pool.json", _blob(candidates)))
+                        "B_pool.json", _blob(candidates_all)))
 
             # A period that produced no candidate is a failed period, whatever
             # happened along the way. Every generator failing on a connection
@@ -790,6 +813,30 @@ def _price_inputs(p, as_of: date, prices: dict[str, Any] | None,
                     "source": "none",
                     "error": f"读取 K 线失败：{type(e).__name__}: {e}"}
     return built, {**summ, "source": "built:prices-table"}
+
+
+def _markable_candidates(p, as_of: date, candidates: list[dict[str, Any]],
+                         dry_run: bool) -> tuple[set[str], list[str]]:
+    """Which candidates a paper book could hold on `as_of`, and which it could not.
+
+    The same test booking applies (`booking._priced_only`: a listed code with
+    a close on or before the date), asked here so stage C ranks only what can
+    be owned. Without a readable price table (a state engine with no sqlite
+    connection, or a dry run) nothing is excluded and the caller's journal
+    line carries zero unmarkable — "not checked" must not read as "all fine",
+    so the second value then says why.
+    """
+    ids = {str(c.get("id")) for c in candidates}
+    if dry_run:
+        return ids, []
+    con = getattr(p.state, "connection", None)
+    if con is None:
+        return ids, []
+    from . import booking
+    ok, bad = booking._priced_only(con, candidates, as_of)
+    bad_set = set(bad)
+    return ({str(c.get("id")) for c in candidates
+             if str(c.get("instrument_id") or "") not in bad_set}, bad)
 
 
 def _candidate_prices(p, as_of: date, candidates: list[dict[str, Any]],

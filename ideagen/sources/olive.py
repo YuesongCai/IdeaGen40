@@ -624,6 +624,25 @@ def pull_snapshot(client: OliveMCP, *, product_codes: Iterable[str] | None = Non
 
 
 # ---------------------------------------------------------------- ingest
+def _same_basis_only(con, nav_rows: list[dict]) -> tuple[list[dict], dict[str, dict]]:
+    """Drop snapshot NAVs that sit on a different basis than the stored series."""
+    from .olive_nav import BASIS_TOLERANCE
+    keep: list[dict] = []
+    conflicts: dict[str, dict] = {}
+    for row in nav_rows:
+        near = db.q1(con, "SELECT d, nav FROM navs WHERE olive_key=? AND src<>? "
+                          "ORDER BY ABS(julianday(d) - julianday(?)) LIMIT 1",
+                     (row["olive_key"], row["src"], row["d"]))
+        if near and near["nav"]:
+            ratio = float(row["nav"]) / float(near["nav"])
+            if not (1 / BASIS_TOLERANCE <= ratio <= BASIS_TOLERANCE):
+                conflicts[row["olive_key"]] = {"d": row["d"], "snapshot": row["nav"],
+                                               "series_d": near["d"], "series": near["nav"]}
+                continue
+        keep.append(row)
+    return keep, conflicts
+
+
 def ingest(con, payload: dict | list, as_of: date | None = None,
            verbose: bool = True) -> dict:
     """Ingest an Olive snapshot captured by the agent session.
@@ -662,6 +681,13 @@ def ingest(con, payload: dict | list, as_of: date | None = None,
                                  "nav": float(rec["nav"]), "src": f"olive:{group}"})
 
     n_i = db.upsert_many(con, "instruments", inst_rows, ["key"])
+    # A snapshot NAV that disagrees with the fund's stored series by more
+    # than a share-class-sized factor is not the same number: on 2026-09-07
+    # the snapshot carried 421.67 for L03244 against a series at ~14,750,
+    # and that one point, kept, stopped out three books at −97%. The series
+    # is the basis the books are marked on, so the snapshot point is dropped
+    # and named, never merged. Same tolerance as `olive_nav.import_dir`.
+    nav_rows, basis_conflicts = _same_basis_only(con, nav_rows)
     n_n = db.upsert_many(con, "navs", nav_rows, ["olive_key", "d"])
 
     snap = SNAPSHOT_DIR / f"olive_{as_of.isoformat()}.json"
@@ -672,7 +698,7 @@ def ingest(con, payload: dict | list, as_of: date | None = None,
 
     rep = {"as_of": as_of.isoformat(), "instruments": n_i, "navs": n_n,
            "skipped": skipped, "groups": {g: len(v) for g, v in groups.items()},
-           "snapshot": str(snap)}
+           "snapshot": str(snap), "basis_conflicts": basis_conflicts}
     db.kv_set(con, f"olive:{as_of.isoformat()}", rep)
     if verbose:
         print(f"  ✓ olive  instruments={n_i} navs={n_n} skipped={skipped} "

@@ -143,10 +143,18 @@ def _ensure_book(con, book_id: str, arm: str) -> None:
 
 
 def _open_period(con, backtest_id: str, run: dict[str, Any], arm: str,
-                 chosen: list[dict[str, Any]], log) -> dict[str, Any]:
-    """Build one (period, arm) batch on the backtest book and place its orders."""
+                 chosen: list[dict[str, Any]], log, *,
+                 book_id: str | None = None, batch_id: str | None = None,
+                 generator: str | None = None) -> dict[str, Any]:
+    """Build one (period, arm) batch on a book and place its orders.
+
+    Defaults to the backtest's own namespace. `restate_selector_books` (user
+    decision of 2026-09-07: archive the superseded books and rebuild the live
+    selector books from the re-run periods) passes the live book id, a
+    `-restated` batch id and the run's own generator tag instead.
+    """
     as_of = date.fromisoformat(run["as_of"])
-    book_id = config.backtest_book(backtest_id, arm)
+    book_id = book_id or config.backtest_book(backtest_id, arm)
     rep: dict[str, Any] = {"as_of": run["as_of"], "arm": arm}
     chosen, unpriced = booking._priced_only(con, chosen, as_of)
     if unpriced:
@@ -154,14 +162,15 @@ def _open_period(con, backtest_id: str, run: dict[str, Any], arm: str,
     if not chosen:
         rep["skipped"] = ("选中的标的当日都没有价格" if unpriced else "该期没有选中任何想法")
         return rep
-    batch_id = f"{config.BACKTEST_BATCH_PREFIX}{backtest_id}-W{as_of.isoformat().replace('-', '')}-{arm}"
+    batch_id = batch_id or (f"{config.BACKTEST_BATCH_PREFIX}{backtest_id}-"
+                            f"W{as_of.isoformat().replace('-', '')}-{arm}")
     # The instant a live run for this period would have existed. Everything
     # downstream (first fillable bar, order expiry) derives from it.
     generated_at = f"{as_of.isoformat()}T{backtest.GENERATION_TIME}"
     _, rows, val = ideas_mod.build_batch(
         con, booking.payload_from_candidates(chosen, run_id=run["run_id"]), as_of,
-        generator=f"backtest:{backtest_id}:{run['run_id']}", batch_id=batch_id,
-        generated_at=generated_at)
+        generator=generator or f"backtest:{backtest_id}:{run['run_id']}",
+        batch_id=batch_id, generated_at=generated_at)
     if not (val or {}).get("pass", False):
         failed = sorted({c.get("check") for c in (val or {}).get("checks", [])
                          if not c.get("ok") and c.get("severity") == "error"})
@@ -169,7 +178,8 @@ def _open_period(con, backtest_id: str, run: dict[str, Any], arm: str,
         log(f"  ✗ {run['as_of']} {arm}: {rep['error']}")
         return rep
     rep["stops_fixed"] = booking._fix_stops(con, batch_id)
-    _ensure_book(con, book_id, arm)
+    if config.is_backtest_book(book_id):
+        _ensure_book(con, book_id, arm)
     orep = paper.open_batch(con, batch_id, book_id, verbose=False)
     rep.update(batch_id=batch_id, orders=orep.get("placed", 0),
                skipped_ideas=orep.get("skipped") or {}, n_ideas=len(rows))
@@ -399,3 +409,170 @@ def run(con, *, start: str | None = None, end: str | None = None,
                   f"成交 {o.get('filled', 0)} 未成交 {o.get('expired', 0)} 挂单 {o.get('pending', 0)}  "
                   f"退出 {s['exits']}  错误 {len(s['errors'])}")
     return receipt
+
+
+# ---------------------------------------------------------------------------
+# Restating the live selector books after periods were re-run
+# ---------------------------------------------------------------------------
+ARCHIVE_PREFIX = "old:"
+
+
+def archive_selector_book(con, arm: str, stamp: str) -> str | None:
+    """Move `sel-<arm>` and every row it owns under `old:sel-<arm>@<stamp>`.
+
+    A rename, not a delete: the superseded ledger stays queryable in full.
+    The archived id falls outside every prefix the system walks — `paper.all_books`
+    (marking), `review.state` (the panel's `sel-%` query), `performance` — so
+    the archive is frozen at the moment it was archived and never shown as a
+    live book.
+    """
+    old = config.selector_book(arm)
+    if not db.q1(con, "SELECT 1 x FROM books WHERE book_id=?", (old,)):
+        return None
+    new = f"{ARCHIVE_PREFIX}{old}@{stamp}"
+    k = 1
+    # Two restates inside one second (a test, or an operator retrying) must
+    # not collide on the archive id: the second one gets a suffix.
+    while db.q1(con, "SELECT 1 x FROM books WHERE book_id=?", (new,)):
+        k += 1
+        new = f"{ARCHIVE_PREFIX}{old}@{stamp}-{k}"
+    with db.tx(con):
+        for t in ("orders", "positions", "trades", "equity", "mtm", "alerts"):
+            con.execute(f"UPDATE {t} SET book_id=? WHERE book_id=?", (new, old))
+        con.execute("UPDATE books SET book_id=?, label=?, descr=? WHERE book_id=?",
+                    (new, f"{arm}（{stamp} 归档）",
+                     f"被取代运行建的组合，{stamp} 归档；不再盯市、不再显示为组合", old))
+    return new
+
+
+def restate_selector_books(con, *, start: str | None = None, end: str | None = None,
+                           arms: list[str] | None = None, note: str = "",
+                           verbose: bool = True) -> dict[str, Any]:
+    """Archive the selector books and rebuild them from the periods' current runs.
+
+    Why: the 2026-09-07 replay re-ran six periods through the corpus-first
+    chain with `--no-trade`, so the method page, the drawers and both
+    backtests read the new runs while the holdings page and the period ladder
+    still showed positions the superseded runs had booked. The PM chose to
+    archive the old books and rebuild (2026-09-07).
+
+    Per arm: the old `sel-<arm>` book is renamed under `old:` with every row it
+    owns (`archive_selector_book`); its `W<date>-<arm>` batches stay, marked
+    `status='superseded'` so nothing reads them as the period's batch; then a
+    fresh `sel-<arm>` book is walked exactly as the formal replay is — one
+    `W<date>-<arm>-r<stamp>` batch per (period, arm) from the period's newest
+    completed run, `generated_at` clamped to that period's 07:23 HKT, orders
+    placed and marked session by session through today with the paper
+    engine's own fills, stops, takes, horizon exits and interest. From the
+    next live period on, booking appends to these books as before.
+
+    Not a forward record: every rebuilt position was placed today against
+    bars that already existed. The run's `data_classification` (backfill)
+    says so for the ideas; the book's `descr` says so for the positions; the
+    performance page's 「按时运行」 subset is empty until the next live period.
+    """
+    log = print if verbose else (lambda *a: None)
+    runs = _weekly_runs(con, start, end)
+    if not runs:
+        raise ValueError("窗口内没有成功完成的周跑（orch_runs kind=weekly ok=1）")
+    verdicts = {r["run_id"]: _verdicts(con, r["run_id"]) for r in runs}
+    arm_names = sorted({a for vs in verdicts.values() for a in vs
+                        if arms is None or a in arms})
+    if not arm_names:
+        raise ValueError("窗口内没有可重建的选取策略")
+    dates = [r["as_of"] for r in runs]
+    stamp = config.now_hkt().strftime("%Y%m%dT%H%M%S")
+
+    # Archive every book first, before any batch is opened: a book rebuilt
+    # while another still holds superseded positions would size against cash
+    # that is about to move.
+    archived: dict[str, str] = {}
+    superseded_batches = 0
+    spec = config.SELECTOR_SPEC
+    for arm in arm_names:
+        moved = archive_selector_book(con, arm, stamp)
+        if moved:
+            archived[arm] = moved
+        for d in dates:
+            # The period's live batch and any earlier restated one: a second
+            # restate must retire the first's batches the same way the first
+            # retired the live run's.
+            bid = f"W{d.replace('-', '')}-{arm}"
+            superseded_batches += con.execute(
+                "UPDATE batches SET status='superseded' WHERE (batch_id=? "
+                "OR batch_id LIKE ?) AND status<>'superseded'",
+                (bid, bid + "-r%")).rowcount
+        db.upsert(con, "books", {
+            "book_id": config.selector_book(arm), "label": arm,
+            "descr": (f"{spec['desc']}｜重建于 {stamp}：按 {dates[0]}→{dates[-1]} "
+                      f"各期最新完成运行的判决，用模拟运行规则按当期日历回放；"
+                      f"旧组合归档为 {archived.get(arm) or '（无）'}"
+                      + (f"｜{note}" if note else "")),
+            "capital": spec["capital"], "sizing": spec["sizing"],
+            "entry": spec["entry"],
+            "created_at": config.now_hkt().isoformat()}, ["book_id"])
+    con.commit()
+    log(f"重建 {len(arm_names)} 本模拟组合：归档 {len(archived)} 本，"
+        f"旧批次标为 superseded {superseded_batches} 个")
+
+    last_bar = db.q1(con, "SELECT MAX(d) d FROM prices WHERE code=?",
+                     (config.BENCHMARKS["SPY"],))
+    stop = min(x for x in (futu_px.complete_through("US"),
+                           last_bar["d"] if last_bar and last_bar["d"] else None,
+                           end) if x)
+    per_arm: dict[str, dict[str, Any]] = {
+        a: {"periods": {}, "errors": {}, "skipped": {}, "unpriced": {}} for a in arm_names}
+    active: list[str] = []
+    for i, r in enumerate(runs):
+        as_of = r["as_of"]
+        for arm in arm_names:
+            chosen = verdicts[r["run_id"]].get(arm)
+            if chosen is None:
+                per_arm[arm]["skipped"][as_of] = "该期没有这个组合的判决"
+                continue
+            b = config.selector_book(arm)
+            try:
+                rep = _open_period(
+                    con, "restate", r, arm, chosen, log, book_id=b,
+                    batch_id=f"W{as_of.replace('-', '')}-{arm}-r{stamp}",
+                    generator=f"weekly:{r['run_id']}")
+            except Exception as e:  # noqa: BLE001 — one arm-period must not sink the rebuild
+                rep = {"error": f"{type(e).__name__}: {e}"}
+                log(f"  ✗ {as_of} {arm}: {rep['error']}")
+            if rep.get("error"):
+                per_arm[arm]["errors"][as_of] = rep["error"]
+            elif rep.get("skipped"):
+                per_arm[arm]["skipped"][as_of] = rep["skipped"]
+            else:
+                per_arm[arm]["periods"][as_of] = {
+                    k: v for k, v in rep.items() if k not in ("as_of", "arm")}
+                if b not in active:
+                    active.append(b)
+            if rep.get("unpriced"):
+                per_arm[arm]["unpriced"][as_of] = rep["unpriced"]
+        nxt = runs[i + 1]["as_of"] if i + 1 < len(runs) else None
+        seg_end = stop if not nxt else min(
+            stop, (date.fromisoformat(nxt) - timedelta(days=1)).isoformat())
+        if seg_end < as_of:
+            continue
+        sessions = paper.sessions_between(con, as_of, seg_end)
+        for d in sessions:
+            for b in active:
+                paper.step(con, b, d, verbose=False)
+        log(f"  · {as_of} 段：{len(sessions)} 个交易日，{len(active)} 本书")
+
+    out: dict[str, Any] = {"restated_at": stamp, "periods": dates, "arms": {},
+                           "archived": archived, "superseded_batches": superseded_batches,
+                           "marked_through": stop,
+                           "runs": {r["as_of"]: r["run_id"] for r in runs}}
+    for arm in arm_names:
+        b = config.selector_book(arm)
+        stats = _arm_stats(con, b) if b in active else {"book_id": b, "n_positions": 0}
+        stats.update(periods_booked=len(per_arm[arm]["periods"]),
+                     errors=per_arm[arm]["errors"], skipped=per_arm[arm]["skipped"],
+                     unpriced={k: len(v) for k, v in per_arm[arm]["unpriced"].items()})
+        out["arms"][arm] = stats
+        cum = stats.get("cum_ret_pct")
+        log(f"  {arm:<26} 期 {len(per_arm[arm]['periods'])}/{len(runs)}  "
+            f"仓位 {stats.get('n_positions', 0)}  累计 {cum if cum is not None else '—'}%")
+    return out

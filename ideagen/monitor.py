@@ -163,7 +163,8 @@ def digest(con, d: str | None = None) -> dict:
     al = db.q(con, "SELECT level, kind, message FROM alerts WHERE d=? "
                    "ORDER BY CASE level WHEN 'action' THEN 0 WHEN 'warn' THEN 1 "
                    "ELSE 2 END LIMIT 20", (d,))
-    todays = db.q1(con, "SELECT batch_id, n_ideas, status FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%'",
+    todays = db.q1(con, "SELECT batch_id, n_ideas, status FROM batches WHERE as_of=? "
+                        "AND batch_id NOT LIKE 'BT-%' AND status<>'superseded'",
                    (d,))
     return {"d": d, "books": books,
             "alerts": [dict(r) for r in al],

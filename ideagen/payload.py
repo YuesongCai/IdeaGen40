@@ -454,7 +454,8 @@ def _corpus(con, d: str) -> dict:
     kv = db.q1(con, "SELECT k FROM kv WHERE k LIKE 'replay:%' ORDER BY k DESC LIMIT 1")
     if kv:
         replay_at = "2026-08-08"
-    b = db.q1(con, "SELECT generator FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%'", (d,))
+    b = db.q1(con, "SELECT generator FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%' "
+                   "AND status<>'superseded'", (d,))
     if b:
         authored = not str(b["generator"] or "").startswith("rules:")
 
@@ -531,7 +532,8 @@ def _charts(con, d: str) -> list[dict]:
 
 
 def _batch(con, d: str) -> dict | None:
-    b = db.q1(con, "SELECT * FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%' ORDER BY generated_at DESC "
+    b = db.q1(con, "SELECT * FROM batches WHERE as_of=? AND batch_id NOT LIKE 'BT-%' "
+                   "AND status<>'superseded' ORDER BY generated_at DESC "
                    "LIMIT 1", (d,))
     if not b:
         return None

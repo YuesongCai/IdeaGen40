@@ -145,7 +145,8 @@ def stuck_batches(con) -> list[dict[str, Any]]:
     """
     out = []
     for r in db.q(con, "SELECT batch_id, as_of, n_ideas, status, validation, generator "
-                       "FROM batches WHERE status!='traded' AND batch_id NOT LIKE 'BT-%' "
+                       "FROM batches WHERE status NOT IN ('traded','superseded') "
+                       "AND batch_id NOT LIKE 'BT-%' "
                        "ORDER BY as_of, batch_id"):
         if str(r["generator"] or "").startswith("backtest:"):
             continue

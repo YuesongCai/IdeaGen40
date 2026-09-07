@@ -1249,6 +1249,32 @@ def _kv_params(items: list[str]) -> dict:
     return out
 
 
+def cmd_restate_books(args) -> int:
+    """Archive the selector paper books and rebuild them from the current runs.
+
+    It moves ten books' history aside, so it refuses without `--confirm` and
+    prints what it would archive instead.
+    """
+    from . import backtest_formal as bf
+    con = db.init()
+    if not args.confirm:
+        plan = bf.plan(con, start=args.start, end=args.end,
+                       arms=(args.arms.split(",") if args.arms else None))
+        print("将归档并重建这些组合（不带 --confirm，只列不动）：")
+        for a in plan["arms"]:
+            print(f"  sel-{a}  →  old:sel-{a}@<时间戳>")
+        print("涉及的期次（各期最新完成的运行）：")
+        for pr in plan["periods"]:
+            print(f"  {pr['as_of']}  run {pr['run_id']}  {pr['classification']}")
+        return 0
+    rep = bf.restate_selector_books(
+        con, start=args.start, end=args.end,
+        arms=(args.arms.split(",") if args.arms else None), note=args.note)
+    print(json.dumps({k: v for k, v in rep.items() if k != "arms"},
+                     ensure_ascii=False, indent=1))
+    return 0
+
+
 def cmd_weekly(args) -> int:
     """Run one weekly period through 筛选A → 筛选B → 筛选C.
 
@@ -1549,6 +1575,15 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--arms", help="逗号分隔的选取策略；默认窗口内出现过判决的全部")
     s.add_argument("--backtest-id", help="指定 id（重跑同 id 会先清理再建）")
     s.add_argument("--dry-run", action="store_true", help="只列期次与组合，不动库")
+
+    s = add("restate-books", cmd_restate_books,
+            "同期重跑之后：归档旧模拟组合，按各期最新完成运行的判决用模拟运行规则重建")
+    s.add_argument("--from", dest="start", help="起始期次 YYYY-MM-DD（含）")
+    s.add_argument("--to", dest="end", help="截止期次 / 盯市截止 YYYY-MM-DD（含）")
+    s.add_argument("--arms", help="逗号分隔的选取策略；默认全部")
+    s.add_argument("--note", default="", help="写进组合说明的一句话（为什么重建）")
+    s.add_argument("--confirm", action="store_true",
+                   help="真的归档并重建；不带此参数只列出将被归档的组合与涉及的期次")
 
     s = add("book", cmd_book, "book a completed run into the selector paper books")
     s.add_argument("--run-id", help="default: the latest completed weekly run")

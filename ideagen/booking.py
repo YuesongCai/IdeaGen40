@@ -47,7 +47,7 @@ def _priced_only(con, cands: list[dict[str, Any]],
     entire batch.
     """
     from . import universe as uni
-    from .sources import futu_px
+    from .sources import futu_px, olive
 
     ok: list[dict[str, Any]] = []
     bad: list[str] = []
@@ -57,8 +57,18 @@ def _priced_only(con, cands: list[dict[str, Any]],
         code = getattr(hit, "futu_code", None) if hit else None
         if code and futu_px.last_close_on_or_before(con, code, as_of.isoformat()):
             ok.append(c)
-        else:
-            bad.append(token)
+            continue
+        # A shelf fund is priced by NAV, the same way `paper.mark_price` marks
+        # it. Until 2026-09-07 this branch did not exist and every fund was
+        # 「当日无价」 by construction — which is why three of the four
+        # generators' ideas never reached a book.
+        okey = getattr(hit, "olive_key", None) if hit else None
+        if okey:
+            m = olive.mark(con, str(okey), as_of.isoformat())
+            if m and m.get("usable"):
+                ok.append(c)
+                continue
+        bad.append(token)
     return ok, bad
 
 

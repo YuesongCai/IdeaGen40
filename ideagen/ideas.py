@@ -210,6 +210,13 @@ def compute(con, raw: dict, as_of: date, batch_id: str) -> dict:
         hit = futu_px.last_close_on_or_before(con, futu_code, as_of.isoformat())
         if hit:
             ref_d, ref_px = hit[0], hit[1]
+    # A shelf fund's reference is its NAV. Without this a fund idea carried no
+    # ref_price and no sigma, so it entered a book with no stop and no take
+    # while an ETF next to it had both — one rule for two kinds of position.
+    if not futu_code and olive_key and (ref_px is None or ref_d is None):
+        hit = olive.nav_on_or_before(con, str(olive_key), as_of.isoformat())
+        if hit:
+            ref_d, ref_px = hit[0], hit[1]
 
     # The band's sigma. Realised vol is what this has always used — `db.py`
     # says so in the column comment — and the band is where the money went
@@ -225,6 +232,14 @@ def compute(con, raw: dict, as_of: date, batch_id: str) -> dict:
         realised_pct = (s * 100.0) if s is not None else None
         sigma_h, sigma_meta = macro.band_sigma_pct(
             con, futu_code, ref_d, hm, realised_pct)
+    elif olive_key and ref_d:
+        s = olive.horizon_sigma(con, str(olive_key), ref_d, hm)
+        if s is not None:
+            sigma_h = round(s * 100.0, 4)
+            sigma_meta = {"source": "realised:nav", "note": "净值序列的已实现波动"
+                          "（Olive 只给月份，日期为推定）", "lookback": 60}
+        else:
+            sigma_meta = {"note": "净值序列不足 20 个点，未计算"}
     vcheck, vmeta = vol_sanity(cr[0], cr[2], sigma_h)
 
     grade, rule = grade_absolute(oc["or"], ok["or"], oc["or_inf"], ok["or_inf"])

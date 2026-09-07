@@ -178,6 +178,22 @@ def cmd_mcp_check(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_olive_nav_history(args) -> int:
+    """Load month-labelled Olive NAV series into `navs` (see sources/olive_nav.py)."""
+    from .sources import olive_nav
+    con = db.init()
+    rep = olive_nav.import_dir(con, args.dir, min_points=args.min_points)
+    loaded = rep["loaded"]
+    print(f"载入 {len(loaded)} 只基金 · {rep['n_rows']} 行净值 · 空序列 {len(rep['empty'])} · "
+          f"点数不足 {len(rep['short'])} · 错误 {len(rep['errors'])}")
+    for code, r in list(loaded.items())[:12]:
+        print(f"  {code:<18} {r['first']} → {r['last']}  {r['rows']} 行"
+              + (f"  拒 {r['rejected']}" if r["rejected"] else ""))
+    if rep["errors"]:
+        print("  错误：" + "、".join(f"{k}: {v}" for k, v in list(rep["errors"].items())[:8]))
+    return 0
+
+
 def cmd_olive_pull(args) -> int:
     """Capture an Olive MCP shelf snapshot without printing licensed data."""
     as_of = _as_of(args)
@@ -1497,6 +1513,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--provider", choices=["all", "wisburg", "olive"],
                    default="all")
     s.add_argument("--json", action="store_true")
+
+    s = add("olive-nav-history", cmd_olive_nav_history,
+            "把 shelf_performance 的净值序列（按月标注）推定日期后载入 navs，并把有序列的基金标为可盯市")
+    s.add_argument("--dir", type=Path, required=True,
+                   help="存放 <product_code>.json（shelf_performance 原始返回）的目录")
+    s.add_argument("--min-points", type=int, default=20)
 
     s = add("olive-pull", cmd_olive_pull,
             "capture an authenticated Olive MCP shelf snapshot")

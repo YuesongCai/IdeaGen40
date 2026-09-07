@@ -823,6 +823,31 @@ def mark(con, olive_key: str, d: str) -> dict | None:
             "stale_days": stale, "usable": stale <= MAX_NAV_STALE_DAYS}
 
 
+def horizon_sigma(con, olive_key: str, upto: str, months: int,
+                  lookback: int = 60) -> float | None:
+    """Realised NAV volatility scaled to the horizon, mirroring `futu_px.horizon_sigma`.
+
+    Same recipe as a listed instrument's — log returns of consecutive NAVs,
+    annualised on 252, scaled by sqrt(months/12) — so a fund's stop and take
+    are set by the same rule as an ETF's rather than left unset. A fund with
+    fewer than 20 NAVs in the lookback gets None, and `booking._fix_stops`
+    then leaves the stop empty and says so, as it always has.
+    """
+    import math
+    rows = db.q(con, "SELECT nav FROM navs WHERE olive_key=? AND d<=? ORDER BY d DESC LIMIT ?",
+                (olive_key, upto, lookback + 1))
+    navs = [float(r["nav"]) for r in reversed(rows) if r["nav"]]
+    if len(navs) < 20:
+        return None
+    rets = [math.log(b / a) for a, b in zip(navs, navs[1:]) if a > 0 and b > 0]
+    if len(rets) < 19:
+        return None
+    mu = sum(rets) / len(rets)
+    var = sum((x - mu) ** 2 for x in rets) / (len(rets) - 1)
+    ann = math.sqrt(var) * math.sqrt(252.0)
+    return ann * ((months / 12.0) ** 0.5)
+
+
 def cash_yield(con, currency: str = "USD") -> float | None:
     """Median 7-day annualised money-market yield on the shelf, per currency.
 

@@ -49,6 +49,14 @@ def _priced_only(con, cands: list[dict[str, Any]],
     from . import universe as uni
     from .sources import futu_px, olive
 
+    # Fund keys live in the instruments table, not in source; without this a
+    # process that never opened a batch resolves every fund to nothing and
+    # calls it unpriced — the 2026-09-07 reselect did exactly that.
+    if con is not None:
+        try:
+            uni.hydrate(con)
+        except Exception:  # noqa: BLE001 — no instruments table: only source-registered keys resolve
+            pass
     ok: list[dict[str, Any]] = []
     bad: list[str] = []
     for c in cands:

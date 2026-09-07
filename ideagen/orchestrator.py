@@ -832,8 +832,22 @@ def _markable_candidates(p, as_of: date, candidates: list[dict[str, Any]],
     con = getattr(p.state, "connection", None)
     if con is None:
         return ids, []
-    from . import booking
-    ok, bad = booking._priced_only(con, candidates, as_of)
+    from . import booking, universe as uni
+    try:
+        uni.hydrate(con)
+    except Exception:  # noqa: BLE001 — a state store without the shelf tables: nothing to judge with
+        return ids, []
+    # Only instruments the registry knows are judged. A synthetic or
+    # not-yet-registered instrument (the public POC fixture's probes) cannot
+    # be called unmarkable by a price table that never heard of it — that is
+    # "not checked", and it stays in the pool.
+    known = [c for c in candidates if uni.resolve(str(c.get("instrument_id") or ""))]
+    if not known:
+        return ids, []
+    try:
+        ok, bad = booking._priced_only(con, known, as_of)
+    except Exception:  # noqa: BLE001 — no price/NAV tables here: not checked, not excluded
+        return ids, []
     bad_set = set(bad)
     return ({str(c.get("id")) for c in candidates
              if str(c.get("instrument_id") or "") not in bad_set}, bad)

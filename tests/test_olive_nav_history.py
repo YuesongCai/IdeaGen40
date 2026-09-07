@@ -85,17 +85,35 @@ class ImportAndBooking(unittest.TestCase):
         ok, bad = booking._priced_only(con, [{"instrument_id": "L09999"}], date(2026, 9, 2))
         self.assertEqual((len(ok), bad), (1, []))
 
-    def test_a_dated_nav_is_never_overwritten_by_an_inferred_one(self):
+    def test_a_dated_nav_on_the_same_basis_is_kept(self):
         con = db.init(":memory:")
         db.upsert(con, "instruments", {"key": "L09999", "olive_key": "L09999", "name": "F",
                                        "kind": "fund", "market": "OLIVE"}, ["key"])
-        db.upsert(con, "navs", {"olive_key": "L09999", "d": "2026-07-31", "nav": 999.0,
+        db.upsert(con, "navs", {"olive_key": "L09999", "d": "2026-07-31", "nav": 104.9,
                                 "src": "olive:snapshot"}, ["olive_key", "d"])
         pts = [{"month": "2026-07", "nav": str(105 - i * 0.1)} for i in range(23)]
         with TemporaryDirectory() as td:
             Path(td, "L09999.json").write_text(json.dumps(_payload(pts)), encoding="utf-8")
-            olive_nav.import_dir(con, Path(td), today=TODAY)
-        self.assertEqual(db.q1(con, "SELECT nav FROM navs WHERE olive_key='L09999' AND d='2026-07-31'")["nav"], 999.0)
+            rep = olive_nav.import_dir(con, Path(td), today=TODAY)
+        self.assertEqual(db.q1(con, "SELECT nav FROM navs WHERE olive_key='L09999' AND d='2026-07-31'")["nav"], 104.9)
+        self.assertNotIn("basis_conflicts", rep)
+
+    def test_a_dated_nav_on_another_basis_is_replaced_and_reported(self):
+        # 2026-09-07: the shelf snapshot carried 421.67 for L03244 inside a
+        # series at ~15,500; kept, it was a −97% spike that stopped out three
+        # books. A dated point outside the tolerance is a different basis.
+        con = db.init(":memory:")
+        db.upsert(con, "instruments", {"key": "L09999", "olive_key": "L09999", "name": "F",
+                                       "kind": "fund", "market": "OLIVE"}, ["key"])
+        db.upsert(con, "navs", {"olive_key": "L09999", "d": "2026-07-31", "nav": 4.2,
+                                "src": "olive:funds"}, ["olive_key", "d"])
+        pts = [{"month": "2026-07", "nav": str(105 - i * 0.1)} for i in range(23)]
+        with TemporaryDirectory() as td:
+            Path(td, "L09999.json").write_text(json.dumps(_payload(pts)), encoding="utf-8")
+            rep = olive_nav.import_dir(con, Path(td), today=TODAY)
+        row = db.q1(con, "SELECT nav, src FROM navs WHERE olive_key='L09999' AND d='2026-07-31'")
+        self.assertEqual((row["nav"], row["src"]), (105.0, olive_nav.SRC))
+        self.assertEqual(rep["basis_conflicts"]["L09999"][0]["snapshot"], 4.2)
 
 
 if __name__ == "__main__":

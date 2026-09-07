@@ -35,6 +35,25 @@ SRC = "olive:perf:inferred-d"
 #: Fewer points than this and the fund cannot be marked through a 30-day
 #: hold with any confidence; it stays unpriceable and the reason is recorded.
 MIN_POINTS = 20
+#: Points inside the series' last 90 days for the fund to count as tradable
+#: in the paper engine (weekly or better); see `import_dir`.
+DENSE_POINTS_90D = 12
+#: A dated NAV more than this factor away from the series around it is on a
+#: different basis (share class / unit), not a different observation.
+BASIS_TOLERANCE = 1.25
+
+
+def _nearest(rows: list[tuple[str, float]], d: str) -> float | None:
+    """Series value nearest to `d` by date (rows are sorted ascending)."""
+    best: tuple[int, float] | None = None
+    dd = date.fromisoformat(d)
+    for rd, v in rows:
+        gap = abs((date.fromisoformat(rd) - dd).days)
+        if best is None or gap < best[0]:
+            best = (gap, v)
+        elif gap > best[0]:
+            break
+    return best[1] if best else None
 
 
 def _weekdays(year: int, month: int) -> list[date]:
@@ -139,16 +158,53 @@ def import_dir(con, folder: Path, *, today: date | None = None,
         if len(rows) < min_points:
             out["short"][code] = len(rows)
             continue
-        existing = {r["d"]: r["src"] for r in db.q(
-            con, "SELECT d, src FROM navs WHERE olive_key=?", (code,))}
+        existing = {r["d"]: (r["src"], float(r["nav"])) for r in db.q(
+            con, "SELECT d, src, nav FROM navs WHERE olive_key=?", (code,))}
+        # A NAV Olive itself dated (a shelf snapshot) normally wins over an
+        # inferred one. Unless it is on a different basis: on 2026-09-07 the
+        # snapshot point for L03244 read 421.67 inside a series running at
+        # ~15,500 — another share class or unit — and keeping it put a −97%
+        # spike on 08-31 that stopped out three books at once. A dated point
+        # that sits outside `BASIS_TOLERANCE` of the series around it is not
+        # the same number; it is replaced with the series value for that day
+        # (or dropped when the series has none) and the conflict recorded.
+        by_d = dict(rows)
+        conflicts: list[dict[str, Any]] = []
+        for d, (src, nav) in list(existing.items()):
+            if src == SRC or not (rows[0][0] <= d <= rows[-1][0]):
+                continue
+            ref = by_d.get(d) or _nearest(rows, d)
+            if ref and not (1 / BASIS_TOLERANCE <= nav / ref <= BASIS_TOLERANCE):
+                conflicts.append({"d": d, "snapshot": nav, "series": ref, "src": src})
+                if d in by_d:
+                    existing[d] = (SRC, by_d[d])       # let the series row overwrite
+                else:
+                    con.execute("DELETE FROM navs WHERE olive_key=? AND d=?", (code, d))
+                    existing.pop(d)
         payload_rows = [{"olive_key": code, "d": d, "nav": v, "src": SRC}
                         for d, v in rows
-                        if existing.get(d) in (None, SRC)]   # never overwrite a dated NAV
+                        if d not in existing or existing[d][0] == SRC]
         n_rows += db.upsert_many(con, "navs", payload_rows, ["olive_key", "d"])
-        con.execute("UPDATE instruments SET priceable=1 WHERE key=? OR olive_key=?",
-                    (code, code))
+        if conflicts:
+            out.setdefault("basis_conflicts", {})[code] = conflicts
+        # Priceable means the paper engine can actually trade it: a fill
+        # needs a NAV no older than 3 days (`paper._try_fill`) and a mark no
+        # older than 10. A fund that publishes monthly has a usable NAV a
+        # third of the time and fills almost never, so it is loaded (marks
+        # can use the points) but not flagged. Weekly or better in the last
+        # 90 days is the line.
+        last_d = date.fromisoformat(rows[-1][0])
+        recent = sum(1 for d, _ in rows
+                     if date.fromisoformat(d) >= last_d - timedelta(days=90))
+        dense = recent >= DENSE_POINTS_90D
+        if dense:
+            con.execute("UPDATE instruments SET priceable=1 WHERE key=? OR olive_key=?",
+                        (code, code))
+        else:
+            out["monthly_only"] = out.get("monthly_only", []) + [code]
         out["loaded"][code] = {"rows": len(payload_rows), "first": rows[0][0],
-                               "last": rows[-1][0], **rec}
+                               "last": rows[-1][0], "recent_90d": recent,
+                               "priceable": dense, **rec}
     con.commit()
     out["n_rows"] = n_rows
     return out

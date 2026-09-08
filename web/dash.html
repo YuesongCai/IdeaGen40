@@ -3361,6 +3361,7 @@ function markActiveSection(){
   if(best!==activeSec)setActiveSection(best);
 }
 function switchView(id,sec){
+  cancelAutoTour();
   current=id;
   VIEWS.forEach(function(v){$('view-'+v.id).classList.toggle('active',v.id===id)});
   var vv=viewOf(id);
@@ -3370,8 +3371,7 @@ function switchView(id,sec){
   buildNav();
   try{history.replaceState(null,'',buildRoute(id,sec)+routeQuery())}catch(e){}
   if(id==='perf'&&typeof renderPerf==='function')renderPerf();
-  /* 首屏那次由 renderAll 末尾发起（数据到了才有锚点）；之后每次切页都问一遍。 */
-  if(tourBooted&&typeof maybeStartTour==='function')maybeStartTour(id);
+  /* 自动导览只在首次数据加载时判断；切页不打断用户。 */
 }
 /* cross-link: jump to a view and anchor within it */
 function goto(view,anchor){
@@ -13954,7 +13954,7 @@ function whatIsThisHTML(){
   return '<div class="card section" id="sec-whatis">'
     +'<h2 class="card-title">这是什么</h2>'
     /* 导览的常驻入口只有这一个（外加键盘 ?）——不在工具栏上再加一颗药丸。 */
-    +'<button type="button" class="tour-relaunch" onclick="startTour(current)" title="每个页面第一次打开会自己带一遍；在任何一页按 ? 重看那一页的">'
+    +'<button type="button" class="tour-relaunch" onclick="startTour(current)" title="按 ? 查看当前页导览；关闭后全站不再自动显示">'
       +'▶ 新手导览'
       +'<span class="tr-s">按 ?</span></button>'
     +'<p style="font:400 15px/24px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-5)">'
@@ -15054,12 +15054,30 @@ function renderRules(){
 /* ══════════ 新手导览 ══════════════════════════════════════════════
  * 第一次打开这台面板的人，屏幕上是六百个圆点和一张流水线图，而没有一处
  * 说明「这是什么、彼此怎么勾稽」。导览按页分：六个页面各一份，每份只讲
- * 这一页，每步指着屏幕上真实的那个东西说话；一个人第一次打开某一页时那一页
- * 的导览自己出现一次，之后不再出现。重看：按 ?（当前页），或帮助面板顶上
+ * 这一页，每步指着屏幕上真实的那个东西说话；全站首次访问最多自动展示一次。
+ * 切页和数据刷新不触发导览。重看：按 ?（当前页），或帮助面板顶上
  * 那条入口。2026-09-08 之前只有一份，讲持仓 / 方法 / 抽屉三段——概览、各期、
  * 业绩、证据四页从没人领着看过；PM 要的是「每到一个新页面都有一份」。 */
 var TOUR_KEY_PREFIX='ig40.tour.v2.';
+var TOUR_AUTO_KEY='ig40.tour.auto.seen';
+var tourAutoTimer=null, tourAutoSeen=false;
 function tourKey(page){return TOUR_KEY_PREFIX+page}
+function cancelAutoTour(){
+  if(tourAutoTimer!==null&&tourAutoTimer!==undefined)clearTimeout(tourAutoTimer);
+  tourAutoTimer=null;
+}
+function autoTourSeen(){
+  if(tourAutoSeen)return true;
+  try{
+    return localStorage.getItem(TOUR_AUTO_KEY)==='1'||Object.keys(TOURS).some(function(page){
+      return localStorage.getItem(tourKey(page))==='1';
+    });
+  }catch(e){return true}
+}
+function rememberAutoTour(){
+  tourAutoSeen=true;
+  try{localStorage.setItem(TOUR_AUTO_KEY,'1')}catch(e){}
+}
 var TOUR_PAGE=null;
 /* 首屏 hash 要在 boot 改写它之前记下来：switchView 会 replaceState 成
    #/overview，等 renderAll 跑完再读就分不出「有人发了条深链给我」。 */
@@ -15341,6 +15359,7 @@ function tourAnchor(st){
 }
 
 function startTour(page){
+  cancelAutoTour();
   if(tourOn)return;
   page=page||current;
   TOUR=TOURS[page]||[];
@@ -15351,6 +15370,8 @@ function startTour(page){
   if(drawerStack.length)closeDrawers();
   tourOpenedDrawer=false;
   var root=$('tourRoot');if(!root)return;
+  /* 自动展示与手动打开都算已看过；刷新或跨页不再自动启动。 */
+  rememberAutoTour();
   root.innerHTML='<div class="tour-block" id="tourBlock"></div>'
     +'<div class="tour-ring" id="tourRing" style="display:none"></div>'
     +'<div class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-label="新手导览"></div>';
@@ -15364,7 +15385,9 @@ function startTour(page){
   tourGo(0,1);
 }
 function tourEnd(){
+  cancelAutoTour();
   if(!tourOn)return;
+  rememberAutoTour();
   tourOn=false;
   if(tourTick){clearInterval(tourTick);tourTick=null}
   var root=$('tourRoot');if(root)root.innerHTML='';
@@ -15413,7 +15436,7 @@ function tourRender(){
   var last=(tourIdx===TOUR.length-1);
   card.innerHTML='<div class="tour-top"><span class="tour-step">导览 · 第 <b>'+(tourIdx+1)
       +'</b> 步 / 共 '+TOUR.length+' 步</span>'
-      +'<button type="button" class="tour-skip" onclick="tourEnd()">跳过并不再显示</button></div>'
+      +'<button type="button" class="tour-skip" onclick="tourEnd()">跳过，不再自动显示</button></div>'
     +'<div class="tour-bar"><i style="width:'+Math.round((tourIdx+1)/TOUR.length*100)+'%"></i></div>'
     +'<div class="tour-t">'+st.t+'</div>'
     +'<div class="tour-b">'+body+'</div>'
@@ -15481,24 +15504,21 @@ document.addEventListener('keydown',function(e){
 },true);
 window.addEventListener('resize',function(){if(tourOn)tourPlace()});
 
-/* 每页第一次打开时自动开一次。带着深链（某一段、某个抽屉）进来的人是奔着
-   具体东西来的，首屏不拦他；看过那一页的也不再拦。switchView 每次切页都
-   来问一遍，所以「第二次打开各期页」什么都不会发生。 */
+/* 每次加载只在首份数据到达时判断一次。深链或抽屉跳过后，60 秒轮询也不能
+   再启动。已看过任一旧版页面导览的用户沿用其选择，全站仅通过 ? 手动重看。 */
 function maybeStartTour(page){
   page=page||current;
-  if(!S||tourOn)return;
+  if(!S||tourBooted)return;
+  tourBooted=true;
+  if(tourOn||autoTourSeen()||drawerStack.length)return;
   if(!TOURS[page]||!TOURS[page].length)return;
-  var seen=true;
-  try{seen=(localStorage.getItem(tourKey(page))==='1')}catch(e){seen=true}
-  if(seen)return;
-  if(!tourBooted){
-    tourBooted=true;
-    var deep=TOUR_INIT_HASH.replace(/^#\/?/,'');
-    if(deep||drawerStack.length)return;
-  }else if(drawerStack.length)return;
+  if(TOUR_INIT_HASH.replace(/^#\/?/,''))return;
   /* 业绩页的段落要等 /api/perf 回来才画出来；早开一步，锚点全找不到，
      导览会把每一步都当「这台机器上没有」跳过，第一步之后直接结束。 */
-  setTimeout(function(){if(!tourOn&&!drawerStack.length&&current===page)startTour(page)},page==='perf'?1500:450);
+  tourAutoTimer=setTimeout(function(){
+    tourAutoTimer=null;
+    if(!tourOn&&!autoTourSeen()&&!drawerStack.length&&current===page)startTour(page);
+  },page==='perf'?1500:450);
 }
 
 /* ── boot ────────────────────────────────────────────────────── */

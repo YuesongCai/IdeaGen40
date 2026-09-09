@@ -1952,6 +1952,9 @@ table.ptbl tbody tr:focus-visible{outline:2px solid var(--color-focus-ring);outl
 .pchip.warn{background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-strong)}
 .pchip.bf,.pchip.lv{background:transparent;color:var(--color-text-tertiary);
   border:1px solid var(--color-border-default);font-weight:400;cursor:help}
+/* 「待成交」：本期跑完、下了单、还没到成交那一刻。它不是失败（warn 红），
+   是流程里正常的一格——第一个 live 周跑第一次把这一格暴露出来。 */
+.pchip.pend{background:var(--color-surface-brand-subtle);color:var(--color-text-brand);cursor:help}
 
 /* 持仓页顶部的阶梯条：在场各期的仓位占比。宽度是仓位数，点一期只看它。 */
 .lstrip{margin:0 0 var(--space-4)}
@@ -3817,6 +3820,12 @@ function themeMatrixCard(){
   var note='共 '+order.length+' 个主题进出过 '+L.length+' 期。'
     +(kept.length?('<b>'+kept.map(function(t){return esc(topicName(t))}).join('、')+'</b> 从第一期一直拿到现在；'):'')
     +(fresh.length?('<b>'+fresh.map(function(t){return esc(topicName(t))}).join('、')+'</b> 是最近两期才起来的。'):'');
+  /* 这张矩阵按已成交仓位画：一个跑完、下了单还没成交的 live 期在这里没有格子，
+     不是它没主题，是它的仓还没进场。不写这一句，最新那一列的空白就会被读成
+     「本期没出东西」——而方法页同时显示满满一条链，落差正出在这里。 */
+  var pend=L.filter(function(r){return r.status==='pending'&&r.ok&&(Number(r.pending_orders)||0)>0;}).pop();
+  if(pend)note+=' <b>'+esc(pend.as_of)+'</b> 本期已生成 '+fmtInt(pend.n_topics||0)+' 个主题 · '
+    +fmtInt(pend.n_candidates||0)+' 只候选，'+fmtInt(pend.pending_orders)+' 笔单待收盘成交；成交后才进入这张矩阵。';
 
   /* 阶梯图回答「这六期怎么滚的」，这张矩阵回答「主题怎么换的」——同一批期次的
      第二个读数，不是第一个。收进盖子，但盖子上直接写出结论：折着也读得到
@@ -3839,9 +3848,20 @@ function periodRosterCard(){
   if(!L.length)return '';
   var rows=L.slice().reverse().map(function(r){
     var retPct=(r.ret===null||r.ret===undefined)?null:r.ret*100;
-    var st=r.status==='live'?'<span class="pchip live">在场</span>'
-         :(r.status==='rolled'?'<span class="pchip">已滚出</span>'
-                              :'<span class="pchip warn">未建仓</span>');
+    /* pending 有三种，别都写成「未建仓」：一个跑成功、下了单、正等收盘成交的
+       live 期不是失败，把它标成红色「未建仓」正是让「方法页满、这里空」看起来
+       像坏了的那一处。有挂单 → 待成交；跑成功出了候选但没下单 → 已生成·待建仓；
+       其余（没跑成功 / 真空）→ 未建仓。 */
+    var st;
+    if(r.status==='live')st='<span class="pchip live">在场</span>';
+    else if(r.status==='rolled')st='<span class="pchip">已滚出</span>';
+    else if(r.ok&&(Number(r.pending_orders)||0)>0)
+      st='<span class="pchip pend" title="本期已生成 '+fmtInt(r.n_candidates||0)+' 只候选、下了 '
+        +fmtInt(r.pending_orders)+' 笔单，正等 '+esc(r.as_of)+' 收盘成交（美股约次日 04:00 港时收）；成交后转「在场」。">'
+        +'待成交 · '+fmtInt(r.pending_orders)+' 挂单</span>';
+    else if(r.ok&&(Number(r.n_candidates)||0)>0)
+      st='<span class="pchip pend" title="本期已生成候选，但没有挂单可成交。">已生成·待建仓</span>';
+    else st='<span class="pchip warn">未建仓</span>';
     var cl=r.classification==='backfill'
       ? '<span class="pchip bf" title="这一期是事后补跑的：运行发生在期次之后，用的是复算式回放。分类取自运行记录本身（orch_runs.data_classification），和真回测同一个字段。">事后补跑</span>'
       : '<span class="pchip lv" title="这一期是当周实时跑出来的。">当周实时</span>';

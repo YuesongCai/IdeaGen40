@@ -945,10 +945,33 @@ class TestCohortMarking(unittest.TestCase):
         self.assertIn("all_books", inspect.getsource(cli.cmd_mark))
 
     def test_horizon_exit_dates_are_in_the_future_or_closed(self):
-        for r in db.q(self.con, "SELECT status, closed_d, horizon_end, exit_reason "
-                                "FROM positions WHERE horizon_end IS NOT NULL"):
+        # Scope to the books the mark loop actually advances. Archived
+        # (`old:`) and formal-backtest (`bt:`) books are frozen snapshots —
+        # they were never re-marked, so an open position past its horizon in
+        # them is the freeze, not a marking bug. `paper.all_books` is the same
+        # set `cmd_mark` walks. (Surfaced 2026-09-10: once the calendar passed
+        # the archived cohorts' horizons, this invariant started flagging 494
+        # frozen positions it was never meant to police.)
+        live = set(paper.all_books(self.con))
+        for r in db.q(self.con, "SELECT book_id, code, status, closed_d, horizon_end, "
+                                "exit_reason FROM positions WHERE horizon_end IS NOT NULL"):
+            if r["book_id"] not in live:
+                continue
             if r["status"] == "closed" and r["exit_reason"] == "horizon":
                 self.assertGreaterEqual(r["closed_d"], r["horizon_end"])
+            elif r["status"] == "open" and r["horizon_end"] <= self.last:
+                # Past its horizon and still open is only a bug if a close was
+                # actually available: mark cannot roll a fund out at term when
+                # its NAV series ended before the horizon (stale Olive NAV), so
+                # it correctly leaves it open rather than fabricating a mark.
+                closable = db.q1(
+                    self.con, "SELECT 1 FROM prices WHERE code=? AND d>=? LIMIT 1",
+                    (r["code"], r["horizon_end"])) or db.q1(
+                    self.con, "SELECT 1 FROM navs WHERE olive_key=? AND d>=? LIMIT 1",
+                    (r["code"], r["horizon_end"]))
+                self.assertIsNone(
+                    closable, f"{r['book_id']} {r['code']} 已过到期日 {r['horizon_end']} "
+                    "仍 open，但有可用收盘价——应当已到期平仓")
             elif r["status"] == "open":
                 self.assertGreater(r["horizon_end"], self.last)
 

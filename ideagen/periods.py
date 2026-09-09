@@ -76,9 +76,14 @@ def spine(con=None, p=None, *, today: date | None = None) -> list[dict]:
         run = runs.get(as_of) or {}
         bk = books.get(as_of) or {}
         cost = float(bk.get("cost") or 0.0)
-        realized = float(bk.get("realized") or 0.0)
-        unrealized = float(bk.get("unrealized") or 0.0)
-        pnl = realized + unrealized
+        # Round the two legs first, then define pnl as their sum. Rounding each
+        # of realized/unrealized/pnl independently lets round(a)+round(b) drift
+        # a cent from round(a+b) (seen 2026-09-10: 08-12 read −88,196.73 vs
+        # −88,196.74), and the page prints all three, so the identity has to
+        # hold on the numbers shown, not on the raw ones behind them.
+        realized = round(float(bk.get("realized") or 0.0), 2)
+        unrealized = round(float(bk.get("unrealized") or 0.0), 2)
+        pnl = round(realized + unrealized, 2)
         n_open = int(bk.get("n_open") or 0)
         n_closed = int(bk.get("n_closed") or 0)
         horizon_end = bk.get("horizon_end") or run.get("horizon_end")

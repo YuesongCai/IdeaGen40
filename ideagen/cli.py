@@ -344,6 +344,30 @@ def cmd_olive_auth(args) -> int:
     os.chmod(temp, 0o600)
     temp.replace(env_file)
     print(f"Olive OAuth tokens stored in {env_file} (mode 0600)")
+
+    # Refresh tokens rotate: the server invalidates the old one every time
+    # `olive._refresh` uses it. That rotated token is persisted only to the
+    # token file, so a runner that reads only the env re-sends the original
+    # (now-dead) refresh token on its second refresh and gets invalid_grant an
+    # hour later — the exact "I re-authed and it broke again" loop. When a token
+    # file is configured, seed it here too, so the env and the file agree on
+    # this fresh grant and the first rotation has a durable place to land.
+    if config.olive_token_file() is not None:
+        try:
+            config.store_olive_credentials({
+                "access_token": tokens["access_token"],
+                "refresh_token": tokens.get("refresh_token", ""),
+                "client_id": client_id,
+                "issuer": issuer,
+                "resource": resource,
+                "redirect_uri": redirect_uri,
+                "expires_at": updates["OLIVE_OAUTH_TOKEN_EXPIRES_AT"],
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            print(f"Olive OAuth tokens also seeded to {config.olive_token_file()} "
+                  "(rotation now persists across refreshes)")
+        except Exception as e:  # noqa: BLE001 — env write already succeeded
+            print(f"  ⚠ token-file seed skipped: {type(e).__name__}: {e}")
     return 0
 
 

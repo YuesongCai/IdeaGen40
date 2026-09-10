@@ -36,7 +36,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import (analytics, backfill, briefing, cloud_corpus, cloud_paper, config,
                db, generator, ideas as ideas_mod, lexicon, monitor, paper,
-               philosophy, poc_fixture, poc_workflow, replay,
+               philosophy, poc_fixture, poc_workflow, price_source, replay,
                report as report_mod, schema,
                scoring, seed, serve as serve_mod, shelf_store, themes, universe)
 from . import platform as platform_mod
@@ -1171,7 +1171,10 @@ def cmd_daily(args) -> int:
 
     stage("ingest", _ingest)
     print("[2/10] prices")
-    stage("prices", lambda: futu_px.sync(
+    # Via the dispatcher, not futu_px directly: with OpenD down (Mac asleep, or a
+    # cloud run) this falls back to FMP EOD instead of failing the stage, so the
+    # daily can mark without the gateway. IDEAGEN_PRICE_SOURCE pins it if needed.
+    stage("prices", lambda: price_source.sync(
         con, universe.priceable_codes(lexicon.all_indicators()),
         as_of - timedelta(days=400), as_of))
     print("[3/10] ETF 穿透快照")

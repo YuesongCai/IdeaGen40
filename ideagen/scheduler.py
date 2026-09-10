@@ -989,11 +989,16 @@ def _warm_prices(p: plat.Platform, con: Any, now_hkt: datetime,
     desktop gateway: in a cloud sandbox it is unreachable, which degrades marking
     to whatever bars are already stored rather than failing — or hanging — the pass.
     """
-    from . import lexicon
-    from .sources import futu_px
-    if not _opend_reachable():
-        return {"skipped": f"OpenD 不可达（{config.FUTU_HOST}:{config.FUTU_PORT}），"
-                           f"只用库里已有的 K 线盯市"}
+    from . import lexicon, price_source
+    from .sources import fmp
+    # OpenD is a desktop gateway and this pass usually runs in a cloud sandbox
+    # where it is unreachable — which is exactly when FMP EOD takes over, so the
+    # monitor can warm bars (and `_advance_books` can then fill/mark) with no
+    # gateway and the Mac off. Only when neither OpenD nor FMP is available do we
+    # degrade to marking on whatever bars are already stored.
+    if not _opend_reachable() and not fmp.configured():
+        return {"skipped": f"OpenD 不可达（{config.FUTU_HOST}:{config.FUTU_PORT}）"
+                           f"且未配置 FMP，只用库里已有的 K 线盯市"}
     try:
         codes = [r["code"] for r in con.execute(
             "SELECT DISTINCT code FROM positions WHERE status='open' "
@@ -1003,9 +1008,9 @@ def _warm_prices(p: plat.Platform, con: Any, now_hkt: datetime,
     codes = sorted(set(codes) | set(lexicon.all_indicators()))
     end = now_hkt.date()
     try:
-        rep = futu_px.sync(con, codes, end - timedelta(days=PRICE_WARM_DAYS), end)
-        return {"requested": rep.get("requested"), "fetched": rep.get("fetched"),
-                "rows": rep.get("rows")}
+        rep = price_source.sync(con, codes, end - timedelta(days=PRICE_WARM_DAYS), end)
+        return {"source": rep.get("source"), "requested": rep.get("requested"),
+                "fetched": rep.get("fetched"), "rows": rep.get("rows")}
     except Exception as e:  # noqa: BLE001
         problems.append(f"行情同步不可用（用已存 K 线继续）：{type(e).__name__}")
         return {"skipped": f"{type(e).__name__}: {e}"[:200]}

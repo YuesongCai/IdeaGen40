@@ -2391,7 +2391,13 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
  * ════════════════════════════════════════════════════════════════ */
 var S=null, lastFetchOk=null, fetchFailed=false;
 var J=null, JErr=null; /* /api/journal — 「真实在云端跑」的运行日志 */
-var candSort={key:'n_proposals',dir:-1};
+/* 候选池默认按 idea 分排序（期望值），不再只按「几条想法提出」——投研反馈④：
+ * 决策看的是这条想法值不值得，共识度只是旁证。没打分的候选（未成为评分 idea）
+ * ev_c 为空，会沉到表尾。 */
+var candSort={key:'ev_c',dir:-1};
+/* 精选短名单开关（投研反馈⑤）：纯前端筛选/高亮，不新建组合、不改建仓。
+ * 全量用于赛马，精选是决策时看的这几只。 */
+var poolShortlist=false;
 var statusOpen=false, statusForced=false, activeSec=null;
 var backtestStart=null;
 
@@ -3119,6 +3125,7 @@ var VIEWS=[
   {id:'method',label:'方法',sub:'怎么选出来的',
    icon:'<path d="M2 4h12"/><path d="M4 8h8"/><path d="M6 12h4"/>',
    secs:[{s:'canvas',label:'生成链路'},
+         {s:'direction',label:'本期方向'},
          {s:'rules',label:'我的准则'},
          {s:'inputs',label:'本期输入'}]},
   /* 「它管用吗」这个问句从概览搬到这里：判定和支撑它的证据都在这一页，
@@ -10769,6 +10776,61 @@ function phTyping(){
    让路的只有每 60 秒那一次。 */
 var PH_POLLING=false;
 
+/* ── 本期方向蒸馏（投研反馈⑫）──────────────────────────────────
+ * 给 PM 一眼看清「这期在赌什么方向」：入选主题按本期 tis 排，每行一个主题、
+ * 一个方向（↑/↓，来自本期打分的 factors.direction）、一句话（主题的那一问）、
+ * 一个代表标的（该主题下评级最高的候选）。全部来自 themes + 候选池评分，不现编。 */
+function representativeIdea(tid,cands){
+  var mine=(cands||[]).filter(function(c){return candTopics(c).indexOf(tid)>=0&&c.grade});
+  if(!mine.length)return null;
+  mine.sort(function(a,b){
+    return gradeRank(b.grade)-gradeRank(a.grade)
+      ||((Number(b.ev_c)||-1e9)-(Number(a.ev_c)||-1e9));
+  });
+  return mine[0];
+}
+function dirChip(dir){
+  if(dir==='↑')return '<span class="badge badge-success" title="本期打分测得的净方向（看多观点占优）">↑ 看多</span>';
+  if(dir==='↓')return '<span class="badge badge-warning" title="本期打分测得的净方向（看空观点占优）">↓ 看空</span>';
+  return '<span class="badge badge-neutral" title="本期未测出明确方向">— 未定向</span>';
+}
+function periodDirectionCard(){
+  var w=(S&&S.weekly)||{};
+  var chosen=(typeof topicChosen==='function')?topicChosen('hgep'):[];
+  var themes=w.themes||{};
+  var cands=((w.pool)||{}).candidates||[];
+  var head='<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">本期在赌什么方向</h2>'
+    +'<span class="card-note">入选主题按本期 tis 排 · 方向来自本期打分 · 代表标的取该主题评级最高的候选</span></div>';
+  if(!chosen.length){
+    return head+'<div class="empty-sm">本期还没有入选主题'+(w.in_flight?'——筛选A 完成后出现':'')+'</div>';
+  }
+  var rows=chosen.map(function(tid){return {tid:tid,t:themes[tid]||{}}});
+  /* 按本期 tis 排；没有本期读数的（历史/未打分）沉底。 */
+  rows.sort(function(a,b){
+    return (Number((b.t.period||{}).tis)||-1e9)-(Number((a.t.period||{}).tis)||-1e9);
+  });
+  rows=rows.slice(0,5);
+  var body=rows.map(function(o){
+    var t=o.t,per=t.period||{};
+    var rep=representativeIdea(o.tid,cands);
+    var repHTML=rep
+      ? '<button type="button" class="tag tag-brand mono" style="cursor:pointer" title="'+esc((rep.instrument_name||'')+' · 评级 '+String(rep.grade).toUpperCase()+(rep.ev_c!=null?' · 期望值 '+fmtPct(rep.ev_c):'')+' — 到候选池看它')+'" onclick="filterPoolCode(\''+jss(rep.instrument_id)+'\')">'+esc(rep.instrument_id)+' '+gradeBadge(rep.grade,rep.grade_rule)+' ›</button>'
+      : '<span class="quiet">本期该主题无评分候选</span>';
+    var tisTxt=(per.tis!=null)?'<span class="num" style="color:var(--color-text-metadata)" title="本期 Tactical Impact Score">tis '+numOr(per.tis)+'</span>':'';
+    return '<tr>'
+      +'<td class="primary"><button type="button" class="pf-link" onclick="openTopicDrawer(\''+jss(o.tid)+'\')" title="打开主题抽屉">'+esc(topicName(o.tid))+'</button> '+tisTxt+'</td>'
+      +'<td style="white-space:nowrap">'+dirChip(per.direction)+'</td>'
+      +'<td><div class="clamp1" style="max-width:360px" title="'+esc(t.key_question||'')+'">'+esc(t.key_question||'—')+'</div></td>'
+      +'<td style="white-space:nowrap">'+repHTML+'</td>'
+      +'</tr>';
+  }).join('');
+  return head
+    +'<div class="table-wrap scroll-thin" style="margin-top:var(--space-3)"><table class="dense">'
+    +'<thead><tr><th>主题</th><th>方向</th><th>它在问</th><th>代表标的</th></tr></thead>'
+    +'<tbody>'+body+'</tbody></table></div>'
+    +epi('方向为本期打分测得的净方向（看多／看空观点之差），不是价格预测；代表标的按评级取，仅作定位。');
+}
+
 function renderMethod(force){
   var root=$('view-method');
   if(!S){root.innerHTML='';return}
@@ -10780,6 +10842,7 @@ function renderMethod(force){
        导读逐字重复。同一个视图里一件事讲两遍、一个抽屉三个入口——留图，
        因为图多了筛选C 与建仓两段，而且图上的方块本身就是入口。 */
     +secWrap('method','canvas',pipeCanvasCard())
+    +secWrap('method','direction',periodDirectionCard())
     /* 画布之后，研报之前。顺序不是排版偏好：上面那张图刚把筛选B 的四个框
        画完，这一段就是往那四个框旁边再加一个的地方。中间隔着别的东西，
        它就又变回一个孤零零的功能。 */
@@ -11922,6 +11985,27 @@ function themeIdentity(tid,r){
     +'筛选A 打的四个分不回答这一问本身，它们量的是市场现在怎么谈它：'
     +'谈得多不多（热度）、谈的人彼此是否打架（分歧）、有没有落到订单和利润（实据）、价格是不是已经走完了（已定价）。</div>';
 
+  /* 本期读数徽章（投研反馈②/⑥）：只在拿到本期打分（t.period）时出现，历史期没有
+     这些字段就整排不画。P 已定价 → 领先/滞后；复现打折 → 连续第 N 次。 */
+  var per=t.period||{};
+  var badges=[];
+  var pt=pricedTiming(per.priced_c);
+  if(pt){
+    badges.push('<span class="badge badge-'+pt.tone+'" title="'+esc(PRICED_TIP
+      +'　本期 P='+numOr(per.priced_c))+'">时点：'+esc(pt.label)+'</span>');
+  }
+  var rec=per.recurrence;
+  if(rec&&Number(rec.discount)>0){
+    var rtip='复现打折（学习效应）：市场已经嚼过这个叙事的次数越多，越打折。'
+      +(rec.note?'　'+rec.note:'')
+      +(rec.tis_raw!=null?'　打折前 TIS '+numOr(rec.tis_raw)+(per.tis!=null?' → 打折后 '+numOr(per.tis):''):'');
+    badges.push('<span class="badge badge-neutral" title="'+esc(rtip)+'">复现：连续第 '
+      +fmtInt(rec.occurrence||((rec.consec||0)+1))+' 次 · 折 '+numOr(rec.discount)+' 分</span>');
+  }
+  if(badges.length){
+    html+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+badges.join('')+'</div>';
+  }
+
   /* 历次读数：一个主题的调子在单期读数里是看不出来的——热度 62 是高是低，
      要和它自己的上个月比。这条轨迹全部来自各期已封存的打分，不是重算的。 */
   var arc=t.arc||[];
@@ -12306,6 +12390,9 @@ function stagePoolBody(d){
       +(pool.n_unmarkable
         ?'<div class="card-note" style="margin-bottom:var(--space-2);color:var(--color-feedback-warning-text)">其中 <b>'+fmtInt(pool.n_unmarkable)+'</b> 只没有净值序列（本机 navs 表为空的 Olive 基金）：不进筛选C、建仓时剔除，表里带「无净值」标签。这就是「池子里一堆基金、组合里没几个」的原因；要让它们回到组合，需要 Olive 净值腿提供历史净值。</div>'
         :'')
+      /* 私募剔除计数（投研反馈①）：现有数据 0 私募，平时不显示；有私募时写清剔了几只。 */
+      +(function(){var np=cands.filter(function(c){return c.private_excluded===true}).length;
+        return np?'<div class="card-note" style="margin-bottom:var(--space-2)">另有 <b>'+fmtInt(np)+'</b> 只私募/主动管理载体已剔（不进筛选C，表里带「私募·未进选取」灰标并压暗）。</div>':''})()
       +'<div class="card-note" style="margin-bottom:var(--space-3)">各方法的标的数不能相加当作候选池规模：方法之间会提出同一标的，跨方法再按标的去重一次，才是 '+fmtInt(pool.n)+' 只。'
       +'一只标的可能来自多个主题、多种方法、多条不同的逻辑——它们都保留在全表的「详情」里。</div>'
       +'<div class="card-note" style="margin-bottom:var(--space-2)">按跨方法共识度分档 '+glossMark(convGloss())+'</div>';
@@ -12337,14 +12424,29 @@ function stagePoolBody(d){
   }
   var candCard;
   if(cands.length){
+    var nShort=Object.keys(poolShortlistSet(cands)).length;
     candCard='<div id="candCard" style="margin-top:var(--space-6)">'
       +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">候选池全表</h2><span class="card-note">'+fmtInt(cands.length)+' 只标的 · 一标的一行 · 列头排序'+(drawerIsWide()?'':' · 抽屉右上「展开」可放大')+'</span></div>'
+      /* 精选开关（投研反馈⑤）：一个入口，全量 ↔ 短名单。全量用于赛马，
+         精选是决策时看的这几只（共识度 × 期望值居前）。纯前端筛选，不建组合。 */
+      +'<div class="card-note" style="margin-bottom:var(--space-2)">'
+      +'<button type="button" class="exp-btn" onclick="togglePoolShortlist()" '
+      +'style="'+(poolShortlist?'background:var(--color-surface-brand-subtle);color:var(--color-text-brand);font-weight:600':'')+'" '
+      +'title="共识度（几种方法共同提出）× idea 期望值 居前的 '+SHORTLIST_N+' 只；全量照旧可看">'
+      +(poolShortlist?'✓ 只看精选（'+fmtInt(nShort)+'）· 点此看全量':'★ 精选：决策短名单（前 '+fmtInt(nShort)+'）')+'</button>'
+      +'<span class="gloss gm" title="全量用于赛马（各选取策略在同一候选池上并行比较）；精选是决策时的短名单：按 共识度 × 期望值 取前 '+SHORTLIST_N+' 只，纯前端高亮/筛选，不新建组合、不改建仓。">ⓘ</span>'
+      +'　'+(poolShortlist?'当前只显示短名单。':'★ 标记的是短名单里的标的。')+'</div>'
       /* 筛选条就是这张表唯一的筛选入口：主题多选 + 一个附加条件 + 计数。 */
       +poolTopicBar(cands)
       +'<div class="table-wrap scroll-y scroll-thin" style="margin-top:var(--space-3)"><table id="candTable" class="dense">'
       +'<thead><tr>'+candTh('instrument_id','标的','',candDef('instrument_id'))
       +candTh('instrument_name','名称','',candDef('instrument_name'))
       +candTh('topic_id','主题','',candDef('topic_id'))
+      /* idea 层打分（投研反馈④）：评级 · 期望值 · 赔率——筛选C 真正排序用的数，
+         摆在主题之后、情景数之前，让「这条值不值」先被读到。 */
+      +candTh('grade','评级','c',candDef('grade'))
+      +candTh('ev_c','期望值','r',candDef('ev_c'))
+      +candTh('or_c','赔率','r',candDef('or_c'))
       +candTh('upside_pct','上行','r',candDef('upside_pct'))
       +candTh('downside_pct','下行','r',candDef('downside_pct'))
       +candTh('p_up','P↑','r',candDef('p_up'))
@@ -13425,6 +13527,58 @@ function probSumNote(){
   return '　注意：本期 '+c.length+' 条里有 '+off+' 条的三个概率相加不等于 1'
     +'（生成时各自给出、未做归一），据此算出的期望值会同比例偏高或偏低。';
 }
+/* ── idea 层打分的展示（投研反馈④）─────────────────────────────
+ * ev_c 是期望值（百分比回报，v0.3 §5：概率加权情景收益），or_c 是保守赔率
+ * （赚 ÷ 亏），grade 是绝对评级（S 保守赔率≥1.5 / A ≥1.0 / B 中心≥1.0 / C）。
+ * 这些是筛选C 真正排序用的数，之前只在后台、没上前台。 */
+function fmtOdds(n){if(n===null||n===undefined||isNaN(n))return '—';return Number(n).toFixed(1)}
+var GRADE_RANK={S:4,A:3,B:2,C:1};
+function gradeRank(g){return GRADE_RANK[String(g||'').toUpperCase()]||0}
+function gradeBadge(g,rule){
+  g=String(g||'').toUpperCase();if(!g||!GRADE_RANK[g])return '<span class="quiet">—</span>';
+  var tone=(g==='S'||g==='A')?'success':(g==='B'?'neutral':'warning');
+  return '<span class="badge badge-'+tone+'" style="font:600 11px/1 var(--font-mono);padding:2px 5px"'
+    +(rule?' title="'+esc('评级依据：'+rule)+'"':'')+'>'+g+'</span>';
+}
+/* 一行讲清主语＋分数：只印取到的那几项，缺就不印那一段。 */
+function ideaScoreLine(c){
+  var parts=[];
+  if(c.ev_c!==null&&c.ev_c!==undefined)parts.push('期望值 '+fmtPct(c.ev_c));
+  if(c.or_c!==null&&c.or_c!==undefined)parts.push('赔率 '+fmtOdds(c.or_c));
+  if(c.grade)parts.push('评级 '+String(c.grade).toUpperCase());
+  return parts.join(' · ');
+}
+/* 共识度：几种方法共同提出（与候选池 convergence 同口径）。 */
+function consensusOf(c){
+  if(c.n_methods!=null)return Number(c.n_methods)||0;
+  var uq={};(c.proposed_by||[]).forEach(function(m){uq[m]=1});return Object.keys(uq).length;
+}
+/* ── 精选短名单（投研反馈⑤）───────────────────────────────────
+ * 短名单分 = 共识度 × idea 期望值。只有打了分（ev_c>0）的候选才有资格进短名单——
+ * 没被评分的候选是「还没算过」，不是「算过很差」。取前 N（5–8）。纯排序，不改数据。 */
+var SHORTLIST_N=6;
+function shortlistScoreOf(c){
+  var ev=Number(c.ev_c);if(!isFinite(ev)||ev<=0)return 0;
+  return consensusOf(c)*ev;
+}
+function poolShortlistSet(cands){
+  var scored=(cands||[]).filter(function(c){return shortlistScoreOf(c)>0});
+  scored.sort(function(a,b){return shortlistScoreOf(b)-shortlistScoreOf(a)});
+  var set={};scored.slice(0,SHORTLIST_N).forEach(function(c){set[c.instrument_id]=1});
+  return set;
+}
+/* ── 主题时点体检（投研反馈⑥）：P 已定价 → 领先/滞后 ──────────────
+ * P 高＝这波涨幅已经进价、我们抓晚了（偏滞后）；P 低＝定价不足、还早（偏领先）。
+ * 阈值放这里好调。 */
+var PRICED_LAG=65, PRICED_LEAD=35;
+function pricedTiming(p){
+  if(p===null||p===undefined||isNaN(p))return null;
+  p=Number(p);
+  if(p>=PRICED_LAG)return {k:'lag',label:'已定价较多 · 偏滞后',tone:'warning'};
+  if(p<=PRICED_LEAD)return {k:'lead',label:'定价不足 · 偏领先',tone:'success'};
+  return {k:'sync',label:'定价同步',tone:'neutral'};
+}
+var PRICED_TIP='P「已定价」= 这波行情已经计入价格的程度（0–100）。高说明涨幅大多已经反映、我们抓得偏晚（滞后）；低说明还没充分定价、相对领先。阈值：≥'+PRICED_LAG+' 偏滞后、≤'+PRICED_LEAD+' 偏领先，之间为同步。';
 var CAND_DEF={
   instrument_id:'标的代码。点开这一行看它的论点、提出它的方法、以及哪些组合选了它。',
   instrument_name:'标的名称。',
@@ -13434,6 +13588,9 @@ var CAND_DEF={
   p_up:'上行情景发生的概率，由写下这条想法的方法当时给出。',
   p_base:'基准情景（既不上行也不下行）的概率。',
   p_down:'下行情景发生的概率。',
+  grade:'绝对评级（筛选C 排序用）：S＝保守赔率≥1.5，A＝≥1.0，B＝中心赔率≥1.0 但保守<1.0，C＝中心<1.0。没成为评分想法的候选留空。',
+  ev_c:'期望值：概率加权的情景回报（v0.3 §5，百分比），这条想法「平均能赚多少」。这是筛选C 真正排序用的数，之前只在后台。',
+  or_c:'保守赔率：概率加权的「赚 ÷ 亏」（超过现金门槛的部分算赚，不足的算亏），越大越划算。评级就按它定档。',
   n_proposals:'PLACEHOLDER'
 };
 function candDef(k){
@@ -13464,19 +13621,35 @@ function bindCandSort(){
     });
   });
 }
+/* 候选池全表可能出现在方法页、证据页和抽屉里；开关一拨，三处都要跟着重画，
+   否则会出现「按钮已切、表还没变」的各说各话。 */
+function togglePoolShortlist(){
+  poolShortlist=!poolShortlist;
+  try{if(typeof renderMethod==='function')renderMethod(true)}catch(e){}
+  try{if(typeof renderEvidence==='function')renderEvidence()}catch(e){}
+  renderDrawers();
+}
 function renderCandBody(){
   var w=(S||{}).weekly||{};
   var cands=((w.pool)||{}).candidates||[];
   var sels=w.selectors||[];
+  /* 短名单在筛选前算：它是全池的前 N，不随主题筛选变化，这样「精选」始终是
+     同一份决策名单。 */
+  var shortSet=poolShortlistSet(cands);
   var arr=cands.filter(poolMatch),k=candSort.key,dir=candSort.dir;
+  /* 精选模式：只看短名单（全量照旧可看，关掉开关即回全表）。 */
+  if(poolShortlist)arr=arr.filter(function(c){return shortSet[c.instrument_id]});
   arr.sort(function(a,b){
     var x=a[k],y=b[k];
+    /* 评级是字母，按 S>A>B>C 的档次排，不按字母顺序。 */
+    if(k==='grade'){return (gradeRank(x)-gradeRank(y))*dir}
     if(typeof x==='string'||typeof y==='string'){x=String(x||'');y=String(y||'');return x.localeCompare(y)*dir}
     x=(x===null||x===undefined)?-Infinity:x;y=(y===null||y===undefined)?-Infinity:y;
     return (x-y)*dir;
   });
   if(!arr.length){
-    $('candBody').innerHTML='<tr><td colspan="11"><div class="empty-sm" style="border:none">没有匹配的条目——试试清除筛选</div></td></tr>';
+    $('candBody').innerHTML='<tr><td colspan="14"><div class="empty-sm" style="border:none">'
+      +(poolShortlist?'精选名单为空——本期还没有打分的候选（ev_c）':'没有匹配的条目——试试清除筛选')+'</div></td></tr>';
     return;
   }
   $('candBody').innerHTML=arr.map(function(c,i){
@@ -13495,8 +13668,19 @@ function renderCandBody(){
     var unmark=(c.markable===false)
       ?' <span class="tag" style="font-size:10px" title="本机没有这只标的的净值序列：不进筛选C、建仓时剔除。要让它回到组合，需要 Olive 净值腿提供历史净值。">无净值</span>'
       :'';
-    return '<tr>'
-      +'<td class="primary mono">'+esc(c.instrument_id)+unmark+'</td>'
+    /* 私募剔除（投研反馈①）：私募/主动管理载体不进选取，灰标 + 压暗整行。
+       现有数据 0 私募，平时不出现；有则显示对。 */
+    var priv=(c.private_excluded===true)
+      ?' <span class="tag" style="font-size:10px;background:var(--color-feedback-neutral-subtle);color:var(--color-text-tertiary)" title="私募/主动管理载体：方向中性的主题要的是固定透明的敞口，私募是经理人的观点、会漂移风格且净值晚报，因此不进筛选C。">私募·未进选取</span>'
+      :'';
+    /* 精选短名单（投研反馈⑤）：★ 标记 + 淡底高亮，即使在全表里也一眼看到
+       决策该看的这几只。 */
+    var isShort=!!shortSet[c.instrument_id];
+    var star=isShort?'<span title="精选：共识度 × 期望值居前，决策时看的短名单" style="color:var(--color-text-brand);margin-right:3px">★</span>':'';
+    var rowStyle=(c.private_excluded===true)?' style="opacity:.5"'
+      :(isShort?' style="background:var(--color-surface-brand-subtle)"':'');
+    return '<tr'+rowStyle+'>'
+      +'<td class="primary mono">'+star+esc(c.instrument_id)+unmark+priv+'</td>'
       /* 全名任其换行时，「Invesco S&P 500 Low Volatility」会把那一行撑到三行高，
        * 73 行的表因此忽高忽低、还比可视区宽出 90px。名称是辅助信息：一行放不下
        * 就省略，全名挂 title。行高齐了，表也收得进画面。 */
@@ -13504,6 +13688,10 @@ function renderCandBody(){
       /* 全部来源主题，每个都是一个可点的标签；点了就进表顶筛选条的多选。
        * 只印 topic_id 那一版让 GLD 看起来只来自一个主题，它实际来自四个。 */
       +'<td>'+candTopicTags(c)+'</td>'
+      /* idea 层打分（投研反馈④）：评级 · 期望值 · 赔率。没成为评分想法的候选留「—」。 */
+      +'<td class="c">'+gradeBadge(c.grade,c.grade_rule)+'</td>'
+      +'<td class="r num '+pctCls(c.ev_c)+'">'+((c.ev_c===null||c.ev_c===undefined)?'<span class="quiet">—</span>':fmtPct(c.ev_c))+'</td>'
+      +'<td class="r num">'+fmtOdds(c.or_c)+'</td>'
       +'<td class="r num '+pctCls(c.upside_pct)+'">'+fmtPct(c.upside_pct)+'</td>'
       +'<td class="r num '+pctCls(c.downside_pct)+'">'+fmtPct(c.downside_pct)+'</td>'
       +'<td class="r num">'+fmtProb(c.p_up)+'</td>'
@@ -13519,8 +13707,10 @@ function renderCandBody(){
        * 同一句话印 73 遍，还把整张表挤出可视区。用只剩图标那一档——文案退到
        * title / aria-label，悬停和读屏都还拿得到。持仓行早就是这么处理的。 */
       +'<td class="r">'+askBtn('idea','pool:'+bareCode(c.instrument_id),{cls:'sm icon'})+'</td></tr>'
-      +'<tr class="thesis-row" style="display:none" data-th="'+i+'"><td colspan="11">'
+      +'<tr class="thesis-row" style="display:none" data-th="'+i+'"><td colspan="14">'
       +'<div class="derive-kv" style="margin-top:0">'
+      /* 一行讲清主语＋分数（投研反馈④）：这条想法的评分摘要放在详情最前。 */
+      +(ideaScoreLine(c)?'<span class="num" style="color:var(--color-text-primary)">本条评分：'+esc(ideaScoreLine(c))+'</span>':'')
       +'<span class="num">合并后赚亏比 '+rrText(c)+'</span>'
       +'<span><button type="button" class="exp-btn" onclick="openProposalsDrawer(\''+esc(c.instrument_id||'')+'\')" title="打开合并前的每一条提案：各方法自己写的论点、赔率，以及它当时引用的研报">由 '+fmtInt(c.n_proposals)+' 条想法合并（赔率取中位数）· 看原文 ›</button></span>'
       +'<span class="kv-t">生成方法：'+(c.proposed_by||[]).map(methodName).map(esc).join(' / ')+'</span>'

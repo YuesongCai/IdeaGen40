@@ -41,6 +41,11 @@ CONTRACT = ("label", "key_question", "direction", "indicator", "related",
             "relation", "rationale", "split_from", "evidence_doc_ids",
             "alias_terms", "aliases")
 
+#: 本期读数（投研反馈②/⑥/⑫）：`themes[tid]["period"]` 只在**当期打过分**时才有，
+#: 历史期没有——所以它不进上面那张「每个已打分主题都必须有」的强契约，而是页面
+#: 「有则显示、无则降级」读的可选键。前端读它合法（后端确实送），但不能要求它总在。
+OPTIONAL = ("period",)
+
 
 class TestThemeIdentityPayload(unittest.TestCase):
     weekly: dict = {}
@@ -128,7 +133,7 @@ class TestThemeIdentityIsWiredIntoThePage(unittest.TestCase):
         body = self.src[self.src.index("function themeIdentity("):]
         body = body[:body.index("\n}\n")]
         used = set(re.findall(r"\bt\.([a-z_]+)", body))
-        unknown = used - set(CONTRACT)
+        unknown = used - set(CONTRACT) - set(OPTIONAL)
         self.assertEqual(unknown, set(),
                          f"页面读了后端没送的字段：{sorted(unknown)}")
 

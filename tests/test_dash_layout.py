@@ -143,7 +143,9 @@ class DashGridContracts(unittest.TestCase):
         # 只看 renderCandBody 里的那一段——页面上还有别的表也用 `return '<tr>'`
         fn = re.search(r"function renderCandBody\(\)\{(.*?)\n\}", self.src, re.S)
         self.assertIsNotNone(fn, "找不到 renderCandBody")
-        row = re.search(r"return '<tr>'\n(.*?)</td></tr>'", fn.group(1), re.S)
+        # `<tr>` may now carry row-level attributes (精选高亮 / 私募压暗)，
+        # 允许开标签后接任意非换行内容——要判的仍是每行 <td> 数与表头一致。
+        row = re.search(r"return '<tr'[^\n]*\n(.*?)</td></tr>'", fn.group(1), re.S)
         self.assertIsNotNone(row, "找不到候选池表的行生成器")
         n_td = len(re.findall(r"\+'<td\b", row.group(1)))
 

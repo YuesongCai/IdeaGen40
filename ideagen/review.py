@@ -548,6 +548,57 @@ def _cand_proposals(c: dict[str, Any], gen_ids: dict[str, list[str]],
             "proposals_partial": partial}
 
 
+def _private_excluded(c: dict[str, Any]) -> bool | None:
+    """Whether this candidate was dropped for being a private / managed vehicle.
+
+    投研反馈①: the orchestrator already stamps `private_excluded` on the candidate
+    when it runs the same filter stage C uses; pass that through when present. Runs
+    that stored the flag as null (and older payloads that never carried it) are
+    re-derived from the same pure vehicle test — reading, not re-deciding — so the
+    pool's grey tag and its "X 只私募已剔" header work whenever a private vehicle
+    actually appears. Returns None only when the vehicle cannot be judged at all.
+    """
+    pe = c.get("private_excluded")
+    if pe is not None:
+        return bool(pe)
+    try:
+        from .orchestrator import _is_private_vehicle
+        return _is_private_vehicle(c)
+    except Exception:  # noqa: BLE001 — an unjudgeable vehicle stays unlabelled
+        return None
+
+
+def _idea_scores(con, as_of: str) -> dict[str, dict[str, Any]]:
+    """Best scored idea per instrument for one period, keyed by bare code.
+
+    投研反馈④: the pool rows carry each method's *proposal* numbers, but the score
+    stage C actually ranks on — ev_c (期望值), or_c (保守赔率), grade — lives in the
+    `ideas` table. This lifts the best-scored idea per instrument (lowest batch
+    rank, then higher ev) so the pool can be read and sorted by score, not only by
+    how many methods happened to propose the name. Keyed by the code without its
+    market prefix, because the pool's `instrument_id` is bare (`ACWI`, `02800`)
+    while the idea stores it prefixed (`US.ACWI`).
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for row in db.q(con, "SELECT futu_code, olive_key, ev_c, gain_c, or_c, grade, "
+                         "grade_rule, rank FROM ideas WHERE as_of=?", (as_of,)):
+        key = str(row["futu_code"] or row["olive_key"] or "").split(".")[-1].upper()
+        if not key:
+            continue
+        prev = out.get(key)
+        rank = row["rank"] if row["rank"] is not None else 1e9
+        ev = row["ev_c"] if row["ev_c"] is not None else -1e9
+        if (prev is None or rank < prev["_rank"]
+                or (rank == prev["_rank"] and ev > prev["_ev"])):
+            out[key] = {"_rank": rank, "_ev": ev,
+                        **{k: row[k] for k in ("ev_c", "gain_c", "or_c", "grade",
+                                               "grade_rule", "rank")}}
+    for v in out.values():
+        v.pop("_rank", None)
+        v.pop("_ev", None)
+    return out
+
+
 def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
     """One weekly run, all three stages, for `as_of` or the newest period.
 
@@ -660,6 +711,8 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
         for c in cands:
             if "markable" not in c:
                 c["markable"] = _uni_ok.get(str(c.get("instrument_id")))
+        # 投研反馈④: the scored idea (ev/odds/grade) per instrument for this period.
+        idea_scores = _idea_scores(con, weekly["as_of"])
         weekly["pool"] = {
             "n": len(cands),
             "n_unmarkable": sum(1 for c in cands if c.get("markable") is False),
@@ -683,6 +736,12 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
                     if hide_licensed else c.get("instrument_name")),
                 "thesis": (
                     None if hide_licensed else c.get("thesis")),
+                # 投研反馈①: was this name filtered as a private/managed vehicle.
+                "private_excluded": _private_excluded(c),
+                # 投研反馈④: the scored idea's numbers, so the pool can sort by score.
+                # Absent when no idea for this instrument was scored this period.
+                **(idea_scores.get(
+                    str(c.get("instrument_id") or "").split(".")[-1].upper()) or {}),
             } for c in cands]}
         for c in cands:
             k = str(len(c.get("proposed_by") or []) or 1)
@@ -846,6 +905,31 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
         except Exception as e:  # noqa: BLE001 — a missing theme text must not
             # take the whole API down, but it must not pass for silence either.
             weekly["themes_error"] = f"{type(e).__name__}: {e}"
+    # 投研反馈②/⑥/⑫: this week's actual readings, merged onto the registry text.
+    # The block above is time-invariant (what the theme *is*); these are what the
+    # scoring found *this period*: the learning-effect discount (recurrence) and
+    # the measured net direction live in the scored `themes` table's factors, and
+    # tis / tier / c(已定价 0-100) are its own columns. Kept under `period` so the
+    # measured direction never shadows the registry's default one. Only weeks that
+    # were actually scored carry a row, so the panel badges hide rather than error
+    # on the historical weeks that predate these fields.
+    if weekly and weekly.get("themes"):
+        try:
+            for row in db.q(con, "SELECT theme_id, tis, c, tier, factors FROM themes "
+                                 "WHERE as_of=?", (weekly["as_of"],)):
+                th = weekly["themes"].get(row["theme_id"])
+                if not th:
+                    continue
+                f = db.jl(row["factors"], {}) or {}
+                th["period"] = {
+                    "tis": row["tis"], "tier": row["tier"],
+                    "priced_c": row["c"],
+                    "direction": f.get("direction"),
+                    "recurrence": f.get("recurrence"),
+                }
+        except Exception as e:  # noqa: BLE001 — a missing reading must not blank
+            # the identity text that did load; report it instead of hiding it.
+            weekly["themes_period_error"] = f"{type(e).__name__}: {e}"
     if weekly and weekly.get("corpus_total") is None:
         rows = p.state.q(
             "SELECT n_rows FROM feed_runs WHERE run_id=? AND kind='corpus'",

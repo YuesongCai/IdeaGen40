@@ -270,6 +270,34 @@ FACTOR_WEIGHTS = {"D": 0.15, "A": 0.25, "B": 0.25, "N": 0.35}
 
 THEME_TIER_THRESHOLDS = {"core": 75.0, "important": 60.0, "watch": 45.0}
 MAX_REPORT_THEMES = 6
+
+# ── Recurrence discount (learning effect) ──────────────────────────────────
+# A narrative the market has already chewed on for weeks carries less edge than
+# one just emerging — the second time a theme shows up it should be worth a bit
+# less (Yifu 2026-09-11). Deliberately GENTLE, so it shades the ranking rather
+# than deciding it: a few points per consecutive prior week, hard-capped, and —
+# this is the important half — it RESETS when the theme went away and came back,
+# because a re-emergence after a gap is a fresh cycle, not more of the same
+# droning. So INFLATION week 20 is nudged down; a theme returning after a
+# month's absence is not touched. The raw TIS and the discount are both kept in
+# `factors.recurrence` so the shading is visible, never hidden.
+RECUR_DISCOUNT_PER_WEEK = 2.5   # points shaved per consecutive prior week
+RECUR_DISCOUNT_MAX = 12.0       # cap: at most this many points off TIS
+RECUR_RESET_GAP_WEEKS = 3       # absence ≥ this many weeks → fresh cycle, no discount
+
+# ── Private-fund exclusion from the candidate pool ─────────────────────────
+# A theme is direction-neutral — it names what the market is arguing about, not
+# a view. A private / actively-managed fund is the opposite: it IS a manager's
+# view, it drifts style, its NAV updates slowly and lags, and what it holds today
+# is not what it will hold tomorrow (Yifu 2026-09-11). So it cannot be a clean,
+# fixed exposure to a theme the way an ETF is, and it does not belong in the pool
+# the selectors choose from. The markability gate already drops funds with no
+# usable NAV; this drops the ones that ARE private even when a NAV happens to
+# exist. Kept deliberately narrow — only vehicles that are *primarily* private
+# (start with 私募) are excluded, so a public wrapper like 「公募 / 私募」 or a
+# UCITS-regulated 公募 stays. Flip INCLUDE_PRIVATE_FUNDS on to keep everything.
+INCLUDE_PRIVATE_FUNDS = os.environ.get("IDEAGEN_INCLUDE_PRIVATE_FUNDS", "") in ("1", "true")
+PRIVATE_VEHICLE_PREFIXES = ("私募",)   # matched against vehicle.strip()
 OBSERVATION_WINDOW_DAYS = 3
 BASELINE_WINDOW_DAYS = 20      # trailing baseline for the A intensity term
 MIN_THEME_SOURCES = 3

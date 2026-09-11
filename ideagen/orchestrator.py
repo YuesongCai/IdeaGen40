@@ -514,13 +514,21 @@ def weekly(
                 markable_ids, unmark = _markable_candidates(p, as_of, candidates, dry_run)
                 for c in candidates:
                     c["markable"] = str(c.get("id")) in markable_ids
-                sel_pool = [c for c in candidates if c["markable"]]
+                    # Private / actively-managed funds are a manager's view, not a
+                    # fixed exposure to the theme, so they are filtered from the
+                    # pool the selectors compete over even when a NAV exists.
+                    c["private_excluded"] = _is_private_vehicle(c)
+                sel_pool = [c for c in candidates
+                            if c["markable"] and not c["private_excluded"]]
+                n_private = sum(1 for c in candidates
+                                if c["markable"] and c["private_excluded"])
                 j.step("selectors:markable", pool=len(candidates),
                        markable=len(sel_pool), unmarkable=len(unmark),
-                       unmarkable_ids=unmark[:80])
-                if unmark:
-                    log(f"  可盯市  {len(sel_pool)}/{len(candidates)} 只候选有价格或净值序列，"
-                        f"其余 {len(unmark)} 只不进筛选C")
+                       private_excluded=n_private, unmarkable_ids=unmark[:80])
+                if unmark or n_private:
+                    log(f"  可盯市  {len(sel_pool)}/{len(candidates)} 只候选进筛选C，"
+                        f"其余 {len(unmark)} 只无价/无净值"
+                        + (f"、{n_private} 只私募已剔" if n_private else ""))
                 candidates_all = candidates
                 candidates = sel_pool
                 # Stage C hashes its own inputs. Two selectors are comparable only
@@ -813,6 +821,22 @@ def _price_inputs(p, as_of: date, prices: dict[str, Any] | None,
                     "source": "none",
                     "error": f"读取 K 线失败：{type(e).__name__}: {e}"}
     return built, {**summ, "source": "built:prices-table"}
+
+
+def _is_private_vehicle(c: dict[str, Any]) -> bool:
+    """A candidate whose vehicle is primarily a private / actively-managed fund.
+
+    A direction-neutral theme wants a fixed, transparent exposure; a private fund
+    is a manager's view that drifts style and reports NAV late, so it is filtered
+    from the pool the selectors compete over — even when a NAV happens to exist,
+    which the markability gate alone would let through. Narrow on purpose: only
+    vehicles that lead with 私募 (私募 / 私募策略 / 私募 · UCITS) match; a public
+    wrapper such as 「公募 / 私募」 or a UCITS-regulated 公募 stays in the pool.
+    """
+    if config.INCLUDE_PRIVATE_FUNDS:
+        return False
+    v = str(c.get("vehicle") or "").strip()
+    return any(v.startswith(pref) for pref in config.PRIVATE_VEHICLE_PREFIXES)
 
 
 def _markable_candidates(p, as_of: date, candidates: list[dict[str, Any]],

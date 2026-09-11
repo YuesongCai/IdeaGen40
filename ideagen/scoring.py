@@ -484,6 +484,41 @@ def tactical_impact(d: float | None, a: float | None, b: float | None,
                            "weight_sum": round(wsum, 3)}
 
 
+def recurrence(con, theme_id: str, as_of: date, *, cadence_days: int = 7) -> dict:
+    """Learning-effect discount for a theme the market has already chewed on.
+
+    Counts how many *consecutive* prior weekly vintages already carried this
+    theme as a strong one (tier core/important — i.e. it mattered, not merely
+    that the word appeared), and how long since it last did. Continuity earns a
+    gentle, capped discount; a gap of `RECUR_RESET_GAP_WEEKS` or more resets it,
+    because a narrative that went away and came back is a fresh cycle rather than
+    more of the same. `theme_id` is stable across renames (the discovery step
+    files a rename as an alias on the same id), so this counts the *narrative*,
+    not the label. Returns the metadata; the caller applies `discount` to TIS.
+    """
+    rows = db.q(con, "SELECT DISTINCT as_of FROM themes WHERE theme_id=? AND as_of<? "
+                     "AND tier IN ('core','important') ORDER BY as_of DESC",
+                (theme_id, as_of.isoformat()))
+    prior = [date.fromisoformat(r["as_of"]) for r in rows]
+    if not prior:
+        return {"consec": 0, "weeks_since": None, "discount": 0.0,
+                "occurrence": 1, "note": "首次出现"}
+    weeks_since = max(1, round((as_of - prior[0]).days / cadence_days))
+    if weeks_since >= config.RECUR_RESET_GAP_WEEKS:
+        return {"consec": 0, "weeks_since": weeks_since, "discount": 0.0,
+                "occurrence": len(prior) + 1,
+                "note": f"距上次 {weeks_since} 周，按新周期不打折"}
+    consec = 1
+    for i in range(1, len(prior)):
+        if round((prior[i - 1] - prior[i]).days / cadence_days) >= config.RECUR_RESET_GAP_WEEKS:
+            break
+        consec += 1
+    discount = min(config.RECUR_DISCOUNT_MAX, config.RECUR_DISCOUNT_PER_WEEK * consec)
+    return {"consec": consec, "weeks_since": weeks_since, "discount": round(discount, 1),
+            "occurrence": consec + 1,
+            "note": f"连续第 {consec + 1} 次出现，折 {round(discount, 1)} 分"}
+
+
 def theme_tier(tis: float) -> str:
     th = config.THEME_TIER_THRESHOLDS
     if tis >= th["core"]:
@@ -548,6 +583,15 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
         c, cd = factor_C(con, t, ev["days"][-1])
 
         tis, tmeta = tactical_impact(d, a, b, n)
+        # Learning-effect discount: a narrative the market has chewed on for
+        # consecutive weeks is worth a little less than one just emerging. Gentle
+        # and capped (see config.RECUR_*), and it resets after an absence, so it
+        # shades the ranking without deciding it. Raw TIS kept for transparency.
+        rec = recurrence(con, t.id, as_of)
+        tis_raw = tis
+        if rec["discount"]:
+            tis = round(max(0.0, tis - rec["discount"]), 1)
+        rec["tis_raw"] = tis_raw
         n_sources = len({e["institution"] for e in items})
         eligible = (n_sources >= config.MIN_THEME_SOURCES
                     and len({e["line"] for e in items}) >= 2
@@ -569,7 +613,7 @@ def score_day(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAYS,
             "n_items": len(items), "n_sources": n_sources,
             "confidence": "ok" if eligible else "low",
             "factors": {"D": dd, "A": ad, "B": bd, "N": nd, "M": md, "C": cd,
-                        "TIS": tmeta, "direction": direction,
+                        "TIS": tmeta, "recurrence": rec, "direction": direction,
                         "stage": validation_stage(m), "crowding": crowding_label(c),
                         "eligible": eligible,
                         "origin": t.origin, "registered_d": t.registered_d,

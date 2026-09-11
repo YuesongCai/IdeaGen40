@@ -294,6 +294,12 @@ def book_ledger(con, book_id: str, subset: str = "all") -> dict[str, Any]:
         con, "SELECT d, cash, mv, equity FROM equity WHERE book_id=? ORDER BY d",
         (book_id,))]
     dates = [r["d"] for r in eq_rows]
+    if subset == "live":
+        # An account can predate its first forward position by months because
+        # historical batches share the book. Start this view at its first fill,
+        # keeping just one capital baseline so entry fees remain in returns.
+        first_fill = min((p["opened_d"] for p in pos_rows), default=None)
+        dates = [d for d in dates if first_fill and d >= first_fill]
     interest: dict[str, float] = {}
     points: list[dict[str, Any]] = []
     if subset == "all":
@@ -311,11 +317,16 @@ def book_ledger(con, book_id: str, subset: str = "all") -> dict[str, Any]:
         # other subset's cash flows.
         cash = capital
         cash_at: dict[str, float] = {}
+        if subset == "live" and dates:
+            seed = paper._prev_session(con, dates[0])
+            if seed:
+                points.append({"d": seed, "cash": capital, "mv": 0.0,
+                               "equity": capital, "u_gross": 0.0})
         for d in dates:
             prev = paper._prev_session(con, d)
             rate = _rate_on(con, book_id, d)
             inc = 0.0
-            if rate is not None and prev:
+            if rate is not None and prev and (subset != "live" or cash_at):
                 base = cash_at.get(prev, cash)
                 if base > 0:
                     days = max((date.fromisoformat(d) - date.fromisoformat(prev)).days, 1)
@@ -629,7 +640,8 @@ def paper_view(con, p=None, subset: str = "live") -> dict[str, Any]:
 
     first_d = min((s["first_d"] for s in strategies if s["first_d"]), default=None)
     last_d = max((s["last_d"] for s in strategies if s["last_d"]), default=None)
-    spy = _spy_closes(con, first_d, last_d)
+    spy = (_spy_closes(con, first_d, last_d)
+           if subset != "live" or (first_d and last_d) else [])
 
     # 全量基准 = the buy_all book on the same subset. Its missing periods are
     # named against every period any other book acted in.
@@ -741,6 +753,9 @@ def paper_view(con, p=None, subset: str = "live") -> dict[str, Any]:
             f"orch_runs.data_classification，NULL 记为按时。"))
     if n_unrec:
         disclosures.append(f"⚠ 有 {n_unrec} 个策略-周没有对上账（residual 超过容差），见 weekly_pnl。")
+    if subset == "live":
+        disclosures.insert(0, "按时运行从各组合首次实际成交起计算；保留前一交易日的本金基准点以计入首笔费用，"
+                           "不计首次成交前的历史现金利息。SPY 按相同日期比较。生成于仅为报表刷新时间。")
     overdrawn = [r["key"] for r in rows
                  if r["cash_share_end_pct"] is not None and r["cash_share_end_pct"] < 0]
     if overdrawn:

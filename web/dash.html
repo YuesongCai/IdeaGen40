@@ -4675,7 +4675,7 @@ function ledgerCard(ag){
 function machineMapSVG(){
   var w=(S||{}).weekly||{};
   var sm=(((S||{}).backtest||{}).summary)||{};
-  var lb=sm.live_vs_backfill||{};
+  var lb=runningProgress();
   var hg=(typeof topicArm==='function')?topicArm('hgep'):null;
   var nTopics=(hg&&hg.scores)?Object.keys(hg.scores).length:0;
   var nChosen=(typeof topicChosen==='function')?topicChosen('hgep').length:0;
@@ -4855,9 +4855,22 @@ function oliveAlertLine(full){
 /* 三颗状态芯片：本期、下一期、体征。每颗一个主语，数字旁边写清它是什么。
    「本期」是唯一可点的——它去各期；另两颗的去处（现在到哪了、运行状况）
    侧栏已经有了，不再各开一个入口。 */
+function runningProgress(){
+  var rows=((S||{}).periods||[]),classes={},byDate={};
+  rows.forEach(function(p){
+    if(p.ok===true||p.ok===1){classes[p.as_of]=p.classification;byDate[p.as_of]=p}
+  });
+  var dates=Object.keys(classes).sort();
+  var live=dates.filter(function(d){return classes[d]==='live'});
+  var back=dates.filter(function(d){return classes[d]==='backfill'});
+  var lb=(((((S||{}).backtest||{}).summary)||{}).live_vs_backfill)||{};
+  var gate=Number(lb.n_live_periods||0)+Number(lb.periods_needed||0)||4;
+  return {classes:classes,byDate:byDate,n_live_periods:live.length,
+    n_backfill_periods:back.length,periods_needed:Math.max(0,gate-live.length)};
+}
 function chainChips(){
   var w=(S||{}).weekly||{};
-  var lb=((((S||{}).backtest||{}).summary)||{}).live_vs_backfill||{};
+  var lb=runningProgress();
   var nLive=Number(lb.n_live_periods||0);
   var period=w.as_of||(((S||{}).schedule||{}).current_period)||'—';
   var nr=(typeof nextRunInfo==='function')?nextRunInfo():null;
@@ -4912,10 +4925,8 @@ function chainCard(){
    之后的期虚线，最右是「第一个可读点」。此前这里是一段「它管用吗？还不知道……」
    的长句——判定不在这一页，这里只留一个指针。 */
 function nowTimelineSVG(){
-  var sm=(((S||{}).backtest||{}).summary)||{};
-  var lb=sm.live_vs_backfill;
-  if(!lb)return '';
-  var cls=sm.period_classification||{};
+  var lb=runningProgress();
+  var cls=lb.classes;
   var order=Object.keys(cls).sort();
   var nLive=Number(lb.n_live_periods||0),need=Number(lb.periods_needed||0);
   var nr=(typeof nextRunInfo==='function')?nextRunInfo():null;
@@ -4942,9 +4953,12 @@ function nowTimelineSVG(){
         +'<rect class="tap-bg" x="'+x.toFixed(1)+'" y="'+TOP+'" width="'+CW.toFixed(1)+'" height="'+CH+'" rx="6" fill="url(#hx-now)" stroke="var(--color-border-default)" stroke-width="1"/>'
         +svgTxt(cx,TOP+27,lab,{anchor:'middle',size:12.5,fill:'var(--color-text-secondary)'})+'</g>';
     }else if(c.k==='lv'){
-      g+='<g class="tap-svg" role="button" tabindex="0" onclick="goPeriod(\''+jss(c.d)+'\')"><title>'+esc(c.d+' 期 · 当期实跑，计入证据 · 点开看这一期')+'</title>'
+      var row=lb.byDate[c.d]||{};
+      var fillState=row.n_positions?'已成交':(row.pending_orders?'待成交':'未形成仓位');
+      g+='<g class="tap-svg" role="button" tabindex="0" onclick="goPeriod(\''+jss(c.d)+'\')"><title>'+esc(c.d+' 期 · 按时运行已执行 · '+fillState+' · 点开看这一期')+'</title>'
         +'<rect class="tap-bg" x="'+x.toFixed(1)+'" y="'+TOP+'" width="'+CW.toFixed(1)+'" height="'+CH+'" rx="6" fill="var(--color-fill-brand)"/>'
-        +svgTxt(cx,TOP+27,lab,{anchor:'middle',size:12.5,weight:600,fill:'var(--color-text-on-brand)'})+'</g>';
+        +svgTxt(cx,TOP+27,lab,{anchor:'middle',size:12.5,weight:600,fill:'var(--color-text-on-brand)'})
+        +svgTxt(cx,TOP+CH+16,fillState,{anchor:'middle',size:10.5,fill:'var(--color-text-brand)',mono:false})+'</g>';
     }else if(c.k==='next'){
       g+='<g class="tap-svg" role="button" tabindex="0" onclick="openCalDrawer()"><title>'+esc((c.d||'未定')+' 期 · 下一次运行'+(nLive?'':'，新链路第一次当期实跑')+' · 点开看周历')+'</title>'
         +'<rect class="tap-bg" x="'+x.toFixed(1)+'" y="'+TOP+'" width="'+CW.toFixed(1)+'" height="'+CH+'" rx="6" fill="var(--color-surface-brand-subtle)" stroke="var(--color-border-brand)" stroke-width="1.6"/>'

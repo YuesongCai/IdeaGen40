@@ -193,11 +193,15 @@ def test_live_interest_is_recomputed_on_the_rebuilt_balance(con, views):
     live = pf.book_ledger(con, "sel-buy_all", "live")
     rebuilt = sum(v for d, v in live["interest"].items() if d > "2026-07-27")
     assert rebuilt > stored * 1.01
-    # First accrual day: rate parsed from the INT row, applied to capital.
+    # First accrual day after entry: interest uses the previous rebuilt cash.
     d0 = min(live["interest"])
     rate = pf._rate_on(con, "sel-buy_all", d0)
     assert rate is not None
-    assert live["interest"][d0] == pytest.approx(live["capital"] * rate / 365.0, rel=1e-6)
+    prev = pf.paper._prev_session(con, d0)
+    base = next(p["cash"] for p in live["points"] if p["d"] == prev)
+    from datetime import date
+    days = (date.fromisoformat(d0) - date.fromisoformat(prev)).days
+    assert live["interest"][d0] == pytest.approx(base * rate * days / 365.0, rel=1e-6)
     # And the three curves end in three different places.
     ends = {s: views[s]["strategies"][0]["curve"][-1]["v"] for s in views}
     assert len(set(ends.values())) == 3
@@ -208,6 +212,35 @@ def test_all_subset_is_the_stored_ledger(con, views):
     curve = next(s for s in views["all"]["strategies"] if s["key"] == "alpha")["curve"]
     assert [p["d"] for p in curve] == [r["d"] for r in eq]
     assert all(p["v"] == pytest.approx(r["equity"], abs=0.01) for p, r in zip(curve, eq))
+
+
+def test_live_window_excludes_old_backfill_days_and_interest():
+    c = fx.fresh()
+    fx.book(c, generated_at={fx.RUN1: LIVE_GEN,
+                            fx.RUN2: "2026-07-08T07:00:00+08:00"}, through=THROUGH)
+    c.execute("UPDATE orch_runs SET data_classification='backfill' WHERE run_id=?", (fx.RUN1,))
+    c.execute("UPDATE orch_runs SET data_classification='live' WHERE run_id=?", (fx.RUN2,))
+    v = pf.paper_view(c, None, "live")
+    led = pf.book_ledger(c, "sel-alpha", "live")
+    fill = min(p["opened_d"] for p in led["positions"])
+    seed = pf.paper._prev_session(c, fill)
+    assert led["points"][0]["d"] == seed
+    assert led["points"][0]["equity"] == led["capital"]
+    assert led["points"][1]["d"] == fill
+    assert all(d > fill for d in led["interest"])
+    assert v["window"]["start"] == seed
+    assert v["benchmarks"]["spy"]["curve"][0]["d"] == seed
+    assert pf.paper_view(c, None, "all")["window"]["start"] < seed
+    assert all(r["reconciled"] for rows in v["weekly_pnl"]["by_strategy"].values() for r in rows)
+    first = led["points"][1]
+    trades = led["trades_by_d"][fill]
+    assert first["equity"] == pytest.approx(
+        led["capital"] + sum(t["cash_delta"] for t in trades) + first["mv"])
+    c.execute("UPDATE orch_runs SET data_classification='backfill'")
+    empty = pf.paper_view(c, None, "live")
+    assert empty["window"] is None
+    assert empty["benchmarks"]["spy"]["curve"] == []
+    c.close()
 
 
 def test_disclosures_state_the_rebuild_rule(views):

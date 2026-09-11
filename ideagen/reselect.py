@@ -60,7 +60,13 @@ def reselect(p: plat.Platform, *, arms: list[str], start: str | None = None,
             "ORDER BY candidate_id", (rid,))]
         cands = [c for c in cands if c]
         markable_ids, unmark = orch._markable_candidates(p, as_of, cands, False)
-        pool = [c for c in cands if str(c.get("id")) in markable_ids]
+        # Same pool the live orchestrator hands stage C: markable AND not a
+        # private / actively-managed fund (see orchestrator's sel_pool). Without
+        # this line a replay would still rank private funds the live run drops.
+        pool = [c for c in cands
+                if str(c.get("id")) in markable_ids and not orch._is_private_vehicle(c)]
+        n_private = sum(1 for c in cands
+                        if str(c.get("id")) in markable_ids and orch._is_private_vehicle(c))
         prices, psumm = orch._price_inputs(p, as_of, None, False)
         extra, csumm = orch._candidate_prices(p, as_of, pool, prices, False)
         prices = {**prices, **extra}
@@ -69,7 +75,8 @@ def reselect(p: plat.Platform, *, arms: list[str], start: str | None = None,
                                prices=prices, params=dict(params or {}),
                                infer=getattr(p, "inference", None))
         rec: dict[str, Any] = {"pool": len(cands), "markable": len(pool),
-                               "unmarkable": len(unmark), "prices": psumm.get("measured"),
+                               "unmarkable": len(unmark), "private_excluded": n_private,
+                               "prices": psumm.get("measured"),
                                "candidate_prices": csumm.get("measured"), "arms": {}}
         log(f"{r['as_of']} run {rid}: 池 {len(cands)} · 可盯市 {len(pool)} · "
             f"行情 {psumm.get('measured')}+{csumm.get('measured')}")

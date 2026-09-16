@@ -2,7 +2,7 @@
 
 The shelf returns ~20 NAV points per month with only `month` on each point.
 `date_series` assigns weekdays (back from month end for completed months,
-forward from the 1st for the current one) and refuses a month with more
+back from the as-of day for the current one) and refuses a month with more
 points than weekdays. `import_dir` loads them under an explicit `src`, never
 overwriting a NAV Olive itself dated, and flips `priceable` so booking's
 `_priced_only` — which now checks NAV for funds — lets the fund through.
@@ -42,10 +42,24 @@ class DateInference(unittest.TestCase):
         self.assertEqual(rows, [("2026-07-29", 101.0), ("2026-07-30", 102.0), ("2026-07-31", 103.0)])
         self.assertEqual(rec["rejected"], {})
 
-    def test_current_month_counts_forward_from_the_first(self):
+    def test_current_month_counts_back_from_the_day_before_import(self):
+        # asOfDate (08-31) is not in September -> anchor is the last weekday
+        # before Mon 09-07, i.e. Fri 09-04.
         pts = [{"month": "2026-09", "nav": "115.255"}, {"month": "2026-09", "nav": "115.2"}]
-        rows, _ = olive_nav.date_series(_payload(pts), today=TODAY)
-        self.assertEqual(rows, [("2026-09-01", 115.2), ("2026-09-02", 115.255)])
+        rows, rec = olive_nav.date_series(_payload(pts), today=TODAY)
+        self.assertEqual(rows, [("2026-09-03", 115.2), ("2026-09-04", 115.255)])
+        self.assertIn("today-1", rec["current_month_anchor"])
+
+    def test_current_month_uses_as_of_date_and_a_truncated_head_is_not_shifted(self):
+        # L03307 on 2026-09-17: only the newest three September points were
+        # published; they belong to 09-07..09-09, not 09-01..09-03.
+        p = _payload([{"month": "2026-09", "nav": "15622.97"}, {"month": "2026-09", "nav": "15365.14"},
+                      {"month": "2026-09", "nav": "15415.89"}])
+        p["performance"]["meta"]["asOfDate"] = "2026-09-09"
+        rows, rec = olive_nav.date_series(p, today=date(2026, 9, 10))
+        self.assertEqual([d for d, _ in rows], ["2026-09-07", "2026-09-08", "2026-09-09"])
+        self.assertEqual(rows[-1][1], 15622.97)
+        self.assertIn("asOfDate", rec["current_month_anchor"])
 
     def test_too_many_points_for_a_month_are_refused_not_squeezed(self):
         pts = [{"month": "2026-07", "nav": str(100 + i)} for i in range(30)]

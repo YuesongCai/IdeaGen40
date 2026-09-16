@@ -12,7 +12,13 @@ newest point per month and called the rest unusable.
 The dating rule, stated so it can be argued with: within a month the points
 arrive newest first; a completed month's points are assigned to that month's
 weekdays counting back from the last weekday, and the current (partial)
-month's points to its weekdays counting forward from the first. A holiday
+month's points to its weekdays counting back from the series' as-of day —
+`meta.asOfDate` when it falls inside the month, else the last weekday before
+the import day. (Until 2026-09-17 the current month counted *forward from the
+1st*; a fund whose September series held only its newest three points —
+L03307, twin listing of L03244 — had 09-07..09-09 stamped 09-01..09-03, so a
+mark early in the month saw a NAV from a week later. Counting back errs by the
+publication lag at most; counting forward erred by every missing point.) A holiday
 shifts a point by a day; a month with more points than weekdays is rejected
 rather than squeezed. Every row is stored with `src='olive:perf:inferred-d'`
 so a mark can always say the day was inferred, and `mark()`'s staleness
@@ -92,6 +98,14 @@ def date_series(payload: dict[str, Any], *, today: date) -> tuple[list[tuple[str
     rows: list[tuple[str, float]] = []
     rejected: dict[str, str] = {}
     cur = today.strftime("%Y-%m")
+    as_of_raw = str((perf.get("meta") or {}).get("asOfDate") or "")[:10]
+    try:
+        anchor = date.fromisoformat(as_of_raw)
+    except ValueError:
+        anchor = None
+    if anchor is None or anchor.strftime("%Y-%m") != cur or anchor > today:
+        anchor = today - timedelta(days=1)           # newest point is at least a day old
+    anchor_src = "asOfDate" if as_of_raw[:10] == anchor.isoformat() else "today-1"
     for m, vals in by_month.items():
         y, mo = int(m[:4]), int(m[5:7])
         days = _weekdays(y, mo)
@@ -103,13 +117,18 @@ def date_series(payload: dict[str, Any], *, today: date) -> tuple[list[tuple[str
             continue
         asc = list(reversed(vals))                   # oldest first
         if m == cur:
-            picks = days[:len(asc)]                  # forward from the 1st
+            upto = [d for d in days if d <= anchor]  # back from the as-of day
+            if len(asc) > len(upto):
+                rejected[m] = f"{len(vals)} 个点多于截至 {anchor} 的 {len(upto)} 个工作日"
+                continue
+            picks = upto[len(upto) - len(asc):]
         else:
             picks = days[len(days) - len(asc):]      # back from the last weekday
         rows.extend((d.isoformat(), v) for d, v in zip(picks, asc))
     rows.sort()
     return rows, {"series": name, "points": len(best), "dated": len(rows),
                   "months": len(by_month), "rejected": rejected,
+                  "current_month_anchor": f"{anchor.isoformat()} ({anchor_src})",
                   "as_of": (perf.get("meta") or {}).get("asOfDate"),
                   "frequency": (perf.get("meta") or {}).get("dataFrequency")}
 

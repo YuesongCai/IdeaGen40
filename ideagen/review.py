@@ -1257,6 +1257,23 @@ def state(con=None, p=None) -> dict[str, Any]:
         ") recent) "
         "ORDER BY as_of DESC, run_id DESC, feed ASC")]
 
+    # -- WS-C: social leg + diffusion (diagnosis only, not in TIS) ---------
+    # Appended to `feeds` as kind='social' so the status drawer lists them with
+    # every other source; everything that reads research receipts filters on
+    # kind='corpus' and never sees them. The diagnosis is the stored snapshot
+    # nearest on or before this period — computing it here would re-match four
+    # weeks of documents on every one-minute poll.
+    try:
+        from . import diffusion as _diffusion
+        from .sources import social as _social
+        out["feeds"] += _social.feed_rows(con)
+        out["social"] = _social.status(con)
+        out["diffusion"] = _diffusion.state_block(
+            con, (out.get("weekly") or {}).get("as_of"))
+    except Exception as e:  # noqa: BLE001 — a new block must not take the page down
+        out["social"] = {"sources": [], "error": f"{type(e).__name__}: {e}"}
+        out["diffusion"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
+
     # -- the macro layer ---------------------------------------------------
     # Here rather than only in `payload.build`: that one feeds the legacy report
     # at /legacy, not this document, so a block added there reaches a page

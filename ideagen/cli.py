@@ -1201,6 +1201,12 @@ def cmd_daily(args) -> int:
                                   fetch_bodies=args.bodies)
 
     stage("ingest", _ingest)
+    # WS-C: social leg right after research, before anything reads it. Its own
+    # stage so a dead feed shows as one failed row, never as a lost daily run;
+    # nothing below this line reads social_items (it is not in TIS).
+    print("[1b/10] 社交源 + 扩散诊断")
+    from . import diffusion as _diffusion
+    stage("social", lambda: _diffusion.daily_stage(con, as_of))
     print("[2/10] prices")
     # Via the dispatcher, not futu_px directly: with OpenD down (Mac asleep, or a
     # cloud run) this falls back to FMP EOD instead of failing the stage, so the
@@ -1837,6 +1843,16 @@ def main(argv: list[str] | None = None) -> int:
     s = add("daily", cmd_daily, "run the whole unattended cycle")
     s.add_argument("--lookback", type=int, default=config.OBSERVATION_WINDOW_DAYS)
     s.add_argument("--bodies", type=int, default=6)
+
+    # WS-C
+    from . import diffusion as _diffusion
+    s = add("social", _diffusion.cli, "fetch social sources and store diffusion diagnoses")
+    s.add_argument("--lookback", type=int, default=config.SOCIAL_LOOKBACK_DAYS)
+    s.add_argument("--backfill", action="store_true",
+                   help="walk every feed back the full lookback even if it has history")
+    s.add_argument("--max-pages", type=int, default=config.SOCIAL_RSS_MAX_PAGES)
+    s.add_argument("--no-fetch", action="store_true", help="only diagnose stored items")
+    s.add_argument("--diagnose", help="comma-separated YYYY-MM-DD dates to diagnose")
 
     s = add("status", cmd_status, "compact digest as JSON")
     s.add_argument("--on")

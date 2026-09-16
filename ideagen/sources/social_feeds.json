@@ -1,0 +1,53 @@
+{
+  "_why": "研报之外的早期信号源（yifu 2026-09-11）。只收宏观/资产配置/主题投资为主、2026-09-17 逐个实测能通且近 35 天有更新的个人或小团队源；新闻机构（FT、CNBC、MarketWatch）和央行/智库官方博客不收——它们和卖方一样处在扩散后段，不是源头。paging 让历史回看不止于 RSS 默认的最近 10-20 条：substack=archive JSON，wordpress=?paged=N，blogger=start-index。",
+  "rss": [
+    {"key": "theovershoot", "name": "The Overshoot (Matthew Klein)", "url": "https://theovershoot.co/feed", "paging": "substack", "focus": "macro"},
+    {"key": "noahpinion", "name": "Noahpinion (Noah Smith)", "url": "https://www.noahpinion.blog/feed", "paging": "substack", "focus": "macro"},
+    {"key": "doomberg", "name": "Doomberg", "url": "https://doomberg.substack.com/feed", "paging": "substack", "focus": "energy"},
+    {"key": "netinterest", "name": "Net Interest (Marc Rubinstein)", "url": "https://www.netinterest.co/feed", "paging": "substack", "focus": "financials"},
+    {"key": "concoda", "name": "Concoda", "url": "https://concoda.substack.com/feed", "paging": "substack", "focus": "liquidity"},
+    {"key": "petition", "name": "Petition", "url": "https://petition.substack.com/feed", "paging": "substack", "focus": "credit"},
+    {"key": "chinatalk", "name": "ChinaTalk (Jordan Schneider)", "url": "https://www.chinatalk.media/feed", "paging": "substack", "focus": "china-geopolitics"},
+    {"key": "pomp", "name": "The Pomp Letter", "url": "https://pomp.substack.com/feed", "paging": "substack", "focus": "macro-crypto"},
+    {"key": "exponentialview", "name": "Exponential View (Azeem Azhar)", "url": "https://www.exponentialview.co/feed", "paging": "substack", "focus": "ai"},
+    {"key": "citrini", "name": "Citrini Research", "url": "https://www.citriniresearch.com/feed", "paging": "substack", "focus": "thematic"},
+    {"key": "thegeneralist", "name": "The Generalist", "url": "https://www.generalist.com/feed", "paging": "substack", "focus": "tech"},
+    {"key": "chartbook", "name": "Chartbook (Adam Tooze)", "url": "https://adamtooze.substack.com/feed", "paging": "substack", "focus": "macro"},
+    {"key": "sinocism", "name": "Sinocism (Bill Bishop)", "url": "https://sinocism.com/feed", "paging": "substack", "focus": "china"},
+    {"key": "pekingnology", "name": "Pekingnology", "url": "https://www.pekingnology.com/feed", "paging": "substack", "focus": "china"},
+    {"key": "kyla", "name": "Kyla Scanlon", "url": "https://kyla.substack.com/feed", "paging": "substack", "focus": "macro"},
+    {"key": "fabricatedknowledge", "name": "Fabricated Knowledge", "url": "https://www.fabricatedknowledge.com/feed", "paging": "substack", "focus": "semis"},
+    {"key": "kedrosky", "name": "Paul Kedrosky", "url": "https://paulkedrosky.com/feed/", "paging": "", "focus": "macro-tech"},
+    {"key": "bondeconomics", "name": "BondEconomics", "url": "http://www.bondeconomics.com/feeds/posts/default", "paging": "blogger", "focus": "rates"},
+    {"key": "abnormalreturns", "name": "Abnormal Returns", "url": "https://abnormalreturns.com/feed/", "paging": "wordpress", "focus": "allocation"},
+    {"key": "bigpicture", "name": "The Big Picture (Barry Ritholtz)", "url": "https://ritholtz.com/feed/", "paging": "wordpress", "focus": "allocation"},
+    {"key": "wolfstreet", "name": "Wolf Street", "url": "https://wolfstreet.com/feed/", "paging": "wordpress", "focus": "credit-housing"},
+    {"key": "awealthofcommonsense", "name": "A Wealth of Common Sense", "url": "https://awealthofcommonsense.com/feed/", "paging": "", "focus": "allocation"},
+    {"key": "conversableeconomist", "name": "Conversable Economist", "url": "https://conversableeconomist.com/feed/", "paging": "wordpress", "focus": "macro"},
+    {"key": "marginalrevolution", "name": "Marginal Revolution", "url": "https://marginalrevolution.com/feed", "paging": "wordpress", "focus": "econ"},
+    {"key": "econbrowser", "name": "Econbrowser", "url": "https://econbrowser.com/feed", "paging": "wordpress", "focus": "macro"},
+    {"key": "employamerica", "name": "Employ America", "url": "https://www.employamerica.org/feed/", "paging": "", "focus": "macro-policy"},
+    {"key": "alphaarchitect", "name": "Alpha Architect", "url": "https://alphaarchitect.com/feed/", "paging": "", "focus": "factors"},
+    {"key": "stratechery", "name": "Stratechery (Ben Thompson)", "url": "https://stratechery.com/feed/", "paging": "wordpress", "focus": "tech"},
+    {"key": "zerohedge", "name": "ZeroHedge", "url": "https://feeds.feedburner.com/zerohedge/feed", "paging": "", "focus": "fringe-macro"}
+  ],
+  "reddit": {
+    "subreddits": ["investing", "stocks", "wallstreetbets", "economics", "SecurityAnalysis", "ValueInvesting"]
+  },
+  "x": {
+    "kols": []
+  },
+  "_rejected_2026_09_17": {
+    "apricitas": "200 但最近一条 2026-05-03，停更",
+    "macrocompass": "200 但最近一条 2026-07-13，停更",
+    "lynalden": "200 但最近一条 2026-07-15",
+    "thereformedbroker / pragcap": "2023 年后无更新",
+    "thedailyshot / compoundadvisors / irrelevantinvestor / bondvigilantes": "200 但解析出 0 条（非标准 feed 或空壳）",
+    "mrbnotes / epsilontheory / piie / bis / thebeartrapsreport / greenmantle": "404",
+    "brookings": "TLS EOF",
+    "stocktwits trending": "403 Cloudflare 质询，无钥接口不可用",
+    "semianalysis": "feed 停在 2025-09",
+    "calculatedrisk": "200 但博客 2026-01-12 已停更（「This is the End」），feed 的 <updated> 是 09-13 造成过误判",
+    "ft / cnbc / marketwatch / seekingalpha currents / libertystreet / macromusings": "能通，但是新闻或官方机构，不是源头声音"
+  }
+}

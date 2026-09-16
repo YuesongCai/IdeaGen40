@@ -518,3 +518,49 @@ PM_REVIEW_MIN_N = _env_int("IDEAGEN_PM_REVIEW_MIN_N", 5)
 #: The display node the team actually clicks on. Reviews written there are
 #: pulled back to this laptop, which is where the data is authoritative.
 DISPLAY_NODE_URL = os.environ.get("IDEAGEN_DISPLAY_URL", "http://101.47.28.218")
+
+# ---------------------------------------------------------------- WS-C
+# 早期信号腿（社交源 + 扩散诊断）。yifu 2026-09-11：研报处在扩散期，源头在
+# X / Reddit / 独立作者。这一整块只喂诊断与主题发现的提示，**不进 TIS**——
+# 研报的计数层级和打分权重一个字都不动，所以 SOCIAL_WEIGHT 恒为 0，留着只是
+# 让「社交不参与打分」成为一个能被 grep 到的决定，而不是一处遗漏。
+SOCIAL_WEIGHT = 0.0
+SOCIAL_FEEDS_PATH = ROOT / "ideagen" / "sources" / "social_feeds.json"
+#: 首次抓取回看多少天。RSS 默认只给最近 10–20 条，靠 paging 往回翻到这里为止。
+SOCIAL_LOOKBACK_DAYS = 30
+#: 每个 RSS 源最多翻几页。高频源（zerohedge 一天 25 条）翻不到 30 天前是已知
+#: 偏差，诊断里按「覆盖天数」如实报，不补。
+SOCIAL_RSS_MAX_PAGES = 6
+SOCIAL_HTTP_TIMEOUT_S = 20
+SOCIAL_USER_AGENT = "IdeaGen40-social/0.1 (research dashboard; contact via repo owner)"
+#: 监控 tick 里的增量抓取最短间隔。tick 每 15 分钟一次，RSS 源一天也就更新
+#: 几次，更密只会换来 429。
+SOCIAL_MONITOR_INTERVAL_S = 6 * 3600
+#: Reddit 无钥 RSS 路径两次请求之间的停顿；实测连发第二个就 429。
+SOCIAL_REDDIT_PAUSE_S = 8.0
+#: X API v2 recent search：每日请求预算与单次条数。X 按读取条数计费，默认
+#: 保守——10 次 × 25 条 = 每天至多 250 条。
+SOCIAL_X_DAILY_REQUESTS = 10
+SOCIAL_X_MAX_RESULTS = 25
+
+# 扩散诊断阈值。口径温和：宁可说「平稳 / 数据不足」，不硬贴阶段。
+DIFFUSION_LOOKBACK_DAYS = 28
+DIFFUSION_RECENT_DAYS = 7          # 「最近」= 截断日往前 7 天
+DIFFUSION_PRIOR_DAYS = 14          # 与之比较的前 14 天
+DIFFUSION_RISE_RATIO = 1.3         # 近 7 天日均占比 ≥ 前 14 天 × 1.3 → 升
+DIFFUSION_FALL_RATIO = 0.77        # ≤ × 0.77 → 退
+DIFFUSION_MIN_SOCIAL = 4           # 窗口内社交提及少于此 → 数据不足
+DIFFUSION_MIN_RESEARCH = 5
+DIFFUSION_MAX_LAG_DAYS = 10
+DIFFUSION_MIN_CORR = 0.3           # 互相关低于此不报领先天数
+DIFFUSION_SMOOTH_DAYS = 7
+# 「社交热议、研报未跟」候选话题
+CHATTER_WINDOW_DAYS = 7
+CHATTER_MIN_ITEMS = 3
+CHATTER_MIN_FEEDS = 2
+CHATTER_MAX_RESEARCH_DOCS = 2
+CHATTER_MIN_LIFT = 2.0
+CHATTER_LIMIT = 15
+# 早期声音：一个主题在研报里「变强」之前就提过它的作者
+EARLY_MIN_SOCIAL_ITEMS = 150       # 窗口内社交条目总数低于此 → 如实空状态
+EARLY_STRENGTHEN_RATIO = 1.5

@@ -1200,6 +1200,16 @@ def discover(con, as_of: date, infer, *, step=None, log=None,
                "mined": disc.get("mined"), "scope": scope,
                "candidates": len(cands), "registered": [], "merged": [],
                "skipped": [], "failed": 0}
+    # WS-C: phrases independent authors are using that research is not. Read
+    # only and recorded in the journal beside the candidates — never minted,
+    # never passed to the model, because a hint that could register a theme
+    # would let the social leg move TIS through the back door.
+    try:
+        from . import diffusion as _diffusion
+        summary["social_hints"] = _diffusion.discovery_hints(con, as_of)
+    except Exception as e:  # noqa: BLE001 — a hint must not cost discovery
+        summary["social_hints"] = []
+        summary["social_hints_error"] = f"{type(e).__name__}: {e}"[:200]
     if infer is None and cands:
         # Naming needs the model. Without it every candidate would raise the
         # same rejection and the journal would carry one copy per candidate —

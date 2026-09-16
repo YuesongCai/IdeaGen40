@@ -2302,6 +2302,17 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
 .pmr-err{color:var(--color-feedback-warning-text);font:400 12px/17px var(--font-sans);margin-top:4px}
 .pmr-log{font:400 11.5px/16px var(--font-sans);color:var(--color-text-secondary);margin-top:6px}
 .pmr-warn{background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text);border-radius:4px;padding:1px 6px}
+
+/* WS-C 早期信号腿：社交源状态、扩散阶段小折线、社交热议清单 */
+.dif-row{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin:6px 0}
+.dif-spark{display:block;max-width:100%}
+.dif-leg{display:inline-flex;align-items:center;gap:4px;font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.dif-leg i{display:inline-block;width:14px;height:2px;border-radius:1px}
+.dif-leg i.s{background:var(--color-feedback-warning-default)}
+.dif-leg i.r{background:var(--color-fill-brand)}
+.dif-samples{margin:6px 0 0;padding:0;list-style:none;font:400 13px/19px var(--font-sans)}
+.dif-samples li{padding:2px 0;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dif-samples a{color:var(--color-text-link,inherit)}
 </style>
 <style>
 /* ══ 新手导览（一次性）══════════════════════════════════════════
@@ -3154,7 +3165,8 @@ var VIEWS=[
    secs:[{s:'canvas',label:'生成链路'},
          {s:'direction',label:'本期方向'},
          {s:'rules',label:'我的准则'},
-         {s:'inputs',label:'本期输入'}]},
+         {s:'inputs',label:'本期输入'},
+         {s:'social',label:'社交热议'}]},
   /* 「它管用吗」这个问句从概览搬到这里：判定和支撑它的证据都在这一页，
      导航上的问句就该指向能回答它的那一页。 */
   /* 2026-09-08 口吻改版：sub 与五个段名换成投研用语；段 id 不动（路由与 LEGACY_SEC 挂在 id 上）。 */
@@ -10882,7 +10894,8 @@ function renderMethod(force){
        画完，这一段就是往那四个框旁边再加一个的地方。中间隔着别的东西，
        它就又变回一个孤零零的功能。 */
     +secWrap('method','rules',phSection())
-    +secWrap('method','inputs',periodInputsCard());
+    +secWrap('method','inputs',periodInputsCard())
+    +secWrap('method','social',socialChatterCard());   /* WS-C */
   phBind();
   /* 主线第 03 段内嵌了候选池全表，它的行是 JS 填的。renderEvidence 里有同一句，
    * 但 toggleStage 只重跑 renderMethod —— 于是展开这一段之后，表头写着
@@ -10910,6 +10923,7 @@ function periodInputsCard(){
     +(univBody?foldBlock('method.inputs.universe','可交易货架',
         '清单行数 · 期次 · 状态'+(UNIV_GAPS?' · 已知缺口':''),univBody,
         UNIV_ROWS+(UNIV_GAPS?' · '+UNIV_GAPS+' 项缺口':'')):'')
+    +socialInputsFold()   /* WS-C */
   +'</div>';
 }
 
@@ -12275,6 +12289,7 @@ function topicDrawerBody(tid,embedded){
      从前抽屉是从第二个问题开始的。 */
   html='<div class="dgrp"><div class="dgrp-h">这是什么<span class="sub">它在问哪一问、由哪些词构成、从哪来</span></div>'+themeIdentity(tid,r)+'</div>'
     +'<div class="dgrp"><div class="dgrp-h">证据<span class="sub">这主题凭什么'+(chosen?'入选':'落选')+'</span></div>'+html+'</div>'
+    +diffusionGroup(tid)   /* WS-C */
     +'<div class="dgrp"><div class="dgrp-h">产出<span class="sub">它在本期写出了什么</span></div>'
     +(nIdeas>0
       ? '<button type="button" class="exp-btn" onclick="filterPool(\'topic\',\''+jss(tid)+'\',\'主题 '+esc(topicName(tid))+'\')">该主题涉及的 '+fmtInt(nIdeas)+' 只候选标的'+(topicIdeaCount(tid)?'（'+fmtInt(topicIdeaCount(tid))+' 条想法）':'')+' ›</button>'
@@ -16107,6 +16122,141 @@ if(route0.drawers&&route0.drawers.length){
   var boot0=route0.drawers;
   bootDrawer=bootDrawer||function(){drawerStack=boot0.slice();syncDrawers()};
 }
+/* ══ WS-C 早期信号腿 ═════════════════════════════════════════════
+ * 研报处在扩散期，源头在独立作者 / 论坛 / X（yifu 2026-09-11）。这一腿只做
+ * 诊断：不进打分、不自动登记主题。数字全部来自 S.social 与 S.diffusion，
+ * 缺什么写什么——X 没钥匙就写「未启用：需要 X_BEARER_TOKEN」，不画空表。 */
+FEED_NAMES['social-rss']=['社交 · 独立作者 RSS','宏观/资产配置/主题投资类独立作者，早期信号，不进打分'];
+FEED_NAMES['social-reddit']=['社交 · Reddit','投资类子版块，早期信号，不进打分'];
+FEED_NAMES['social-x']=['社交 · X','按主题词项与名单检索，早期信号，不进打分'];
+function socialWhen(iso){
+  if(!iso)return '从未';
+  var d=new Date(iso);if(isNaN(d))return esc(iso);
+  var h=new Date(d.getTime()+8*3600*1000).toISOString();
+  return h.slice(5,10)+' '+h.slice(11,16)+' HKT';
+}
+function socialInputsFold(){
+  var so=S.social;
+  if(!so)return '';
+  if(so.error)return foldBlock('method.inputs.social','社交源（早期信号）','各源条数 · 最近抓取 · 未启用原因',
+      failNote('社交源状态这次没读出来——不是没有社交数据。',so.error),'读取失败');
+  var src=so.sources||[];
+  var rows=src.map(function(x){
+    var st=!x.enabled?badge('neutral','未启用'):(x.ok===false?badge('error','异常'):(x.ok?badge('success','正常'):badge('neutral','未抓过')));
+    return '<tr><td class="primary">'+esc((FEED_NAMES[x.feed]||[x.label])[0])+'</td>'
+      +'<td class="r num">'+fmtInt(x.n_window)+'</td>'
+      +'<td class="mono">'+socialWhen(x.last_ok)+'</td>'
+      +'<td>'+st+'</td>'
+      +'<td class="card-note">'+esc(x.error||x.reason||'')+'</td></tr>';
+  }).join('');
+  var feeds=(so.rss_feeds||[]).map(function(f){
+    return '<tr><td>'+esc(f.name||f.feed)+'</td><td class="card-note">'+esc(f.focus||'')+'</td>'
+      +'<td class="r num">'+fmtInt(f.n_window)+'</td>'
+      +'<td>'+(f.ok===false?badge('error','异常'):f.ok?badge('success','通'):badge('neutral','未抓过'))+'</td>'
+      +'<td class="card-note">'+esc(f.error||f.note||'')+'</td></tr>';
+  }).join('');
+  var win=(src[0]||{}).window_days||30;
+  var off=src.filter(function(x){return !x.enabled}).map(function(x){return (FEED_NAMES[x.feed]||[x.label])[0].replace('社交 · ','')});
+  var body='<div class="card-note" style="margin-bottom:8px">近 '+win+' 天按发布时间计条数。这一腿<b>不进打分</b>（权重 '+esc(String(so.weight))+'），只喂扩散诊断与主题发现的参考提示。</div>'
+    +'<div class="table-wrap"><table><thead><tr><th>来源</th><th class="r">近 '+win+' 天条数</th><th>最近成功抓取</th><th>状态</th><th>说明</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +(feeds?'<h3 class="sub-h" style="margin-top:var(--space-4)">RSS 源逐个</h3><div class="table-wrap"><table><thead><tr><th>源</th><th>方向</th><th class="r">条数</th><th>状态</th><th>备注</th></tr></thead><tbody>'+feeds+'</tbody></table></div>':'');
+  return foldBlock('method.inputs.social','社交源（早期信号）','各源条数 · 最近抓取 · 未启用原因',body,
+    fmtInt(so.total_window)+' 条'+(off.length?' · '+off.join('、')+' 未启用':''));
+}
+function difStageBadge(stage){
+  var k={'源头期':'warning','扩散期':'info','晚期':'neutral','研报先动':'neutral','平稳':'neutral','数据不足':'neutral'}[stage]||'neutral';
+  return badge(k,stage||'—');
+}
+/* 两条 7 日平滑占比，各按自己的最大值归一：研报一天几百篇、社交一天几十条，
+ * 画在同一个绝对刻度上社交那根永远贴地。要比的是形状和先后，不是体量。 */
+function difSpark(t,days){
+  var a=t.social_share||[],b=t.research_share||[];
+  if(a.length<2)return '';
+  var w=320,h=64,p=4;
+  function line(v,cls,col){
+    var mx=Math.max.apply(null,v)||1;
+    var pts=v.map(function(x,i){return (p+i*(w-2*p)/(v.length-1)).toFixed(1)+','+(h-p-(x/mx)*(h-2*p)).toFixed(1)});
+    return '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+col+'" stroke-width="1.6" stroke-linejoin="round"/>';
+  }
+  return '<svg class="dif-spark" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="社交与研报提及占比走势">'
+    +line(b,'r','var(--color-fill-brand)')+line(a,'s','var(--color-feedback-warning-default)')+'</svg>'
+    +'<div class="dif-row"><span class="dif-leg"><i class="s"></i>社交占比</span><span class="dif-leg"><i class="r"></i>研报占比</span>'
+    +'<span class="card-note">'+esc((days||[])[0]||'')+' → '+esc((days||[]).slice(-1)[0]||'')+' · 7 日平滑，各自归一</span></div>';
+}
+function diffusionGroup(tid){
+  var D=S.diffusion;
+  var head='<div class="dgrp"><div class="dgrp-h">扩散阶段<span class="sub">社交先起还是研报先起（诊断，不进打分）</span></div>';
+  if(!D||!D.available)return head+'<div class="empty-sm">'+esc((D&&D.why)||'还没有扩散诊断')+'</div></div>';
+  var t=(D.themes||[]).find(function(x){return x.theme_id===tid});
+  if(!t)return head+'<div class="empty-sm">'+esc(D.as_of)+' 的诊断里没有这个主题（它可能在那天之后才登记）</div></div>';
+  var lead=t.lead_days===null||t.lead_days===undefined
+    ?'领先天数：不报（'+esc(t.lead_why||'—')+'）'
+    :(t.lead_days>0?'社交领先研报约 <b class="num">'+t.lead_days+'</b> 天':t.lead_days<0?'研报领先社交约 <b class="num">'+(-t.lead_days)+'</b> 天':'两者大致同步')
+      +'<span class="card-note">（互相关 '+esc(String(t.lead_corr))+'）</span>';
+  var so=t.social||{},re=t.research||{};
+  var samples=(t.sample_social||[]).map(function(x){
+    return '<li>'+esc(x.d)+' · '+esc(x.author||x.feed)+' · '+(x.url?'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>':esc(x.title))+'</li>';
+  }).join('');
+  return head
+    +'<div class="dif-row">'+difStageBadge(t.stage)+'<span>'+esc(t.stage_why||'')+'</span></div>'
+    +'<div class="dif-row">'+lead+'</div>'
+    +(t.matchable===false?'':difSpark(t,D.days))
+    +'<div class="card-note">诊断日 '+esc(D.as_of)+' · 近 '+esc(String((D.thresholds||{}).recent_days))+' 天对前 '+esc(String((D.thresholds||{}).prior_days))+' 天：社交 '+fmtInt(so.recent)+' / '+fmtInt(so.prior)+' 条，研报 '+fmtInt(re.recent)+' / '+fmtInt(re.prior)+' 篇'
+      +glossMark('升：近期日均占比 ≥ 前期 × '+(D.thresholds||{}).rise_ratio+'；退：≤ × '+(D.thresholds||{}).fall_ratio+'。社交用英文词项按整词匹配，只有中文叫法的主题在英文源里匹配不到，会写成数据不足。')+'</div>'
+    +(samples?'<ul class="dif-samples">'+samples+'</ul>':'')
+    +'</div>';
+}
+function socialChatterCard(){
+  var D=S.diffusion;
+  if(!D)return '';
+  if(!D.available){
+    return '<div class="card section"><div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">社交热议、研报未跟</h2></div>'
+      +'<div class="empty-sm" style="margin-top:var(--space-3)">'+esc(D.why||'还没有扩散诊断')+'</div></div>';
+  }
+  var ch=D.chatter||{},items=ch.items||[];
+  var th=D.themes||[];
+  var staged=th.filter(function(x){return x.stage!=='数据不足'&&x.stage!=='平稳'});
+  var src=th.filter(function(x){return x.stage==='源头期'});
+  var lead=items.length
+    ?items.length+' 个词组本周在 ≥2 个独立源里反复出现，研报标题与摘要里几乎没有'
+    :'本周没有词组同时过「多个独立源 · 相对前三周新出现 · 研报没跟」三道门槛';
+  lead+='；'+(src.length?src.map(function(x){return topicName(x.theme_id)}).join('、')+' 处在源头期（社交起、研报平）':'没有主题处在源头期')+'。';
+  var rows=items.map(function(c){
+    var smp=(c.samples||[])[0]||{};
+    return '<tr><td class="primary">'+esc(c.phrase)+'</td><td class="r num">'+fmtInt(c.n_items)+'</td><td class="r num">'+fmtInt(c.n_feeds)+'</td>'
+      +'<td class="r num">'+fmtInt(c.research_docs)+'</td><td class="mono">'+esc(c.first_d||'')+'</td>'
+      +'<td class="card-note" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(smp.url?'<a href="'+esc(smp.url)+'" target="_blank" rel="noopener">'+esc(smp.title||'')+'</a>':esc(smp.title||''))+'</td></tr>';
+  }).join('');
+  var stageRows=staged.map(function(x){
+    return '<tr class="expandable" onclick="openTopicDrawer(\''+jss(x.theme_id)+'\')"><td class="primary">'+esc(topicName(x.theme_id))+'</td><td>'+difStageBadge(x.stage)+'</td>'
+      +'<td class="r num">'+(x.lead_days===null||x.lead_days===undefined?'—':(x.lead_days>0?'+':'')+x.lead_days)+'</td>'
+      +'<td class="card-note">'+esc(x.stage_why||'')+'</td><td class="r"><span class="exp-btn">主题 ›</span></td></tr>';
+  }).join('');
+  var ev=D.early_voices||{};
+  var evBody=!ev.available
+    ?'<div class="empty-sm">'+esc(ev.why||'')+'</div><div class="card-note" style="margin-top:8px">'+esc(ev.framework||'')+'</div>'
+    :((ev.repeat||[]).length
+      ?'<div class="card-note" style="margin-bottom:8px">'+esc(ev.caveat||'')+'</div><div class="table-wrap"><table><thead><tr><th>作者</th><th class="r">早于研报的主题数</th><th class="r">窗口内发文</th><th class="r">每 10 篇</th><th>主题</th></tr></thead><tbody>'
+        +ev.repeat.map(function(a){return '<tr><td class="primary">'+esc(a.author)+'</td><td class="r num">'+fmtInt(a.n_themes)+'</td><td class="r num">'+fmtInt(a.posts)+'</td><td class="r num">'+esc(String(a.early_per_10_posts))+'</td><td class="card-note">'+esc((a.themes||[]).map(topicName).join('、'))+'</td></tr>'}).join('')
+        +'</tbody></table></div>'
+      :'<div class="empty-sm">'+esc(ev.why||'本期没有在多个主题上都早于研报的作者')+'</div>')
+      +'<div class="card-note" style="margin-top:8px">'+esc(ev.framework||'')+'</div>';
+  return '<div class="card section">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">社交热议、研报未跟</h2>'
+    +'<span class="card-note">诊断日 '+esc(D.as_of)+(D.requested&&D.requested!==D.as_of?'（本期 '+esc(D.requested)+' 当天没有诊断，用最近的一次）':'')+' · 不进打分 · 不自动登记主题</span></div>'
+    +'<div style="font:400 15px/23px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-3)">'+esc(lead)+'</div>'
+    +(rows?'<div class="table-wrap"><table><thead><tr><th>词组</th><th class="r">条数</th><th class="r">独立源</th><th class="r">研报篇数</th><th>首次</th><th>样例</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +'<div class="card-note" style="margin-top:6px">'+esc(ch.note||'')+'</div>':'')
+    +foldBlock('method.social.stages','各主题扩散阶段','阶段 · 领先天数 · 判断依据',
+        stageRows?'<div class="table-wrap"><table><thead><tr><th>主题</th><th>阶段</th><th class="r">社交领先天数</th><th>依据</th><th></th></tr></thead><tbody>'+stageRows+'</tbody></table></div>'
+          +'<div class="card-note" style="margin-top:6px">未列出的主题是「平稳」或「数据不足」；逐个见主题抽屉。'+(D.notes||[]).map(esc).join(' ')+'</div>'
+          :'<div class="empty-sm">没有主题越过升/退阈值</div>',
+        staged.length+' / '+th.length+' 个主题有阶段判断')
+    +foldBlock('method.social.voices','早期声音','在主题变强前就提过它的作者',evBody,
+        ev.available?fmtInt((ev.repeat||[]).length)+' 位跨主题':'数据不足')
+  +'</div>';
+}
+
 renderBootState();
 refresh();
 setInterval(refresh,60000);

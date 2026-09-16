@@ -231,6 +231,10 @@ class PhilosophyPersistence(unittest.TestCase):
         # runs with IDEAGEN_DB on the /data mount. If that ever changes, this is
         # the test that should say so.
         for f in ("deploy/sync_code.sh", "deploy/display_node_bootstrap.sh"):
+            if not (ROOT / f).exists():
+                # The deploy image copies no deploy scripts; without this skip the
+                # node's pre-switch test gate fails and silently refuses every deploy.
+                self.skipTest("这里没有 deploy/（镜像里就是如此）")
             text = (ROOT / f).read_text(encoding="utf-8")
             self.assertIn("IDEAGEN_DB=/data/ideagen.db", text, f)
             self.assertIn(':/data', text, f)

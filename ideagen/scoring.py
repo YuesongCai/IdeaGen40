@@ -509,14 +509,18 @@ def recurrence(con, theme_id: str, as_of: date, *, cadence_days: int = 7) -> dic
     if not prior:
         return {"consec": 0, "weeks_since": None, "discount": 0.0,
                 "occurrence": 1, "note": "首次出现"}
-    weeks_since = max(1, round((as_of - prior[0]).days / cadence_days))
+    # `themes` holds one row per scored *day*, so prior dates are bucketed into
+    # weeks-ago before counting. Until 2026-09-17 each daily row counted as a
+    # "week" and five trading days hit the 12-point cap (found by WS-D).
+    buckets = sorted({max(1, -(-(as_of - d).days // cadence_days)) for d in prior})
+    weeks_since = buckets[0]
     if weeks_since >= config.RECUR_RESET_GAP_WEEKS:
         return {"consec": 0, "weeks_since": weeks_since, "discount": 0.0,
-                "occurrence": len(prior) + 1,
+                "occurrence": len(buckets) + 1,
                 "note": f"距上次 {weeks_since} 周，按新周期不打折"}
     consec = 1
-    for i in range(1, len(prior)):
-        if round((prior[i - 1] - prior[i]).days / cadence_days) >= config.RECUR_RESET_GAP_WEEKS:
+    for i in range(1, len(buckets)):
+        if buckets[i] - buckets[i - 1] >= config.RECUR_RESET_GAP_WEEKS:
             break
         consec += 1
     discount = min(config.RECUR_DISCOUNT_MAX, config.RECUR_DISCOUNT_PER_WEEK * consec)

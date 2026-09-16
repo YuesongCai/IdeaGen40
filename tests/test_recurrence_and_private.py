@@ -48,6 +48,18 @@ class Recurrence(unittest.TestCase):
         # 6 * 2.5 = 15 → capped at RECUR_DISCOUNT_MAX (12)
         self.assertEqual(r["discount"], config.RECUR_DISCOUNT_MAX)
 
+    def test_daily_rows_count_as_one_week_each_not_one_week_per_day(self):
+        con = db.init(":memory:")
+        # `themes` is scored daily: a theme strong every trading day of the last
+        # two weeks is 2 prior weeks (5.0 off), not 10 "weeks" at the cap.
+        days = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02",
+                "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08"]
+        _seed_theme(con, "DAILY", days)
+        r = scoring.recurrence(con, "DAILY", date(2026, 9, 9))
+        self.assertEqual(r["consec"], 2)
+        self.assertEqual(r["discount"], 2 * config.RECUR_DISCOUNT_PER_WEEK)
+        self.assertEqual(r["weeks_since"], 1)
+
     def test_a_gap_resets_to_a_fresh_cycle(self):
         con = db.init(":memory:")
         # last seen 2026-07-01, then absent for months → returning is fresh

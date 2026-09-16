@@ -2330,6 +2330,51 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
 .wsa-pair .k{font-weight:600;color:var(--color-text-primary)}
 .wsa-pair .c{display:block;color:var(--color-text-tertiary);margin-left:1em}
 .wsa-dis{display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;font:500 10px/14px var(--font-sans);background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text);vertical-align:1px}
+
+/* WS-E */
+/* 三层归因瀑布图、市场阶段卡、策略在用与入库、成本卡、精选整体体检一行。 */
+.wse-sub{margin-top:var(--space-4);padding-top:var(--space-3);border-top:1px solid var(--color-border-subtle)}
+.wse-h{font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin:0 0 4px}
+.wse-lede{font:400 13px/20px var(--font-sans);color:var(--color-text-primary);margin:4px 0 var(--space-2)}
+.wse-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin:var(--space-2) 0}
+.wse-sel{border:1px solid var(--color-border-default);border-radius:6px;padding:3px 8px;font:400 12.5px/18px var(--font-sans);background:transparent;color:inherit;max-width:100%}
+.wse-wf{display:block;width:100%;max-width:640px;height:auto}
+.wse-wf .bar-up{fill:var(--color-stock-up-default)}
+.wse-wf .bar-dn{fill:var(--color-stock-down-default)}
+.wse-wf .bar-tot{fill:var(--color-fill-brand)}
+.wse-wf .bar-mute{fill:var(--color-fill-tertiary)}
+.wse-wf .zero{stroke:var(--color-border-default);stroke-width:1}
+.wse-wf .link{stroke:var(--color-text-tertiary);stroke-width:1;stroke-dasharray:2 2}
+.wse-wf text{font:500 11px/14px var(--font-sans);fill:var(--color-text-secondary)}
+.wse-wf text.v{font-family:var(--font-mono);fill:var(--color-text-primary)}
+.wse-t{width:100%;border-collapse:collapse;font:400 12px/17px var(--font-sans);margin-top:var(--space-2)}
+.wse-t th{font-weight:600;text-align:left;color:var(--color-text-tertiary);padding:3px 6px;border-bottom:1px solid var(--color-border-default);white-space:nowrap}
+.wse-t td{padding:3px 6px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary);vertical-align:top}
+.wse-t td.r,.wse-t th.r{text-align:right;font-family:var(--font-mono);white-space:nowrap}
+.wse-t tr.thin td{color:var(--color-text-tertiary)}
+.wse-wrap{overflow-x:auto}
+.wse-tag{display:inline-block;padding:0 6px;border-radius:4px;font:500 11px/16px var(--font-sans);background:var(--color-fill-tertiary);color:var(--color-text-secondary);white-space:nowrap}
+.wse-tag.warn{background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text)}
+.wse-tag.ok{background:var(--color-feedback-success-subtle);color:var(--color-feedback-success-text)}
+.wse-tag.off{background:var(--color-feedback-neutral-subtle);color:var(--color-feedback-neutral-text)}
+.wse-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--space-2);margin:var(--space-2) 0}
+.wse-kpi{border:1px solid var(--color-border-subtle);border-radius:8px;padding:6px 10px;min-width:0}
+.wse-kpi b{display:block;font:600 16px/22px var(--font-mono);color:var(--color-text-primary)}
+.wse-kpi span{display:block;font:400 11.5px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.wse-spark{display:block;width:100%;height:auto;max-width:720px}
+.wse-spark .ln{fill:none;stroke:var(--color-text-primary);stroke-width:1.4}
+.wse-spark .s-tailwind{fill:var(--color-stock-up-subtle)}
+.wse-spark .s-fading{fill:var(--color-feedback-warning-subtle)}
+.wse-spark .s-headwind{fill:var(--color-stock-down-subtle)}
+.wse-spark .s-recovering{fill:var(--color-feedback-info-subtle)}
+.wse-tag.lg-tailwind{background:var(--color-stock-up-subtle)}
+.wse-tag.lg-fading{background:var(--color-feedback-warning-subtle)}
+.wse-tag.lg-headwind{background:var(--color-stock-down-subtle)}
+.wse-tag.lg-recovering{background:var(--color-feedback-info-subtle)}
+.wse-spark text{font:400 10.5px/12px var(--font-sans);fill:var(--color-text-tertiary)}
+.wse-health{margin:0 0 var(--space-3);font:400 12.5px/19px var(--font-sans);color:var(--color-text-secondary)}
+.wse-health b{color:var(--color-text-primary);font-weight:600}
+@media (max-width:640px){.wse-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 <style>
 /* ══ 新手导览（一次性）══════════════════════════════════════════
@@ -3183,7 +3228,8 @@ var VIEWS=[
          {s:'direction',label:'本期方向'},
          {s:'rules',label:'我的准则'},
          {s:'inputs',label:'本期输入'},
-         {s:'social',label:'社交热议'}]},
+         {s:'social',label:'社交热议'},
+         {s:'inventory',label:'策略在用与入库'}]},
   /* 「它管用吗」这个问句从概览搬到这里：判定和支撑它的证据都在这一页，
      导航上的问句就该指向能回答它的那一页。 */
   /* 2026-09-08 口吻改版：sub 与五个段名换成投研用语；段 id 不动（路由与 LEGACY_SEC 挂在 id 上）。 */
@@ -3201,6 +3247,7 @@ var VIEWS=[
       这些段全部搬进了抽屉（t:'ev'），侧栏不再列它们：侧栏列的是页面上有的东西。 */
    secs:[{s:'claims',label:'假设检验'},
          {s:'themea',label:'筛选A 验证'},
+         {s:'regime',label:'市场阶段'},
          {s:'funnel',label:'假设检验汇总'},
          {s:'progress',label:'样本累积进度'},
          {s:'early',label:'初版回测'},
@@ -5111,7 +5158,8 @@ function renderOverview(){
     +secWrap('overview','health',
        statusStrip()
        +(oliveAlert()?'<div class="card section" style="margin-top:calc(-1 * var(--space-3));padding-top:var(--space-3)">'
-         +oliveAlertLine()+'</div>':''));
+         +oliveAlertLine()+'</div>':'')
+       +wseCostCard());   /* WS-E：运行成本是运行状况的一部分——机器在跑，钱也在花 */
 }
 /* 持仓：PM 的职业本能 —— 现在拿着什么、压在哪几个宏观判断上。 */
 function renderHoldings(){
@@ -5903,6 +5951,235 @@ function claimsBoard(claims){
   +'</div>';
 }
 
+/* ── WS-E：归因 · 跟踪误差 · 市场阶段 · 入库 · 成本（yifu / Jon 2026-09-11）────────
+ * 数字全部来自后端（/api/perf 的 attribution.layers 与状态文档的 S.wse），这里只画。
+ * 样本不足的格子照写数字，但不配涨跌色，并挂「样本不足」标——小样本配颜色，
+ * 读者会把颜色当结论。 */
+function wseE(){return (S&&S.wse)||{}}
+function wseNum(v,cls){return '<span class="num '+(cls||'')+'">'+fmtPct(v)+'</span>'}
+function wseCell(v,thin){return '<td class="r num '+(thin?'':pctCls(v))+'">'+fmtPct(v)+'</td>'}
+function wseSampleTag(r){
+  return r&&r.sample==='样本不足'?'<span class="wse-tag warn" title="'+esc(r.sample_why||'')+'">样本不足</span>':'<span class="wse-tag ok">样本够</span>';
+}
+function wseStratName(key,P){
+  var st=((P&&P.strategies)||[]).find(function(x){return x.key===key});
+  return st?st.name:selMetaOf(key)[1];
+}
+
+/* 瀑布图：SPY → 主题层 → 选标的层 → 持仓收益（闭合）；再并排 全量基准 → 组合构建层 → 本组合。
+   后三根的对照物是另一个组合，所以用虚线隔开，不和前面连成一条。 */
+function wseWaterfall(r){
+  if(!r||r.held_pct==null)return '<div class="empty-sm">这一行没有能对上指示标的的仓位，画不出瀑布图。</div>';
+  var m=r.market_pct||0,t=r.theme_pct||0,s=r.select_pct||0,h=r.held_pct||0;
+  var bars=[
+    {k:'SPY 同窗口',a:0,b:m,cls:m>=0?'bar-up':'bar-dn',v:m},
+    {k:'主题层',a:m,b:m+t,cls:t>=0?'bar-up':'bar-dn',v:t},
+    {k:'选标的层',a:m+t,b:h,cls:s>=0?'bar-up':'bar-dn',v:s},
+    {k:'= 持仓收益',a:0,b:h,cls:'bar-tot',v:h}];
+  var hasPool=r.pool_held_pct!=null&&r.construction_pp!=null;
+  if(hasPool){
+    var ph=r.pool_held_pct,c=r.construction_pp;
+    bars.push({k:'全量基准',a:0,b:ph,cls:'bar-mute',v:ph,gap:true});
+    bars.push({k:'组合构建层',a:ph,b:ph+c,cls:c>=0?'bar-up':'bar-dn',v:c});
+  }
+  var ends=[0];bars.forEach(function(x){ends.push(x.a,x.b)});
+  var lo=Math.min.apply(null,ends),hi=Math.max.apply(null,ends),pad=(hi-lo)*0.15||0.5;lo-=pad;hi+=pad;
+  var W=640,H=220,pl=10,pr=10,pt=18,pb=34,n=bars.length,slot=(W-pl-pr)/n,bw=Math.min(56,slot*0.56);
+  var y=function(v){return pt+(hi-v)/(hi-lo)*(H-pt-pb)};
+  var out='<svg class="wse-wf" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="三层归因瀑布图">'
+    +'<line class="zero" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y(0).toFixed(1)+'" y2="'+y(0).toFixed(1)+'"/>';
+  bars.forEach(function(x,i){
+    var cx=pl+slot*i+slot/2,y1=y(Math.max(x.a,x.b)),y2=y(Math.min(x.a,x.b)),hh=Math.max(y2-y1,1);
+    if(x.gap)out+='<line class="link" x1="'+(pl+slot*i).toFixed(1)+'" x2="'+(pl+slot*i).toFixed(1)+'" y1="'+pt+'" y2="'+(H-pb+4)+'"/>';
+    out+='<rect class="'+x.cls+'" x="'+(cx-bw/2).toFixed(1)+'" y="'+y1.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hh.toFixed(1)+'" rx="2"/>'
+      +'<text class="v" x="'+cx.toFixed(1)+'" y="'+(y1-4).toFixed(1)+'" text-anchor="middle">'+esc(fmtPct(x.v))+'</text>'
+      +'<text x="'+cx.toFixed(1)+'" y="'+(H-pb+18)+'" text-anchor="middle">'+esc(x.k)+'</text>';
+  });
+  return out+'</svg>';
+}
+function wseLayersBlock(P){
+  var L=((P||{}).attribution||{}).layers;
+  var head='<div class="wse-sub" id="wseLayers"><h3 class="wse-h">三层归因 · 主题 / 选标的 / 组合构建</h3>';
+  if(!L||!L.available){
+    return head+'<div class="empty-sm">'+esc((L&&L.why)||'这一份数据没有三层归因')+'</div></div>';
+  }
+  var by=L.by_strategy||{},keys=Object.keys(by).sort(function(a,b){return String(wseStratName(a,P)).localeCompare(String(wseStratName(b,P)),'zh')});
+  var key=PERF_UI.wseKey&&by[PERF_UI.wseKey]?PERF_UI.wseKey:(by.shortlist?'shortlist':keys.filter(function(k){return k!==L.pool_key})[0]||keys[0]);
+  var cur=by[key]||{},per=PERF_UI.wsePer||'cum';
+  var row=per==='cum'?cur.cumulative:((cur.periods||[]).find(function(x){return x.as_of===per})||cur.cumulative);
+  if(row===cur.cumulative)per='cum';
+  var thin=row&&row.sample==='样本不足';
+  var lede='<div class="wse-lede"><b>'+esc(wseStratName(key,P))+'</b>'+(per==='cum'?' 累计 ':' '+esc(per)+' 期 ')
+    +'持仓收益 '+wseNum(row&&row.held_pct,thin?'':pctCls(row&&row.held_pct))+'：SPY '+fmtPct(row&&row.market_pct)
+    +'，主题层 '+fmtPct(row&&row.theme_pct)+'，选标的层 '+fmtPct(row&&row.select_pct)
+    +(row&&row.construction_pp!=null?'；比全量基准 '+perfPp(row.construction_pp)+'（组合构建层）':(row&&row.construction_note?'；'+esc(row.construction_note):''))
+    +'。'+wseSampleTag(row)+'</div>';
+  var tools='<div class="wse-tools"><select class="wse-sel" aria-label="归因的策略" onchange="perfSetUI(\'wseKey\',this.value)">'
+    +keys.map(function(k){return '<option value="'+esc(k)+'"'+(k===key?' selected':'')+'>'+esc(wseStratName(k,P))+'</option>'}).join('')+'</select>'
+    +'<select class="wse-sel" aria-label="期次" onchange="perfSetUI(\'wsePer\',this.value)"><option value="cum"'+(per==='cum'?' selected':'')+'>累计</option>'
+    +(cur.periods||[]).map(function(x){return '<option value="'+esc(x.as_of)+'"'+(per===x.as_of?' selected':'')+'>'+esc(x.as_of)+' 期</option>'}).join('')+'</select>'
+    +'<span class="card-note">单位：占持仓成本 %</span></div>';
+  var trs=keys.map(function(k){
+    var c=(by[k]||{}).cumulative||{},th=c.sample==='样本不足';
+    return '<tr'+(th?' class="thin"':'')+'><td>'+esc(wseStratName(k,P))+'</td>'
+      +'<td class="r">'+fmtInt(c.n)+(c.n_unmatched?' <span class="pf-why">+'+fmtInt(c.n_unmatched)+' 未对上</span>':'')+'</td>'
+      +'<td class="r">'+fmtInt(c.n_periods)+'</td>'
+      +wseCell(c.theme_pct,th)+wseCell(c.select_pct,th)+wseCell(c.held_pct,th)
+      +'<td class="r num '+(th?'':pctCls(c.construction_pp))+'">'+(k===L.pool_key?'基准':perfPp(c.construction_pp))+'</td>'
+      +'<td>'+wseSampleTag(c)+'</td></tr>';
+  }).join('');
+  var ptrs=(cur.periods||[]).map(function(x){
+    var th=x.sample==='样本不足';
+    return '<tr'+(th?' class="thin"':'')+'><td>'+esc(x.as_of)+'</td><td class="r">'+fmtInt(x.n)+'</td>'
+      +wseCell(x.market_pct,th)+wseCell(x.theme_pct,th)+wseCell(x.select_pct,th)+wseCell(x.held_pct,th)
+      +wseCell(x.pool_held_pct,true)
+      +'<td class="r num '+(th?'':pctCls(x.construction_pp))+'">'+perfPp(x.construction_pp)+'</td>'
+      +'<td>'+wseSampleTag(x)+'</td></tr>';
+  }).join('');
+  return head+lede+tools+wseWaterfall(row)
+    +'<div class="wse-wrap"><table class="wse-t"><thead><tr><th>策略（累计）</th><th class="r">仓位数</th><th class="r">期数</th>'
+    +'<th class="r">主题层</th><th class="r">选标的层</th><th class="r">持仓收益</th><th class="r">组合构建层</th><th>样本</th></tr></thead><tbody>'+trs+'</tbody></table></div>'
+    +'<div class="wse-wrap"><table class="wse-t"><thead><tr><th>'+esc(wseStratName(key,P))+' · 各期</th><th class="r">仓位数</th><th class="r">SPY</th>'
+    +'<th class="r">主题层</th><th class="r">选标的层</th><th class="r">持仓收益</th><th class="r">全量基准</th><th class="r">组合构建层</th><th>样本</th></tr></thead><tbody>'+ptrs+'</tbody></table></div>'
+    +'<div class="quiet" style="margin-top:var(--space-2)">'+esc(L.rule||'')+' 一行能对上的仓位少于 '+fmtInt(L.min_positions)+' 个、或累计少于 '+fmtInt(L.min_periods)+' 期，标「样本不足」且不配涨跌色。</div>'
+    +'</div>';
+}
+
+/* ── 市场阶段（证据页）── */
+function wseSpark(hist){
+  if(!hist||hist.length<2)return '';
+  var W=720,H=150,pl=6,pr=6,pt=10,pb=22,vals=hist.map(function(h){return h.ratio});
+  var lo=Math.min.apply(null,vals),hi=Math.max.apply(null,vals),pad=(hi-lo)*0.08||1;lo-=pad;hi+=pad;
+  var n=hist.length,xw=(W-pl-pr)/(n-1);
+  var x=function(i){return pl+i*xw},y=function(v){return pt+(hi-v)/(hi-lo)*(H-pt-pb)};
+  var out='<svg class="wse-spark" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="MTUM 相对 SPY 的比值与动量状态">';
+  hist.forEach(function(h,i){
+    if(!h.momentum)return;
+    var x0=i?x(i)-xw/2:x(0),x1=i<n-1?x(i)+xw/2:x(n-1);
+    out+='<rect class="s-'+esc(h.momentum)+'" x="'+x0.toFixed(1)+'" y="'+pt+'" width="'+Math.max(x1-x0,0.5).toFixed(1)+'" height="'+(H-pt-pb)+'"/>';
+  });
+  out+='<path class="ln" d="'+hist.map(function(h,i){return (i?'L':'M')+x(i).toFixed(1)+' '+y(h.ratio).toFixed(1)}).join('')+'"/>';
+  out+='<text x="'+pl+'" y="'+(H-6)+'">'+esc(hist[0].d)+'</text><text x="'+(W-pr)+'" y="'+(H-6)+'" text-anchor="end">'+esc(hist[n-1].d)+'</text>';
+  return out+'</svg>';
+}
+function wseRegimeCard(){
+  var R=wseE().regime||{};
+  var head='<div class="card section" id="evRegime"><div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">市场阶段</h2>'
+    +'<span class="card-note">动量因子自身的状态 · 只给框架，不自动开关任何策略</span></div>';
+  if(!R.available){return head+'<div class="empty-sm">'+esc(R.why||'没有动量因子行情，阶段标签算不出来')+'</div></div>'}
+  var c=R.current||{},states=R.states||[],zh={};states.forEach(function(s){zh[s.key]=s.zh});
+  var lede='<div class="wse-lede">现在是<b>'+esc(c.label||c.momentum_zh||'缺数据')+'</b>（截至 '+esc(c.px_d||c.d||'—')+'）。'+esc(R.framing||'')+'</div>';
+  var kpis='<div class="wse-kpis">'
+    +'<div class="wse-kpi"><b class="'+pctCls(c.rel_fast_pct)+'">'+fmtPct(c.rel_fast_pct)+'</b><span>'+esc(R.momentum_code||'')+' / SPY 近 '+fmtInt((R.windows||{}).fast)+' 日</span></div>'
+    +'<div class="wse-kpi"><b class="'+pctCls(c.rel_slow_pct)+'">'+fmtPct(c.rel_slow_pct)+'</b><span>近 '+fmtInt((R.windows||{}).slow)+' 日</span></div>'
+    +'<div class="wse-kpi"><b class="'+pctCls(c.spy_vs_ma_pct)+'">'+fmtPct(c.spy_vs_ma_pct)+'</b><span>SPY 相对 '+fmtInt((R.windows||{}).trend_ma)+' 日均线</span></div>'
+    +'<div class="wse-kpi"><b>'+(c.vol_level==null?'—':Number(c.vol_level).toFixed(1))+'</b><span>'+esc(c.vol_zh||'')+' · '+esc(c.vol_source||'无来源')+'</span></div>'
+    +'</div>';
+  var legend='<div class="card-note">底色：'+states.map(function(s){return '<span class="wse-tag lg-'+esc(s.key)+'">'+esc(s.zh)+'</span>'}).join(' ')+'（按 '+esc(R.momentum_code||'')+'/SPY 比值、起点记 100 的曲线画）</div>';
+  var ptrs=(R.periods||[]).map(function(p){
+    return '<tr><td>'+esc(p.d)+'</td><td>'+esc(p.momentum_zh||'—')+'</td><td class="r num">'+fmtPct(p.rel_fast_pct)+'</td><td class="r num">'+fmtPct(p.rel_slow_pct)+'</td>'
+      +'<td>'+esc(p.trend_zh||'—')+'</td><td>'+esc(p.vol_zh||'—')+(p.vol_level!=null?' <span class="pf-why">'+Number(p.vol_level).toFixed(1)+'</span>':'')+'</td></tr>';
+  }).join('');
+  var cols=states.map(function(s){return s.key}).concat(['all']);
+  var bs=R.by_strategy||{},skeys=Object.keys(bs).sort(function(a,b){return String(selMetaOf(a)[1]).localeCompare(String(selMetaOf(b)[1]),'zh')});
+  var strs=skeys.map(function(k){
+    return '<tr><td>'+esc(selMetaOf(k)[1])+'</td>'+cols.map(function(col){
+      var cell=bs[k][col];if(!cell)return '<td class="r pf-why">—</td>';
+      var th=cell.sample!=='ok';
+      return '<td class="r num '+(th?'':pctCls(cell.mean_excess_spy_pp))+'" title="平均持仓收益 '+esc(fmtPct(cell.mean_held_pct))+' · 跑赢 SPY 的期占 '+Math.round((cell.hit_rate||0)*100)+'%">'
+        +perfPp(cell.mean_excess_spy_pp)+' <span class="pf-why">'+fmtInt(cell.n_periods)+' 期</span>'+(th?' <span class="wse-tag warn">样本不足</span>':'')+'</td>';
+    }).join('')+'</tr>';
+  }).join('');
+  var counts=R.period_counts||{};
+  return head+lede+kpis+wseSpark(R.history)+legend
+    +'<div class="wse-wrap"><table class="wse-t"><thead><tr><th>期</th><th>动量状态</th><th class="r">近 '+fmtInt((R.windows||{}).fast)+' 日</th><th class="r">近 '+fmtInt((R.windows||{}).slow)+' 日</th><th>大盘</th><th>波动</th></tr></thead><tbody>'+ptrs+'</tbody></table></div>'
+    +'<div class="wse-sub"><h3 class="wse-h">各选取策略分阶段表现（每期持仓收益相对 SPY 同窗口，平均）</h3>'
+    +'<div class="quiet">已有期次落在 '+states.map(function(s){return esc(s.zh)+' '+fmtInt(counts[s.key]||0)}).join(' · ')+' 期。某个阶段少于 '+fmtInt(R.min_periods)+' 期的格子一律「样本不足」——现在这张表回答不了「哪个策略适合哪个阶段」，它只是把框架先立起来，让期数往里累积。</div>'
+    +'<div class="wse-wrap"><table class="wse-t"><thead><tr><th>策略</th>'+cols.map(function(col){return '<th class="r">'+esc(col==='all'?'全部':(zh[col]||col))+'</th>'}).join('')+'</tr></thead><tbody>'+strs+'</tbody></table></div></div>'
+    +'<div class="quiet" style="margin-top:var(--space-2)">'+esc(R.rule||'')+'</div>'
+    +'</div>';
+}
+
+/* ── 策略在用与入库（方法页）── */
+function wseInventoryCard(){
+  var I=wseE().inventory||{};
+  var head='<div class="card section" id="methInventory"><div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">策略在用与入库</h2>'
+    +'<span class="card-note">入库 = 新周跑跳过它，已有组合历史照常保留</span></div>';
+  if(I.available===false||I.error){return head+'<div class="empty-sm">'+esc(I.why||I.error||'读不到入库记录')+'</div></div>'}
+  var K=I.kinds||{},sel=K.idea_selector||{},gen=K.idea_generator||{};
+  var ROLE={control:'对照',primary:'主策略',exploratory:'常驻探索'};
+  var lede='<div class="wse-lede">选取策略在用 <b>'+fmtInt(sel.n_active)+'</b>、入库 <b>'+fmtInt(sel.n_shelved)+'</b>；生成方式在用 <b>'+fmtInt(gen.n_active)+'</b>、入库 <b>'+fmtInt(gen.n_shelved)+'</b>。'
+    +'停用一个策略是人的决定：记下原因、日期、谁，写进追加式记录，取出来也留一行。对照类（全量基准、随机基准等）不能入库，它们是比较的零点。</div>';
+  function table(title,blk){
+    var rows=(blk.items||[]).map(function(it){
+      var off=it.status==='shelved';
+      return '<tr><td>'+esc(it.label||it.name)+'</td><td>'+esc(ROLE[it.role]||it.role||'—')+'</td>'
+        +'<td><span class="wse-tag '+(off?'off':'ok')+'">'+(off?'入库':'在用')+'</span></td>'
+        +'<td>'+esc(it.reason||'—')+'</td><td class="r">'+esc(it.at||'—')+'</td><td>'+esc(it.by||'—')+'</td></tr>';
+    }).join('');
+    return '<div class="wse-wrap"><table class="wse-t"><thead><tr><th>'+esc(title)+'</th><th>角色</th><th>状态</th><th>入库原因</th><th class="r">日期</th><th>谁</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  return head+lede+table('选取策略（筛选C）',sel)+table('生成方式（筛选B）',gen)
+    +'<div class="quiet" style="margin-top:var(--space-2)">命令行：<code>ideagen strategy-inventory add|remove|list --kind selector|generator --name … --reason … --by …</code>。记录文件 '+esc(I.file||'')+'，与主题别名同一个持久目录。</div>'
+    +'</div>';
+}
+
+/* ── 运行成本（概览 · 运行状况）── */
+function wseUsd(v){return (v===null||v===undefined||isNaN(v))?'—':('$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}
+function wseCostCard(){
+  var C=wseE().costs||{};
+  var head='<div class="card section" id="ovCost"><div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">运行成本 · '+esc(C.period||'本月')+'</h2>'
+    +'<span class="card-note">字节云账单为实数（只读账单接口）· Claude 推理为估算 · 数据源记 0</span></div>';
+  if(!C.available){
+    return head+'<div class="empty-sm">'+esc(C.why||'没有成本快照')+(C.last_error?'（最近一次拉取失败：'+esc(C.last_error)+'）':'')+'</div></div>';
+  }
+  var ig=C.ideagen||{},cl=C.claude||{},rr=ig.run_rate_ex_retired,tot=(rr==null?null:rr+(C.claude_run_rate||0));
+  var lede='<div class="wse-lede">'+esc(C.snapshot_period)+'（账单至第 '+fmtInt(C.days_elapsed)+' / '+fmtInt(C.days_in_month)+' 天）IdeaGen 云账单应付 <b>'+wseUsd(ig.payable)+'</b>，代金券抵扣 '+wseUsd(ig.coupon)
+    +'；按日折算月度运行率 '+wseUsd(ig.run_rate)+'/月，剔除已删资源后 <b>'+wseUsd(rr)+'</b>/月'
+    +'。加上 Claude 推理估算 '+wseUsd(C.claude_run_rate)+'/月，合计约 <b>'+wseUsd(tot)+'</b>/月，对照「约 '+wseUsd(C.budget_usd_month)+'/月」的估算'
+    +(tot==null?'':(tot>C.budget_usd_month?'高出 '+wseUsd(tot-C.budget_usd_month):'低 '+wseUsd(C.budget_usd_month-tot)))+'。</div>';
+  var kpis='<div class="wse-kpis">'
+    +'<div class="wse-kpi"><b>'+wseUsd(ig.payable)+'</b><span>本月 IdeaGen 应付</span></div>'
+    +'<div class="wse-kpi"><b>'+wseUsd(ig.coupon)+'</b><span>代金券抵扣（原价 '+wseUsd(ig.original)+'）</span></div>'
+    +'<div class="wse-kpi"><b>'+wseUsd(rr)+'</b><span>云账单月运行率 · 剔除已删</span></div>'
+    +'<div class="wse-kpi"><b>'+wseUsd(C.claude_run_rate)+'</b><span>Claude 推理 · 估算</span></div>'
+    +'</div>';
+  var prod=(ig.by_product||[]).map(function(p){
+    return '<tr><td>'+esc(p.product)+'</td><td class="r">'+wseUsd(p.original)+'</td><td class="r">'+wseUsd(p.coupon)+'</td><td class="r">'+wseUsd(p.payable)+'</td></tr>';
+  }).join('');
+  var retired=(ig.top_items||[]).filter(function(i){return i.retired}).map(function(i){return esc(i.name)+'（'+esc(i.retired)+' 已删，'+wseUsd(i.payable)+'）'}).join('、');
+  var others=(C.others||[]).map(function(o){return esc(o.project)+' 应付 '+wseUsd(o.payable)+'（原价 '+wseUsd(o.original)+'）'}).join('；');
+  var un=C.unattributed?('未归属 '+wseUsd(C.unattributed.payable)+'：'+(C.unattributed.items||[]).map(function(i){return esc(i.product)+' '+esc(i.name)+' '+wseUsd(i.payable)}).join('、')+'——账单上没有实例名，不猜是谁的'):'';
+  var at=C.account_total||{};
+  return head+lede+kpis
+    +'<div class="wse-wrap"><table class="wse-t"><thead><tr><th>IdeaGen 各项构成</th><th class="r">原价</th><th class="r">代金券</th><th class="r">应付</th></tr></thead><tbody>'+prod+'</tbody></table></div>'
+    +'<div class="wse-health" style="margin-top:var(--space-2)">'
+    +(retired?'<div>已删资源：'+retired+'</div>':'')
+    +'<div><b>非 IdeaGen（单列，不计入上面）</b>：'+(others||'无')+(un?'；'+un:'')+'</div>'
+    +'<div>Claude 推理（估算）：本月至今 '+wseUsd(cl.usd)+'。'+esc(cl.basis||'')+'</div>'
+    +'<div>数据源：'+(C.data_sources||[]).map(function(d){return esc(d.name)+' '+wseUsd(d.usd)}).join('、')+'（'+esc(((C.data_sources||[])[0]||{}).note||'')+'）</div>'
+    +'</div>'
+    +'<div class="quiet">归属规则：'+esc(C.rules||'')+' 主账号本月合计：原价 '+wseUsd(at.original)+' · 代金券 '+wseUsd(at.coupon)+' · 应付 '+wseUsd(at.payable)
+    +(C.reconciled?' · 与逐实例明细对得上':' · ⚠ 与逐实例明细差额超过 $1')
+    +' · 拉取于 '+esc(String(C.fetched_at||'').slice(0,16).replace('T',' '))+(C.stale_days?'（'+fmtInt(C.stale_days)+' 天前）':'')
+    +(C.last_error?' · 最近一次拉取失败：'+esc(C.last_error):'')+'</div>'
+    +'</div>';
+}
+
+/* ── 精选组合整体体检（持仓页 PM 把关卡里的一行）── */
+function wseShortlistHealth(b){
+  var H=wseE().shortlist_health||{};
+  if(!H.available)return '<div class="wse-health">组合整体体检：'+esc(H.why||'缺数据')+'</div>';
+  if(b&&b.as_of&&H.period&&b.as_of!==H.period)return '<div class="wse-health">组合整体体检只算最新一期（'+esc(H.period)+'）；这一期看各只的四层复核。</div>';
+  var m=H.momentum||{},c=H.crowding||{},k=H.concentration||{};
+  var mark=function(ok){return ok===true?'<span class="wse-tag ok">满足</span>':(ok===false?'<span class="wse-tag warn">不满足</span>':'<span class="wse-tag">缺数据</span>')};
+  return '<div class="wse-health"><b>组合整体体检：'+esc(H.verdict||'')+'</b>（单只不必全满足，组合整体要满足；行情截至 '+esc(H.as_of_px||'—')+'）<br>'
+    +'动量 '+mark(m.ok)+' 等权近 21 日 '+fmtPct(m.basket_21d_pct)+' vs SPY '+fmtPct(m.spy_21d_pct)+'（覆盖 '+fmtInt(m.covered)+' / '+fmtInt(H.n)+'）'
+    +'　拥挤度 '+mark(c.ok)+' 已定价 P 均值 '+(c.mean_p==null?'—':Number(c.mean_p).toFixed(0))+'（'+fmtInt(c.threshold)+' 以上算偏拥挤，覆盖 '+fmtInt(c.covered)+'）'
+    +'　行业集中 '+mark(k.ok)+' '+(k.top_sector?esc(k.top_sector)+' '+pmrPct(k.top_share)+'（上限 '+pmrPct(k.cap)+'，覆盖 '+fmtInt(k.covered)+' / '+fmtInt(k.of)+'）':esc(k.why||'—'))
+    +'</div>';
+}
+
 /* ── WS-A：筛选A 验证（yifu 2026-09-11）───────────────────────────
  * 主题层的核心主张是「哪里会放波动」，这张卡把它当成一条可以被价格否掉的假设：
  * 入选主题的指示标的，入选后 21 个交易日的已实现波动是否比入选前放大、而且比
@@ -6158,6 +6435,7 @@ function renderEvidence(){
     +perfCrossLink()
     +secWrap('evidence','claims',claimsBoard(claims))
     +secWrap('evidence','themea',wsaThemeBoard())
+    +secWrap('evidence','regime',wseRegimeCard())   /* WS-E */
     +secWrap('evidence','funnel',funnelCard())
     +secWrap('evidence','progress',evidenceProgressCard())
     +secWrap('evidence','early',study30Card())
@@ -9451,6 +9729,7 @@ var PERF_COLS=[
   {k:'excess_spy_pp',label:'超额 vs SPY',align:'r',tip:'与 SPY 同一区间、同一收益定义的差，单位百分点'},
   {k:'excess_buy_all_pp',label:'超额 vs 全量基准',align:'r',tip:'与全量基准账户同一区间的差，单位百分点'},
   {k:'max_dd_pct',label:'最大回撤',align:'r',tip:'区间内距此前最高净值的最大跌幅'},
+  {k:'tracking_error_pct',label:'跟踪误差',align:'r',tip:'相对 SPY 的年化跟踪误差：组合与 SPY 逐日收益差的标准差 × √252；共同交易日太少不给数'},
   {k:'cash_share',label:'现金占比',align:'r',tip:'现金占账户净值的比例，口径见表头括号'},
   {k:'n_periods',label:'期数 / 天数',align:'r',tip:'该策略在区间内有账户记录的期数与交易日数'}
 ];
@@ -9484,6 +9763,7 @@ function perfTableCard(P){
       +'<td class="r num '+pctCls(r.excess_spy_pp)+'">'+perfPp(r.excess_spy_pp)+'</td>'
       +'<td class="r num '+pctCls(r.excess_buy_all_pp)+'">'+perfPp(r.excess_buy_all_pp)+'</td>'
       +'<td class="r num '+(r.max_dd_pct==null?'':'down')+'">'+fmtPct(r.max_dd_pct)+'</td>'
+      +'<td class="r num"'+(r.te_why?' title="'+esc(r.te_why)+'"':'')+'>'+fmtRate(r.tracking_error_pct)+'</td>'
       +'<td class="r num">'+fmtRate(r[ck])+'</td>'
       +'<td class="r num">'+fmtInt(r.n_periods)+' / '+fmtInt(r.n_days)+'</td>'
       +'</tr>';
@@ -9561,6 +9841,7 @@ function perfAttrCard(P){
         +'</tr></thead><tbody>'+trs+total+'</tbody></table></div>'
       : '<div class="empty-sm">这一模式没有按'+esc(cur[1])+'的归因记录。</div>')
     +'<div class="card-note" style="margin-top:var(--space-3)"><b>分配规则</b>：'+esc(at.rule||'数据未给出规则原文')+'</div>'
+    +wseLayersBlock(P)   /* WS-E：三层归因在同一张卡里，归因只有一个段 */
     +'</div>';
 }
 
@@ -11093,7 +11374,8 @@ function renderMethod(force){
        它就又变回一个孤零零的功能。 */
     +secWrap('method','rules',phSection())
     +secWrap('method','inputs',periodInputsCard())
-    +secWrap('method','social',socialChatterCard());   /* WS-C */
+    +secWrap('method','social',socialChatterCard())   /* WS-C */
+    +secWrap('method','inventory',wseInventoryCard());   /* WS-E */
   phBind();
   /* 主线第 03 段内嵌了候选池全表，它的行是 JS 填的。renderEvidence 里有同一句，
    * 但 toggleStage 只重跑 renderMethod —— 于是展开这一段之后，表头写着
@@ -13987,7 +14269,7 @@ function shortlistReviewCard(){
     right+='</div>';
     return '<div class="pmr-row">'+left+mid+right+'</div>';
   }).join('');
-  return '<div class="card section" id="pmrCard">'+head+conc+'<div class="pmr-list">'+rows+'</div></div>';
+  return '<div class="card section" id="pmrCard">'+head+conc+wseShortlistHealth(b)+'<div class="pmr-list">'+rows+'</div></div>';
 }
 /* 卫星仓下单单：后端 /api/ticket 算（等权、否决的行权重为 0、股数向下取整、
    币种不一致不估股数），这里只画表和给一个 CSV 下载入口。 */

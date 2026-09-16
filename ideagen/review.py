@@ -1297,6 +1297,13 @@ def state(con=None, p=None) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001 — a new block must not take the page down
         out["theme_audit"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
 
+    # WS-E: 市场阶段 / 策略在用与入库 / 成本卡 / 精选整体体检（各块自己兜底）。
+    try:
+        from . import wse_state as _wse
+        out["wse"] = _wse.state_block(con, out)
+    except Exception as e:  # noqa: BLE001 — a new block must not take the page down
+        out["wse"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
+
     # -- which periods have a browsable corpus ----------------------------
     # feed_runs only records a *fetch*. A week that reused an already-ingested
     # corpus (2026-08-26) registers no corpus row at all, yet its documents are

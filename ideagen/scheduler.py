@@ -771,6 +771,13 @@ def _run_monitoring(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
     detail["olive"] = _sync_olive_daily(
         p, now_hkt, now_utc, problems, dry_run=dry_run, log=log)
     _step("olive", **_journal_fields(detail["olive"]))
+    # WS-C: light social increment. Throttled inside (hours, not the 15-minute
+    # tick), never raises, never adds to `problems` — a blog timing out is not
+    # a monitoring failure. Needs the local SQLite file; skipped on Postgres.
+    if con is not None:
+        from .sources import social as _social
+        detail["social"] = _social.monitor_tick(con, now_hkt, dry_run=dry_run, log=log)
+        _step("social", **_journal_fields(detail["social"]))
 
     journal_uri = None
     if not dry_run:

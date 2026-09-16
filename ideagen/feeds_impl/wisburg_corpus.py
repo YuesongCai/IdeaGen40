@@ -24,9 +24,9 @@ def wisburg_corpus(as_of: date, params: dict[str, Any]) -> Iterable[dict[str, An
     rows = db.q(con,
                 "SELECT doc_id, published_d, title, tier, line, institution, "
                 "       summary, body, content_hash, retrieval "
-                "FROM documents WHERE published_d IN (%s) "
+                "FROM documents WHERE published_d IN (%s) AND COALESCE(published_at,'')<=? "
                 "ORDER BY published_d DESC, tier" % ",".join("?" * len(days)),
-                days)
+                [*days, config.research_cutoff_iso(as_of)])
     for r in rows:
         yield {
             "doc_id": r["doc_id"],

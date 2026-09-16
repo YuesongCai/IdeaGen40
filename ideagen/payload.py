@@ -491,8 +491,9 @@ def _evidence(con, d: str) -> list[dict]:
     rows = db.q(con, "SELECT doc_id,line,category,source_id,tier,title,institution,"
                      "published_at,published_d,ingested_at,content_hash,retrieval,"
                      "body_chars FROM documents WHERE published_d IN (%s) "
-                     "AND line<>'images' ORDER BY tier ASC, body_chars DESC LIMIT ?"
-                % ",".join("?" * len(wd)), [*wd, MAX_EVIDENCE])
+                     "AND line<>'images' AND COALESCE(published_at,'')<=? "
+                     "ORDER BY tier ASC, body_chars DESC LIMIT ?"
+                % ",".join("?" * len(wd)), [*wd, config.research_cutoff_iso(d), MAX_EVIDENCE])
     out = []
     for r in rows:
         assets = [dict(a) for a in db.q(

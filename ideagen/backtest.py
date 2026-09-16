@@ -144,8 +144,9 @@ def _corpus(con, as_of: date, window_days: int) -> list[dict[str, Any]]:
                 "SELECT doc_id, published_d, title, tier, line, institution, "
                 "       summary, body, content_hash, retrieval, ingested_at "
                 "FROM documents WHERE published_d IN (%s) AND published_d<=? "
+                "AND COALESCE(published_at,'')<=? "
                 "ORDER BY published_d DESC, tier" % ",".join("?" * len(days)),
-                [*days, as_of.isoformat()])
+                [*days, as_of.isoformat(), config.research_cutoff_iso(as_of)])
     return [{
         "doc_id": r["doc_id"], "published_d": r["published_d"],
         "title": r["title"] or "", "tier": int(r["tier"] or 3),

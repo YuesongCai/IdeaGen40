@@ -293,8 +293,9 @@ def window_items(con, as_of: date, days: int = WINDOW_DAYS,
     else:
         rows = db.q(con,
                     "SELECT doc_id,line,tier,title,institution,published_d,summary,body "
-                    "FROM documents WHERE published_d IN (%s)" % ",".join("?" * len(wdays)),
-                    wdays)
+                    "FROM documents WHERE published_d IN (%s) AND COALESCE(published_at,'')<=?"
+                    % ",".join("?" * len(wdays)),
+                    [*wdays, config.research_cutoff_iso(as_of)])
     out = []
     for r in rows:
         text = _text_of(r)

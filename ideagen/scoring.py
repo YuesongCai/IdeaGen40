@@ -92,8 +92,9 @@ def collect_evidence(con, as_of: date, days: int = config.OBSERVATION_WINDOW_DAY
     wdays = _window(as_of, days)
     rows = db.q(con,
                 "SELECT doc_id,line,tier,title,institution,published_d,summary,body,meta "
-                "FROM documents WHERE published_d IN (%s)" % ",".join("?" * len(wdays)),
-                wdays)
+                "FROM documents WHERE published_d IN (%s) AND COALESCE(published_at,'')<=?"
+                % ",".join("?" * len(wdays)),
+                [*wdays, config.research_cutoff_iso(as_of)])
 
     themes = all_themes(as_of)
     per_theme: dict[str, list[dict]] = {t.id: [] for t in themes}

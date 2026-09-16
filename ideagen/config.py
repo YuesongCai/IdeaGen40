@@ -586,3 +586,24 @@ LINEAGE_SUSPECT_EVIDENCE = 0.50
 LINEAGE_MIN_DOCS = 20
 # 重叠系数过疑似阈值、但 Jaccard 低于这个数 → 判为「包含关系」而不是换名。
 LINEAGE_NESTED_JACCARD = 0.20
+
+
+# --- Decision cutoff (yifu/Jon 0911「后验 cut-off」, WS-A audit 2026-09-17) ----
+#: Weekly decision time: Wednesday 07:00 HKT (= scheduler.WEEKLY_TRIGGER_HKT).
+#: A live run cannot read research published after it; a replay of the same
+#: Wednesday used to read the whole day (~20% of its docs were post-cutoff).
+DECISION_CUTOFF_HKT = "07:00:00"
+
+
+def research_cutoff_iso(as_of) -> str:
+    """Upper bound on `documents.published_at` for a run as of `as_of`.
+
+    Only the Wednesday decision day is cut at 07:00; any other day's documents
+    are all in that day's past, so daily heat history is unchanged. Returns a
+    sentinel that admits everything for non-Wednesdays, so callers can always
+    add `AND published_at<=?`. `published_at` is stored ISO with +08:00.
+    """
+    d = as_of if hasattr(as_of, "weekday") else date.fromisoformat(str(as_of)[:10])
+    if d.weekday() != 2:
+        return "9999-12-31"
+    return f"{d.isoformat()}T{DECISION_CUTOFF_HKT}+08:00"

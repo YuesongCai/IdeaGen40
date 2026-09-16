@@ -110,19 +110,24 @@ def account_page(user: str, *, admin: bool, users: list[dict],
                           "下一次代码部署会把这里新加的人全部清掉，"
                           "只剩下部署配置里自带的那一个。先修这个，再加人。</div>")
 
+    _LABEL = {"admin": "管理员", "member": "成员", "viewer": "只读"}
+
     def _role_cell(u: dict) -> str:
-        label = "管理员" if u["admin"] else "成员"
+        cur = u.get("role") or ("admin" if u["admin"] else "member")
+        label = _LABEL.get(cur, cur)
         if not admin or u["name"] == user:
             # No control for yourself: the only move it offers is demoting
             # yourself out of the page you are standing on.
             return f"<span class=you>{label}</span>"
-        want = "member" if u["admin"] else "admin"
-        verb = "降为成员" if u["admin"] else "升为管理员"
-        return (f"<span class=you>{label}</span> "
-                "<form method=post action=/account/role style=display:inline>"
-                f"<input type=hidden name=username value='{html.escape(u['name'])}'>"
-                f"<input type=hidden name=role value='{want}'>"
-                f"<button class=ghost type=submit>{verb}</button></form>")
+        # WS-D: three roles, so a single promote/demote button no longer says
+        # which way it goes. One small form per other role, same endpoint.
+        forms = "".join(
+            "<form method=post action=/account/role style=display:inline>"
+            f"<input type=hidden name=username value='{html.escape(u['name'])}'>"
+            f"<input type=hidden name=role value='{want}'>"
+            f"<button class=ghost type=submit>改为{_LABEL[want]}</button></form>"
+            for want in ("admin", "member", "viewer") if want != cur)
+        return f"<span class=you>{label}</span> {forms}"
 
     rows = "".join(
         "<tr><td><b>{name}</b>{you}{note}</td><td>{role}</td>"
@@ -162,6 +167,7 @@ def account_page(user: str, *, admin: bool, users: list[dict],
             <select id=nr name=role>
               <option value=member>成员——看运行台</option>
               <option value=admin>管理员——还能管账号</option>
+              <option value=viewer>只读——只能看，任何写入都被拒绝</option>
             </select></div>
         </div>
         <button type=submit>创建</button>
@@ -184,15 +190,16 @@ def account_page(user: str, *, admin: bool, users: list[dict],
     return _page("账号 · IdeaGen40", f"""
       <h1>账号</h1>
       <p class=sub>当前登录：<b>{html.escape(user)}</b>
-        （{"管理员" if admin else "成员"}） ·
+        （{"管理员" if admin else next((_LABEL.get(u.get("role"), "成员") for u in users if u["name"] == user), "成员")}） ·
         <a href="/review">回运行台</a></p>
       {store_note}
       {banner}
       <h2>所有人</h2>
       <table><tr><th>用户</th><th>角色</th><th>创建</th><th>最近登录</th><th></th></tr>
         {rows}</table>
-      <p class=sub style='margin-top:8px'>只有两种角色：<b>成员</b>能看运行台的全部内容，
-        <b>管理员</b>另外还能加人、删人、改角色、重置口令。页面本身两者看到的一样。</p>
+      <p class=sub style='margin-top:8px'>三种角色：<b>成员</b>能看运行台的全部内容并记录决定、写准则、问 AI，
+        <b>管理员</b>另外还能加人、删人、改角色、重置口令；<b>只读</b>能看同样的页面，
+        但任何写入（PM 决定、准则、问 AI）都会被服务端拒绝，只能改自己的口令。</p>
       {admin_block}
       <h2>改我自己的口令</h2>
       <form method=post action=/account/password>

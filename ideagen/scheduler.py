@@ -444,6 +444,15 @@ def _run_weekly(p: plat.Platform, now_hkt: datetime, now_utc: datetime, *,
             p.events.publish("scheduler.weekly.booking_failed",
                              {"run_id": res.run_id, "error": str(e)[:300]})
 
+    # WS-D: the period's 筛选A theme digest (file + optional Feishu), once per
+    # period. After booking so a digest failure can never cost a position, and
+    # `after_weekly` never raises — a report about the run must not fail the run.
+    if not dry_run and legacy is not None:
+        from . import theme_digest
+        detail["digest"] = theme_digest.after_weekly(p, legacy, as_of.isoformat())
+    elif not dry_run:
+        detail["digest"] = {"ok": False, "why": "无本机状态库（云端节点），周报只在本机生成"}
+
     _notify(f"✅ IdeaGen 周跑完成 {as_of.isoformat()}：主题 {len(res.topics)} · "
             f"候选 {res.n_candidates} · 组合 {len(res.selectors)} · "
             f"模型调用 {res.calls}。建仓结果见复盘板 http://localhost:8765/review")

@@ -30,7 +30,9 @@ from typing import Any
 
 from . import config, philosophy
 
-PENDING = config.DATA / "philosophy" / "pending"
+from .philosophy_sync import philosophy_dir as _ph_dir  # noqa: E402  WS-D: durable dir
+
+PENDING = _ph_dir() / "pending"
 
 #: Sentences written but not yet distilled. The proposal has always lived on
 #: the server so that 「换个浏览器、隔一天回来，那句话还在等你拍板」 was true —
@@ -38,7 +40,7 @@ PENDING = config.DATA / "philosophy" / "pending"
 #: that is the state a person actually leaves this in: mid-thought, interrupted,
 #: three words short of the point. A reload threw away the only part that took
 #: any thinking. It gets the same durability as the card it will become.
-DRAFTS = config.DATA / "philosophy" / "drafts"
+DRAFTS = _ph_dir() / "drafts"
 
 #: How many unfinished rules the desk will hold. Not a storage limit — a
 #: reading one. A pile of half-sentences nobody can face is the same as no list,

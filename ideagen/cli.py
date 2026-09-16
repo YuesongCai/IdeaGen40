@@ -1472,8 +1472,20 @@ def cmd_philosophy(args) -> int:
     """
     from .strategy import available
     as_of = _as_of(args)
-    pending = config.DATA / "philosophy" / "pending"
+    from . import philosophy_web as _pw
+    pending = _pw.PENDING   # WS-D: same durable directory the panel writes
     arms = {r["name"] for r in available("idea_generator")}
+
+    if args.action == "pull":
+        # WS-D: cards written on the display node come home before the week runs.
+        import os
+        from .platform.local import EnvSecretStore
+        from . import philosophy_sync, platform as plat_mod
+        key = (os.environ.get("IDEAGEN_DISPLAY_KEY") or os.environ.get("IDEAGEN_DASH_KEY")
+               or EnvSecretStore(plat_mod._ENV_FILES).get("IDEAGEN_DASH_KEY", required=False))
+        print(json.dumps(philosophy_sync.pull(url=args.url, key=key),
+                         ensure_ascii=False, indent=1))
+        return 0
 
     if args.action == "list":
         # `history()` rather than `cards()`: this is the person's question
@@ -1648,8 +1660,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="re-score even if a batch was already traded against this date")
     s = add("philosophy", cmd_philosophy,
             "PM 一句话注入：蒸馏成准则卡，派生一种与原方式并跑的新生成方式")
-    s.add_argument("action", choices=["list", "propose", "activate", "retire"])
+    s.add_argument("action", choices=["list", "propose", "activate", "retire", "pull"])
     s.add_argument("card_id", nargs="?", help="activate / retire 的卡号")
+    s.add_argument("--url", help="pull：展示节点地址（默认 config.DISPLAY_NODE_URL）")
     s.add_argument("--say", help="PM 的原话，一句就够")
     s.add_argument("--arm", default="carl_constraint",
                    help="注入到哪种生成方式上（默认 carl_constraint）")

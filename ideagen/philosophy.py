@@ -78,7 +78,12 @@ from . import config
 #: Where cards live. One JSONL, append-only, one event per line: a card being
 #: added or a card being retired. Rewriting a line is not an operation this
 #: module offers, for the same reason the theme registry does not offer one.
-LEDGER = config.DATA / "philosophy" / "ledger.jsonl"
+#: WS-D: beside the database when that is a data mount (display node `/data`),
+#: so a card written there survives the next deploy; `data/philosophy` on a
+#: laptop, unchanged. See `philosophy_sync` for the bug this fixes.
+from .philosophy_sync import adopt_legacy as _adopt_legacy, philosophy_dir as _ph_dir  # noqa: E402
+_adopt_legacy()
+LEDGER = _ph_dir() / "ledger.jsonl"
 
 #: The founding principles, as a file rather than as folklore, so the health
 #: check has something to actually check against.

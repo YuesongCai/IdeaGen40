@@ -2330,6 +2330,39 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
 .wsa-pair .k{font-weight:600;color:var(--color-text-primary)}
 .wsa-pair .c{display:block;color:var(--color-text-tertiary);margin-left:1em}
 .wsa-dis{display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;font:500 10px/14px var(--font-sans);background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text);vertical-align:1px}
+
+/* WS-D */
+/* 读者入口（主题周报 · 策略卡）、两张可打印的只读页、只读账号隐藏写入口。 */
+.wsd-entry{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:var(--space-4)}
+.wsd-entry button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;cursor:pointer;
+  border:1px solid var(--color-border-default);background:var(--color-surface-white);border-radius:8px;padding:8px 12px;min-width:220px}
+.wsd-entry button:hover{border-color:var(--color-border-brand-subtle);background:var(--color-surface-brand-subtle)}
+.wsd-entry b{font:600 13px/18px var(--font-sans);color:var(--color-text-primary)}
+.wsd-entry span{font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.wsd-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:var(--space-3)}
+.wsd-bar .sp{flex:1}
+.wsd-btn{border:1px solid var(--color-border-default);background:var(--color-surface-white);border-radius:6px;padding:3px 10px;
+  font:500 12px/18px var(--font-sans);cursor:pointer;color:var(--color-text-primary);text-decoration:none}
+.wsd-lede{font:400 13px/20px var(--font-sans);color:var(--color-text-secondary);margin:0 0 var(--space-3)}
+.wsd-th{border:1px solid var(--color-border-subtle);border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);break-inside:avoid}
+.wsd-th h3{margin:0 0 6px;font:600 15px/21px var(--font-sans);color:var(--color-text-primary);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.wsd-th h3 .rk{font:600 12px/16px var(--font-mono);color:var(--color-text-tertiary)}
+.wsd-q{font:400 13px/19px var(--font-sans);color:var(--color-text-primary);margin-bottom:6px}
+.wsd-kv{display:grid;grid-template-columns:auto 1fr;gap:3px var(--space-4);font:400 12.5px/18px var(--font-sans);color:var(--color-text-secondary)}
+.wsd-kv>b{font-weight:600;color:var(--color-text-primary);white-space:nowrap}
+.wsd-kv>span{min-width:0;overflow-wrap:anywhere}
+.wsd-docs{margin:6px 0 0;padding-left:18px;font:400 12.5px/18px var(--font-sans);color:var(--color-text-secondary)}
+.wsd-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--space-3);margin:var(--space-3) 0}
+.wsd-tile{border:1px solid var(--color-border-subtle);border-radius:8px;padding:8px 10px}
+.wsd-tile .k{font:500 11px/15px var(--font-sans);color:var(--color-text-tertiary)}
+.wsd-tile .v{font:600 18px/24px var(--font-mono);color:var(--color-text-primary)}
+.wsd-tile .s{font:400 11px/15px var(--font-sans);color:var(--color-text-tertiary)}
+.wsd-steps{margin:0;padding-left:20px;font:400 13px/20px var(--font-sans);color:var(--color-text-secondary)}
+.wsd-steps b{color:var(--color-text-primary)}
+.wsd-leg{display:inline-flex;align-items:center;gap:4px;margin-right:12px;font:400 12px/16px var(--font-sans);color:var(--color-text-tertiary)}
+.wsd-leg i{display:inline-block;width:14px;height:2px;border-radius:1px}
+.wsd-ro{display:inline-block;padding:1px 8px;border-radius:9999px;font:500 11px/16px var(--font-sans);background:var(--color-surface-muted);color:var(--color-text-secondary)}
+body.wsd-viewer #askTop{display:none!important}
 </style>
 <style>
 /* ══ 新手导览（一次性）══════════════════════════════════════════
@@ -3246,7 +3279,8 @@ function parseRoute(raw){
    后退直接离开页面。栈按层序列化进 URL，恢复时逐层压回。
    白名单之外的层直接丢弃：URL 是外部输入，不认识的就不猜。 */
 var DRAWER_T={stage:1,topic:1,ask:1,asklog:1,props:1,runlog:1,
-              pos:1,book:1,status:1,cal:1,trust:1,askpick:1,ev:1};
+              pos:1,book:1,status:1,cal:1,trust:1,askpick:1,ev:1,
+              digest:1,card:1};   /* WS-D：主题周报、策略卡 */
 function encDrawers(){
   return drawerStack.filter(function(d){return DRAWER_T[d.t]}).map(function(d){
     var t=d.t+':'+encodeURIComponent(d.p==null?'':String(d.p));
@@ -4982,6 +5016,7 @@ function chainCard(){
       return '<div class="howto-i"><div class="howto-n">'+h[0]+'</div>'
         +'<div class="howto-t">'+esc(h[1])+glossMark(h[2])+'</div></div>';
     }).join('')+'</div>'
+    +wsdEntry()   /* WS-D：读者的两页纸（主题周报 · 策略卡），入口只此一处 */
   +'</div>';
 }
 
@@ -16456,6 +16491,196 @@ function socialChatterCard(){
     +foldBlock('method.social.voices','早期声音','在主题变强前就提过它的作者',evBody,
         ev.available?fmtInt((ev.repeat||[]).length)+' 位跨主题':'数据不足')
   +'</div>';
+}
+
+/* ══ WS-D 读者页与只读账号 ═══════════════════════════════════════
+ * yifu 方要每周看筛选A 的主题输出，且只能看（viewer 角色）；PM 要一张「基金卡」
+ * 把事实和打法放在一页上。两页都是抽屉（t:'digest' / t:'card'，进 URL 可发出去），
+ * 入口只有概览「这条线」下面那一处，页内一个「打印」。数字全部来自
+ * /api/digest 与 /api/strategy_card，缺就写缺。
+ * 只读账号：服务端已经拒绝一切写入（ideagen/access.py）；这里只是不再画出
+ * 点了必然 403 的入口——问它、写准则、PM 决定。 */
+var WSD={role:null,dig:{},card:null,cardBusy:false};
+function wsdViewer(){return WSD.role==='viewer'}
+(function(){
+  if(isSnapshot())return;
+  fetch('/api/whoami',{cache:'no-store'}).then(function(r){return r.json()}).then(function(b){
+    WSD.role=(b&&b.role)||null;
+    if(typeof PMR!=='undefined'&&!PMR.who){PMR.who=b||{};PMR.whoAsked=true}
+    if(wsdViewer()){document.body.classList.add('wsd-viewer');if(S)renderAll();renderDrawers()}
+  }).catch(function(){});
+})();
+/* 写入口在只读账号下不画、不开。原函数保留，非只读账号行为完全不变。 */
+var _wsdAskBtn=askBtn;
+askBtn=function(kind,id,opts){return wsdViewer()?'':_wsdAskBtn(kind,id,opts)};
+var _wsdOpenAsk=openAskDrawer;
+openAskDrawer=function(k,id){if(!wsdViewer())_wsdOpenAsk(k,id)};
+var _wsdOpenAskPicker=openAskPicker;
+openAskPicker=function(){if(!wsdViewer())_wsdOpenAskPicker()};
+var _wsdOpenRules=openRulesDrawer;
+openRulesDrawer=function(){if(!wsdViewer())_wsdOpenRules()};
+var _wsdSlotOn=phSlotOn;
+phSlotOn=function(){return !wsdViewer()&&_wsdSlotOn()};
+var _wsdCanWrite=pmrCanWrite;
+pmrCanWrite=function(){return wsdViewer()?{ok:false,why:'只读账号，只能查看，不能记录决定'}:_wsdCanWrite()};
+
+CRUMB_KIND.digest='周报';CRUMB_KIND.card='策略卡';
+var _wsdLabel=drawerLabel,_wsdQ=drawerQ,_wsdCrumb=crumbName,_wsdBody=drawerBodyHTML;
+drawerLabel=function(d){
+  if(d.t==='digest')return '筛选A 主题周报';
+  if(d.t==='card')return '策略卡';
+  return _wsdLabel(d);
+};
+drawerQ=function(d){
+  if(d.t==='digest')return '本期入选主题 · 方向 · 时点与谱系 · 代表研报';
+  if(d.t==='card')return '目标 · 流程 · 在场 · 业绩 · 主题暴露';
+  return _wsdQ(d);
+};
+crumbName=function(d){
+  if(d.t==='digest')return String(d.p||'最新一期');
+  if(d.t==='card')return '一页纸';
+  return _wsdCrumb(d);
+};
+drawerBodyHTML=function(d){
+  try{
+    if(d.t==='digest')return wsdDigestBody(String(d.p||''));
+    if(d.t==='card')return wsdCardBody();
+    /* 深链直接打开写入抽屉的只读账号：给一句话，不给表单。 */
+    if(wsdViewer()&&(d.t==='rules'||d.t==='ask'||d.t==='askpick'))
+      return '<div class="empty-sm">只读账号不能写准则或追问。</div>';
+  }catch(e){return '<div class="empty-sm">该视图渲染失败（'+esc(e&&e.message?e.message:String(e))+'）</div>'}
+  return _wsdBody(d);
+};
+function openDigestDrawer(asOf){pushDrawer({t:'digest',p:asOf||''})}
+function openCardDrawer(){pushDrawer({t:'card',p:''})}
+function wsdEntry(){
+  if(isSnapshot())return '';
+  return '<div class="wsd-entry">'
+    +'<button type="button" data-el="wsd.digest" onclick="openDigestDrawer(PERIOD||\'\')"><b>筛选A 主题周报 ›</b><span>'+(PERIOD?esc(PERIOD)+' 这一期':'最新一期')+'的入选主题、方向、时点与代表研报</span></button>'
+    +'<button type="button" data-el="wsd.card" onclick="openCardDrawer()"><b>策略卡 ›</b><span>目标、流程、在场组合、自始净值对 SPY、主题暴露</span></button>'
+    +(wsdViewer()?'<span class="wsd-ro" style="align-self:center">当前为只读账号</span>':'')
+    +'</div>';
+}
+function wsdPrint(title){
+  var body=$('drawerBody-'+(drawerStack.length-1));
+  var doc=body?body.querySelector('.wsd-doc'):null;
+  if(!doc)return;
+  var w=window.open('','_blank');
+  if(!w)return;
+  var css=Array.prototype.map.call(document.querySelectorAll('style'),function(x){return x.outerHTML}).join('');
+  w.document.write('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>'+esc(title)+'</title>'+css
+    +'<style>body{background:#fff;padding:24px;overflow:visible}.wsd-noprint{display:none!important}.wsd-print-only{display:inline!important}@page{margin:14mm}</style></head><body>'
+    +doc.outerHTML+'</body></html>');
+  w.document.close();
+  setTimeout(function(){try{w.focus();w.print()}catch(e){}},300);
+}
+function wsdLoadDigest(key){
+  if(WSD.dig[key])return;
+  WSD.dig[key]={busy:true};
+  fetch('/api/digest'+(key?'?as_of='+encodeURIComponent(key):''),{cache:'no-store'})
+    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
+    .then(function(x){WSD.dig[key]=x.ok?{doc:x.b}:{err:(x.b&&x.b.error)||'读取失败'}})
+    .catch(function(e){WSD.dig[key]={err:String(e&&e.message||e)}})
+    .then(function(){renderDrawers()});
+}
+function wsdDirWord(d){return d==='↑'?'↑ 看多':(d==='↓'?'↓ 看空':'— 未定向')}
+function wsdDigestBody(key){
+  if(isSnapshot())return '<div class="empty-sm">静态快照不带主题周报</div>';
+  var st=WSD.dig[key];
+  if(!st){wsdLoadDigest(key);return '<div class="empty-sm">正在读主题周报…</div>'}
+  if(st.busy)return '<div class="empty-sm">正在读主题周报…</div>';
+  if(st.err)return '<div class="empty-sm">主题周报这次没读出来——不是没有主题：'+esc(st.err)+'</div>';
+  var D=st.doc||{};
+  if(!D.available)return '<div class="empty-sm">'+esc(D.why||'缺数据')+'</div>';
+  var cls={live:'实时运行',backfill:'补跑'}[D.classification]||'运行类型未知';
+  var fs=((D.status||{}).feishu)||null;
+  var head='<div class="wsd-bar wsd-noprint"><span class="card-note">'+(D.status&&D.status.ok?'周跑后已存档 '+esc(String(D.status.path||'').split('/').pop())+(fs?' · 飞书：'+esc(fs.state==='sent'?'已推送':(fs.why||fs.state)):''):'本期尚未存档（周跑完成后自动生成一次）')+'</span><span class="sp"></span>'
+    +'<a class="wsd-btn" href="/api/digest?as_of='+encodeURIComponent(D.as_of)+'&format=md">下载 .md</a>'
+    +'<button type="button" class="wsd-btn" onclick="wsdPrint(\'筛选A 主题周报 '+jss(D.as_of)+'\')">打印</button></div>';
+  var html='<div class="wsd-doc"><h2 class="card-title">筛选A 主题周报 · '+esc(D.as_of)+'</h2>'
+    +'<p class="wsd-lede">'+cls+' · 打分器 '+esc(D.scorer||'')+' · 本期打分 '+fmtInt(D.n_scored)+' 个主题、入选 '+fmtInt(D.n_chosen)+' 个 · 研报 '+(D.corpus_total==null?'缺':fmtInt(D.corpus_total)+' 篇')
+    +(D.cutoff?'<br>截断审计：'+esc(D.cutoff.reading||''):'')+'</p>';
+  (D.themes||[]).forEach(function(r){
+    var dis=r.disagreement||{},rec=r.recurrence||{},tm=r.timing,lin=r.lineage||{},dif=r.diffusion;
+    var kv=[
+      ['TIS',(r.tis==null?'缺':numOr(r.tis)+(r.reading_d?'（'+esc(r.reading_d)+(r.reading_same_day?'':'，期次当天无打分')+'）':''))+' · 层级 '+esc(r.tier_label||'缺')+' · 本期打分 '+numOr(r.score)],
+      ['复现打折',rec.note?esc(rec.note):'无'],
+      ['多空分歧','分歧因子 '+esc(dis.factor||'')+'='+numOr(dis.value)+'（≥'+numOr(dis.min)+' 挂标）· 证据 '+fmtInt(r.n_evidence)+' 条 / '+fmtInt(r.n_institutions)+' 家'],
+      ['时点',tm?('研报首次提及 '+esc(tm.first_mention_d||'无')+' · 首次入选 '+esc(tm.first_selected||'无')+'（共 '+fmtInt(tm.n_selected_periods)+' 期）<br><span style="color:var(--color-text-tertiary)">'+esc(tm.verdict||'')+'</span>'):'缺数据（体检里没有这个主题）'],
+      ['谱系',((lin.family||[]).length?'与 '+lin.family.map(function(x){return esc(topicName(x))}).join('、')+' 同一家族':'独立主题')
+        +((lin.pairs||[]).length?'；'+lin.pairs.map(function(x){return esc(topicName(x.other))+'（'+esc(x.decision_label||x.decision)+'）'}).join('、'):'')],
+      ['扩散阶段',dif?(esc(dif.stage||'')+' — '+esc(dif.stage_why||'')):'缺数据']
+    ];
+    html+='<div class="wsd-th"><h3><span class="rk">'+r.rank+'</span>'
+      +'<button type="button" class="pf-link wsd-noprint" onclick="openTopicDrawer(\''+jss(r.theme_id)+'\')">'+esc(r.label)+'</button>'
+      +'<span style="display:none" class="wsd-print-only">'+esc(r.label)+'</span>'
+      +'<span class="card-note">'+esc(r.theme_id)+'</span>'
+      +dirChip(r.direction)+(dis.badge?badge('warning','多空分歧'):'')+'</h3>'
+      +'<div class="wsd-q">'+esc(r.key_question||'缺主题的那一问')+(r.direction_source?'<span class="card-note">（方向来源：'+esc(r.direction_source)+'）</span>':'')+'</div>'
+      +'<div class="wsd-kv">'+kv.map(function(x){return '<b>'+x[0]+'</b><span>'+x[1]+'</span>'}).join('')+'</div>'
+      +((r.docs||[]).length?'<ol class="wsd-docs">'+r.docs.map(function(x){return '<li>'+esc(x.published_d||'')+' · '+esc(x.institution||'')+' ·《'+esc(x.title||'')+'》</li>'}).join('')+'</ol>':'<div class="card-note">代表研报：缺</div>')
+      +'</div>';
+  });
+  (D.notes||[]).forEach(function(n){html+='<div class="card-note">注：'+esc(n)+'</div>'});
+  html+=epi('方向为研报观点的净方向（与方法页「本期方向」同源），不是价格预测；扩散阶段只作诊断，不进打分。');
+  return head+html+'</div>';
+}
+function wsdLoadCard(){
+  if(WSD.card||WSD.cardBusy)return;
+  WSD.cardBusy=true;
+  fetch('/api/strategy_card',{cache:'no-store'})
+    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b}})})
+    .then(function(x){WSD.card=x.ok?{doc:x.b}:{err:(x.b&&x.b.error)||'读取失败'}})
+    .catch(function(e){WSD.card={err:String(e&&e.message||e)}})
+    .then(function(){WSD.cardBusy=false;renderDrawers()});
+}
+function wsdSpark(series){
+  var all=[];(series||[]).forEach(function(s){(s.points||[]).forEach(function(p){all.push(p.v)})});
+  if(all.length<2)return '<div class="empty-sm">净值曲线：缺数据</div>';
+  var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);if(mx===mn)mx=mn+1;
+  var w=560,h=150,pd=6,COL=['var(--color-fill-brand)','var(--color-text-tertiary)','var(--color-feedback-warning-default)'];
+  var base=(series[0]&&series[0].points&&series[0].points.length)?series[0].points:all;
+  var n=Math.max.apply(null,series.map(function(s){return (s.points||[]).length}));
+  var y=function(v){return (h-pd-(v-mn)/(mx-mn)*(h-2*pd)).toFixed(1)};
+  var lines=series.map(function(s,i){
+    var pts=s.points||[];if(pts.length<2)return '';
+    return '<polyline fill="none" stroke="'+COL[i%3]+'" stroke-width="'+(i===0?2:1.4)+'" points="'+pts.map(function(p,j){return (pd+j*(w-2*pd)/(n-1)).toFixed(1)+','+y(p.v)}).join(' ')+'"/>';
+  }).join('');
+  var y100=y(100);
+  return '<svg width="100%" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="自始净值对 SPY" style="max-width:'+w+'px;display:block">'
+    +'<line x1="'+pd+'" x2="'+(w-pd)+'" y1="'+y100+'" y2="'+y100+'" stroke="var(--color-border-default)" stroke-dasharray="3 3"/>'+lines+'</svg>'
+    +'<div>'+series.map(function(s,i){var l=(s.points||[]).slice(-1)[0];return '<span class="wsd-leg"><i style="background:'+COL[i%3]+'"></i>'+esc(s.name)+(l?' '+numOr(l.v):' 缺')+'</span>'}).join('')+'<span class="card-note">起点 = 100 · 虚线为起点</span></div>';
+}
+function wsdCardBody(){
+  if(isSnapshot())return '<div class="empty-sm">静态快照不带策略卡</div>';
+  if(!WSD.card){wsdLoadCard();return '<div class="empty-sm">正在算策略卡（要读业绩页同一份数据，首次约十几秒）…</div>'}
+  if(WSD.card.err)return '<div class="empty-sm">策略卡这次没读出来：'+esc(WSD.card.err)+'</div>';
+  var C=WSD.card.doc||{},M=C.metrics||{},P=M.shortlist||{},B=M.buy_all||{},pr=C.periods||{},to=C.weekly_turnover;
+  var pct=function(v){return v==null?'缺':fmtPct(v)};
+  var hr=function(m){return m.hit_rate==null?'缺':(m.hit_rate*100).toFixed(0)+'%'};
+  var tile=function(k,v,s){return '<div class="wsd-tile"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+(s||'')+'</div></div>'};
+  var head='<div class="wsd-bar wsd-noprint"><span class="card-note">'+esc(C.scope||'')+'</span><span class="sp"></span>'
+    +'<button type="button" class="wsd-btn" onclick="wsdPrint(\'IdeaGen40 策略卡\')">打印</button></div>';
+  var html='<div class="wsd-doc"><h2 class="card-title">IdeaGen40 策略卡</h2>'
+    +'<p class="wsd-lede"><b>目标</b>　'+esc(C.goal||'')+'</p>'
+    +'<p class="wsd-lede">'+(pr?'补跑 '+fmtInt(pr.backfill)+' 期 · 实时 '+fmtInt(pr.live)+' 期（'+esc(pr.first||'')+' 至 '+esc(pr.last||'')+'）':'期数：缺')
+      +(C.window?' · 盯市区间 '+esc(C.window.start)+' 至 '+esc(C.window.end):'')+'</p>'
+    +'<div class="ev-h3">流程（本期 '+esc(C.as_of||'—')+'）</div><ol class="wsd-steps">'
+    +(C.process||[]).map(function(s){return '<li><b>'+esc(s.step)+'</b>　'+esc(s.what)+(s.n!=null?' · <span class="num">'+fmtInt(s.n)+'</span> '+esc(s.unit||''):'')+'</li>'}).join('')+'</ol>'
+    +'<div class="wsd-tiles">'
+      +tile('在场组合',fmtInt(C.books_in_play),'持仓 '+fmtInt(C.open_positions)+' 笔 · '+fmtInt(C.open_instruments)+' 个标的')
+      +tile('周换手',to?to.pct.toFixed(1)+'%':'缺',to?esc(to.rule):'')
+      +tile('精选 · 累计',pct(P.cum_ret_pct),'对 SPY '+(P.excess_spy_pp==null?'缺':(P.excess_spy_pp>0?'+':'')+Number(P.excess_spy_pp).toFixed(2)+' pp'))
+      +tile('精选 · 最大回撤',pct(P.max_dd_pct),'全量基准 '+pct(B.max_dd_pct))
+      +tile('精选 · 命中率',hr(P),'已平仓 '+fmtInt(P.n_closed)+' 笔盈利 '+fmtInt(P.n_win)+' · 全量基准 '+hr(B))
+    +'</div>'
+    +'<div class="ev-h3">自始净值对 SPY</div>'+wsdSpark(((C.curve||{}).series)||[])
+    +'<div class="ev-h3">当前主题暴露 · 前五</div>'
+    +((C.theme_exposure||[]).length?'<ol class="wsd-steps">'+C.theme_exposure.map(function(x){return '<li><b>'+esc(topicName(x.theme_id))+'</b>　'+(x.share==null?'缺':(x.share*100).toFixed(1)+'%')+' · '+fmtInt(x.n)+' 笔</li>'}).join('')+'</ol><div class="card-note">'+esc(C.theme_exposure_rule||'')+'</div>':'<div class="empty-sm">当前没有未平仓仓位</div>')
+    +((C.missing||[]).length?'<div class="card-note" style="margin-top:8px">缺：'+C.missing.map(esc).join('；')+'</div>':'')
+    +epi('全部是模拟组合，已计成本，未接入实盘资金；样本短（补跑为事后重跑，只有实时期是向前的），区间盖住 0 是常态，不是结论。精选与全量基准的对比见证据页。')
+    +'</div>';
+  return head+html;
 }
 
 renderBootState();

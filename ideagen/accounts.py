@@ -284,23 +284,43 @@ def _hash(password: str, salt: bytes) -> str:
 #: somebody has to remember and nobody will test. So: `admin` can manage
 #: accounts, `member` can read the dashboard. Everything else — which pages,
 #: which portfolios — is the same for both, because it genuinely is.
-ROLES = ("admin", "member")
-ROLE_LABEL = {"admin": "管理员", "member": "成员"}
+#:
+#: WS-D (yifu 2026-09-11): a third one, `viewer`, and for a reason the two above
+#: cannot express — an outside reader (yifu's side) who is to *see* the weekly
+#: 筛选A output and must not be able to write anything: not a PM decision, not a
+#: philosophy card, not a model call billed to us. "Member minus writes" is a
+#: real difference in what the server will do, so it is a role, not a note.
+ROLES = ("admin", "member", "viewer")
+ROLE_LABEL = {"admin": "管理员", "member": "成员", "viewer": "只读"}
+
+
+def _role_of(u: dict[str, Any] | None) -> str:
+    """The stored role. `admin` stays a boolean flag for backward compat (files
+    written before roles existed carry only that); `viewer` is an explicit
+    `role` key, so an old file with neither reads as member exactly as before."""
+    if not u:
+        return "member"
+    if u.get("admin"):
+        return "admin"
+    return "viewer" if u.get("role") == "viewer" else "member"
 
 
 def role(name: str) -> str:
     """This account's role. Stored as the `admin` flag for backward compat —
     accounts written before roles existed keep working without a migration."""
-    u = load()["users"].get(normalize_name(name))
-    if not u:
-        return "member"
-    return "admin" if u.get("admin") else "member"
+    return _role_of(load()["users"].get(normalize_name(name)))
+
+
+def is_viewer(name: str | None) -> bool:
+    """True for a read-only account. Unknown names are not viewers: the server
+    refuses those earlier, for not being a session at all."""
+    return bool(name) and role(name) == "viewer"
 
 
 def list_users() -> list[dict[str, Any]]:
     users = load()["users"]
     return [{"name": n, "admin": bool(u.get("admin")),
-             "role": "admin" if u.get("admin") else "member",
+             "role": _role_of(u),
              "note": u.get("note") or "",
              "created": u.get("created"), "last_login": u.get("last_login")}
             for n, u in sorted(users.items())]
@@ -326,6 +346,10 @@ def set_role(name: str, new_role: str) -> None:
     if new_role != "admin" and u.get("admin") and len(_admins(data)) == 1:
         raise ValueError("这是最后一个管理员，降级之后就没人能管账号了")
     u["admin"] = (new_role == "admin")
+    if new_role == "viewer":
+        u["role"] = "viewer"
+    else:
+        u.pop("role", None)
     save(data)
 
 
@@ -370,6 +394,7 @@ def add_user(name: str, password: str, *, admin: bool = False,
         "salt": base64.b64encode(salt).decode(),
         "hash": _hash(password, salt),
         "admin": admin,
+        **({"role": "viewer"} if role == "viewer" else {}),
         "note": note,
         "epoch": 1,
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

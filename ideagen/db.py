@@ -333,6 +333,36 @@ CREATE TABLE IF NOT EXISTS outcomes (
     settled_at TEXT
 );
 
+-- ============================================================ WS-B decision layer
+-- One PM's decision on one shortlisted name for one period. A PM only removes or
+-- holds back what the model shortlisted (see decision.submit_review), so there is
+-- no "added" decision. `updated_at` decides merges between the display node's
+-- journal and this database: newer wins, in any replay order.
+CREATE TABLE IF NOT EXISTS pm_reviews (
+    as_of           TEXT NOT NULL,
+    instrument_id   TEXT NOT NULL,
+    decision        TEXT NOT NULL,       -- 采纳 | 否决 | 观望
+    reason          TEXT,
+    reject_category TEXT,                -- one of config.PM_REJECT_CATEGORIES when 否决
+    lens_checks     TEXT,                -- JSON: {lens: true|false|note}
+    reviewer        TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE (as_of, instrument_id, reviewer)
+);
+CREATE INDEX IF NOT EXISTS ix_pm_reviews_asof ON pm_reviews(as_of);
+
+-- Sector / country splits per ETF (FMP), cached for the shortlist's style lens.
+-- `etf_lookthrough` holds holdings by ISIN and no sectors.
+CREATE TABLE IF NOT EXISTS etf_weightings (
+    symbol  TEXT NOT NULL,
+    as_of   TEXT NOT NULL,
+    kind    TEXT NOT NULL,               -- sector | country
+    name    TEXT NOT NULL,
+    weight  REAL NOT NULL,               -- fraction of NAV, 0-1
+    PRIMARY KEY (symbol, as_of, kind, name)
+);
+
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, updated_at TEXT);
 """
 

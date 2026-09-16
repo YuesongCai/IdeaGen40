@@ -2277,6 +2277,31 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
 .rank-row.bm .rank-bar>i{background:var(--color-text-tertiary)}
 .rank-row.ctl .rank-bar>i{background:var(--color-text-tertiary);opacity:.45}
 .rank-row .rv{font:600 13px/18px var(--font-mono);text-align:right}
+/* WS-B 组合决策层：精选 · PM 把关 / 卫星仓下单单 */
+.pmr-list{display:flex;flex-direction:column;gap:var(--space-3)}
+.pmr-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr);gap:var(--space-4);
+  border:1px solid var(--color-border-subtle);border-radius:8px;padding:var(--space-3) var(--space-4);background:var(--color-surface-white)}
+@media (max-width:1100px){.pmr-row{grid-template-columns:1fr}}
+.pmr-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.pmr-rank{font:600 12px/16px var(--font-mono);color:var(--color-text-tertiary)}
+.pmr-code{font:600 15px/20px var(--font-mono);color:var(--color-text-primary)}
+.pmr-name{font:400 12px/16px var(--font-sans);color:var(--color-text-secondary)}
+.pmr-k{font:600 11px/16px var(--font-sans);color:var(--color-text-tertiary);margin-top:6px}
+.pmr-ai{font:400 13px/19px var(--font-sans);color:var(--color-text-primary);margin-top:2px}
+.pmr-meta{font:400 12px/17px var(--font-sans);color:var(--color-text-secondary)}
+.pmr-lens{display:grid;grid-template-columns:18px 1fr;gap:2px 6px;align-items:start;font:400 12px/17px var(--font-sans)}
+.pmr-lens b{font-weight:600;color:var(--color-text-primary)}
+.pmr-lens .todo{color:var(--color-text-tertiary)}
+.pmr-btns{display:flex;gap:6px;flex-wrap:wrap}
+.pmr-btn{border:1px solid var(--color-border-default);background:var(--color-surface-white);border-radius:6px;
+  padding:3px 10px;font:500 12px/18px var(--font-sans);cursor:pointer;color:var(--color-text-primary)}
+.pmr-btn.on{background:var(--color-surface-brand-subtle);border-color:var(--color-border-brand-subtle);color:var(--color-text-brand);font-weight:600}
+.pmr-btn.on.rej{background:var(--color-feedback-warning-subtle);border-color:var(--color-feedback-warning-default);color:var(--color-feedback-warning-text)}
+.pmr-in{width:100%;box-sizing:border-box;border:1px solid var(--color-border-default);border-radius:6px;padding:4px 8px;
+  font:400 12px/18px var(--font-sans);margin-top:6px}
+.pmr-err{color:var(--color-feedback-warning-text);font:400 12px/17px var(--font-sans);margin-top:4px}
+.pmr-log{font:400 11.5px/16px var(--font-sans);color:var(--color-text-secondary);margin-top:6px}
+.pmr-warn{background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text);border-radius:4px;padding:1px 6px}
 </style>
 <style>
 /* ══ 新手导览（一次性）══════════════════════════════════════════
@@ -3108,7 +3133,9 @@ var VIEWS=[
          {s:'roster',label:'逐期明细'}]},
   {id:'holdings',label:'持仓',sub:'现在拿着什么',
    icon:'<path d="M2.5 5.5h11v8h-11z"/><path d="M5.5 5.5V3.5h5v2"/>',
-   secs:[{s:'exposure',label:'主题敞口'}]},
+   secs:[{s:'exposure',label:'主题敞口'},
+         {s:'shortlist',label:'本期精选 · PM 把关'},
+         {s:'ticket',label:'卫星仓下单单'}]},
   /* 「业绩」回答「赚了还是亏了、亏赚从哪来」——是数字，不是判定。判定
      （它管用吗）留在证据页；两页互相链接、不互相复制。段落顺序即阅读顺序：
      先说清看的是哪一份数据，再净值、再周损益、再全表、再归因；研究检验与
@@ -5060,8 +5087,14 @@ function renderOverview(){
 function renderHoldings(){
   var root=$('view-holdings');
   if(!S){root.innerHTML='';return}
+  /* 精选卡里有理由输入框：光标在框里时整页重画会把打了一半的话连光标一起换掉。
+     让路的只有「焦点正在框里」这一种情况；本卡自己的按钮一律先 pmrBlur()。 */
+  if(pmrTyping())return;
+  pmrWhoami();
   root.innerHTML=ladderStrip()
-    +secWrap('holdings','exposure',holdMapCard(aggBooks()));
+    +secWrap('holdings','exposure',holdMapCard(aggBooks()))
+    +secWrap('holdings','shortlist',shortlistReviewCard())
+    +secWrap('holdings','ticket',ticketCard());
 }
 /* ══ 证据页 ═══════════════════════════════════════════════════════
    这一页此前是七张平级卡，直接从「选取策略对比 · 10 个组合 · 第 2 周」开场。
@@ -5699,7 +5732,8 @@ function evClaims(){
     clPrereg('pick','selection_beats_random','策略择优优于随机选择'),
     clPrereg('rank','ev_rank_partial_vs_vol','剔除波动后排序能力仍在'),
     clPrereg('family','ev_rank_within_family','同资产类别内排序能力仍在'),
-    clAttr(row('attribution'))
+    clAttr(row('attribution')),
+    clPm()
   ];
 }
 function evClaimOf(key){return evClaims().filter(function(c){return c.key===key})[0]||null}
@@ -6087,7 +6121,7 @@ function evdAttr(c){
     old:attributionCard(),retract:[]};
 }
 function evClaimDrawer(c){
-  var D={books:evdBooks,beat:evdBeat,sharpe:evdSharpe,pick:evdPick,rank:evdRank,family:evdFamily,attr:evdAttr}[c.key];
+  var D={books:evdBooks,beat:evdBeat,sharpe:evdSharpe,pick:evdPick,rank:evdRank,family:evdFamily,attr:evdAttr,pm:evdPm}[c.key];
   var d=D?D(c):{method:'',sample:[],chart:'',old:'',retract:[]};
   var e=c.prereg;
   /* 标题用看板上的假设名（投研写法）；预注册时登记的原句是后端文本、口语写法，
@@ -10540,6 +10574,7 @@ var SEL_META=[
   ['omega_loose','赔率排序 · 宽松','主策略','赔率排序 · 宽阈值','按概率加权赚亏比排序：三情景概率归一后，回报高于现金门槛（月 0.28%）的部分按概率加权记为「赚」、低于门槛的部分记为「亏」，赚 ÷ 亏 即赚亏比——和候选池表里「上行 ÷ |下行|」的简单赔率不是同一个数。准入线取本批中位数与 1.5 的较高者，达标全取，6～14 条；不足 6 条时空位留存现金。候选池本身没有统一的赔率门槛，这条下限只属于这两条策略。'],
   ['spread','分散度约束','主策略','组合层约束','按赔率排序后施加分散约束：同一主题至多 3 条、同一敞口至多 3 条、同一生成方法至多 4 条，避免单一敞口重复计入。'],
   ['calib','证据一致性','主策略','赔率折价','按赔率排序，并对四类情形折价：主题证据不足、置信度高于证据强度、概率估计粗糙、隐含涨幅缺乏依据。'],
+  ['shortlist','精选','常驻探索','共识度 × 期望值 · 前 5','决策时看的短名单，做成组合以便追踪业绩：可入池候选按 共识度（几种生成方式共同提出）× 期望值（为正才算）×（1 − 主题复现折扣比例）排序，同主题至多 2 只，取前 5；平手先看评级、再看期望值。持仓页「本期精选 · PM 把关」与「卫星仓下单单」读的是同一份名单。公式在看过既有期次之后提出，按探索类登记。'],
   ['ev_rank','期望值排序','常驻探索','期望值排序 · 前 20%','按候选自陈三点情景（上行/基准/下行及各自概率）的概率加权期望回报排序，取前 20% 且须高于现金门槛。这个数每条想法都算过，此前没有任何选取策略在用它。**这条排序是在看过既有期次的结果之后才被挑出来检验的**，因此合并口径对那次搜索是样本内的，只有它往后的当期实跑期次才是检验。三项证伪已做：它一阶上在排风险（顶格分位持仓入场前波动是末位的 6.4 倍）、风险调整后跑输指数、优势在剔除最常持有的标的后不成立。'],
   ['left_tail','下行风险优先','常驻探索','下行优先','不计上行空间，仅按期望亏损（亏损概率 × 亏损幅度）由低至高选取。检验组合结果由规避尾部亏损而非捕捉上行主导的假设。'],
   ['omega_strict','赔率排序 · 严格','常驻探索','赔率排序 · 高阈值','排序方法与宽松版完全相同，仅准入不同：只取排名前 40% 且赚亏比 ≥ 1.5 的，6～8 条，空余仓位留存现金。宽松版本期 {n:omega_loose} 条、严格版本期 {n:omega_strict} 条，两者业绩差即阈值收紧的净效应。'],
@@ -10592,7 +10627,7 @@ var GEN_PATH={ai_native:'ai',carl_constraint:'frame',chain:'frame',gap:'frame',
 var SEL_PATH={ai_native:'ai',omega_loose:'code',omega_strict:'code',spread:'code',calib:'code',
   left_tail:'code',buy_all:'code',random_pick:'code',
   generated_ai_native:'code',generated_carl_constraint:'code',
-  ev_rank:'code',mom_21:'code'};
+  ev_rank:'code',mom_21:'code',shortlist:'code'};
 function pathTag(k){
   var m=PATH_META[k];if(!m)return '';
   return '<span class="ptag ptag-'+k+'" title="'+esc(m[0]+'——'+m[1])+'">'+esc(m[0])+'</span>';
@@ -12432,9 +12467,9 @@ function stagePoolBody(d){
       +'<div class="card-note" style="margin-bottom:var(--space-2)">'
       +'<button type="button" class="exp-btn" onclick="togglePoolShortlist()" '
       +'style="'+(poolShortlist?'background:var(--color-surface-brand-subtle);color:var(--color-text-brand);font-weight:600':'')+'" '
-      +'title="共识度（几种方法共同提出）× idea 期望值 居前的 '+SHORTLIST_N+' 只；全量照旧可看">'
+      +'title="共识度 × 期望值 ×（1 − 复现折扣）居前的 '+shortlistN()+' 只；全量照旧可看">'
       +(poolShortlist?'✓ 只看精选（'+fmtInt(nShort)+'）· 点此看全量':'★ 精选：决策短名单（前 '+fmtInt(nShort)+'）')+'</button>'
-      +'<span class="gloss gm" title="全量用于赛马（各选取策略在同一候选池上并行比较）；精选是决策时的短名单：按 共识度 × 期望值 取前 '+SHORTLIST_N+' 只，纯前端高亮/筛选，不新建组合、不改建仓。">ⓘ</span>'
+      +'<span class="gloss gm" title="全量用于赛马（各选取策略在同一候选池上并行比较）；精选是决策时的短名单：可入池候选按 共识度 × 期望值 ×（1 − 主题复现折扣比例）取前 '+shortlistN()+' 只、同主题至多 '+((shortlistBlock()||{}).max_per_theme||2)+' 只。它同时是「精选」组合的持仓，持仓页的 PM 把关与卫星仓下单单读的是同一份名单。">ⓘ</span>'
       +'　'+(poolShortlist?'当前只显示短名单。':'★ 标记的是短名单里的标的。')+'</div>'
       /* 筛选条就是这张表唯一的筛选入口：主题多选 + 一个附加条件 + 计数。 */
       +poolTopicBar(cands)
@@ -13556,16 +13591,272 @@ function consensusOf(c){
 /* ── 精选短名单（投研反馈⑤）───────────────────────────────────
  * 短名单分 = 共识度 × idea 期望值。只有打了分（ev_c>0）的候选才有资格进短名单——
  * 没被评分的候选是「还没算过」，不是「算过很差」。取前 N（5–8）。纯排序，不改数据。 */
-var SHORTLIST_N=6;
-function shortlistScoreOf(c){
-  var ev=Number(c.ev_c);if(!isFinite(ev)||ev<=0)return 0;
-  return consensusOf(c)*ev;
-}
+/* WS-B：精选只有一份，由后端算——「精选」组合的判决（没有判决的旧期按同一函数现算，
+   并注明）。这里只读 shortlist_rank，不再在浏览器里另排一份。 */
+function shortlistBlock(){return (((S||{}).weekly||{}).shortlist)||null}
+function shortlistN(){var b=shortlistBlock();return (b&&b.n)||5}
 function poolShortlistSet(cands){
-  var scored=(cands||[]).filter(function(c){return shortlistScoreOf(c)>0});
-  scored.sort(function(a,b){return shortlistScoreOf(b)-shortlistScoreOf(a)});
-  var set={};scored.slice(0,SHORTLIST_N).forEach(function(c){set[c.instrument_id]=1});
+  var set={};(cands||[]).forEach(function(c){if(c.shortlist_rank)set[c.instrument_id]=1});
   return set;
+}
+/* ══ WS-B 组合决策层：精选 · PM 把关 / 卫星仓下单单 / PM 反方筛选的价值 ══════════
+ * 三条规矩写在前面，它们决定了这张卡能做什么、不能做什么：
+ *   ① PM 只剔除、不塞名字：按钮只长在精选里已有的标的上，后端也拒绝精选之外的标的。
+ *   ② AI 不写反方：每只旁边只并列「AI 为什么选它」，反方判断只由人做。
+ *   ③ 面板每 60 秒整页重画：理由框在输入时整页让路（pmrTyping），本卡自己的
+ *      按钮在改内容前一律 pmrBlur()，免得被这道守卫吃掉。 */
+var PMR={draft:{},busy:{},err:{},saved:{},who:null,whoAsked:false};
+function pmrKey(asOf,inst){return String(asOf)+'|'+String(inst)}
+function pmrD(k){return PMR.draft[k]=PMR.draft[k]||{decision:'',cat:'',reason:'',checks:{}}}
+function pmrTyping(){
+  var t=document.activeElement;
+  if(!t||!t.getAttribute)return false;
+  var k=t.getAttribute('data-pmr');
+  if(k){pmrD(k).reason=t.value;return true}
+  return !!t.getAttribute('data-pmr-sel');
+}
+function pmrBlur(){
+  var t=document.activeElement;
+  if(t&&t.getAttribute&&(t.getAttribute('data-pmr')||t.getAttribute('data-pmr-sel'))){
+    var k=t.getAttribute('data-pmr');if(k)pmrD(k).reason=t.value;
+    t.blur();
+  }
+}
+function pmrWhoami(){
+  if(PMR.whoAsked||isSnapshot())return;
+  PMR.whoAsked=true;
+  fetch('/api/whoami',{cache:'no-store'}).then(function(r){return r.json()})
+    .then(function(b){PMR.who=b||{}}).catch(function(){PMR.who={error:true}})
+    .then(function(){if(S)renderHoldings()});
+}
+/* 能不能写：只读角色与只有共享口令（没署名）的访问都不能写；本机回环浏览器由后端认作「本机」。 */
+function pmrCanWrite(){
+  if(isSnapshot())return {ok:false,why:'静态快照不能记录决定'};
+  var w=PMR.who;
+  if(!w)return {ok:true,why:''};
+  if(w.user&&w.role&&w.role!=='admin'&&w.role!=='member')return {ok:false,why:'当前账号只读，不能记录决定'};
+  return {ok:true,why:''};
+}
+function pmrSetDecision(k,d){pmrBlur();var x=pmrD(k);x.decision=(x.decision===d?'':d);PMR.err[k]='';renderHoldings()}
+function pmrSetCat(k,v){pmrD(k).cat=v;PMR.err[k]=''}
+function pmrToggleCheck(k,lens){pmrBlur();var x=pmrD(k);x.checks[lens]=!x.checks[lens];renderHoldings()}
+function pmrSave(asOf,inst){
+  pmrBlur();
+  var k=pmrKey(asOf,inst),d=pmrD(k);
+  if(!d.decision){PMR.err[k]='先选一个决定';renderHoldings();return}
+  if(d.decision==='否决'&&!d.cat){PMR.err[k]='否决要选一个理由类别';renderHoldings();return}
+  if(d.decision==='否决'&&!String(d.reason||'').trim()){PMR.err[k]='否决要写一句理由';renderHoldings();return}
+  PMR.busy[k]=true;PMR.err[k]='';renderHoldings();
+  fetch('/api/pm_review',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({as_of:asOf,instrument_id:inst,decision:d.decision,
+      reject_category:d.decision==='否决'?d.cat:null,reason:d.reason||'',lens_checks:d.checks||{}})})
+    .then(function(r){return r.json().then(function(b){return {ok:r.ok,b:b||{}}})})
+    .then(function(res){
+      if(!res.ok){PMR.err[k]=res.b.error||'保存失败';return}
+      PMR.saved[k]=Date.now();
+      /* 先在本地并进这一条，下一次轮询带回后端的正式版本。 */
+      var blk=shortlistBlock(),rv=res.b.review;
+      if(blk&&rv){
+        blk.reviews=(blk.reviews||[]).filter(function(x){return !(x.instrument_id===rv.instrument_id&&x.reviewer===rv.reviewer)});
+        blk.reviews.push(rv);
+      }
+      TK.at=0;
+    })
+    .catch(function(e){PMR.err[k]=(e&&e.message)||String(e)})
+    .then(function(){PMR.busy[k]=false;renderHoldings()});
+}
+/* 否决理由 → 我的准则：预填进写准则的抽屉，人改成一条通用的话再提交。 */
+function pmrToRule(asOf,inst,cat,reason){
+  phBlurBox();
+  phDraftSave();          /* 桌上原来那条先落盘 */
+  PH.draftId='';PH._lastSaved=null;PH.saved='';PH._seq++;
+  PH.say='（来自 '+asOf+' 期否决 '+inst+(cat?'，'+cat:'')+'）'+String(reason||'');
+  PH.replaces='';PH.problems=null;PH.err='';
+  phDraftSave();
+  openRulesDrawer();
+}
+function pmrMethodName(m){
+  var hit=(typeof genOrder==='function'?genOrder():[]).filter(function(o){return o[0]===m})[0];
+  return hit?hit[1]:methodName(m);
+}
+function pmrPct(v){return (v==null||isNaN(v))?'—':(Math.round(Number(v)*100)+'%')}
+function pmrTop(w,n){
+  var ks=Object.keys(w||{}).sort(function(a,b){return w[b]-w[a]}).slice(0,n);
+  return ks.map(function(k){return esc(k)+' '+pmrPct(w[k])}).join(' · ');
+}
+function pmrLensRows(it,k){
+  var L=it.lens||{},d=pmrD(k),st=L.style||{},mac=L.macro,liq=L.liquidity;
+  function box(name){
+    return '<input type="checkbox" aria-label="'+esc(name+' 已复核')+'"'+(d.checks[name]?' checked':'')
+      +' onclick="pmrToggleCheck(\''+jss(k)+'\',\''+jss(name)+'\')">';
+  }
+  var sec=st.sector,cty=st.country;
+  var style=[esc(L.exposure||'—')];
+  if(sec&&sec.weights)style.push('行业 '+pmrTop(sec.weights,2)+(sec.after_period?'（取 '+esc(sec.as_of)+' 的分布）':''));
+  if(cty&&cty.weights)style.push('国家 '+pmrTop(cty.weights,2));
+  if(st.top_holdings&&st.top_holdings.length)style.push('前三大 '+st.top_holdings.map(function(h){return esc(h.label)+' '+pmrPct(h.weight)}).join('、'));
+  if(!sec&&L.kind==='listed')style.push('<span class="todo">无行业穿透数据</span>');
+  var macro=mac?(['利率（TLT）','美元（UUP）','油价（USO）'].map(function(x){
+      return x+' '+(mac[x]==null?'—':(mac[x]>0?'+':'')+Number(mac[x]).toFixed(2));
+    }).join(' · ')+' <span class="todo">（近 '+fmtInt(mac.sessions)+' 个交易日日收益相关系数）</span>')
+    :'<span class="todo">没有价格序列，待 PM 判断</span>';
+  var lq=liq?(liq.adv_value!=null?('近 '+fmtInt(liq.adv_sessions)+' 日日均成交额 '+fmtInt(Math.round(liq.adv_value/1e6))+' 百万 '+esc(L.currency||''))
+      :('最新净值 '+esc(liq.nav_d||'—')+'，距本期 '+fmtInt(liq.nav_stale_days)+' 天')):'<span class="todo">无数据，待 PM 判断</span>';
+  var lens=(shortlistBlock()||{}).lenses||['风格/行业暴露','宏观敏感度','事件风险','流动性/信用'];
+  var body=[style.join('；'),macro,'<span class="todo">战争、政策等模型抓不到的事件，待 PM 判断</span>',lq+' <span class="todo">· 信用待 PM 判断</span>'];
+  return '<div class="pmr-lens">'+lens.map(function(name,i){
+    return box(name)+'<div><b>'+['①','②','③','④'][i]+' '+esc(name)+'</b> '+body[i]+'</div>';
+  }).join('')+'</div>';
+}
+function shortlistReviewCard(){
+  var w=(S||{}).weekly||{},b=w.shortlist;
+  var head='<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">本期精选 · PM 把关</h2>';
+  if(!b){
+    return '<div class="card section" id="pmrCard">'+head+'</div><div class="empty-sm">'
+      +(w.shortlist_error?('精选没算出来：'+esc(w.shortlist_error)):'这一期没有精选（没有成功完成的周跑）')+'</div></div>';
+  }
+  var cw=pmrCanWrite(),items=b.items||[],ex=b.exposure||{};
+  var byInst={};(b.reviews||[]).forEach(function(r){(byInst[r.instrument_id]=byInst[r.instrument_id]||[]).push(r)});
+  head+='<span class="card-note">'+esc(b.as_of||w.as_of||'')+' 期 · '+fmtInt(items.length)+' 只 · '
+    +(b.source==='verdict'?'「精选」组合的判决':'无判决，按同一规则现算')
+    +glossMark('排序：可入池候选（有价、非私募、基金净值够新）按 共识度 × 期望值（为正才算）×（1 − 主题复现折扣比例），同主题至多 '+b.max_per_theme+' 只，取前 '+b.n+'。'
+      +'PM 只对这几只做决定——采纳、否决或观望——不往名单里加名字。'
+      +'左栏是 AI 选它的理由原话；反方判断只由人写，系统不替人生成反方结论。')
+    +'</span></div>';
+  /* 集中度：主题计数 + 穿透行业分布（超上限标黄，提示不强制）。 */
+  var sh=ex.sector_shares||{},over={};(ex.sector_over_cap||[]).forEach(function(x){over[x]=1});
+  var secTxt=Object.keys(sh).length?Object.keys(sh).slice(0,5).map(function(k){
+      var t=esc(k)+' '+pmrPct(sh[k]);return over[k]?'<span class="pmr-warn" title="超过 '+pmrPct(ex.sector_cap)+' 的行业集中度提示线">'+t+'</span>':t;
+    }).join(' · ')+'（行业分布覆盖 '+fmtInt(ex.covered)+' / '+fmtInt(ex.of)+' 只，等权）'
+    :'无行业穿透数据（精选里没有缓存了行业分布的 ETF）';
+  var th=ex.theme_counts||{};
+  var conc='<div class="pmr-meta" style="margin:var(--space-2) 0 var(--space-3)">主题 '
+    +Object.keys(th).map(function(t){return esc(topicName(t))+' '+th[t]}).join(' · ')
+    +'（同主题上限 '+fmtInt(b.max_per_theme)+'）　行业 '+secTxt+'</div>';
+  if(!items.length){
+    return '<div class="card section" id="pmrCard">'+head+conc+'<div class="empty-sm">本期没有期望值为正的可入池候选，精选为空（空仓等于持有现金）</div></div>';
+  }
+  var cats=b.reject_categories||[],decs=b.decisions||['采纳','否决','观望'];
+  var rows=items.map(function(it){
+    var inst=it.instrument_id,asOf=b.as_of,k=pmrKey(asOf,inst),d=pmrD(k),mine=byInst[inst]||[];
+    var left='<div><div class="pmr-h"><span class="pmr-rank">#'+it.rank+'</span><span class="pmr-code">'+esc(inst)+'</span>'
+      +'<span class="pmr-name">'+esc(it.instrument_name||'')+'</span></div>'
+      +'<div class="pmr-meta">'+(it.topics||[]).map(function(t){return esc(topicName(t))}).join(' / ')+'</div>'
+      +'<div class="pmr-k">AI 为什么选它</div><div class="pmr-ai">'+(it.ai_reason?esc(it.ai_reason):'<span class="quiet">理由不可见</span>')+'</div>'
+      +'<div class="pmr-meta">生成方式 '+((it.methods||[]).map(pmrMethodName).join('、')||'—')
+      +' · 期望值 '+fmtPct(it.ev_c)+' · 评级 '+esc(it.grade||'—')
+      +' · 共识度 '+fmtInt(it.n_methods)+(it.recur_frac?(' · 复现折扣 '+pmrPct(it.recur_frac)):'')+'</div></div>';
+    var mid='<div><div class="pmr-k" style="margin-top:0">四层风险复核清单（勾选 = 已看过）</div>'+pmrLensRows(it,k)+'</div>';
+    var right='<div>';
+    if(cw.ok){
+      right+='<div class="pmr-btns">'+decs.map(function(x){
+        return '<button type="button" class="pmr-btn'+(d.decision===x?(' on'+(x==='否决'?' rej':'')):'')+'" onclick="pmrSetDecision(\''+jss(k)+'\',\''+jss(x)+'\')">'+esc(x)+'</button>';
+      }).join('')+'</div>';
+      if(d.decision==='否决'){
+        right+='<select class="pmr-in" data-pmr-sel="1" onchange="pmrSetCat(\''+jss(k)+'\',this.value)"><option value="">理由类别…</option>'
+          +cats.map(function(c){return '<option'+(d.cat===c?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select>';
+      }
+      right+='<input class="pmr-in" data-pmr="'+esc(k)+'" maxlength="280" placeholder="一句话理由'+(d.decision==='否决'?'（必填）':'（可选）')+'" value="'+esc(d.reason||'')+'" oninput="pmrD(\''+jss(k)+'\').reason=this.value">'
+        +'<div style="margin-top:6px"><button type="button" class="exp-btn" '+(PMR.busy[k]?'disabled':'')+' onclick="pmrSave(\''+jss(asOf)+'\',\''+jss(inst)+'\')">'+(PMR.busy[k]?'保存中…':'记录决定')+'</button>'
+        +(PMR.saved[k]?' <span class="pmr-meta">已记录</span>':'')+'</div>'
+        +(PMR.err[k]?'<div class="pmr-err">'+esc(PMR.err[k])+'</div>':'');
+    }else{
+      right+='<div class="pmr-meta">'+esc(cw.why)+'</div>';
+    }
+    right+=mine.length?('<div class="pmr-log">'+mine.map(function(r){
+        return esc(r.reviewer)+'：<b>'+esc(r.decision)+'</b>'+(r.reject_category?(' · '+esc(r.reject_category)):'')
+          +(r.reason?(' · '+esc(r.reason)):'')+' <span class="quiet">'+esc(String(r.updated_at||'').slice(0,16).replace('T',' '))+'</span>'
+          +((r.decision==='否决'&&r.reason&&cw.ok)?(' <button type="button" class="exp-btn" onclick="pmrToRule(\''+jss(asOf)+'\',\''+jss(inst)+'\',\''+jss(r.reject_category||'')+'\',\''+jss(r.reason)+'\')" title="把这条否决理由预填进「我的准则」，改成一条通用的话再提交">写成准则 ›</button>'):'');
+      }).join('<br>')+'</div>'):'<div class="pmr-log quiet">尚无人决定</div>';
+    right+='</div>';
+    return '<div class="pmr-row">'+left+mid+right+'</div>';
+  }).join('');
+  return '<div class="card section" id="pmrCard">'+head+conc+'<div class="pmr-list">'+rows+'</div></div>';
+}
+/* 卫星仓下单单：后端 /api/ticket 算（等权、否决的行权重为 0、股数向下取整、
+   币种不一致不估股数），这里只画表和给一个 CSV 下载入口。 */
+var TK={as_of:null,data:null,err:null,at:0,busy:false};
+function ticketFetch(asOf){
+  if(isSnapshot()||TK.busy)return;
+  if(TK.as_of===asOf&&TK.at&&(Date.now()-TK.at)<60000)return;
+  TK.busy=true;TK.as_of=asOf;
+  fetch('/api/ticket?as_of='+encodeURIComponent(asOf||''),{cache:'no-store'})
+    .then(function(r){return r.json()})
+    .then(function(b){TK.data=b;TK.err=b&&b.error?b.error:null})
+    .catch(function(e){TK.data=null;TK.err=(e&&e.message)||String(e)})
+    .then(function(){TK.busy=false;TK.at=Date.now();if(S)renderHoldings()});
+}
+function ticketCard(){
+  var w=(S||{}).weekly||{},b=w.shortlist||{},tk=b.ticket||{};
+  var head='<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">卫星仓下单单</h2>'
+    +'<span class="card-note">卫星仓 '+pmrPct(tk.sleeve_pct)+' × 模型组合 '+fmtInt(tk.notional)+' '+esc(tk.currency||'')+' · 等权 · 每批至多 '+fmtInt(tk.batch_max)+' 行'
+    +glossMark('名单就是本期精选。PM 否决的行留在单上、权重记 0，其余等权分卫星仓；观望与未决定的行照常计权重，看「PM 决定」一列区分。股数 = 金额 ÷ 最新收盘价（基金为最新净值）向下取整；价格币种与组合币种不一致时不估股数。')
+    +'</span></div>';
+  if(isSnapshot())return '<div class="card section" id="ticketCard">'+head+'<div class="empty-sm">静态快照不带下单单</div></div>';
+  if(!w.as_of)return '<div class="card section" id="ticketCard">'+head+'<div class="empty-sm">这一期没有周跑</div></div>';
+  ticketFetch(w.as_of);
+  var t=(TK.as_of===w.as_of)?TK.data:null;
+  if(!t){
+    return '<div class="card section" id="ticketCard">'+head+'<div class="empty-sm">'+(TK.err?('下单单取不到：'+esc(TK.err)):'载入中…')+'</div></div>';
+  }
+  var rows=(t.rows||[]);
+  var tbl=rows.length?('<div class="table-wrap"><table class="data-table dense"><thead><tr>'
+    +'<th>代码</th><th>名称</th><th>市场</th><th>品类</th><th class="r">组合内权重</th><th class="r">占总组合</th><th class="r">金额</th><th class="r">最新价</th><th class="r">价格日期</th><th class="r">估算股数</th><th>PM 决定</th></tr></thead><tbody>'
+    +rows.map(function(r){
+      return '<tr'+(r.pm_decision==='否决'?' style="opacity:.55"':'')+'><td class="primary mono">'+esc(r.code)+'</td><td>'+esc(r.name||'')+'</td><td>'+esc(r.market||'—')+'</td><td>'+esc(r.category||'—')+'</td>'
+        +'<td class="r num">'+pmrPct(r.weight_in_sleeve)+'</td><td class="r num">'+(r.weight_total==null?'—':(Number(r.weight_total)*100).toFixed(2)+'%')+'</td>'
+        +'<td class="r num">'+fmtMoney(r.amount)+'</td><td class="r num">'+(r.last_px==null?'—':fmtMoney(r.last_px))+'</td>'
+        +'<td class="r num">'+esc(r.last_px_d||'—')+'</td>'
+        +'<td class="r num">'+(r.est_shares==null?('<span class="quiet" title="'+esc(r.shares_note||'')+'">—</span>'):fmtInt(r.est_shares))+'</td>'
+        +'<td>'+esc(r.pm_decision||'未决定')+(r.pm_reviewer?(' <span class="quiet">'+esc(r.pm_reviewer)+'</span>'):'')+'</td></tr>';
+    }).join('')+'</tbody></table></div>')
+    :'<div class="empty-sm">本期精选为空，没有要下的单</div>';
+  return '<div class="card section" id="ticketCard">'+head+tbl
+    +'<div class="card-note" style="margin-top:var(--space-2)"><a href="/api/ticket.csv?as_of='+encodeURIComponent(w.as_of)+'" download>下载 CSV ›</a>'
+    +(t.truncated?(' · 另有 '+fmtInt(t.truncated)+' 只超出单批上限，未列入'):'')+'</div></div>';
+}
+/* 证据页「PM 反方筛选的价值」：到期后按 采纳 / 否决 / 观望 分组的命中率与平均收益。
+   采纳减否决的平均收益差为正，才说明人剔掉的确实更差；两组任一不足门槛一律「样本不足」。 */
+var PMO={data:null,err:null,at:0,busy:false};
+function pmoFetch(){
+  if(isSnapshot()||PMO.busy)return;
+  if(PMO.at&&(Date.now()-PMO.at)<60000)return;
+  PMO.busy=true;
+  fetch('/api/pm_reviews/outcomes',{cache:'no-store'}).then(function(r){return r.json()})
+    .then(function(b){PMO.data=b;PMO.err=b&&b.error?b.error:null})
+    .catch(function(e){PMO.err=(e&&e.message)||String(e)})
+    .then(function(){PMO.busy=false;PMO.at=Date.now();if(S){renderEvidence();renderDrawers()}});
+}
+function clPm(){
+  var base={key:'pm',claim:'PM 反方筛选的价值',src:'paper'};
+  if(isSnapshot())return evExt(base,{state:'na',chart:'',note:'数据缺失：静态快照不带 PM 决定记录',tip:''});
+  pmoFetch();
+  var o=PMO.data;
+  if(!o)return evExt(base,{state:PMO.err?'na':'loading',chart:'',note:PMO.err?('数据缺失：'+esc(PMO.err)):'载入中…',tip:''});
+  var g={};(o.groups||[]).forEach(function(x){g[x.decision]=x});
+  var st=o.state==='helps'?'held':(o.state==='no_help'?'no':'open');
+  var note=['采纳','否决','观望'].map(function(k){var x=g[k]||{};
+      return k+' '+fmtInt(x.n)+' 只到期'+(x.pending?('（'+fmtInt(x.pending)+' 只未到期）'):'');
+    }).join(' · ')
+    +(o.state==='insufficient'?' · <b>样本不足</b>（每组至少 '+fmtInt(o.min_n)+' 只到期才判定）':(' · 采纳减否决 '+fmtGapPp(o.adopt_minus_reject_pp,{signed:true})));
+  return evExt(base,{state:st,chart:'',note:note,
+    tip:'PM 对精选逐只做采纳 / 否决 / 观望。到期（本期收盘后 30 天）后按「这一期这一只最后一次的决定」分组，算从本期收盘到到期收盘的收益。否决组若平均跑输采纳组，说明人剔掉的确实更差。'});
+}
+function evdPm(c){
+  var o=PMO.data||{},gs=o.groups||[];
+  var rows=gs.map(function(x){
+    return [x.decision,fmtInt(x.n)+' 只到期 · '+fmtInt(x.pending)+' 只未到期'
+      +(x.n?(' · 命中率 '+pmrPct(x.hit_rate)+' · 平均收益 '+fmtPct(x.mean_ret_pct)):'')
+      +(x.enough?'':' · 样本不足')];
+  });
+  rows.push(['采纳减否决',o.adopt_minus_reject_pp==null?'—（两组都要有到期样本）':fmtGapPp(o.adopt_minus_reject_pp,{signed:true})]);
+  rows.push(['决定记录',fmtInt(o.n_reviews)+' 条 · 覆盖 '+fmtInt(o.n_names)+' 个（期 × 标的）']);
+  var det=(o.detail||[]).slice(-30).reverse();
+  var tbl=det.length?('<div class="table-wrap"><table class="data-table dense"><thead><tr><th>期</th><th>标的</th><th>决定</th><th>类别</th><th>决定人</th><th class="r">到期收益</th></tr></thead><tbody>'
+    +det.map(function(r){return '<tr><td class="num">'+esc(r.as_of)+'</td><td class="mono">'+esc(r.instrument_id)+'</td><td>'+esc(r.decision)+'</td><td>'+esc(r.reject_category||'—')+'</td><td>'+esc(r.reviewer||'')+'</td><td class="r num">'+(r.ret_pct==null?'未到期':fmtPct(r.ret_pct))+'</td></tr>'}).join('')
+    +'</tbody></table></div>'):'<div class="cl-note">还没有任何决定记录</div>';
+  return {method:'对象是 PM 对每期精选的逐只决定（持仓页「本期精选 · PM 把关」记录）。同一期同一只若有多人决定，取最后一次更新的那条作为这一只的决定，避免同一只的收益被重复计数。收益 = 本期收盘（基金为净值）到本期后第 30 天的收盘，价格没走到那一天就记未到期，不补零。每组到期样本少于 '+fmtInt(o.min_n)+' 只时不判定。',
+    sample:rows,chart:tbl,old:'',retract:[]};
 }
 /* ── 主题时点体检（投研反馈⑥）：P 已定价 → 领先/滞后 ──────────────
  * P 高＝这波涨幅已经进价、我们抓晚了（偏滞后）；P 低＝定价不足、还早（偏领先）。
@@ -13649,7 +13940,7 @@ function renderCandBody(){
   });
   if(!arr.length){
     $('candBody').innerHTML='<tr><td colspan="14"><div class="empty-sm" style="border:none">'
-      +(poolShortlist?'精选名单为空——本期还没有打分的候选（ev_c）':'没有匹配的条目——试试清除筛选')+'</div></td></tr>';
+      +(poolShortlist?'精选名单为空——本期没有期望值为正的可入池候选':'没有匹配的条目——试试清除筛选')+'</div></td></tr>';
     return;
   }
   $('candBody').innerHTML=arr.map(function(c,i){
@@ -13670,17 +13961,21 @@ function renderCandBody(){
       :'';
     /* 私募剔除（投研反馈①）：私募/主动管理载体不进选取，灰标 + 压暗整行。
        现有数据 0 私募，平时不出现；有则显示对。 */
+    /* 公募收紧（WS-B）：净值不够新、挂单填不上，不进筛选C。 */
+    var staleNav=(c.stale_nav_excluded===true&&c.markable!==false)
+      ?' <span class="tag" style="font-size:10px" title="最新净值 '+esc(c.nav_d||'—')+'，距本期 '+fmtInt(c.nav_stale_days)+' 天，超过 '+fmtInt((shortlistBlock()||{}).fund_nav_fresh_days)+' 天的新鲜度门槛：挂单大概率填不上，不进筛选C。">净值过旧</span>'
+      :'';
     var priv=(c.private_excluded===true)
       ?' <span class="tag" style="font-size:10px;background:var(--color-feedback-neutral-subtle);color:var(--color-text-tertiary)" title="私募/主动管理载体：方向中性的主题要的是固定透明的敞口，私募是经理人的观点、会漂移风格且净值晚报，因此不进筛选C。">私募·未进选取</span>'
       :'';
     /* 精选短名单（投研反馈⑤）：★ 标记 + 淡底高亮，即使在全表里也一眼看到
        决策该看的这几只。 */
     var isShort=!!shortSet[c.instrument_id];
-    var star=isShort?'<span title="精选：共识度 × 期望值居前，决策时看的短名单" style="color:var(--color-text-brand);margin-right:3px">★</span>':'';
+    var star=isShort?'<span title="精选第 '+c.shortlist_rank+' 名：决策时看的短名单，也是「精选」组合的持仓" style="color:var(--color-text-brand);margin-right:3px">★</span>':'';
     var rowStyle=(c.private_excluded===true)?' style="opacity:.5"'
       :(isShort?' style="background:var(--color-surface-brand-subtle)"':'');
     return '<tr'+rowStyle+'>'
-      +'<td class="primary mono">'+star+esc(c.instrument_id)+unmark+priv+'</td>'
+      +'<td class="primary mono">'+star+esc(c.instrument_id)+unmark+staleNav+priv+'</td>'
       /* 全名任其换行时，「Invesco S&P 500 Low Volatility」会把那一行撑到三行高，
        * 73 行的表因此忽高忽低、还比可视区宽出 90px。名称是辅助信息：一行放不下
        * 就省略，全名挂 title。行高齐了，表也收得进画面。 */

@@ -25,7 +25,7 @@ import json
 from datetime import date
 from typing import Any
 
-from . import db, orchestrator as orch, platform as plat, schema
+from . import db, decision, orchestrator as orch, platform as plat, schema
 from . import strategy as strat
 
 
@@ -63,10 +63,15 @@ def reselect(p: plat.Platform, *, arms: list[str], start: str | None = None,
         # Same pool the live orchestrator hands stage C: markable AND not a
         # private / actively-managed fund (see orchestrator's sel_pool). Without
         # this line a replay would still rank private funds the live run drops.
-        pool = [c for c in cands
-                if str(c.get("id")) in markable_ids and not orch._is_private_vehicle(c)]
-        n_private = sum(1 for c in cands
-                        if str(c.get("id")) in markable_ids and orch._is_private_vehicle(c))
+        # WS-B: the same NAV-freshness gate and shortlist inputs the live run stamps.
+        for c in cands:
+            c["markable"] = str(c.get("id")) in markable_ids
+            c["private_excluded"] = orch._is_private_vehicle(c)
+        nav_gate = decision.annotate_pool(p, as_of, cands)
+        pool = [c for c in cands if c["markable"] and decision.in_selection_pool(c)]
+        n_private = sum(1 for c in cands if c["markable"] and c["private_excluded"])
+        n_stale = sum(1 for c in cands if c["markable"] and not c["private_excluded"]
+                      and c.get("stale_nav_excluded"))
         prices, psumm = orch._price_inputs(p, as_of, None, False)
         extra, csumm = orch._candidate_prices(p, as_of, pool, prices, False)
         prices = {**prices, **extra}
@@ -76,6 +81,7 @@ def reselect(p: plat.Platform, *, arms: list[str], start: str | None = None,
                                infer=getattr(p, "inference", None))
         rec: dict[str, Any] = {"pool": len(cands), "markable": len(pool),
                                "unmarkable": len(unmark), "private_excluded": n_private,
+                               "stale_nav_excluded": n_stale, "nav_gate": nav_gate,
                                "prices": psumm.get("measured"),
                                "candidate_prices": csumm.get("measured"), "arms": {}}
         log(f"{r['as_of']} run {rid}: 池 {len(cands)} · 可盯市 {len(pool)} · "

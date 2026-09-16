@@ -743,6 +743,20 @@ def weekly_block(p, con, as_of: str | None = None) -> dict[str, Any]:
                 **(idea_scores.get(
                     str(c.get("instrument_id") or "").split(".")[-1].upper()) or {}),
             } for c in cands]}
+        # WS-B: the period's shortlist (single source: the `shortlist` verdict),
+        # its PM review state, and each pool row's shortlist rank / NAV flag.
+        try:
+            from . import decision as _dec
+            weekly["shortlist"] = _dec.panel_block(p, con, rid, weekly["as_of"], cands,
+                                                   hide_licensed)
+            for row, f in zip(weekly["pool"]["candidates"],
+                              weekly["shortlist"].pop("pool_flags")):
+                row.update(f)
+            weekly["pool"]["n_stale_nav"] = sum(
+                1 for row in weekly["pool"]["candidates"]
+                if row.get("stale_nav_excluded") and row.get("markable"))
+        except Exception as e:  # noqa: BLE001 — the pool must still render without it
+            weekly["shortlist_error"] = f"{type(e).__name__}: {e}"[:200]
         for c in cands:
             k = str(len(c.get("proposed_by") or []) or 1)
             weekly["pool"]["convergence"][k] = \

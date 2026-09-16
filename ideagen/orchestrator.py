@@ -518,13 +518,21 @@ def weekly(
                     # fixed exposure to the theme, so they are filtered from the
                     # pool the selectors compete over even when a NAV exists.
                     c["private_excluded"] = _is_private_vehicle(c)
+                # WS-B: fund NAV must be fresh enough to fill, and the shortlist's
+                # inputs are stamped here so every selector and the stored pool see them.
+                from . import decision as _dec
+                nav_gate = _dec.annotate_pool(p, as_of, candidates, dry_run)
                 sel_pool = [c for c in candidates
-                            if c["markable"] and not c["private_excluded"]]
+                            if c["markable"] and _dec.in_selection_pool(c)]
                 n_private = sum(1 for c in candidates
                                 if c["markable"] and c["private_excluded"])
                 j.step("selectors:markable", pool=len(candidates),
                        markable=len(sel_pool), unmarkable=len(unmark),
-                       private_excluded=n_private, unmarkable_ids=unmark[:80])
+                       private_excluded=n_private, unmarkable_ids=unmark[:80],
+                       stale_nav_excluded=sum(
+                           1 for c in candidates if c["markable"]
+                           and not c["private_excluded"] and c.get("stale_nav_excluded")),
+                       fund_nav_fresh_days=config.FUND_NAV_FRESH_DAYS, nav_gate=nav_gate)
                 if unmark or n_private:
                     log(f"  可盯市  {len(sel_pool)}/{len(candidates)} 只候选进筛选C，"
                         f"其余 {len(unmark)} 只无价/无净值"

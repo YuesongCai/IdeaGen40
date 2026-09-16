@@ -433,14 +433,38 @@ def content_fingerprint() -> str:
                  # carried the re-run periods, and nothing above moved, so the
                  # display node kept showing the study as the newest backtest.
                  one("select max(ended_at) from backtest_runs"),
-                 one("select count(*) from backtest_runs")]
+                 one("select count(*) from backtest_runs"),
+                 # WS-B: a pulled-back PM decision is something to republish.
+                 one("select max(updated_at) from pm_reviews")]
     finally:
         con.close()
     return "|".join("" if p is None else str(p) for p in parts)
 
 
+def pull_pm_reviews(dry_run: bool) -> dict:
+    """WS-B: bring decisions made on the display node back before publishing.
+
+    The node's database is overwritten by every snapshot, so a review that was
+    not pulled first would be erased by the very publish this leg performs —
+    the node replays its own journal afterwards, but the laptop, where the data
+    is authoritative, would never have seen it. A failed pull is reported and
+    does not block the publish: the node keeps the journal, the next tick retries.
+    """
+    if dry_run:
+        return {"action": "skipped", "detail": "dry-run"}
+    try:
+        r = subprocess.run([sys.executable, "-m", "ideagen.cli", "decision", "pull-reviews"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return {"action": "pull-failed", "detail": (r.stderr or r.stdout).strip()[-300:]}
+        return {"action": "pulled", "detail": r.stdout.strip()[-300:]}
+    except Exception as e:  # noqa: BLE001 — reported, never raised past here
+        return {"action": "pull-failed", "detail": f"{type(e).__name__}: {e}"[:300]}
+
+
 def data_leg(st: dict, dry_run: bool, force: bool) -> dict:
     out: dict = {"leg": "data", "at": now()}
+    out["pm_reviews"] = pull_pm_reviews(dry_run)
     fp = content_fingerprint()
     out["fingerprint"] = fp
     if not force and st.get("data_fingerprint") == fp:

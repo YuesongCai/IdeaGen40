@@ -442,6 +442,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             obj, status = philosophy_web.handle_output(
                 {"id": (q.get("id") or [""])[0]})
             return self._json(obj, status=status)
+        if path in ("/api/ticket.csv", "/api/ticket", "/api/pm_reviews",
+                    "/api/pm_reviews/export", "/api/pm_reviews/outcomes"):
+            return self._decision_get(path)   # WS-B
         if path == "/api/state":
             return self._json(_state_document())
         if path == "/api/period":
@@ -566,6 +569,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                   status=400)
             obj, status = ask.handle_ask(payload)
             return self._json(obj, status=status)
+        if path == "/api/pm_review":
+            return self._decision_post(length)   # WS-B
         if path.startswith("/api/philosophy/"):
             # Propose / activate / discard / retire. Distillation is a model
             # call, so this shares the ask path's larger bounded read rather
@@ -607,6 +612,63 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 }, status=502)
             return self._redirect("/olive?sync=" + ("started" if started else "running"))
         return self._json({"error": "not found"}, status=404)
+
+    # ------------------------------------------------------------ WS-B
+    def _reviewer(self) -> tuple[str | None, str | None]:
+        """Who is deciding, and with what role.
+
+        A named session is required from anywhere but this machine: a decision
+        carries a signature, and the shared key says only that the caller holds
+        the key. The laptop's own loopback browser (no forwarding headers — the
+        same test `_authorized` uses) is the operator and signs as 本机.
+        """
+        who = self._session_user()
+        if who:
+            return who, self._acct().role(who)
+        forwarded = bool(self.headers.get("CF-Connecting-IP")
+                         or self.headers.get("X-Forwarded-For"))
+        if self.client_address[0] in ("127.0.0.1", "::1") and not forwarded:
+            return "本机", "admin"
+        return None, None
+
+    def _decision_get(self, path: str):
+        from urllib.parse import parse_qs, urlparse
+        from . import decision, platform as _plat
+        q = parse_qs(urlparse(self.path).query)
+        as_of = (q.get("as_of") or [None])[0] or None
+        con = db.init()
+        if path == "/api/pm_reviews/export":
+            # Read-only, whole table: the laptop's `pm-reviews-pull` merges it.
+            rows = decision.reviews(con)
+            return self._json({"reviews": rows, "n": len(rows),
+                               "exported_at": config.now_hkt().isoformat()})
+        if path == "/api/pm_reviews":
+            return self._json({"as_of": as_of, "reviews": decision.reviews(con, as_of)})
+        if path == "/api/pm_reviews/outcomes":
+            return self._json(decision.review_outcomes(con))
+        t = decision.ticket(_plat.load(), con, as_of)
+        if path == "/api/ticket":
+            return self._json(t, status=200 if t.get("rows") is not None else 404)
+        self._set_download = f"卫星仓下单单-{t.get('as_of') or 'latest'}.csv"
+        return self._raw(decision.ticket_csv(t).encode("utf-8"),
+                         "text/csv; charset=utf-8")
+
+    def _decision_post(self, length: int):
+        from . import decision, platform as _plat
+        try:
+            payload = json.loads(self.rfile.read(min(length, 8192)) or b"{}")
+            assert isinstance(payload, dict)
+        except Exception:  # noqa: BLE001
+            return self._json({"error": "请求体不是合法的 JSON 对象"}, status=400)
+        who, role = self._reviewer()
+        # Signature and role first: a refused caller never opens the database.
+        obj, status = decision.validate_review(payload, reviewer=who, role=role)
+        if status == 200:
+            obj, status = decision.submit_review(_plat.load(), db.init(), payload,
+                                                 reviewer=who, role=role)
+        if status == 200:
+            _state_cache["at"] = 0.0    # the next poll must show the decision
+        return self._json(obj, status=status)
 
     def _auth_post(self, path: str, length: int):
         """Login, logout, and the account form. All of it posts back here."""

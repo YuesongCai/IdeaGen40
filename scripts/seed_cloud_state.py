@@ -61,6 +61,9 @@ TABLES: tuple[str, ...] = (
     "backtest_positions",
     "instruments",
     "prices",
+    # WS-B: PM decisions. Written on the display node, pulled back to the laptop
+    # (`ideagen decision pull-reviews`), and carried out again from here.
+    "pm_reviews",
 )
 
 

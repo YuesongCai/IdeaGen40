@@ -22,6 +22,19 @@ class OpenDUnavailable(RuntimeError):
 
 @contextmanager
 def quote_ctx() -> Iterator["object"]:
+    # Probe the port BEFORE touching the SDK. `OpenQuoteContext(...)` does not
+    # raise against a closed port: it retries every six seconds, forever. The
+    # daily runner's `doctor` came through here on 2026-09-16 with OpenD down and
+    # sat for 17 hours at retry #6031 — launchd will not start another instance
+    # of a label that is still running, so that one hang also swallowed the next
+    # day's run. A socket with a timeout we own turns "down" into a fast raise.
+    import socket
+    try:
+        with socket.create_connection((config.FUTU_HOST, config.FUTU_PORT), timeout=1.5):
+            pass
+    except OSError as e:
+        raise OpenDUnavailable(
+            f"Futu OpenD not listening on {config.FUTU_HOST}:{config.FUTU_PORT} ({e})") from e
     try:
         from futu import OpenQuoteContext
     except ImportError as e:  # pragma: no cover

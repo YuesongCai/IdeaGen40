@@ -73,7 +73,14 @@ def cmd_doctor(args) -> int:
           f"{h.get('probe', '')} {h.get('last', '')} {h.get('error', '')}")
     print(f"                last closed session US={futu_px.complete_through('US')} "
           f"HK={futu_px.complete_through('HK')}")
-    ok &= h["ok"]
+    # OpenD down is no longer fatal when FMP can supply the bars: the daily's
+    # prices stage goes through `price_source`, which falls back to FMP EOD on
+    # its own. Only when neither source exists is the run genuinely unable to mark.
+    from .sources import fmp as _fmp
+    if not h["ok"] and _fmp.configured():
+        print("  price source  FMP EOD（OpenD 不可用，自动降级；盯市照常）")
+    else:
+        ok &= h["ok"]
 
     try:
         w = wisburg.Wisburg()
@@ -97,7 +104,7 @@ def cmd_doctor(args) -> int:
           f"({len([i for i in universe.ALL if i.kind == 'listed'])} listed)")
     print(f"  themes        {len(lexicon.THEMES)} in dictionary v{lexicon.LEXICON_VERSION}")
     print(f"  books         {', '.join(config.BOOKS)}")
-    print(f"\n  {'READY' if ok else 'NOT READY — OpenD 不可用，行情与盯市无法进行'}")
+    print(f"\n  {'READY' if ok else 'NOT READY — OpenD 与 FMP 都不可用，行情与盯市无法进行'}")
     return 0 if ok else 1
 
 

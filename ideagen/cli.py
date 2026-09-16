@@ -1800,6 +1800,17 @@ def main(argv: list[str] | None = None) -> int:
     s = add("status", cmd_status, "compact digest as JSON")
     s.add_argument("--on")
 
+    # WS-A: 筛选A 体检与主题谱系。命令实现在各自模块里，这里只注册。
+    from . import theme_audit as _ta, theme_lineage as _tl
+    s = add("theme-audit", _ta.cmd_theme_audit,
+            "theme timing / vol-expansion validation / cutoff audit → kv")
+    s.add_argument("--no-store", action="store_true", help="compute and print only")
+    s.add_argument("--json", action="store_true", help="also dump the case-study weeks")
+    s = add("theme-lineage", _tl.cmd_theme_lineage,
+            "scan for renamed duplicate themes; apply appends to themes/lineage.jsonl")
+    s.add_argument("action", choices=("scan", "apply"))
+    s.add_argument("--dry-run", action="store_true")
+
     args = p.parse_args(argv)
     return args.fn(args)
 

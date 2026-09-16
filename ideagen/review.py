@@ -1260,6 +1260,12 @@ def state(con=None, p=None) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001 — a new block must not take the page down
         out["macro"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
 
+    # WS-A: 筛选A 体检（时点 / 放波动 / 截断 / 谱系），读 kv，不现算。
+    try:
+        out["theme_audit"] = theme_audit_block(con)
+    except Exception as e:  # noqa: BLE001 — a new block must not take the page down
+        out["theme_audit"] = {"available": False, "why": f"{type(e).__name__}: {e}"}
+
     # -- which periods have a browsable corpus ----------------------------
     # feed_runs only records a *fetch*. A week that reused an already-ingested
     # corpus (2026-08-26) registers no corpus row at all, yet its documents are
@@ -1582,3 +1588,89 @@ def proposals_for(instrument: str, run_id: str | None = None,
             # proposals means one thing with this absent and another with it
             # here, and the page has to be able to tell them apart.
             **({"unread": unread} if unread else {})}
+
+
+# ---------------------------------------------------------------- WS-A
+def theme_audit_block(con) -> dict[str, Any]:
+    """筛选A 体检的面板视图：时点、放波动验证、截断审计、谱系（yifu 2026-09-11）。
+
+    只读 `ideagen theme-audit` / `theme-lineage scan` 存进 kv 的结果，不在这里现算：
+    全库研报×主题的匹配要几秒，而状态文档每分钟被每个打开的页面轮询一次。没跑过
+    就明说没跑过——空对象在面板上和「体检过、什么都没发现」长得一样。
+
+    契约（dash.html 的 wsa* 函数只认这些字段）：
+      available, badge_min, computed_at
+      themes: {theme_id: {first_mention_d, first_mention_title, truncated_by_corpus,
+               first_surge_period, pre_selection_peak, first_strong_d, first_counting_d,
+               first_selected, selected_periods, lag_days, pre, pre_ret_2n, verdict,
+               indicator, b_latest: {as_of, b}, family: [ids], lineage: [pair...]}}
+      vol: vol_validation 去掉 rows 的全部字段；why 在缺数据时出现
+      cutoff: cutoff_audit，每期 samples 截到 5 篇；why 在缺数据时出现
+      lineage: {computed_at, thresholds, families, auto, suspect, nested}；why 同上
+    """
+    from . import theme_audit as _ta, theme_lineage as _tl
+    out: dict[str, Any] = {"badge_min": config.THEME_DISAGREE_BADGE_MIN}
+    timing = db.kv_get(con, _ta.KV_TIMING)
+    vol = db.kv_get(con, _ta.KV_VOL)
+    cut = db.kv_get(con, _ta.KV_CUTOFF)
+    lin = db.kv_get(con, _tl.KV_SCAN)
+    never = "缺数据：本机尚未运行 `ideagen theme-audit`"
+    out["available"] = bool(timing or vol or cut)
+    out["computed_at"] = (timing or vol or cut or {}).get("computed_at")
+
+    latest_b: dict[str, dict] = {}
+    try:
+        row = db.q1(con, "SELECT MAX(as_of) d FROM themes")
+        if row and row["d"]:
+            latest_b = {r["theme_id"]: {"as_of": row["d"], "b": r["b"]} for r in db.q(
+                con, "SELECT theme_id, b FROM themes WHERE as_of=?", (row["d"],))}
+    except Exception:  # noqa: BLE001 — a badge input must not take the block down
+        pass
+
+    pairs_by: dict[str, list[dict]] = {}
+    for kind in ("auto", "suspect", "nested"):
+        for pr in (lin or {}).get(kind) or []:
+            for me, other in ((pr["a"], pr["b"]), (pr["b"], pr["a"])):
+                pairs_by.setdefault(me, []).append({
+                    "other": other, "decision": pr["decision"], "why": pr["why"],
+                    "score": pr["score"], "ev_overlap": pr.get("ev_overlap"),
+                    "counter": pr.get("counter") or [], "recorded": pr.get("recorded")})
+
+    themes: dict[str, Any] = {}
+    for rec in (timing or {}).get("themes") or []:
+        tid = rec["theme_id"]
+        fm = rec.get("first_mention") or {}
+        try:
+            fam = sorted(_tl.family_ids(tid))
+        except Exception as e:  # noqa: BLE001 — a bad lineage line is reported, not hidden
+            fam, out["lineage_error"] = [tid], f"{type(e).__name__}: {e}"
+        themes[tid] = {
+            **{k: rec.get(k) for k in (
+                "label", "indicator", "truncated_by_corpus", "first_surge_period",
+                "pre_selection_peak", "first_strong_d", "first_counting_d",
+                "first_selected", "selected_periods", "lag_days", "pre", "pre_ret_2n",
+                "verdict")},
+            "first_mention_d": fm.get("published_d"),
+            "first_mention_title": fm.get("title"),
+            "b_latest": latest_b.get(tid),
+            "family": fam,
+            "lineage": pairs_by.get(tid, []),
+        }
+    out["themes"] = themes
+    if not timing:
+        out["timing_why"] = never
+    out["corpus_start"] = (timing or {}).get("corpus_start")
+    out["case"] = {k: v for k, v in ((timing or {}).get("case") or {}).items()
+                   if k != "prices"} or None
+
+    if vol:
+        out["vol"] = {k: v for k, v in vol.items() if k != "rows"}
+    else:
+        out["vol"] = {"why": never}
+    if cut:
+        out["cutoff"] = {**cut, "runs": [{**r, "samples": (r.get("samples") or [])[:5]}
+                                         for r in cut.get("runs") or []]}
+    else:
+        out["cutoff"] = {"why": never}
+    out["lineage"] = lin or {"why": "缺数据：本机尚未运行 `ideagen theme-lineage scan`"}
+    return out

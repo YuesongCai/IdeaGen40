@@ -457,3 +457,26 @@ class RunContext:
 
 def iso(d: date | datetime) -> str:
     return d.isoformat() if isinstance(d, date) and not isinstance(d, datetime) else d.date().isoformat()
+
+
+# WS-A ------------------------------------------------------ 主题验证与谱系
+# 入选前/后各看多少个交易日。21 ≈ 一个月，与 idea 的 1 个月期限同一把尺子。
+THEME_AUDIT_WINDOW_SESSIONS = 21
+# 每组至少多少个（期, 主题）样本才下判定；不到就是「样本不足」，不给点估计配颜色。
+THEME_AUDIT_MIN_GROUP_N = 10
+THEME_AUDIT_BOOTSTRAP = 2000
+# 「开始被当回事地讨论」：标题+摘要口径的周占比首次达到此前各周中位数的这个倍数，
+# 且当周至少这么多篇。用标题口径是因为正文在 2026-08 下旬才被补抓，全文口径会假升温。
+THEME_SURGE_RATIO = 2.0
+THEME_SURGE_MIN_DOCS = 10
+# 主题卡「多空分歧」徽章门槛（分歧因子 0–100）。取 75 ≈ 2026-07-29…09-16 八期主打分
+# 159 个 G 读数的上四分位（75.9）；取 60 会有四成主题挂标，标就不再区分任何东西。
+THEME_DISAGREE_BADGE_MIN = 75.0
+# 谱系归并：宁可少并不要错并。自动记入要同时过综合分和证据重叠两道，且无任何反证。
+LINEAGE_AUTO_SCORE = 0.60
+LINEAGE_AUTO_EVIDENCE = 0.60
+LINEAGE_SUSPECT_SCORE = 0.35
+LINEAGE_SUSPECT_EVIDENCE = 0.50
+LINEAGE_MIN_DOCS = 20
+# 重叠系数过疑似阈值、但 Jaccard 低于这个数 → 判为「包含关系」而不是换名。
+LINEAGE_NESTED_JACCARD = 0.20

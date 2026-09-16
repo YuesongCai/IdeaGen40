@@ -1,0 +1,2 @@
+# 主题谱系（append-only）。每行：{"as_of","theme_id","family","method","score","evidence","rationale"}
+# theme_id 并入 family 的谱系家族；只对 as_of（含）之后的打分生效。由 `ideagen theme-lineage apply` 追加，人工认定写 method=manual。

@@ -280,6 +280,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # to become logged in. It is the only such path besides the health probe.
         if path not in ("/healthz", "/login") and not self._authorized():
             return self._login_redirect()
+        from . import access as _access   # WS-D: read-only accounts
+        if _access.refused_for(self._acct(), self._session_user(), "GET", path):
+            return self._json({"error": _access.REFUSAL}, status=403)
         if getattr(self, "_strip_auth_query", False):
             return self._redirect_without_auth_query()
         if path == "/login":
@@ -433,6 +436,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             from . import philosophy_web
             obj, status = philosophy_web.handle_list()
             return self._json(obj, status=status)
+        if path in ("/api/digest", "/api/strategy_card"):
+            return self._wsd_get(path)   # WS-D: read-only pages
+        if path == "/api/philosophy/export":
+            # WS-D: read-only whole ledger; the laptop's `philosophy pull` merges it.
+            from . import philosophy_sync
+            return self._json(philosophy_sync.export_events())
         if path == "/api/philosophy/output":
             # What one rule actually wrote last period, so the panel's
             # 「点开看」 has something behind it.
@@ -549,6 +558,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # driving this form.
         if path != "/login" and not self._authorized():
             return self._json({"error": "unauthorized"}, status=401)
+        from . import access as _access   # WS-D: viewers write nothing
+        if _access.refused_for(self._acct(), self._session_user(), "POST", path):
+            return self._json({"error": _access.REFUSAL}, status=403)
         request_origin = self._external_origin()
         if not self._same_origin(request_origin):
             return self._json({"error": "cross-origin request rejected"}, status=403)
@@ -612,6 +624,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 }, status=502)
             return self._redirect("/olive?sync=" + ("started" if started else "running"))
         return self._json({"error": "not found"}, status=404)
+
+    # ------------------------------------------------------------ WS-D
+    def _wsd_get(self, path: str):
+        """主题周报与策略卡：只读，viewer 可看。"""
+        from urllib.parse import parse_qs, urlparse
+        from . import platform as _plat
+        q = parse_qs(urlparse(self.path).query)
+        con = db.init()
+        if path == "/api/strategy_card":
+            from . import strategy_card
+            return self._json(strategy_card.build(con))
+        from . import theme_digest
+        as_of = (q.get("as_of") or [None])[0] or None
+        doc = theme_digest.build(_plat.load(), con, as_of)
+        if doc.get("available"):
+            doc["status"] = theme_digest.status(con, doc["as_of"])
+        if (q.get("format") or [""])[0] == "md":
+            self._set_download = f"themes_{doc.get('as_of') or 'latest'}.md"
+            return self._raw(theme_digest.to_markdown(doc).encode("utf-8"),
+                             "text/markdown; charset=utf-8")
+        # 200 even when unavailable: 「这一期没有周跑」 is an answer, and the
+        # drawer prints `why` rather than a generic fetch error.
+        return self._json(doc)
 
     # ------------------------------------------------------------ WS-B
     def _reviewer(self) -> tuple[str | None, str | None]:

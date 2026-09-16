@@ -102,14 +102,15 @@ class Vault:
 # --------------------------------------------------------------------------
 # transport: straight into the store
 # --------------------------------------------------------------------------
-def seed_local(reset: set[str], vault: Vault) -> list[tuple[str, str, str]]:
+def seed_local(reset: set[str], vault: Vault,
+               roster: list[dict[str, str]] | None = None) -> list[tuple[str, str, str]]:
     from ideagen import accounts
     st = accounts.store_status()
     print(f"账号存放于 {st['path']}（{st['why']}）"
           + ("" if st["durable"] else "  ⚠ 不持久，换容器就没了"))
     existing = {u["name"] for u in accounts.list_users()}
     out: list[tuple[str, str, str]] = []
-    for person in ROSTER:
+    for person in (roster if roster is not None else ROSTER):
         name = accounts.normalize_name(person["name"])
         if name in existing and name not in reset:
             # Deliberately silent about the password: this script is run
@@ -184,7 +185,8 @@ class Session:
 
 def seed_http(base: str, admin: str, password: str,
               reset: set[str], vault: Vault,
-              insecure: bool = False) -> list[tuple[str, str, str]]:
+              insecure: bool = False,
+              roster: list[dict[str, str]] | None = None) -> list[tuple[str, str, str]]:
     s = Session(base, insecure=insecure)
     code, body = s.post("/login", {"username": admin, "password": password,
                                    "next": "/account"})
@@ -196,7 +198,7 @@ def seed_http(base: str, admin: str, password: str,
         raise SystemExit(f"{admin} 登录成功但不是管理员，加不了人（HTTP {code}）")
 
     out: list[tuple[str, str, str]] = []
-    for person in ROSTER:
+    for person in (roster if roster is not None else ROSTER):
         name = person["name"].strip().lower()
         # The account table renders each name in <b>…</b>; that is the honest
         # signal available over HTTP, and it is checked rather than assumed
@@ -241,17 +243,28 @@ def main() -> int:
     ap.add_argument("--passwords", metavar="FILE",
                     help="本地口令记事本：有就沿用，没有就生成后写进去。"
                          "两台节点用同一份，凭证才是一套。")
+    # WS-D: one-off accounts outside the team roster — an outside reader such as
+    # yifu's side gets a `viewer` account without being written into ROSTER,
+    # which is the list of people every node must always carry. Same transports,
+    # same idempotence: an existing name is left untouched.
+    ap.add_argument("--add", action="append", default=[], metavar="NAME",
+                    help="只处理这些用户名（不走 ROSTER），可重复；配合 --role / --note")
+    ap.add_argument("--role", default="member", choices=["admin", "member", "viewer"],
+                    help="--add 时的角色；只读访问用 viewer")
+    ap.add_argument("--note", default="", help="--add 时写在账号页上的备注")
     a = ap.parse_args()
     reset = {n.strip().lower() for n in a.reset}
+    roster = ([{"name": n.strip().lower(), "role": a.role, "note": a.note}
+               for n in a.add] if a.add else None)
     vault = Vault(a.passwords)
 
     if a.local:
-        made = seed_local(reset, vault)
+        made = seed_local(reset, vault, roster)
     else:
         if not a.admin or not a.password:
             raise SystemExit("--http 需要 --admin 和 --password")
         made = seed_http(a.http, a.admin, a.password, reset, vault,
-                         insecure=a.insecure)
+                         insecure=a.insecure, roster=roster)
     vault.flush()
 
     if made:

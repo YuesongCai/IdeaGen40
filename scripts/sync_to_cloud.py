@@ -462,9 +462,27 @@ def pull_pm_reviews(dry_run: bool) -> dict:
         return {"action": "pull-failed", "detail": f"{type(e).__name__}: {e}"[:300]}
 
 
+def pull_philosophy(dry_run: bool) -> dict:
+    """WS-D: bring 「我的准则」 written on the display node home, same shape as
+    `pull_pm_reviews`. The weekly run executes here; a card that never arrives
+    is a rule the panel calls 生效 and no run ever applies. Failure is reported
+    and does not block the publish — the node keeps its ledger on /data."""
+    if dry_run:
+        return {"action": "skipped", "detail": "dry-run"}
+    try:
+        r = subprocess.run([sys.executable, "-m", "ideagen.cli", "philosophy", "pull"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return {"action": "pull-failed", "detail": (r.stderr or r.stdout).strip()[-300:]}
+        return {"action": "pulled", "detail": r.stdout.strip()[-300:]}
+    except Exception as e:  # noqa: BLE001 — reported, never raised past here
+        return {"action": "pull-failed", "detail": f"{type(e).__name__}: {e}"[:300]}
+
+
 def data_leg(st: dict, dry_run: bool, force: bool) -> dict:
     out: dict = {"leg": "data", "at": now()}
     out["pm_reviews"] = pull_pm_reviews(dry_run)
+    out["philosophy"] = pull_philosophy(dry_run)
     fp = content_fingerprint()
     out["fingerprint"] = fp
     if not force and st.get("data_fingerprint") == fp:

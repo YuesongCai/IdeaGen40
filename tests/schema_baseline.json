@@ -77,6 +77,13 @@
   "n_open",
   "gross"
  ],
+ "etf_weightings": [
+  "symbol",
+  "as_of",
+  "kind",
+  "name",
+  "weight"
+ ],
  "ideas": [
   "idea_uid",
   "batch_id",
@@ -211,6 +218,17 @@
   "exit_reason",
   "sessions_held",
   "settled_at"
+ ],
+ "pm_reviews": [
+  "as_of",
+  "instrument_id",
+  "decision",
+  "reason",
+  "reject_category",
+  "lens_checks",
+  "reviewer",
+  "created_at",
+  "updated_at"
  ],
  "positions": [
   "pos_id",

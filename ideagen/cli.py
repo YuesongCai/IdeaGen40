@@ -1309,6 +1309,41 @@ def cmd_reselect(args) -> int:
     return 0
 
 
+def cmd_decision(args) -> int:
+    """WS-B decision layer: pull PM reviews, cache ETF sector splits, print the ticket."""
+    from . import decision, platform as plat
+    con = db.init()
+    if args.action == "pull-reviews":
+        import os
+        from .platform.local import EnvSecretStore
+        from . import platform as plat_mod
+        key = (os.environ.get("IDEAGEN_DISPLAY_KEY") or os.environ.get("IDEAGEN_DASH_KEY")
+               or EnvSecretStore(plat_mod._ENV_FILES).get("IDEAGEN_DASH_KEY", required=False))
+        rep = decision.pull_reviews(con, url=args.url, key=key)
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+        return 0
+    p = plat.load()
+    run = decision.latest_weekly_run(p, args.as_of)
+    if not run:
+        print("没有成功完成的周跑")
+        return 1
+    if args.action == "weightings":
+        from . import universe as uni
+        uni.hydrate(con)
+        sl = decision.period_shortlist(p, con, run["run_id"], run["as_of"])
+        syms = sorted({i.key for i in (uni.resolve(str(it["instrument_id"]))
+                                       for it in sl["items"])
+                       if i and i.kind == "listed" and i.market == "US"})
+        print(json.dumps(decision.refresh_weightings(con, syms), ensure_ascii=False, indent=1))
+        return 0
+    t = decision.ticket(p, con, run["as_of"])
+    if args.csv:
+        sys.stdout.write(decision.ticket_csv(t))
+    else:
+        print(json.dumps(t, ensure_ascii=False, indent=1, default=str))
+    return 0
+
+
 def cmd_restate_books(args) -> int:
     """Archive the selector paper books and rebuild them from the current runs.
 
@@ -1648,6 +1683,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--from", dest="start", help="起始期次 YYYY-MM-DD（含）")
     s.add_argument("--to", dest="end", help="截止期次 YYYY-MM-DD（含）")
     s.add_argument("--param", action="append", metavar="K=V", help="传给策略的参数")
+
+    s = add("decision", cmd_decision,
+            "组合决策层：拉回展示节点上的 PM 决定 / 缓存精选 ETF 的行业与国家分布 / 打印卫星仓下单单")
+    s.add_argument("action", choices=["pull-reviews", "weightings", "ticket"])
+    s.add_argument("--url", help="展示节点地址（默认 config.DISPLAY_NODE_URL）")
+    s.add_argument("--csv", action="store_true", help="ticket 以 CSV 输出")
 
     s = add("restate-books", cmd_restate_books,
             "同期重跑之后：归档旧模拟组合，按各期最新完成运行的判决用模拟运行规则重建")

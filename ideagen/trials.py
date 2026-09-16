@@ -61,6 +61,11 @@ LEDGER: tuple[dict[str, Any], ...] = (
      "note": "期望值排序。看过六期结果之后才设计的，按探索类注册；"
              "前推检验量出它进名单本身值 2.07pp"},
 
+    {"id": "shortlist", "stage": "idea_selector", "status": "registered",
+     "tried_on": "2026-09-17",
+     "note": "精选：共识度 × 期望值 × (1 − 复现折扣比例)，同主题至多 2 只，取前 5。"
+             "yifu 2026-09-11 对齐时提出，已看过既有期次，按探索类注册"},
+
     # ---- tried, and not in the arm list ----------------------------------
     {"id": "grade_buckets", "stage": "idea_selector", "status": "dropped",
      "tried_on": "2026-09-05",

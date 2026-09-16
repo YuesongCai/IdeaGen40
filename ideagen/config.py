@@ -457,3 +457,64 @@ class RunContext:
 
 def iso(d: date | datetime) -> str:
     return d.isoformat() if isinstance(d, date) and not isinstance(d, datetime) else d.date().isoformat()
+
+
+# ---------------------------------------------------------------- WS-B
+# 组合决策层（yifu 2026-09-11 对齐 · 工作流 B）。全部集中在这里，读者一眼看清
+# 「决策层」有哪些可调的量；每个都能用环境变量改，便于不改代码地回滚。
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+#: A fund whose newest NAV is older than this many calendar days before the
+#: period date does not enter stage C. Why: on 2026-09-09 the pool carried 65
+#: public funds; their NAVs lag, so the limit orders written at the period close
+#: never filled and the books sat empty — a comparison of arms on names nobody
+#: could trade that week. Listed instruments are untouched (they have a close
+#: every session). 0 turns the gate off. Forward-only: stored books are not
+#: rewritten by changing it.
+FUND_NAV_FRESH_DAYS = _env_int("IDEAGEN_FUND_NAV_FRESH_DAYS", 5)
+
+#: 「决策时精选到个位数」: how many names the shortlist arm holds.
+SHORTLIST_N = _env_int("IDEAGEN_SHORTLIST_N", 5)
+#: Allspring's "balanced exposure, no big macro bets": at most this many
+#: shortlist names may come from one theme. Enforced in the ranking.
+SHORTLIST_MAX_PER_THEME = _env_int("IDEAGEN_SHORTLIST_MAX_PER_THEME", 2)
+#: A sector above this share of the shortlist's look-through is flagged amber.
+#: A prompt to the PM, not a constraint: the sector split is only known for the
+#: ETFs whose weightings are cached, and a cap enforced on partial data would
+#: silently favour the names we know least about.
+SHORTLIST_SECTOR_CAP = _env_float("IDEAGEN_SHORTLIST_SECTOR_CAP", 0.5)
+
+#: The satellite sleeve (「卫星仓 5–10 个点」) as a share of the model portfolio.
+SATELLITE_SLEEVE_PCT = _env_float("IDEAGEN_SATELLITE_SLEEVE_PCT", 0.10)
+#: Model portfolio size the ticket sizes against, in MODEL_PORTFOLIO_CCY.
+MODEL_PORTFOLIO_NOTIONAL = _env_float("IDEAGEN_MODEL_PORTFOLIO_NOTIONAL", 10_000_000)
+MODEL_PORTFOLIO_CCY = os.environ.get("IDEAGEN_MODEL_PORTFOLIO_CCY", "USD")
+#: Jon and 佳琦's ETF batch order takes ten lines at a time.
+TICKET_BATCH_MAX = 10
+
+#: PM review vocabulary. A PM only ever removes or holds back a name the model
+#: put on the shortlist — never adds one (Allspring: 「PM 绝不 override model
+#: 自己塞名字」), so there is no 「加入」 decision.
+PM_DECISIONS = ("采纳", "否决", "观望")
+#: The four-layer risk lens, in the order a PM reads it, plus the two
+#: catch-alls. A 否决 must name one of these.
+PM_LENSES = ("风格/行业暴露", "宏观敏感度", "事件风险", "流动性/信用")
+PM_REJECT_CATEGORIES = PM_LENSES + ("基本面看起来不好", "其他")
+PM_REVIEW_WRITE_ROLES = ("admin", "member")
+#: Below this many matured reviews in a group the evidence card says 样本不足.
+PM_REVIEW_MIN_N = _env_int("IDEAGEN_PM_REVIEW_MIN_N", 5)
+#: The display node the team actually clicks on. Reviews written there are
+#: pulled back to this laptop, which is where the data is authoritative.
+DISPLAY_NODE_URL = os.environ.get("IDEAGEN_DISPLAY_URL", "http://101.47.28.218")

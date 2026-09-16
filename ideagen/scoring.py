@@ -496,9 +496,14 @@ def recurrence(con, theme_id: str, as_of: date, *, cadence_days: int = 7) -> dic
     files a rename as an alias on the same id), so this counts the *narrative*,
     not the label. Returns the metadata; the caller applies `discount` to TIS.
     """
-    rows = db.q(con, "SELECT DISTINCT as_of FROM themes WHERE theme_id=? AND as_of<? "
-                     "AND tier IN ('core','important') ORDER BY as_of DESC",
-                (theme_id, as_of.isoformat()))
+    # WS-A: count the lineage family, not the bare id — a narrative that came back
+    # under a new id (themes/lineage.jsonl) must not reset its discount. Family
+    # links apply only from their recorded date on, like aliases.
+    from .theme_lineage import family_ids
+    fam = sorted(family_ids(theme_id, as_of))
+    rows = db.q(con, "SELECT DISTINCT as_of FROM themes WHERE theme_id IN (%s) AND as_of<? "
+                     "AND tier IN ('core','important') ORDER BY as_of DESC"
+                % ",".join("?" * len(fam)), (*fam, as_of.isoformat()))
     prior = [date.fromisoformat(r["as_of"]) for r in rows]
     if not prior:
         return {"consec": 0, "weeks_since": None, "discount": 0.0,

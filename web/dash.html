@@ -2313,6 +2313,23 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
 .dif-samples{margin:6px 0 0;padding:0;list-style:none;font:400 13px/19px var(--font-sans)}
 .dif-samples li{padding:2px 0;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dif-samples a{color:var(--color-text-link,inherit)}
+
+/* WS-A */
+/* 筛选A 验证（yifu 2026-09-11）：时点与谱系一段、截断审计表、多空分歧标。 */
+.wsa-kv{display:grid;grid-template-columns:auto 1fr;gap:4px var(--space-4);font:400 13px/19px var(--font-sans);color:var(--color-text-secondary)}
+.wsa-kv>b{font-weight:600;color:var(--color-text-primary);white-space:nowrap}
+.wsa-kv>span{min-width:0;overflow-wrap:anywhere}
+.wsa-verdict{margin-top:var(--space-3);font:400 13px/20px var(--font-sans);color:var(--color-text-primary)}
+.wsa-t{width:100%;border-collapse:collapse;font:400 12px/17px var(--font-sans);margin-top:var(--space-2)}
+.wsa-t th{font-weight:600;text-align:left;color:var(--color-text-tertiary);padding:3px 6px;border-bottom:1px solid var(--color-border-default);white-space:nowrap}
+.wsa-t td{padding:3px 6px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary);vertical-align:top}
+.wsa-t td.r,.wsa-t th.r{text-align:right;font-family:var(--font-mono)}
+.wsa-t tr.hl td{color:var(--color-text-primary);font-weight:600}
+.wsa-wrap{overflow-x:auto}
+.wsa-pair{display:block;margin-top:6px;font:400 12.5px/18px var(--font-sans);color:var(--color-text-secondary)}
+.wsa-pair .k{font-weight:600;color:var(--color-text-primary)}
+.wsa-pair .c{display:block;color:var(--color-text-tertiary);margin-left:1em}
+.wsa-dis{display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;font:500 10px/14px var(--font-sans);background:var(--color-feedback-warning-subtle);color:var(--color-feedback-warning-text);vertical-align:1px}
 </style>
 <style>
 /* ══ 新手导览（一次性）══════════════════════════════════════════
@@ -3183,6 +3200,7 @@ var VIEWS=[
       运行回执。历史回测 / 业绩表 / 排序力 / 归因 / 哪些数字算证据 / 已知局限
       这些段全部搬进了抽屉（t:'ev'），侧栏不再列它们：侧栏列的是页面上有的东西。 */
    secs:[{s:'claims',label:'假设检验'},
+         {s:'themea',label:'筛选A 验证'},
          {s:'funnel',label:'假设检验汇总'},
          {s:'progress',label:'样本累积进度'},
          {s:'early',label:'初版回测'},
@@ -5748,7 +5766,7 @@ function evClaims(){
     clPm()
   ];
 }
-function evClaimOf(key){return evClaims().filter(function(c){return c.key===key})[0]||null}
+function evClaimOf(key){return evClaims().concat(wsaClaims()).filter(function(c){return c.key===key})[0]||null}
 /* ① 实跑组合之间分得开：纸面组合相对全量基准的差距，灰带 ±2pp。图与判定都
    沿用 sixBooks / evLedgerRows 那一行，一个主语只判一遍。 */
 function clBooks(r){
@@ -5885,6 +5903,184 @@ function claimsBoard(claims){
   +'</div>';
 }
 
+/* ── WS-A：筛选A 验证（yifu 2026-09-11）───────────────────────────
+ * 主题层的核心主张是「哪里会放波动」，这张卡把它当成一条可以被价格否掉的假设：
+ * 入选主题的指示标的，入选后 21 个交易日的已实现波动是否比入选前放大、而且比
+ * 同期落选主题放大得多；分歧度高的主题之后是否更会动。数字全部来自后端
+ * `theme_audit.vol_validation` 存进 kv 的结果（state.theme_audit.vol），前端
+ * 不重算。沿用命题看板的卡 + 抽屉：卡面判定色块 + 一张图 + 一行数。
+ * 判定词与 EV_ST 同一套；区间盖住 0 就是「样本不足」，不是「不显著」。 */
+EV_SRC.themeA='筛选A · 期×主题';
+function wsaA(){return ((S||{}).theme_audit)||{}}
+/* 对数波动比 → 百分比变化。后端存的是 ln(后/前) 再减同期中位数，读者要的是「多动了百分之几」。 */
+function wsaLogPct(x){return (x==null||isNaN(x))?null:(Math.exp(Number(x))-1)*100}
+function wsaFrac(x){return (x==null||isNaN(x))?'—':fmtPct(Number(x)*100)}
+/* 占比、波动率、重叠率不带正负号：它们没有方向，印成「+40%」读起来像涨了 40%。 */
+function wsaShare(x){return (x==null||isNaN(x))?'—':(Number(x)*100).toFixed(1)+'%'}
+function wsaCi(ci,f){return (ci&&ci[0]!=null&&ci[1]!=null)?(f(ci[0])+' ~ '+f(ci[1])):'—'}
+function wsaNa(base,why){return evExt(base,{state:'na',chart:'',note:'数据缺失：'+esc(why),tip:''})}
+function wsaClaims(){
+  var a=wsaA(),v=a.vol||{};
+  var b1={key:'themevol',claim:'入选主题之后放波动',src:'themeA'};
+  var b2={key:'themedis',claim:'分歧越大、之后越放波动',src:'themeA'};
+  if(!a.available||v.why||!v.selected_vs_not){
+    var why=String(v.why||a.why||'尚未运行筛选A 体检').replace(/^缺数据：/,'');
+    return [wsaNa(b1,why),wsaNa(b2,why)];
+  }
+  var sv=v.selected_vs_not,nP=(v.by_period||[]).length,nC=(v.periods_complete||[]).length;
+  var pct=function(x){var p=wsaLogPct(x);return p==null?'—':fmtPct(p)};
+  var rows=[{name:'入选 − 落选（合并）',v:wsaLogPct(sv.diff),lo:wsaLogPct((sv.ci95||[])[0]),hi:wsaLogPct((sv.ci95||[])[1]),strong:true,
+    tip:'入选组相对同期中位数的波动比均值，减落选组的；横线为 bootstrap 95% 区间'}];
+  (v.by_period||[]).forEach(function(p){
+    rows.push({name:p.as_of+' 期入选',v:p.complete?wsaLogPct(p.mean_selected_dm):null,dim:!p.complete,
+      na:p.complete?'无入选样本':String(p.why||'窗口未满'),
+      tip:p.complete?('该期 '+fmtInt(p.n_selected)+' 个入选主题，相对同期全部 '+fmtInt(p.n)+' 个主题中位数的波动比'):String(p.why||'')});
+  });
+  var c1=evExt(b1,{state:sv.state||'open',
+    chart:hbarSVG(rows,{mode:'dot',vr:70,fmt:function(x){return fmtPct(x)},tick:function(x){return (x>0?'+':'')+x.toFixed(0)+'%'},
+      aria:'入选主题入选后相对入选前的波动放大，减去同期落选主题，按期与合并'}),
+    note:'<b>入选组波动比高出 '+pct(sv.diff)+'</b>（95% 区间 '+wsaCi(sv.ci95,pct)+'）· 入选 '+fmtInt(sv.n_selected)+' / 落选 '+fmtInt(sv.n_not)+' 行 · 窗口走满 '+fmtInt(nC)+'/'+fmtInt(nP)+' 期',
+    tip:'每个（期, 主题）：指示标的入选后 '+fmtInt(v.window)+' 个交易日年化已实现波动 ÷ 入选前 '+fmtInt(v.window)+' 个交易日，取对数后减去同期全部主题的中位数（扣掉全市场一起放波动的部分）。入选组均值减落选组均值，bootstrap '+fmtInt(v.n_boot)+' 次取 95% 区间；每组少于 '+fmtInt(v.min_group_n)+' 行判样本不足。'});
+  var dB=(v.disagreement||{}).B||{},dG=(v.disagreement||{}).G||{};
+  var tvb=function(d,label){var t=d.top_vs_bottom;if(!t)return {name:label,v:null,na:d.why?String(d.why).replace(/^缺数据：/,''):'样本不足'};
+    return {name:label,v:wsaLogPct(t.diff),lo:wsaLogPct((t.ci95||[])[0]),hi:wsaLogPct((t.ci95||[])[1]),strong:label.indexOf('B')===0,
+      tip:label+'：上三分位（≥'+numOr(t.top_min)+'）'+fmtInt(t.n_each)+' 行减下三分位（≤'+numOr(t.bottom_max)+'）'+fmtInt(t.n_each)+' 行的波动比均值'}};
+  var c2=evExt(b2,{state:dB.state||'open',
+    chart:hbarSVG([tvb(dB,'B 分歧 高 − 低'),tvb(dG,'G 分歧 高 − 低')],{mode:'dot',vr:70,fmt:function(x){return fmtPct(x)},
+      tick:function(x){return (x>0?'+':'')+x.toFixed(0)+'%'},aria:'分歧度上三分位减下三分位的之后波动放大'}),
+    note:'<b>B 与之后放波动的秩相关 '+(dB.rho==null?'—':num2(dB.rho))+'</b>（95% 区间 '+wsaCi(dB.ci95,num2)+'，n='+fmtInt(dB.n)+'）· G 秩相关 '+(dG.rho==null?'—':num2(dG.rho)),
+    tip:'B = 日度打分的分歧因子（取该期当天或之前最近一天）；G = 主打分（HGEP）的分歧因子，入选靠的是它。因变量同上一张卡：期内去中位数的对数波动比。'});
+  return [c1,c2];
+}
+function wsaThemeBoard(){
+  var cs=wsaClaims(),a=wsaA();
+  return '<div class="card section" id="evThemeA">'
+    +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">筛选A 验证</h2>'
+      +'<span class="card-note">主题层主张「哪里会放波动」的价格检验 · '+(a.computed_at?('体检于 '+esc(String(a.computed_at).slice(0,16).replace('T',' '))):'尚未体检')+' · 点卡看方法与分期</span></div>'
+    +'<div class="claims">'+cs.map(clCard).join('')+'</div>'
+  +'</div>';
+}
+function wsaVolSample(v){
+  var sv=v.selected_vs_not||{},ab=sv.absret||{};
+  var pct=function(x){var p=wsaLogPct(x);return p==null?'—':fmtPct(p)};
+  var inc=v.periods_incomplete||{};
+  return [['样本单位','（期, 主题）：该期主打分里有分数的全部主题'],
+    ['窗口','入选前 / 后各 '+fmtInt(v.window)+' 个交易日，基点为周二收盘'],
+    ['窗口走满的期',(v.periods_complete||[]).join('、')||'无'],
+    ['未满的期',Object.keys(inc).map(function(k){return k+'（'+inc[k]+'）'}).join('；')||'无'],
+    ['入选 / 落选行数',fmtInt(sv.n_selected)+' / '+fmtInt(sv.n_not)],
+    ['入选组 / 落选组（期内去中位数）',pct(sv.mean_selected)+' / '+pct(sv.mean_not)],
+    ['差值 · 95% 区间',pct(sv.diff)+' · '+wsaCi(sv.ci95,pct)],
+    ['未去中位数的原始波动比（入选 / 落选）',pct(sv.raw_mean_selected)+' / '+pct(sv.raw_mean_not)],
+    ['|收益| 变化之差 · 95% 区间',wsaFrac(ab.diff)+' · '+wsaCi(ab.ci95,wsaFrac)+' · '+(EV_ST[ab.state]||'—')],
+    ['判定门槛','每组 ≥ '+fmtInt(v.min_group_n)+' 行；区间整体在 0 之上判显著、在 0 之下判不显著、盖住 0 判样本不足'],
+    ['bootstrap',fmtInt(v.n_boot)+' 次']];
+}
+function wsaDrawerVol(c){
+  var v=wsaA().vol||{};
+  return {method:'对每个（期, 主题），取主题预登记的指示标的，计算入选后 '+(v.window||21)+' 个交易日与入选前 '+(v.window||21)+' 个交易日的年化已实现波动之比，取对数，再减去同一期全部主题的中位数——整个市场在那几周一起放波动的部分被扣掉，剩下的是「这个主题比同期别的主题更会动」。入选组均值减落选组均值即检验量；|收益| 的变化同法另算一份作对照。',
+    sample:wsaVolSample(v),chart:c.chart,
+    old:(v.caveats||[]).map(function(x){return '<div class="cl-note">· '+esc(x)+'</div>'}).join(''),retract:[]};
+}
+function wsaDrawerDis(c){
+  var v=wsaA().vol||{},d=v.disagreement||{};
+  var row=function(k){
+    var x=d[k]||{},t=x.top_vs_bottom||{};
+    var pct=function(y){var p=wsaLogPct(y);return p==null?'—':fmtPct(p)};
+    return [[k+' 分歧：秩相关 · 95% 区间 · n',(x.rho==null?'—':num2(x.rho))+' · '+wsaCi(x.ci95,num2)+' · '+fmtInt(x.n)+' · '+(EV_ST[x.state]||'—')+(x.why?'（'+x.why+'）':'')],
+      [k+' 分歧：上三分位 − 下三分位 · 95% 区间',t.n_each?(pct(t.diff)+' · '+wsaCi(t.ci95,pct)+'（每组 '+fmtInt(t.n_each)+' 行）'):'样本不足']];
+  };
+  return {method:'因变量与「入选主题之后放波动」相同（期内去中位数的对数波动比）。自变量两份：B 是日度打分（v0.4 因子引擎）的分歧因子，取该期当天或之前最近一天；G 是主打分 HGEP 的分歧因子，主题入选靠的是它。报 Spearman 秩相关及 bootstrap 区间，另报分歧度上三分位减下三分位的均值差。这张卡回答的是「有争议的主题最好」是否在价格上有迹可循。',
+    sample:row('B').concat(row('G')).concat([['窗口走满的期',(v.periods_complete||[]).join('、')||'无']]),
+    chart:c.chart,
+    old:(v.caveats||[]).map(function(x){return '<div class="cl-note">· '+esc(x)+'</div>'}).join(''),retract:[]};
+}
+/* 数据来源抽屉：后验截断审计。每期运行用到的研报，披露时间是否都早于该期周三 07:00。 */
+function wsaCutoffReceipt(){
+  var c=wsaA().cutoff||{};
+  var head='<div class="ev-h3">后验截断审计</div>';
+  if(c.why||!c.runs)return head+'<div class="cl-note">'+esc(c.why||'数据缺失：尚未运行筛选A 体检')+'</div>';
+  var tt=c.totals||{};
+  var rows=c.runs.map(function(r){
+    var live=r.classification==='live',seen={};
+    /* 同一篇研报常在几条线上各挂一份，样例按标题去重，不然三条样例是同一句话。 */
+    var ex=(r.samples||[]).filter(function(x){var k=x.title||x.doc_id;if(seen[k])return false;seen[k]=1;return true}).slice(0,2);
+    return '<tr><td>'+esc(r.as_of)+'<br><span style="color:var(--color-text-tertiary)">'+(live?'实时运行':'补跑')+'</span></td>'
+      +'<td class="r">'+fmtInt(r.n_docs)+(r.n_runtime!=null&&r.n_runtime!==r.n_docs?'<br>运行时 '+fmtInt(r.n_runtime):'')+'</td>'
+      +'<td class="r">'+fmtInt(r.violations)+'</td><td class="r"><b>'+fmtInt(r.violations_seen)+'</b></td></tr>'
+      +'<tr><td colspan="4" style="padding-top:0">'+esc(r.reading||'')
+      +(ex.length?'<span class="wsa-pair"><span class="c">例：'+ex.map(function(x){return esc(String(x.published_at||'').slice(5,16).replace('T',' '))+' '+esc(x.title||x.doc_id)}).join('；')+'</span></span>':'')
+      +'</td></tr>';
+  }).join('');
+  return head
+    +'<div class="cl-note"><b>'+fmtInt(tt.violations_seen)+' 篇</b>运行时可读到、披露却晚于决策时点（重建清单共 '+fmtInt(tt.docs)+' 篇，其中晚于决策时点 '+fmtInt(tt.violations)+' 篇）。规则：'+esc(c.rule||'')+'；清单'+esc(c.doc_set||'')+'。</div>'
+    +'<div class="wsa-wrap"><table class="wsa-t"><thead><tr><th>期</th><th class="r">研报</th><th class="r">晚于决策时点</th><th class="r">运行可读到</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+/* 主题卡上的「多空分歧」标：本期主打分的 G（分歧）过门槛就挂；本期没有 G 时退到
+   日度打分最近一天的 B。门槛来自后端（config.THEME_DISAGREE_BADGE_MIN），不在前端写死。 */
+function wsaDisagreeBadge(tid,r,compact){
+  var a=wsaA(),min=Number(a.badge_min||75);
+  var g=(r&&r.G!=null&&!isNaN(r.G))?Number(r.G):null;
+  var bl=((a.themes||{})[tid]||{}).b_latest,bv=(bl&&bl.b!=null)?Number(bl.b):null;
+  var hit=g!=null?g>=min:(bv!=null&&bv>=min);
+  if(!hit)return '';
+  var tip='多空分歧：'+(g!=null?('本期分歧因子 G='+numOr(g)):('日度打分分歧因子 B='+numOr(bv)+'（'+(bl.as_of||'')+'）'))
+    +'，≥'+numOr(min)+' 即挂此标。研报在这一问上正反两边都有人下注——有争议的主题是放波动的候选；分歧度与之后放波动的关系见证据页「筛选A 验证」。'
+    +(g!=null&&bv!=null?'　日度打分 B='+numOr(bv)+'（'+(bl.as_of||'')+'）':'');
+  return compact?'<span class="wsa-dis" title="'+esc(tip)+'">多空分歧</span>'
+    :'<span class="badge badge-warning" title="'+esc(tip)+'">多空分歧</span>';
+}
+/* 主题抽屉「时点与谱系」：三个日期、入选前走了多少、谱系家族与疑似重复。 */
+function wsaTimingBlock(tid){
+  var a=wsaA(),t=(a.themes||{})[tid];
+  if(!a.available)return '<div class="empty-sm">'+esc(a.timing_why||a.why||'数据缺失：尚未运行筛选A 体检')+'</div>';
+  if(!t)return '<div class="empty-sm">数据缺失：体检结果里没有 '+esc(topicName(tid))+'（多半是体检之后才注册的主题，下次体检补上）</div>';
+  var pre=t.pre||{},lg=t.lag_days||{},pk=t.pre_selection_peak;
+  var days=function(n){return n==null?'':'（比入选早 '+fmtInt(n)+' 天）'};
+  var kv=[
+    ['研报首次提及',(t.first_mention_d?esc(t.first_mention_d)+days(lg.mention)+(t.truncated_by_corpus?' · 落在研报库起点 '+esc(a.corpus_start||'')+' 附近，真实首次提及更早':'')
+      +(t.first_mention_title?'<br><span style="color:var(--color-text-tertiary)">'+esc(t.first_mention_title)+'</span>':''):'无命中')],
+    ['入选前讨论最密的一周',pk?(esc(pk.as_of)+' · 标题占比 '+wsaShare(pk.share_title)+' · '+fmtInt(pk.docs_title)+' 篇'+days(lg.peak)):(t.first_selected?'—':'未入选')],
+    ['首次成为强主题',t.first_strong_d?(esc(t.first_strong_d)+days(lg.strong)):'从未（日度打分从未到 core / important）'],
+    ['计数打分首次选入',t.first_counting_d?(esc(t.first_counting_d)+days(lg.counting)):'从未'],
+    ['首次入选',t.first_selected?('<b>'+esc(t.first_selected)+'</b>'+((t.selected_periods||[]).length>1?' · 共入选 '+fmtInt(t.selected_periods.length)+' 期':'')):'从未入选'],
+  ];
+  if(t.first_selected){
+    kv.push(['入选前 '+fmtInt(pre.n||21)+' 个交易日',pre.pre_ret==null?esc(pre.why||'数据缺失'):(esc(t.indicator||'')+' '+wsaFrac(pre.pre_ret)+' · 年化波动 '+wsaShare(pre.pre_rv)+(t.pre_ret_2n!=null?' · 前 '+fmtInt(2*(pre.n||21))+' 日 '+wsaFrac(t.pre_ret_2n):''))]);
+    kv.push(['入选后',pre.complete?(wsaFrac(pre.post_ret)+' · 年化波动 '+wsaShare(pre.post_rv)):esc(pre.why||'窗口未满')+(pre.post_ret!=null?'（至今 '+wsaFrac(pre.post_ret)+'）':'')]);
+  }
+  var html='<div class="wsa-kv">'+kv.map(function(x){return '<b>'+x[0]+'</b><span>'+x[1]+'</span>'}).join('')+'</div>'
+    +'<div class="wsa-verdict">'+esc(t.verdict||'')+'</div>';
+  var fam=t.family||[tid];
+  html+='<div class="ev-h3">谱系</div><div class="cl-note">'+(fam.length>1
+    ?('与 '+fam.filter(function(x){return x!==tid}).map(function(x){return esc(topicName(x))}).join('、')+' 同属一个谱系家族：复现打折按家族计数')
+    :'独立主题（谱系文件里没有与其他主题归并的记录）')+'</div>';
+  var DEC={auto:'已判同一件事',suspect:'疑似重复 · 待审',nested:'包含关系'};
+  var ps=t.lineage||[];
+  if(ps.length){
+    html+=ps.map(function(p){
+      return '<div class="wsa-pair"><span class="k">'+esc(DEC[p.decision]||p.decision)+'</span> · '+esc(topicName(p.other))+' · 综合分 '+num2(p.score)
+        +(p.ev_overlap!=null?' · 研报重叠 '+wsaShare(p.ev_overlap):'')+'<span class="c">'+esc(p.why||'')+'</span>'
+        +(p.counter||[]).map(function(x){return '<span class="c">反证：'+esc(x)+'</span>'}).join('')+'</div>';
+    }).join('');
+  }else{
+    html+='<div class="cl-note">'+((a.lineage||{}).why?esc(a.lineage.why):'未发现疑似重复或包含关系')+'</div>';
+  }
+  var cs=a.case;
+  if(cs&&cs.theme_id===tid&&(cs.weekly||[]).length){
+    var wk=cs.weekly.filter(function(w){return w.rank!=null});
+    html+='<div class="ev-h3">个案：入选之前每一期</div>'
+      +'<div class="cl-note">主打分名次与离第五名的差距；P（已定价）取中性 50 时的差距；与 '+esc(topicName(cs.neighbour))+' 的研报重叠。完整分析见 docs/theme_timing_casestudy_ai_monetisation.md。</div>'
+      +'<div class="wsa-wrap"><table class="wsa-t"><thead><tr><th>期</th><th class="r">标题命中</th><th class="r">名次</th><th class="r">差第五名</th><th class="r">P</th><th class="r">P 取 50 时差</th><th class="r">与邻居重叠</th><th>计数打分</th></tr></thead><tbody>'
+      +wk.map(function(w){
+        return '<tr'+(w.selected?' class="hl"':'')+'><td>'+esc(w.as_of)+(w.selected?' 入选':'')+'</td><td class="r">'+fmtInt(w.docs_title)+'</td><td class="r">'+fmtInt(w.rank)+'</td>'
+          +'<td class="r">'+numOr(w.gap_to_cut)+'</td><td class="r">'+numOr(w.P)+'</td><td class="r">'+numOr(w.gap_p_neutral)+'</td>'
+          +'<td class="r">'+wsaShare(w.overlap_full_share)+'</td><td>'+(w.counting_chosen?'选入':'—')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  return html;
+}
+
 /* ── 证伪漏斗 ──
    候选发现只有一条（期望值分数能排出次序），它要过九道检验；漏斗把每道的
    判定数成四层：提出 N → 没扛住 → 打折 → 扛住，剩下「还分不出」（区间盖住 0、
@@ -5961,6 +6157,7 @@ function renderEvidence(){
      evidenceHead(claims)
     +perfCrossLink()
     +secWrap('evidence','claims',claimsBoard(claims))
+    +secWrap('evidence','themea',wsaThemeBoard())
     +secWrap('evidence','funnel',funnelCard())
     +secWrap('evidence','progress',evidenceProgressCard())
     +secWrap('evidence','early',study30Card())
@@ -6133,7 +6330,7 @@ function evdAttr(c){
     old:attributionCard(),retract:[]};
 }
 function evClaimDrawer(c){
-  var D={books:evdBooks,beat:evdBeat,sharpe:evdSharpe,pick:evdPick,rank:evdRank,family:evdFamily,attr:evdAttr,pm:evdPm}[c.key];
+  var D={books:evdBooks,beat:evdBeat,sharpe:evdSharpe,pick:evdPick,rank:evdRank,family:evdFamily,attr:evdAttr,pm:evdPm,themevol:wsaDrawerVol,themedis:wsaDrawerDis}[c.key];
   var d=D?D(c):{method:'',sample:[],chart:'',old:'',retract:[]};
   var e=c.prereg;
   /* 标题用看板上的假设名（投研写法）；预注册时登记的原句是后端文本、口语写法，
@@ -6253,7 +6450,8 @@ function evReceiptDrawer(){
     +receiptWhich('正式回测')+formalLine
     +backtestReceiptLine()
     +'<div class="ev-h3">已知局限</div><div class="cl-note">'+fmtInt(assum.length)+' 条前提尚未验证 · '+fmtInt(fixes.length)+' 个已发现的缺陷里修好了 '+fmtInt(doneN)+' 个 '
-    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">逐条 ›</button></div>';
+    +'<button type="button" class="exp-btn" onclick="openTrustDrawer()">逐条 ›</button></div>'
+    +wsaCutoffReceipt();
 }
 function evFunnelDrawer(kind){
   var fl=funnelLayers();
@@ -11959,7 +12157,7 @@ function stageTopicsBody(d){
       side='<span class="sc num">'+numOr(r.score)+'</span><span class="d">'+(gap!==null?'差 '+gap.toFixed(1)+' 分':'落选')+(ctrlChosen[r._id]?' · <span style="color:var(--color-text-brand)">仅计数打分</span>':'')+'</span>';
     }
     rowHTML+='<button type="button" class="race-row'+(isIn?'':' lost')+focCls+'" id="topicrow-'+esc(r._id)+'" onclick="'+(foc===r._id?'setDrawerFocus(null)':'setDrawerFocus(\''+jss(r._id)+'\')')+'" title="'+(foc===r._id?'回到全景':'只看这一个主题：其余压暗，并就地展开它的研报证据')+'">'
-      +'<span class="race-name"><span class="id">'+esc(r._id)+'</span><span class="lbl">'+esc(r.label||'')+'</span></span>'
+      +'<span class="race-name"><span class="id">'+esc(r._id)+wsaDisagreeBadge(r._id,r,true)+'</span><span class="lbl">'+esc(r.label||'')+'</span></span>'
       +'<span class="race-track"><span class="race-bar" style="width:'+barPct.toFixed(1)+'%">'+segs+'</span>'+cnt+'</span>'
       +'<span class="race-side">'+side+'</span>'
       +'</button>';
@@ -12051,6 +12249,8 @@ function themeIdentity(tid,r){
     badges.push('<span class="badge badge-neutral" title="'+esc(rtip)+'">复现：连续第 '
       +fmtInt(rec.occurrence||((rec.consec||0)+1))+' 次 · 折 '+numOr(rec.discount)+' 分</span>');
   }
+  var wsaDis=wsaDisagreeBadge(tid,r);
+  if(wsaDis)badges.push(wsaDis);
   if(badges.length){
     html+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+badges.join('')+'</div>';
   }
@@ -12288,6 +12488,7 @@ function topicDrawerBody(tid,embedded){
   /* 三组的顺序就是读者的三个问题：这是什么 → 凭什么入选 → 它写出了什么。
      从前抽屉是从第二个问题开始的。 */
   html='<div class="dgrp"><div class="dgrp-h">这是什么<span class="sub">它在问哪一问、由哪些词构成、从哪来</span></div>'+themeIdentity(tid,r)+'</div>'
+    +'<div class="dgrp"><div class="dgrp-h">时点与谱系<span class="sub">什么时候开始被谈、什么时候入选、入选前已走了多少、和谁是一件事</span></div>'+wsaTimingBlock(tid)+'</div>'
     +'<div class="dgrp"><div class="dgrp-h">证据<span class="sub">这主题凭什么'+(chosen?'入选':'落选')+'</span></div>'+html+'</div>'
     +diffusionGroup(tid)   /* WS-C */
     +'<div class="dgrp"><div class="dgrp-h">产出<span class="sub">它在本期写出了什么</span></div>'

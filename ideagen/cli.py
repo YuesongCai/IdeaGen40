@@ -1260,6 +1260,10 @@ def cmd_daily(args) -> int:
     print("[10/10] settle + dashboard")
     stage("settle", lambda: analytics.settle(con, book_id="naive", verbose=False))
     stage("dashboard", lambda: report_mod.build(con))
+    # WS-E: bill snapshot + VIX. Network failures are written into the note and
+    # the cost table, never raised, so this stage cannot turn the run partial.
+    from . import wse_state as _wse
+    stage("costs", lambda: print("      " + _wse.daily_stage(con)))
 
     failed = [s for s in stages if s["status"] != "ok"]
     con.execute("UPDATE runs SET finished_at=?, status=?, stages=? WHERE run_id=?",
@@ -1880,6 +1884,22 @@ def main(argv: list[str] | None = None) -> int:
             "scan for renamed duplicate themes; apply appends to themes/lineage.jsonl")
     s.add_argument("action", choices=("scan", "apply"))
     s.add_argument("--dry-run", action="store_true")
+
+    # WS-E: 策略停用入库 / 运行成本 / 市场阶段。实现在各自模块里，这里只注册。
+    from . import costs as _costs, market_regime as _mr, strategy_inventory as _si
+    s = add("strategy-inventory", _si.cmd_strategy_inventory,
+            "shelve / restore a selector or generator (append-only journal); list status")
+    s.add_argument("action", choices=("add", "remove", "list"))
+    s.add_argument("--kind", choices=("selector", "generator"))
+    s.add_argument("--name")
+    s.add_argument("--reason")
+    s.add_argument("--by")
+    s = add("costs", _costs.cmd_costs,
+            "BytePlus bill snapshot (read-only List actions only) and the cost card")
+    s.add_argument("action", choices=("refresh", "card"))
+    s.add_argument("--period", help="YYYY-MM (default: this month)")
+    s = add("regime", _mr.cmd_regime, "market-regime labels per period and per-strategy table")
+    s.add_argument("--refresh-vix", action="store_true", help="gap-fill IDX.VIX from FMP first")
 
     args = p.parse_args(argv)
     return args.fn(args)

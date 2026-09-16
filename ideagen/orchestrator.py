@@ -31,6 +31,8 @@ from typing import Any, Iterable
 
 from . import (config, feeds, platform as plat, schema,
                strategy as strat, universe as uni)
+# WS-E: a default (un-named) weekly run skips strategies put on the shelf.
+from . import strategy_inventory as _inv
 
 
 class _SkipDiscovery(Exception):
@@ -135,10 +137,12 @@ def weekly(
     if candidates is None:
         picked += [("idea_generator", n) for n in
                    (list(generators) if generators
-                    else [r["name"] for r in strat.available("idea_generator")])]
+                    else _inv.active("idea_generator",
+                                     [r["name"] for r in strat.available("idea_generator")]))]
     picked += [("idea_selector", n) for n in
                (list(selectors) if selectors
-                else [r["name"] for r in strat.available("idea_selector")])]
+                else _inv.active("idea_selector",
+                                 [r["name"] for r in strat.available("idea_selector")]))]
     model_arms = strat.needs_model(picked)
     need = list(plat.Platform.DEFAULT_NEED)
     if not dry_run and (needs_inference or model_arms):
@@ -465,8 +469,8 @@ def weekly(
             gen_verdicts: dict[str, strat.Verdict] = {}
             if topics and not candidates:
                 gctx = ctx.with_(topics=topics, universe=universe)
-                gnames = list(generators) if generators else \
-                    [r["name"] for r in strat.available("idea_generator")]
+                gnames = list(generators) if generators else _inv.active(
+                    "idea_generator", [r["name"] for r in strat.available("idea_generator")])
                 gen_verdicts = strat.run_all("idea_generator", gctx, names=gnames)
                 pool: list[dict[str, Any]] = []
                 for n, v in gen_verdicts.items():
@@ -557,8 +561,8 @@ def weekly(
                 cctx = ctx.with_(topics=topics, universe=universe,
                                  candidates=candidates, inputs_sha=csha,
                                  prices=prices)
-                names = list(selectors) if selectors else \
-                    [r["name"] for r in strat.available("idea_selector")]
+                names = list(selectors) if selectors else _inv.active(
+                    "idea_selector", [r["name"] for r in strat.available("idea_selector")])
                 verdicts = strat.run_all("idea_selector", cctx, names=names)
                 for n, v in verdicts.items():
                     res.calls += v.calls

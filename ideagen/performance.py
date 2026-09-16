@@ -767,7 +767,7 @@ def paper_view(con, p=None, subset: str = "live") -> dict[str, Any]:
             f"⚠ 期末现金为负（账户透支）：{'、'.join(overdrawn)}。同一天集中建仓的批次"
             f"各自按同一现金余额定额，合计超过了账户现金；这是账上原样，不是口径问题。")
 
-    return {
+    doc = {
         "mode": "paper", "label": MODES["paper"], "subset": subset,
         "subset_label": SUBSET_LABEL[subset],
         "methodology": PAPER_METHODOLOGY, "source_id": None,
@@ -792,6 +792,9 @@ def paper_view(con, p=None, subset: str = "live") -> dict[str, Any]:
         "records": records(con, subset=subset),
         "disclosures": disclosures,
     }
+    # WS-E: tracking-error column + three-layer attribution, from the same ledgers.
+    from . import attribution_layers
+    return attribution_layers.extend_view(con, doc, ledgers)
 
 
 # ---------------------------------------------------------------- backtest view
@@ -1090,7 +1093,7 @@ def backtest_view(con, p=None, source: str | None = None) -> dict[str, Any]:
                        "excluded_arms": summary.get("excluded_arms") or [],
                        "arm_errors": {a: v.get("errors") for a, v in arm_summary.items()
                                       if isinstance(v, dict) and v.get("errors")}}
-    return {
+    doc = {
         "mode": "backtest", "label": MODES["backtest"], "subset": "all",
         "methodology": methodology, "methodology_raw": run["methodology"],
         "source_id": bid,
@@ -1110,6 +1113,9 @@ def backtest_view(con, p=None, source: str | None = None) -> dict[str, Any]:
         "records": rec,
         "disclosures": disclosures,
     }
+    # WS-E: tracking-error column (layers need per-position windows; paper only).
+    from . import attribution_layers
+    return attribution_layers.extend_view(con, doc, None)
 
 
 # ---------------------------------------------------------------- index

@@ -607,3 +607,56 @@ def research_cutoff_iso(as_of) -> str:
     if d.weekday() != 2:
         return "9999-12-31"
     return f"{d.isoformat()}T{DECISION_CUTOFF_HKT}+08:00"
+# WS-E ------------------------------------------ 归因 · 跟踪误差 · 市场阶段 · 入库 · 成本
+# 三层归因：一个组合-期里能对上主题指示标的的仓位少于这个数，这一行写「样本不足」，
+# 不给它的数字配颜色。累计行另看期数。
+ATTR_MIN_POSITIONS = 10
+ATTR_MIN_PERIODS = 6
+# 跟踪误差：逐日净值与 SPY 的日收益差，年化用 252。少于这么多个共同交易日不给数。
+TE_MIN_DAYS = 10
+TE_ANNUALISE = 252
+# 市场阶段。首要开关是动量因子自身：MTUM 相对 SPY 的比值在快/慢两个窗口上的变化。
+# 21 ≈ 一个月（与持有期同一把尺子），63 ≈ 一个季度（「过去这一段动量是不是在赢」）。
+REGIME_MOM_CODE = "US.MTUM"
+REGIME_MOM_FAST = 21
+REGIME_MOM_SLOW = 63
+REGIME_TREND_MA = 200
+# 波动水平优先用 VIX（FMP 可得时存到 prices 的 IDX.VIX 行），否则用 SPY 21 日已实现波动。
+# 两套阈值分开：隐含波动长期高于已实现，用同一组数会把平静市场判成中波动。
+REGIME_VIX_CODE = "IDX.VIX"
+REGIME_VIX_BANDS = (16.0, 24.0)
+REGIME_RVOL_BANDS = (12.0, 20.0)
+# 分阶段表现：一个策略在某个阶段少于这么多期，就是「样本不足」。
+REGIME_MIN_PERIODS = 6
+# 精选组合整体体检：整体已定价 P 均值达到这个数算偏拥挤（P 是标的自身一年分布的分位）。
+SHORTLIST_CROWDED_P = 80.0
+# 运行成本。月度预算是对齐会上的估算口径（「约 200 美元/月」），不是合同数。
+COST_BUDGET_USD_MONTH = 200.0
+COST_VE_PROFILE = os.environ.get("IDEAGEN_COST_VE_PROFILE", "byteplus")
+COST_VE_REGION = os.environ.get("IDEAGEN_COST_VE_REGION", "ap-southeast-1")
+# 实例名前缀 → 项目。先匹配前缀，再按产品兜底；两样都对不上的记「未归属」，单列，不猜。
+COST_PREFIX_PROJECT = (("ideagen-", "IdeaGen"), ("nexus-", "nexus-card"))
+COST_PRODUCT_PROJECT = {
+    # IdeaGen 代码里零引用的知识库，归「其他」。
+    "VDB_KnowledgeBase": "其他",
+    # AgentKit 与它的镜像仓库是 IdeaGen 最早的沙箱实验，代金券全抵。
+    "AgentKit": "IdeaGen",
+    # 云端推理（2026-09 已关停，走 Claude Code 会话）与展示节点的对象存储。
+    "ModelArk": "IdeaGen",
+    "ModelArk_open_source_llm": "IdeaGen",
+    "TOS": "IdeaGen",
+}
+COST_NAME_PROJECT = (("agentkit", "IdeaGen"),)
+# 知道某个实例属于谁、但账单上没有名字时，在这里按实例号写死；默认不写，宁可「未归属」。
+COST_INSTANCE_PROJECT: dict = {}
+# 已删除的资源（实例名 → 删除日期）。运行率同时给「含」与「剔除」两个口径。
+COST_RETIRED = {"ideagen-prod-mysql": "2026-09-11"}
+# Claude 推理按 API 单价折算（实际走 Claude Code 会话订阅），明确标「估算」。
+# 每次调用的 token 数是量级假设：一次生成调用带研报摘要约 2 万输入、3 千输出。
+COST_CLAUDE_MODEL = "claude-opus-5"
+COST_CLAUDE_USD_PER_MTOK_IN = 5.0
+COST_CLAUDE_USD_PER_MTOK_OUT = 25.0
+COST_CLAUDE_TOKENS_IN_PER_CALL = 20_000
+COST_CLAUDE_TOKENS_OUT_PER_CALL = 3_000
+# 数据源：研报（Wisburg）与 FMP 的 key 由佳琦提供，本项目不付费。
+COST_DATA_SOURCES = (("Wisburg 研报", 0.0), ("FMP 行情与基本面", 0.0))

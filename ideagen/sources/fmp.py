@@ -246,6 +246,28 @@ def economic_calendar(start: str, end: str) -> list[dict[str, Any]]:
     return _get("economic-calendar", **{"from": start, "to": end}) or []
 
 
+def closes_before(symbols: list[str], before) -> dict[str, dict[str, Any]]:
+    """Last EOD close strictly before `before`, per symbol, quote-shaped.
+
+    For a replayed period. `quote` answers with *today's* level whatever date
+    the caller is asking about, so a backfill run on 2026-09-07 stamped VIX
+    14.53 on eight historical Wednesdays (the real 07-28 close was 18.21).
+    A Wednesday decision at 07:00 HKT sees Tuesday's US close, hence "before".
+    """
+    from datetime import timedelta
+    start = (before - timedelta(days=10)).isoformat()
+    end = (before - timedelta(days=1)).isoformat()
+    out: dict[str, dict[str, Any]] = {}
+    for sym in symbols:
+        rows = _get("historical-price-eod/full", symbol=sym, **{"from": start, "to": end}) or []
+        rows = [r for r in rows if isinstance(r, dict) and str(r.get("date", "")) < before.isoformat()]
+        if rows:
+            last = max(rows, key=lambda r: r["date"])
+            out[sym] = {"price": last.get("close"), "changePercentage": last.get("changePercent"),
+                        "date": last["date"]}
+    return out
+
+
 def quotes(symbols: list[str]) -> dict[str, dict[str, Any]]:
     """One quote per symbol, keyed by symbol; symbols that return nothing are
     absent rather than present-and-empty.

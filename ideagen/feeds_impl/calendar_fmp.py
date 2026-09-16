@@ -60,6 +60,7 @@ import hashlib
 from datetime import date, timedelta
 from typing import Any, Iterable
 
+from .. import config
 from ..feeds import register
 from ..sources import fmp
 
@@ -211,7 +212,11 @@ def fmp_vol_surface(as_of: date, params: dict[str, Any]) -> Iterable[dict[str, A
     the most direct available answer.
     """
     syms = list(params.get("symbols") or VOL_INDICES)
-    got = fmp.quotes(syms)
+    # A replay must not read today's quote (see `fmp.closes_before`); a live
+    # run at Wednesday 07:00 HKT gets Tuesday's close from `quote` anyway.
+    replay = as_of < config.now_hkt().date()
+    got = fmp.closes_before(syms, as_of) if replay else fmp.quotes(syms)
+    src = "FMP EOD 收盘 {s} @{d}" if replay else "FMP quote {s}"
     if not got:
         # Distinguish "no vol today" (impossible) from "the endpoint answered
         # nothing" (routine). Without this the run records a period in which the
@@ -233,7 +238,7 @@ def fmp_vol_surface(as_of: date, params: dict[str, Any]) -> Iterable[dict[str, A
             "kind": "level",
             "actual": round(v, 4),
             "unit": "",
-            "source": f"FMP quote {s}",
+            "source": src.format(s=s, d=q.get("date", "")),
             "change_pct": _num(q.get("changePercentage")),
         }
 

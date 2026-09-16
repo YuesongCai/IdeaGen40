@@ -199,6 +199,30 @@ class MacroReleases(unittest.TestCase):
 
 
 class VolSurface(unittest.TestCase):
+    def setUp(self):
+        # These cases are the live path: pin "now" to the period being run.
+        from datetime import datetime
+        from ideagen import config
+        p = mock.patch.object(cal.config, "now_hkt",
+                              return_value=datetime.combine(AS_OF, datetime.min.time(), tzinfo=config.TZ))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_a_replayed_period_reads_the_close_before_it_not_todays_quote(self):
+        # 2026-09-07 backfill stamped today's VIX (14.53) on eight past Wednesdays.
+        from datetime import datetime
+        from ideagen import config
+        past = AS_OF - timedelta(days=42)
+        closes = {"^VIX": {"price": 18.21, "date": (past - timedelta(days=1)).isoformat()}}
+        with mock.patch.object(cal.config, "now_hkt",
+                               return_value=datetime.combine(AS_OF, datetime.min.time(), tzinfo=config.TZ)), \
+                mock.patch.object(cal.fmp, "quotes", side_effect=AssertionError("live quote in a replay")), \
+                mock.patch.object(cal.fmp, "closes_before", return_value=closes) as cb:
+            rows = list(cal.fmp_vol_surface(past, {"symbols": ["^VIX"]}))
+        cb.assert_called_once()
+        self.assertEqual(rows[0]["actual"], 18.21)
+        self.assertIn("EOD", rows[0]["source"])
+
     def test_empty_complex_is_an_outage_not_a_calm_market(self):
         with mock.patch.object(cal.fmp, "quotes", return_value={}):
             with self.assertRaises(RuntimeError):

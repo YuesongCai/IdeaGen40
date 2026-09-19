@@ -141,3 +141,75 @@ class EvidenceWindowSaysWhenItIsBehind(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheNotificationHasToActuallyLeave(unittest.TestCase):
+    """`lark-cli` is a node script. Under launchd — PATH is
+    `/usr/bin:/bin:/usr/sbin:/sbin` — even an absolute path to it exits 127 on
+    `env: node: No such file or directory`, and `_notify` captured the output and
+    said nothing. Every scheduler notification ever sent from a launchd tick went
+    nowhere, which is the worst possible state for an alarm: the code is there,
+    the reviewer sees it, and it has never once fired."""
+
+    def test_the_brew_bin_is_prepended_to_a_launchd_path(self):
+        import os
+        from unittest import mock
+        from ideagen import scheduler
+        with mock.patch.dict(os.environ,
+                             {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}, clear=False):
+            path = scheduler._notify_env()["PATH"].split(":")
+        self.assertIn("/opt/homebrew/bin", path)
+        self.assertLess(path.index("/opt/homebrew/bin"), path.index("/usr/bin"))
+
+    def test_a_path_that_already_has_it_is_not_doubled(self):
+        import os
+        from unittest import mock
+        from ideagen import scheduler
+        with mock.patch.dict(os.environ,
+                             {"PATH": "/opt/homebrew/bin:/usr/bin"}, clear=False):
+            path = scheduler._notify_env()["PATH"].split(":")
+        self.assertEqual(path.count("/opt/homebrew/bin"), 1)
+
+    def test_no_recipient_configured_sends_nothing(self):
+        """Absent config must stay a no-op, not an exception on every tick."""
+        import os
+        from unittest import mock
+        from ideagen import scheduler
+        with mock.patch.dict(os.environ, {"IDEAGEN_LARK_NOTIFY_USER_ID": ""},
+                             clear=False):
+            with mock.patch("subprocess.run") as run:
+                scheduler._notify("x")
+        run.assert_not_called()
+
+
+class AMissedPeriodPagesExactlyOnce(unittest.TestCase):
+    """A permanently missed Wednesday costs a week of the only evidence this
+    system accepts, and nothing told anyone — `_record_gap` wrote the row and
+    published an internal event while the failed-run path paged. Adding the page
+    is half of it; the other half is that it must not repeat, because
+    `permanently_missed` also carries periods an earlier tick already wrote off."""
+
+    P = [
+        {"as_of": "2026-08-05", "status": "recorded_missed"},
+        {"as_of": "2026-09-02", "status": "permanently_missed",
+         "recorded": {"row": "existing"}},
+        {"as_of": "2026-09-09", "status": "permanently_missed",
+         "recorded": {"row": "inserted"}},
+        {"as_of": "2026-09-16", "status": "permanently_missed",
+         "recorded": {"dry_run": True}},
+        {"as_of": "2026-09-23", "status": "ran"},
+    ]
+
+    def test_only_the_period_recorded_for_the_first_time(self):
+        from ideagen import scheduler
+        self.assertEqual(scheduler.newly_missed(self.P), ["2026-09-09"])
+
+    def test_a_dry_run_never_pages(self):
+        from ideagen import scheduler
+        rows = [x for x in self.P if x["as_of"] == "2026-09-16"]
+        self.assertEqual(scheduler.newly_missed(rows), [])
+
+    def test_nothing_missed_is_silence(self):
+        from ideagen import scheduler
+        self.assertEqual(scheduler.newly_missed(
+            [{"as_of": "2026-09-23", "status": "ran"}]), [])

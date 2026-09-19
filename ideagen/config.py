@@ -660,3 +660,28 @@ COST_CLAUDE_TOKENS_IN_PER_CALL = 20_000
 COST_CLAUDE_TOKENS_OUT_PER_CALL = 3_000
 # 数据源：研报（Wisburg）与 FMP 的 key 由佳琦提供，本项目不付费。
 COST_DATA_SOURCES = (("Wisburg 研报", 0.0), ("FMP 行情与基本面", 0.0))
+
+
+# ---------------------------------------------------------------- subprocess PATH
+#: Where a Homebrew-installed CLI and its interpreter live. launchd hands a job
+#: `PATH=/usr/bin:/bin:/usr/sbin:/sbin` and nothing else, so `lark-cli` — a node
+#: script — fails there twice over: the name does not resolve, and even an
+#: absolute path to it dies on `env: node: No such file or directory`, exit 127.
+#: Every Feishu notification this project sends runs from a launchd tick.
+BREW_BINS = ("/opt/homebrew/bin", "/usr/local/bin")
+
+
+def subprocess_env() -> dict:
+    """`os.environ` with the Homebrew bins prepended to PATH.
+
+    Prepended rather than replacing, so a machine that already resolves them
+    keeps whatever it was using. Use this for every `subprocess.run` of an
+    external CLI that a launchd job may reach.
+    """
+    import os as _os
+    env = dict(_os.environ)
+    have = env.get("PATH", "").split(":")
+    missing = [d for d in BREW_BINS if d not in have]
+    if missing:
+        env["PATH"] = ":".join([*missing, env.get("PATH", "")]).rstrip(":")
+    return env

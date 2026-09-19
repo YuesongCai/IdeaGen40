@@ -399,9 +399,19 @@ class ThemeDigest(unittest.TestCase):
             run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
             st = td.after_weekly(None, self.con, "2026-09-16")
         args = run.call_args[0][0]
-        self.assertEqual(args[:6], ["lark-cli", "im", "+messages-send", "--as", "bot", "--chat-id"])
+        # `args[0]` is whichever binary `IDEAGEN_LARK_CLI` names — a bare
+        # `lark-cli` here, an absolute path on a machine that sets it because
+        # launchd's PATH cannot find one. Pinning the literal made this test
+        # fail on the configuration that actually works in production, which is
+        # the wrong way round; what it is here to check is the routing.
+        self.assertTrue(args[0].endswith("lark-cli"), args[0])
+        self.assertEqual(args[1:6],
+                         ["im", "+messages-send", "--as", "bot", "--chat-id"])
         self.assertEqual(args[6], "oc_test")
         self.assertIn("--markdown", args)
+        # And the PATH that lets that binary's node shebang resolve.
+        self.assertIn("/opt/homebrew/bin",
+                      run.call_args.kwargs["env"]["PATH"].split(":"))
         self.assertEqual(st["feishu"]["state"], "sent")
 
     def test_a_failure_is_recorded_not_raised(self):

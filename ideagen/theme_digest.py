@@ -301,9 +301,13 @@ def _feishu(md: str) -> dict[str, Any]:
         return {"state": "skipped", "why": "未配置 IDEAGEN_DIGEST_FEISHU_CHAT_ID，未推送飞书"}
     cli = os.environ.get("IDEAGEN_LARK_CLI", "lark-cli").strip()
     try:
+        # `env=`: this runs from the weekly tick, and launchd's PATH has no
+        # node for `lark-cli`'s shebang. Without it the digest yifu asked to
+        # receive every week reports 127 and never leaves the machine.
         r = subprocess.run([cli, "im", "+messages-send", "--as", "bot",
                             "--chat-id", chat, "--markdown", md],
-                           timeout=60, capture_output=True, text=True)
+                           timeout=60, capture_output=True, text=True,
+                           env=config.subprocess_env())
     except Exception as e:  # noqa: BLE001 — reported in the status, never raised
         return {"state": "failed", "why": f"{type(e).__name__}: {e}"[:300]}
     if r.returncode != 0:

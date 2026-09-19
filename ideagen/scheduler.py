@@ -474,12 +474,27 @@ def _notify(text: str) -> None:
         return
     cli = os.environ.get("IDEAGEN_LARK_CLI", "lark-cli").strip()
     try:
-        subprocess.run(
+        r = subprocess.run(
             [cli, "im", "+messages-send", "--as", "bot",
              "--user-id", user_id,
-             "--text", text], timeout=30, capture_output=True)
+             "--text", text], timeout=30, capture_output=True, env=_notify_env())
+        # Silence here used to mean two different things. `lark-cli` is a node
+        # script, and under launchd — PATH is `/usr/bin:/bin:/usr/sbin:/sbin`,
+        # with no `/opt/homebrew/bin` — even an absolute path to it exits 127 on
+        # `env: node: No such file or directory`. Nothing raised, nothing
+        # printed, and every notification this module has ever sent from the
+        # scheduler went nowhere. A send that fails has to say so.
+        if r.returncode != 0:
+            detail = (r.stderr or r.stdout or b"").decode("utf-8", "replace")[:200]
+            print(f"  (飞书通知失败 rc={r.returncode}: {detail.strip()})",
+                  file=sys.stderr)
     except Exception as e:  # noqa: BLE001
         print(f"  (飞书通知失败: {e})", file=sys.stderr)
+
+
+#: Kept as a name here because the notification path is where the missing PATH
+#: was found; the implementation is shared with every other CLI subprocess.
+_notify_env = config.subprocess_env
 
 
 def _refresh_review() -> None:
@@ -1534,7 +1549,41 @@ def catch_up(since: date | datetime, *, now_utc: datetime,
         p.events.publish("scheduler.catch_up",
                          {"missed": rep.permanently_missed,
                           "since": rep.since, "until": rep.until_hkt})
+    # A failed run already pages; a period that never started did not, and it is
+    # the more expensive of the two. Forward evidence is the only evidence this
+    # system accepts, it accrues one period a week, and a period past the grace
+    # window cannot be recovered at all — the corpus is gone and a later replay
+    # would fill entry bands against candles that have already printed. So the
+    # one event that permanently costs a week was the one nobody was told about,
+    # while the recoverable one paged.
+    #
+    # Only the periods this pass *newly* recorded, not `rep.permanently_missed`:
+    # that property also carries `recorded_missed`, the periods an earlier tick
+    # already wrote off, so paging on it would re-send 2026-08-05 on every
+    # catch-up forever. An alarm that repeats for something you cannot act on is
+    # an alarm people learn to ignore, which costs the next real one.
+    fresh = newly_missed(rep.periods)
+    if fresh:
+        _notify("⚠️ IdeaGen 期次永久丢失：" + "、".join(fresh)
+                + f"（超过 {LATE_START_GRACE.total_seconds() / 3600:.0f}h 补跑窗口，"
+                  "无法补回）。前向证据每周只长一期，这一期不会再有。")
     return rep
+
+
+def newly_missed(periods: list[dict[str, Any]]) -> list[str]:
+    """Periods this pass wrote off for the first time.
+
+    Not `CatchUpReport.permanently_missed`, which also carries
+    `recorded_missed` — periods an earlier tick already wrote off. Paging on
+    that would re-send 2026-08-05 on every catch-up for the rest of the
+    project's life, and an alarm that repeats for something nobody can act on
+    is an alarm people learn to ignore, which costs the next real one.
+    `_record_gap` reports `row="inserted"` exactly once per period, and
+    `row="existing"` (or nothing at all, under `--dry-run`) thereafter.
+    """
+    return [x["as_of"] for x in periods
+            if x.get("status") == "permanently_missed"
+            and (x.get("recorded") or {}).get("row") == "inserted"]
 
 
 def _record_gap(p: plat.Platform, as_of: date, reason: str, *,

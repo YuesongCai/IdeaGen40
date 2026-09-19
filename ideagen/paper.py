@@ -197,6 +197,36 @@ def mark_price(con, idea: dict, d: str) -> dict | None:
     return None
 
 
+def carry_mark(con, idea: dict, d: str) -> dict | None:
+    """Valuation mark: the best price we have, however old, plus how old it is.
+
+    `mark_price` answers a *decision* question — may I trade or exit on this
+    price today — and answers None when a fund's NAV has gone staler than
+    `olive.MAX_NAV_STALE_DAYS`. That refusal is right for fills and stops and
+    wrong for valuation, because the caller that values a book was reading the
+    refusal as "this holding is worth zero": between 2026-09-11 and 2026-09-18
+    the Olive connector was down, seven fund positions stopped being marked, and
+    every book's NAV fell off a cliff that no position had actually taken. A
+    price we cannot refresh is not a price of zero.
+
+    So this returns the last known price regardless of age, and says `fresh`
+    False when it is past the staleness bar. The book stays valued at its last
+    honest mark and the equity row records how much of it is carried that way —
+    the disclosure `olive.mark`'s own docstring assumes its caller will make.
+    Returns None only when the instrument has no price in the database at all.
+    """
+    if idea["instrument"] == "listed" and idea["futu_code"]:
+        m = mark_price(con, idea, d)
+        return None if m is None else {**m, "fresh": m["stale"] <= 3}
+    if idea["olive_key"]:
+        m = olive.mark(con, idea["olive_key"], d)
+        if m:
+            return {"px": m["nav"], "d": m["nav_d"], "stale": m["stale_days"],
+                    "src": "olive:nav" if m["usable"] else "olive:nav:carry",
+                    "fresh": bool(m["usable"])}
+    return None
+
+
 def markable(con, idea: dict) -> tuple[bool, str]:
     if idea["instrument"] == "listed":
         if not idea["futu_code"]:
@@ -627,18 +657,28 @@ def step(con, book_id: str, d: str, verbose: bool = False) -> dict:
         cash = _cash_on(con, book_id, d, spec["capital"])
         mv = 0.0
         n_open = 0
+        mv_stale = 0.0
+        n_stale = 0
+        n_unpriced = 0
         for p in db.q(con, "SELECT * FROM positions WHERE book_id=? AND opened_d<=? "
                            "AND (status='open' OR closed_d>?)", (book_id, d, d)):
             pos = dict(p)
             idea = dict(db.q1(con, "SELECT * FROM ideas WHERE idea_uid=?",
                               (pos["idea_uid"],)))
-            m = mark_price(con, idea, d)
+            # `carry_mark`, not `mark_price`: a holding whose price we could not
+            # refresh today still has to be carried at its last mark. Dropping it
+            # here valued it at zero and printed the hole as a day's loss.
+            m = carry_mark(con, idea, d)
             if not m:
+                n_unpriced += 1
                 continue
             fx = _fx(_currency(con, idea)) or 1.0
             val = pos["qty"] * m["px"] * fx
             mv += val
             n_open += 1
+            if not m.get("fresh", True):
+                mv_stale += val
+                n_stale += 1
             upnl = val - pos["cost"]
             db.upsert(con, "mtm", {
                 "book_id": book_id, "pos_id": pos["pos_id"], "d": d, "px": m["px"],
@@ -660,6 +700,10 @@ def step(con, book_id: str, d: str, verbose: bool = False) -> dict:
             "ret_d": ret_d, "cum_ret": cum,
             "drawdown": (equity / peak - 1) if peak else 0.0,
             "n_open": n_open, "gross": (mv / equity if equity else 0.0),
+            # How much of this NAV is a carried price rather than today's. A
+            # reader who is not told cannot tell the difference, and the day the
+            # feed comes back the catch-up move lands in one session.
+            "mv_stale": mv_stale, "n_stale": n_stale, "n_unpriced": n_unpriced,
         }, ["book_id", "d"])
 
     ev["equity"] = equity

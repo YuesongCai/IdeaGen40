@@ -108,6 +108,16 @@ def _backtest_state(p) -> dict[str, Any]:
     run["positions"] = positions
     run["latest_period"] = max(
         (str(row["period"]) for row in positions), default=None)
+    # How far behind the weekly periods this study is. Computed here rather than
+    # inferred from `latest_period` downstream, because the honest answer needs
+    # the period list, and because a reader who is not handed the shortfall has
+    # no way to tell a replay that ran this morning from one that stopped two
+    # weeks ago — both render a complete-looking page.
+    try:
+        from . import evidence_sync
+        run["lag"] = evidence_sync.lag(p.state)
+    except Exception:  # noqa: BLE001 — the page is worth more than the badge
+        run["lag"] = None
     return run
 
 

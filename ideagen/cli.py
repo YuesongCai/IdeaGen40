@@ -1259,6 +1259,15 @@ def cmd_daily(args) -> int:
     stage("verify-assets", lambda: wisburg.verify_assets(con, limit=120))
     print("[10/10] settle + dashboard")
     stage("settle", lambda: analytics.settle(con, book_id="naive", verbose=False))
+    # Before the dashboard, not after: the 证据 and 业绩 pages read whatever the
+    # last replay stored, and until 2026-09-19 that was whatever date a person
+    # last typed the command — 09-07, with two live periods already on file and
+    # the pre-registration counter still reading 0/8. Behind-only, so this is a
+    # no-op on the six days a week no new period exists, and it can never turn
+    # the run partial: `refresh` reports its failures instead of raising, and
+    # `evidence_sync.lag` keeps the shortfall on the page either way.
+    from . import evidence_sync as _ev
+    stage("evidence", lambda: print("      " + _ev.refresh(con)))
     stage("dashboard", lambda: report_mod.build(con))
     # WS-E: bill snapshot + VIX. Network failures are written into the note and
     # the cost table, never raised, so this stage cannot turn the run partial.

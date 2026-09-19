@@ -4237,6 +4237,24 @@ function svgTxt(x,y,s,o){
     +'>'+esc(s)+'</text>';
 }
 
+/* 这张卡上的每个数，都来自「上一次把周跑重放一遍」的那次计算——而那次计算
+   直到 2026-09-19 都还是人手敲的命令。09-07 敲过一次之后，09-09 与 09-16
+   两期实跑躺在库里没进窗口，计数器一直显示 0 期实跑：这句话和「新链路还没
+   开始跑」长得一模一样，页面看不出差别。所以落后几期要写在头条上面，而不是
+   等人去对日期。刷新已经挂进每日运行，这行是它停了以后的那道保险。 */
+function evidenceLagLine(){
+  var lg=((S||{}).backtest||{}).lag;
+  if(!lg||!lg.behind)return '';
+  var n=Number(lg.behind||0);
+  return '<div class="hl-alert" role="alert" style="margin:var(--space-2) 0 0">'
+    +'<span class="hl-dot"></span>'
+    +'<span><b>证据窗口落后 '+fmtInt(n)+' 期</b> · 这一页的结论没有看过最近 '
+      +fmtInt(n)+' 周'
+      +'<span class="hl-sub">窗口截至 '+esc(String((lg.studies&&lg.studies.study&&lg.studies.study.window_end)||'—'))
+      +'，最新一期 '+esc(String(lg.newest_period||'—'))
+      +' · 重放挂在每日运行的「evidence」阶段，连续落后说明那一阶段没跑成</span></span></div>';
+}
+
 function evidenceProgressCard(){
   var sm=(((S||{}).backtest||{}).summary)||{};
   var lb=sm.live_vs_backfill;
@@ -4338,6 +4356,7 @@ function evidenceProgressCard(){
   return '<div class="card section" id="evProgress">'
     +'<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">样本累积进度</h2>'
       +'<span class="card-note">样本量，非业绩 · 点图看阈值与说明</span></div>'
+    +evidenceLagLine()
     +'<div style="font:600 20px/28px var(--font-sans);color:var(--color-text-primary);margin:var(--space-2) 0 var(--space-4)">'
       +headline+'</div>'
     +'<button type="button" class="ev-chart-btn tap" onclick="pushDrawer({t:\'ev\',p:\'progress\'})" title="阈值 · 已累积期数 · 预计达阈值日期 · 历史回补为何不计入">'

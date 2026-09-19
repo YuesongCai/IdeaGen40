@@ -772,6 +772,15 @@ OWNED: dict[str, tuple[str, ...]] = {
 #: data rather than hand-written migrations because the check has to run on every
 #: boot: a deploy that skipped one migration must self-heal, not fail at insert.
 ADD_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    # How much of a book's NAV on day d is carried at a price we could not
+    # refresh. Until 2026-09-19 an unrefreshable holding was skipped by the
+    # valuation loop, which valued it at zero and printed the hole as that day's
+    # loss — one broken Olive connector took every arm's reported return down by
+    # double digits while the positions themselves were flat. Rows written before
+    # the fix stay NULL, meaning "this run did not measure it".
+    ("equity", "mv_stale", "REAL"),
+    ("equity", "n_stale", "INTEGER"),
+    ("equity", "n_unpriced", "INTEGER"),
     ("orch_runs", "data_classification", "TEXT"),
     ("candidates", "topic_id", "TEXT"),
     ("candidates", "method",   "TEXT"),

@@ -44,6 +44,20 @@ class OliveMCPError(RuntimeError):
     pass
 
 
+def safe_error(exc: Exception) -> str:
+    """Keep the cause for operators without recording OAuth credentials."""
+    text = f"{type(exc).__name__}: {exc}"
+    for value in config.olive_credentials().values():
+        if len(str(value)) >= 8:
+            text = text.replace(str(value), "REDACTED")
+    text = re.sub(r"(?i)\bBearer\s+[^\s,\"']+", "Bearer REDACTED", text)
+    text = re.sub(
+        r"(?i)(\b(?:access_token|refresh_token|client_secret|authorization|code)\b"
+        r"[\"']?\s*[:=]\s*[\"']?)([^\s&\"',}]+)",
+        r"\1REDACTED", text)
+    return text[:300]
+
+
 class OliveMCP:
     """Streamable-HTTP MCP client with Noah SSO OAuth token refresh."""
 
@@ -56,7 +70,7 @@ class OliveMCP:
             raise OliveMCPError("OLIVE_MCP_URL is not configured")
         self.access_token = (
             access_token if access_token is not None
-            else credentials.get("access_token") or config.olive_access_token()
+            else credentials.get("access_token", "")
         )
         self.refresh_token = (refresh_token
                               if refresh_token is not None
@@ -65,6 +79,11 @@ class OliveMCP:
                           if client_id is not None
                           else credentials.get("client_id", ""))
         self.token_url = token_url or config.OLIVE_OAUTH_TOKEN_URL
+        # An access token is disposable; the stored refresh grant can restore
+        # it. Calling olive_access_token() first prevented that recovery on
+        # the production node, which was provisioned with only the grant.
+        if not self.access_token and not (self.refresh_token and self.client_id):
+            config.olive_access_token()  # keep the actionable missing-credential error
         self.timeout = timeout
         self.session_id: str | None = None
         self.refreshed_tokens: dict[str, Any] | None = None
@@ -99,8 +118,15 @@ class OliveMCP:
             timeout=self.timeout,
         )
         if response.status_code >= 400:
+            try:
+                error = response.json().get("error", "unknown_error")
+            except (ValueError, AttributeError):
+                error = "non_json_error"
+            # OAuth's error code distinguishes a revoked grant from a service
+            # outage. Raw response bodies may echo tokens or client metadata.
+            error = re.sub(r"[^a-zA-Z0-9_-]", "", str(error))[:80]
             raise OliveMCPError(
-                f"OAuth refresh HTTP {response.status_code}: {response.text[:200]}")
+                f"OAuth refresh HTTP {response.status_code}: {error}")
         tokens = response.json()
         access = tokens.get("access_token")
         if not access:
@@ -126,6 +152,9 @@ class OliveMCP:
               retries: int = 3) -> Any:
         last: Exception | None = None
         refreshed = False
+        if not self.access_token:
+            self._refresh()
+            refreshed = True
         for attempt in range(retries):
             try:
                 headers = ({"Mcp-Session-Id": self.session_id}

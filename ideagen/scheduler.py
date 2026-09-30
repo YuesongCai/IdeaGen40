@@ -839,7 +839,8 @@ def _sync_olive_daily(p: plat.Platform, now_hkt: datetime,
                       log: Callable[[str], None]) -> dict[str, Any]:
     """Capture one licensed shelf snapshot per HKT day after authorization."""
     credentials = config.olive_credentials()
-    if not credentials.get("access_token"):
+    if not credentials.get("access_token") and not (
+            credentials.get("refresh_token") and credentials.get("client_id")):
         return {"skipped": "Olive 尚未授权"}
     if now_hkt.timetz().replace(tzinfo=None) < OLIVE_SYNC_TRIGGER_HKT:
         return {
@@ -888,9 +889,8 @@ def _sync_olive_daily(p: plat.Platform, now_hkt: datetime,
         ok=0,
         error=None,
     )
+    from .sources import olive
     try:
-        from .sources import olive
-
         snapshot = olive.pull_snapshot(
             olive.OliveMCP(), detail_limit=config.OLIVE_DETAIL_LIMIT)
         result = shelf_store.persist(
@@ -901,7 +901,7 @@ def _sync_olive_daily(p: plat.Platform, now_hkt: datetime,
             classification=shelf_store.LIVE_CLASSIFICATION,
         )
     except Exception as exc:  # noqa: BLE001 - monitoring degrades, never blocks
-        error = f"{type(exc).__name__}: Olive MCP sync failed"
+        error = olive.safe_error(exc)
         _insert_run_row(
             p,
             run_id=run_id,
@@ -912,7 +912,7 @@ def _sync_olive_daily(p: plat.Platform, now_hkt: datetime,
             ok=0,
             error=error,
         )
-        problems.append(f"Olive 每日同步失败：{type(exc).__name__}")
+        problems.append(f"Olive 每日同步失败：{error}")
         return {"failed": error}
 
     _insert_run_row(

@@ -8,7 +8,6 @@ authorize through Noah SSO without running Python locally.
 from __future__ import annotations
 
 import os
-import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -140,20 +139,14 @@ def complete_authorization(query: str) -> dict[str, Any]:
 
 
 def _safe_error(exc: Exception) -> str:
-    text = f"{type(exc).__name__}: {exc}"
-    text = re.sub(
-        r"(?i)(access_token|refresh_token|authorization|code)=?[^\s&]+",
-        r"\1=REDACTED",
-        text,
-    )
-    return text[:240]
+    return olive.safe_error(exc)
 
 
 def _sync_worker() -> None:
     global _sync
     try:
         client = olive.OliveMCP()
-        snapshot = olive.pull_snapshot(client, detail_limit=1)
+        snapshot = olive.pull_snapshot(client, detail_limit=config.OLIVE_DETAIL_LIMIT)
         platform = platform_mod.load()
         result = shelf_store.persist(
             platform,

@@ -49,6 +49,7 @@ docker run -d --name ideagen-dash --restart always \
   --env-file "$CONF/runtime.env" \
   -e IDEAGEN_DASH_HOST=0.0.0.0 -e IDEAGEN_DB=/data/ideagen.db \
   -e IDEAGEN_ACCOUNTS_FILE=/data/accounts.json \
+  -e IDEAGEN_OLIVE_TOKEN_FILE=/data/olive-oauth/tokens.json \
   -v "$DATA":/data -p 80:8765 -p 443:8765 \
   --entrypoint python3 ideagen40:live -m ideagen.cli serve --port 8765 \
   >/dev/null 2>&1 && echo IG_RUN || { echo IG_RUN_FAIL; exit 1; }

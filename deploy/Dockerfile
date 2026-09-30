@@ -84,14 +84,20 @@ RUN chmod +x ./deploy/entrypoint.sh ./deploy/dashboard_entrypoint.sh
 # creates it root-owned 0755, the unprivileged container cannot write it, and
 # the accounts silently fall back into the container — which is the exact
 # failure this volume exists to prevent, arriving in the disguise of a fix.
-RUN mkdir -p /app/data /var/lib/ideagen-accounts \
+RUN mkdir -p /app/data /data /var/lib/ideagen-accounts \
     && useradd -u 10001 -m ideagen \
-    && chown -R ideagen /app /var/lib/ideagen-accounts
+    && chown -R ideagen /app /data /var/lib/ideagen-accounts
 USER ideagen
 
 ENV IDEAGEN_PLATFORM=byteplus \
     IDEAGEN_VENUE=paper \
-    IDEAGEN_TICK_INTERVAL_S=300
+    IDEAGEN_TICK_INTERVAL_S=300 \
+    IDEAGEN_OLIVE_TOKEN_FILE=/data/olive-oauth/tokens.json
+
+# The single-container node already mounts its persistent state at /data.
+# Set this in the image as well as sync_code.sh: the first upgrade still runs
+# the OLD updater's Docker command, which cannot inject the new variable yet.
+# Compose overrides it with its shared OAuth bind mount at /run/ideagen-oauth.
 
 # A container that has stopped ticking must not look healthy. The probe asks the
 # scheduler's own health surface, which reads the heartbeat key rather than

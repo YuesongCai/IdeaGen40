@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ideagen import ask, db, platform as plat, review  # noqa: E402
+from ideagen import ask, db, holdings, platform as plat, review  # noqa: E402
 
 
 def scrub(obj):
@@ -70,6 +70,8 @@ def main() -> int:
                 h.pop("meta", None)
         journal.get("journal", {}).pop("host", None)
     payload = scrub({"state": state, "journal": journal,
+                     "holdings": {s: holdings.view(con, s)
+                                  for s in ("all", "live", "backfill")},
                      "journal_error": journal_error,
                      "exported_at": datetime.now(timezone.utc).isoformat()})
 

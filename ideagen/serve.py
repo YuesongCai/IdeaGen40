@@ -456,6 +456,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._decision_get(path)   # WS-B
         if path == "/api/state":
             return self._json(_state_document())
+        if path == "/api/holdings":
+            from urllib.parse import parse_qs, urlparse
+            from . import holdings, performance
+            subset = (parse_qs(urlparse(self.path).query).get("subset") or ["all"])[0]
+            if subset not in performance.SUBSETS:
+                return self._json({"error": "invalid subset"}, status=400)
+            con = db.init()
+            try:
+                doc = holdings.view(con, subset)
+            except Exception:  # ledger errors must never look like empty accounts
+                traceback.print_exc()
+                return self._json({"error": "持仓金额暂时读取失败，请稍后重试"}, status=500)
+            finally:
+                con.close()
+            return self._json(doc)
         if path == "/api/period":
             # One period's pipeline, on demand. The state document carries the
             # spine (every period, cheap) and the newest period's pipeline; the

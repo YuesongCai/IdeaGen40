@@ -2277,7 +2277,7 @@ button.chip:hover{border-color:var(--color-border-strong);background:var(--color
 .rank-row.bm .rank-bar>i{background:var(--color-text-tertiary)}
 .rank-row.ctl .rank-bar>i{background:var(--color-text-tertiary);opacity:.45}
 .rank-row .rv{font:600 13px/18px var(--font-mono);text-align:right}
-/* WS-B 组合决策层：精选 · PM 把关 / 卫星仓下单单 */
+/* WS-B 组合决策层：精选 · PM 把关 / 拟买入清单 */
 .pmr-list{display:flex;flex-direction:column;gap:var(--space-3)}
 .pmr-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr);gap:var(--space-4);
   border:1px solid var(--color-border-subtle);border-radius:8px;padding:var(--space-3) var(--space-4);background:var(--color-surface-white)}
@@ -2407,6 +2407,61 @@ body.wsd-viewer #askTop{display:none!important}
 .wse-health{margin:0 0 var(--space-3);font:400 12.5px/19px var(--font-sans);color:var(--color-text-secondary)}
 .wse-health b{color:var(--color-text-primary);font-weight:600}
 @media (max-width:640px){.wse-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Account holdings: existing palette and typography, with explicit units. */
+.hold-picker-head,.hold-account-head,.hold-lot-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+.hold-picker .card-title,.hold-account-head .card-title{margin-bottom:6px}
+.hold-picker p{margin:0}
+.hold-subsets{display:flex;gap:6px;flex-wrap:wrap;margin-top:20px}
+.hold-scope-note{font-size:12px;color:var(--color-text-secondary);padding:10px 0 16px}
+.hold-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:8px}
+.hold-choice{display:flex;align-items:center;gap:10px;border:1px solid var(--color-border-default);border-radius:7px;padding:12px;cursor:pointer;font-size:13px;transition:background .15s,border-color .15s}
+.hold-choice.chosen{background:#f0f5eb;border-color:#8fa58a;color:var(--color-text-brand)}
+.hold-choice:hover{background:#f3f5f2}.hold-choice input{width:16px;height:16px;accent-color:#204732;flex:none}
+.hold-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid var(--color-border-default)}
+.hold-tools>button{border:0;background:none;color:var(--color-text-brand);font:inherit;font-size:12px;cursor:pointer;padding:5px}
+.hold-search{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--color-text-secondary)}
+.hold-search input{border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-surface-default);padding:8px 10px;width:185px;font:inherit;color:var(--color-text-primary)}
+.hold-choice:focus-within,.hold-symbol:focus-visible,.hold-tools button:focus-visible{outline:2px solid #204732;outline-offset:2px}
+.hold-date{text-align:right;font-size:12px;color:var(--color-text-tertiary);line-height:1.8;white-space:nowrap}
+.hold-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;margin:22px 0;background:#f6f8f5;border:1px solid var(--color-border-default);border-radius:8px;padding:18px 4px}
+.hold-metric{padding:0 16px;border-right:1px solid var(--color-border-default);min-width:0}.hold-metric:last-child{border:0}
+.hold-metric>span{display:block;font-size:12px;color:var(--color-text-secondary);margin-bottom:8px}
+.hold-metric strong{display:block;font-size:19px;font-weight:600;line-height:1.4;white-space:nowrap;letter-spacing:-.4px}
+.hold-metric small{display:block;font-size:11px;line-height:1.6;color:var(--color-text-tertiary);margin-top:7px}
+.hold-table-note{font-size:12px;color:var(--color-text-secondary);margin-bottom:12px}
+.hold-table-wrap{overflow-x:auto;border:1px solid var(--color-border-default);border-radius:8px}
+.hold-table{width:100%;min-width:960px;border-collapse:collapse;font-size:12px}
+.hold-table th{white-space:nowrap;background:#f3f4f2;padding:12px 10px;font-weight:500}
+.hold-table th button{border:0;background:none;color:inherit;font:inherit;padding:0;cursor:pointer}
+.hold-table td{padding:12px 9px;border-top:1px solid var(--color-border-subtle);vertical-align:middle;white-space:nowrap}
+.hold-table th:first-child,.hold-table td:first-child{min-width:172px;max-width:190px;position:sticky;left:0;background:white;z-index:1}
+.hold-table th:first-child{background:#f3f4f2;z-index:2}.hold-table tbody tr:hover td{background:#f7faf6}
+.hold-symbol{border:0;background:none;color:var(--color-text-brand);font:600 13px var(--font-mono);padding:0;cursor:pointer}.hold-symbol span{padding-left:4px}
+.hold-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;color:var(--color-text-secondary);font-size:11px;margin:6px 0 0}
+.hold-ccy{font-size:10px;color:var(--color-text-tertiary);margin-left:5px}.hold-return{font-weight:600}
+.hold-table-note{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.hold-row-count{white-space:nowrap;color:var(--color-text-tertiary)}
+.hold-filter-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+.hold-filter-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--color-border-brand-subtle);color:var(--color-text-brand);background:var(--color-surface-white);border-radius:6px;padding:8px 12px;font:500 12px var(--font-sans);cursor:pointer}
+.hold-filter-btn[aria-expanded=true]{background:var(--color-surface-brand-subtle)}.hold-sort-label{font-size:12px;color:var(--color-text-tertiary)}
+.hold-filter-panel{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;background:var(--color-surface-subtle);border-radius:7px;padding:16px;margin-top:12px}
+.hold-filter-panel label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--color-text-secondary)}
+.hold-filter-panel select{font:12px var(--font-sans);color:var(--color-text-primary);background:var(--color-surface-white);border:1px solid var(--color-border-default);border-radius:5px;padding:7px 24px 7px 8px;min-width:135px}
+.hold-filter-panel p{flex-basis:100%;font-size:11px;color:var(--color-text-tertiary);margin:0}.hold-reset{font:12px var(--font-sans);color:var(--color-text-brand);border:0;background:none;padding:9px 5px;cursor:pointer}
+.hold-subsets .seg-btn{border-radius:5px;border:1px solid var(--color-border-default);padding:7px 10px;cursor:pointer}.hold-subsets .seg-btn.on{border-color:var(--color-border-brand)}
+.hold-table td small{display:block;font-size:10px;font-weight:400;color:var(--color-text-tertiary);margin-top:5px}
+.hold-weight{width:55px;height:3px;background:#e5eae2;border-radius:2px;margin:7px 0 0 auto}.hold-weight i{display:block;height:100%;background:#204732;border-radius:2px}
+.hold-pending-note{font-size:12px;color:var(--color-text-tertiary);margin-top:15px}
+.hold-details{margin-top:18px;border-top:1px solid var(--color-border-default);padding-top:14px}.hold-details summary{font-size:12px;cursor:pointer;color:var(--color-text-secondary)}
+.hold-secondary{margin:12px 0 24px}.hold-secondary>summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--color-text-brand);padding:16px 0;border-top:1px solid var(--color-border-default)}
+.hold-secondary>p{padding-bottom:12px}.hold-warning{font-size:12px;color:#875814;background:#fff9eb;border:1px solid #eddfc4;border-radius:6px;padding:12px;margin-bottom:16px;line-height:1.7}
+.hold-lot{border:1px solid var(--color-border-default);border-radius:8px;margin-top:14px;padding:18px}.hold-lot-head{font-size:13px;flex-wrap:wrap;gap:8px}
+.hold-lot-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:18px 0}.hold-lot-values dt{font-size:11px;color:var(--color-text-tertiary)}
+.hold-lot-values dd{margin:5px 0 0;font-size:13px}.hold-thesis{font-size:13px;line-height:1.8;color:var(--color-text-secondary);margin:12px 0}
+.hold-position .hold-summary,.drawer .hold-summary{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:20px}.drawer .hold-metric{border:0}
+@media(max-width:1200px){.hold-summary{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:22px}.hold-metric{border:0}}
+@media(max-width:640px){.hold-choices{grid-template-columns:repeat(2,minmax(0,1fr))}.hold-choice{padding:10px 8px;font-size:12px}.hold-summary{grid-template-columns:repeat(2,minmax(0,1fr));padding:16px 0}.hold-metric{padding:0 12px}.hold-metric strong{font-size:17px}.hold-account-head{flex-wrap:wrap;gap:10px}.hold-date{text-align:left}.hold-search{width:100%;margin:0}.hold-search input{flex:1;width:auto}.hold-lot-values{grid-template-columns:repeat(2,minmax(0,1fr))}.hold-subsets .seg-btn{font-size:11px}.hold-picker-head{gap:12px}}
+@media(max-width:480px){.hold-picker,.hold-account{padding:16px}.hold-summary,.hold-position .hold-summary,.drawer .hold-summary{grid-template-columns:1fr;row-gap:18px}.hold-metric{display:grid;grid-template-columns:auto 1fr;gap:5px 8px}.hold-metric>span{margin:0;align-self:center}.hold-metric strong{text-align:right;font-size:16px}.hold-metric small{grid-column:1/-1;margin:0}.hold-table th:first-child,.hold-table td:first-child{min-width:125px;max-width:145px}.hold-name{max-width:135px}.hold-ccy{display:block;margin:4px 0}.hold-filter-panel{padding:12px}.hold-filter-panel label,.hold-filter-panel select{width:100%;min-width:0}.hold-lot-values{grid-template-columns:1fr}}
+@media(max-width:480px){.drawer[aria-label$="持仓明细"] .drawer-q{display:none}.drawer[aria-label$="持仓明细"] .drawer-title{font-size:16px;flex-shrink:0}}
 </style>
 <style>
 /* ══ 新手导览（一次性）══════════════════════════════════════════
@@ -3238,9 +3293,9 @@ var VIEWS=[
          {s:'roster',label:'逐期明细'}]},
   {id:'holdings',label:'持仓',sub:'现在拿着什么',
    icon:'<path d="M2.5 5.5h11v8h-11z"/><path d="M5.5 5.5V3.5h5v2"/>',
-   secs:[{s:'exposure',label:'主题敞口'},
+   secs:[{s:'exposure',label:'资金与持仓'},
          {s:'shortlist',label:'本期精选 · PM 把关'},
-         {s:'ticket',label:'卫星仓下单单'}]},
+         {s:'ticket',label:'拟买入清单'}]},
   /* 「业绩」回答「赚了还是亏了、亏赚从哪来」——是数字，不是判定。判定
      （它管用吗）留在证据页；两页互相链接、不互相复制。段落顺序即阅读顺序：
      先说清看的是哪一份数据，再净值、再周损益、再全表、再归因；研究检验与
@@ -5215,6 +5270,162 @@ function renderOverview(){
        +wseCostCard());   /* WS-E：运行成本是运行状况的一部分——机器在跑，钱也在花 */
 }
 /* 持仓：PM 的职业本能 —— 现在拿着什么、压在哪几个宏观判断上。 */
+var HOLD={subset:'all',selected:null,cache:{},busy:{},errors:{},at:{},query:'',sort:'weight_pct',ascending:false,profit:'all',ccy:'all',filtersOpen:false,secondary:{}};
+try{var hp=JSON.parse(localStorage.getItem('ideagen-holdings')||'null');
+  if(hp&&Array.isArray(hp.selected))HOLD.selected=hp.selected;
+  if(hp&&['all','live','backfill'].indexOf(hp.subset)>=0)HOLD.subset=hp.subset;
+}catch(e){}
+function holdSave(){try{localStorage.setItem('ideagen-holdings',JSON.stringify({selected:HOLD.selected,subset:HOLD.subset}))}catch(e){}}
+function holdFetch(subset,force){
+  if(window.__STATIC__){HOLD.cache[subset]=(window.__STATIC__.holdings||{})[subset]||null;return}
+  if(HOLD.busy[subset]||(!force&&Date.now()-(HOLD.at[subset]||0)<60000))return;
+  HOLD.busy[subset]=true;HOLD.at[subset]=Date.now();
+  fetch('/api/holdings?subset='+encodeURIComponent(subset),{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw Error('读取失败');return r.json()})
+    .then(function(d){if(d.error)throw Error(d.error);HOLD.cache[subset]=d;HOLD.errors[subset]=''})
+    .catch(function(){HOLD.errors[subset]='暂时读不到持仓金额，请重试。'})
+    .then(function(){HOLD.busy[subset]=false;HOLD.at[subset]=Date.now();if(current==='holdings')renderHoldings();if(drawerStack.length)renderDrawers()});
+}
+function holdSubset(s){HOLD.subset=s;holdSave();renderHoldings()}
+function holdSelect(sel,checked){
+  if(checked){if(HOLD.selected.indexOf(sel)<0)HOLD.selected.push(sel)}
+  else HOLD.selected=HOLD.selected.filter(function(x){return x!==sel});
+  holdSave();renderHoldings();
+}
+function holdSelectAll(on){HOLD.selected=on?currentBooks().map(function(b){return b.selector}):[];holdSave();renderHoldings()}
+function holdSort(key){if(HOLD.sort===key)HOLD.ascending=!HOLD.ascending;else{HOLD.sort=key;HOLD.ascending=false}renderHoldings()}
+function holdSearch(value){HOLD.query=value;renderHoldings()}
+function holdSetFilter(key,value){HOLD[key]=value;renderHoldings()}
+function holdSetSort(value){var v=value.split(':');HOLD.sort=v[0];HOLD.ascending=v[1]==='asc';renderHoldings()}
+function holdResetFilters(){HOLD.profit='all';HOLD.ccy='all';HOLD.query='';HOLD.sort='weight_pct';HOLD.ascending=false;renderHoldings()}
+function holdToggleFilters(){HOLD.filtersOpen=!HOLD.filtersOpen;renderHoldings()}
+function holdFilteredPositions(b,apply){
+  var q=HOLD.query.trim().toLowerCase();
+  var ps=b.positions.filter(function(p){return !apply||((!q||(p.code+' '+(p.name||'')).toLowerCase().indexOf(q)>=0)
+    &&(HOLD.ccy==='all'||p.currency===HOLD.ccy)
+    &&(HOLD.profit==='all'||(p.unrealized!=null&&(HOLD.profit==='gain'?p.unrealized>0:HOLD.profit==='loss'?p.unrealized<0:p.unrealized===0))))});
+  if(apply)ps.sort(function(a,z){var av=a[HOLD.sort],zv=z[HOLD.sort];if(av==null)return zv==null?0:1;if(zv==null)return -1;
+    return (typeof av==='string'?av.localeCompare(zv):av-zv)*(HOLD.ascending?1:-1)});
+  return ps;
+}
+function holdFilterControls(){
+  var fields=[['weight_pct','仓位占比'],['return_pct','收益率'],['unrealized','未实现盈亏'],['market_value','持仓市值'],['cost','投入金额'],['qty','数量'],['avg_cost','平均成本'],['last_px','最新价格'],['code','标的代码']];
+  var sortName=(fields.find(function(f){return f[0]===HOLD.sort})||[HOLD.sort,HOLD.sort])[1];
+  var count=(HOLD.profit!=='all'?1:0)+(HOLD.ccy!=='all'?1:0);
+  var currencies=[];((HOLD.cache[HOLD.subset]||{}).books||[]).forEach(function(b){b.positions.forEach(function(p){if(p.currency&&currencies.indexOf(p.currency)<0)currencies.push(p.currency)})});
+  var html='<div class="hold-filter-bar"><button type="button" class="hold-filter-btn" aria-expanded="'+HOLD.filtersOpen+'" aria-controls="holdFilters" onclick="holdToggleFilters()">'
+    +'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> 筛选与排序'+(count?' · '+count:'')+'</button>'
+    +'<span class="hold-sort-label">'+esc(sortName)+' · '+(HOLD.sort==='code'?(HOLD.ascending?'A → Z':'Z → A'):(HOLD.ascending?'从低到高':'从高到低'))+'</span>'
+    +'<label class="hold-search">查找持仓 <input id="holdSearch" type="search" placeholder="代码或名称" value="'+esc(HOLD.query)+'" oninput="holdSearch(this.value)"></label></div>';
+  if(!HOLD.filtersOpen)return html;
+  html+='<div class="hold-filter-panel" id="holdFilters"><label>排序<select aria-label="持仓排序" onchange="holdSetSort(this.value)">';
+  fields.forEach(function(f){['desc','asc'].forEach(function(d){var v=f[0]+':'+d;html+='<option value="'+v+'" '+(HOLD.sort===f[0]&&HOLD.ascending===(d==='asc')?'selected':'')+'>'+f[1]+' · '+(f[0]==='code'?(d==='asc'?'A → Z':'Z → A'):(d==='asc'?'从低到高':'从高到低'))+'</option>'})});
+  html+='</select></label><label>盈亏<select aria-label="盈亏筛选" onchange="holdSetFilter(\'profit\',this.value)">';
+  [['all','全部持仓'],['gain','只看盈利'],['loss','只看亏损'],['flat','持平']].forEach(function(f){html+='<option value="'+f[0]+'" '+(HOLD.profit===f[0]?'selected':'')+'>'+f[1]+'</option>'});
+  html+='</select></label><label>报价币种<select aria-label="报价币种筛选" onchange="holdSetFilter(\'ccy\',this.value)"><option value="all">全部币种</option>';
+  currencies.sort().forEach(function(c){html+='<option '+(HOLD.ccy===c?'selected ':'')+'value="'+esc(c)+'">'+esc(c)+'</option>'});
+  return html+'</select></label><button type="button" class="hold-reset" onclick="holdResetFilters()">恢复默认</button><p>筛选只改变下面显示的行；账户总额和仓位占比仍按完整组合计算。</p></div>';
+}
+function holdSecondary(key,open){HOLD.secondary[key]=open}
+function holdSecondaryCard(key){
+  return '<details class="hold-secondary" '+(HOLD.secondary[key]?'open':'')+' ontoggle="holdSecondary(\''+key+'\',this.open)"><summary>'
+    +(key==='ticket'?'拟买入清单 · 尚未执行':'本期选了什么 · PM 审阅')+'</summary>'
+    +(key==='ticket'?'<p class="card-note">按本期精选名单和卫星仓预算生成的参考清单；与上方账户的待成交订单分开展示。</p>'+ticketCard():shortlistReviewCard())+'</details>';
+}
+function holdAmount(v,nd){if(v==null)return '—';nd=nd==null?2:nd;var n=Number(v);if(Math.abs(n)<.5*Math.pow(10,-nd))n=0;return n.toLocaleString('en-US',{minimumFractionDigits:nd,maximumFractionDigits:nd})}
+function holdSigned(v){return v==null?'—':(v>0?'+':'')+holdAmount(v)}
+function holdBook(sel,subset){return (((HOLD.cache[subset]||{}).books)||[]).find(function(b){return b.selector===sel||b.book_id===sel})}
+function holdMetric(label,value,note,cls){return '<div class="hold-metric"><span>'+esc(label)+'</span><strong class="num '+(cls||'')+'">'+value+'</strong><small>'+note+'</small></div>'}
+function holdSummary(b){
+  return '<div class="hold-summary">'
+    +holdMetric('总资产',holdAmount(b.equity),'现金 + 持仓市值')
+    +holdMetric('现金余额',holdAmount(b.cash),b.cash_pct==null?'尚无资金记录':'占总资产 '+holdAmount(b.cash_pct)+'%')
+    +holdMetric('持仓市值',holdAmount(b.market_value),b.positions.length+' 个标的')
+    +holdMetric('持仓成本',holdAmount(b.holding_cost),'当前持仓的买入金额，含买入费')
+    +holdMetric('未实现盈亏',holdSigned(b.unrealized),'当前持仓的市值 − 成本',pctCls(b.unrealized))+'</div>';
+}
+function holdStrategyNote(sel){
+  return {ai_native:'每期让 AI 从全部候选标的中挑选 10 个，单独记录资金和收益。',
+    shortlist:'每期精选 5 个标的；同一主题最多选 2 个。这里展示已经成交的持仓。',
+    buy_all:'买入所有符合条件的候选标的，用来比较其他选取方法的表现。',
+    random:'从候选标的中随机挑选，作为比较基准。'}[sel]||selPlain(sel);
+}
+function holdTable(b,positions,drawer){
+  var headers=[['weight_pct','仓位占比'],['cost','投入金额'],['market_value','持仓市值'],['return_pct','收益率'],['unrealized','未实现盈亏'],['qty','数量'],['avg_cost','平均成本'],['last_px','最新价格']];
+  var html='<div class="table-wrap hold-table-wrap"><table class="hold-table"><thead><tr><th scope="col">标的 / 名称</th>';
+  headers.forEach(function(h){html+='<th scope="col" class="r">'+(drawer?h[1]:'<button type="button" onclick="holdSort(\''+h[0]+'\')">'+h[1]+(HOLD.sort===h[0]?(HOLD.ascending?' ↑':' ↓'):'')+'</button>')+'</th>'});
+  html+='</tr></thead><tbody>';
+  positions.forEach(function(p){
+    var ccy=esc(p.currency||'币种未记录');
+    html+='<tr><td><button type="button" class="hold-symbol" onclick="openPosDrawer(\''+jss(p.code)+'\',\''+jss(b.selector)+'\',\''+b.subset+'\')">'+esc(bareCode(p.code))+' <span>›</span></button>'
+      +' <span class="hold-ccy">'+ccy+' · '+p.lots.length+' 笔</span><div class="hold-name" title="'+esc(p.name)+'">'+esc(p.name)+'</div></td>'
+      +'<td class="r num">'+(p.weight_pct==null?'—':holdAmount(p.weight_pct)+'%')+'<div class="hold-weight" aria-hidden="true"><i style="width:'+Math.max(0,Math.min(100,p.weight_pct||0))+'%"></i></div></td>'
+      +'<td class="r num">'+holdAmount(p.cost)+'</td><td class="r num">'+holdAmount(p.market_value)+'</td>'
+      +'<td class="r num hold-return '+pctCls(p.return_pct)+'">'+(p.return_pct==null?'—':holdAmount(p.return_pct)+'%')+'</td>'
+      +'<td class="r num '+pctCls(p.unrealized)+'">'+holdSigned(p.unrealized)+'</td>'
+      +'<td class="r num">'+holdAmount(p.qty,4)+'</td><td class="r num">'+holdAmount(p.avg_cost,4)+'</td>'
+      +'<td class="r num">'+holdAmount(p.last_px,4)+(p.mark_date!==b.as_of?'<small>'+esc(p.mark_date||'无价格')+'</small>':'')+'</td></tr>';
+  });
+  return html+(positions.length?'':'<tr><td colspan="9" class="empty-sm">'+(b.positions.length?'没有符合条件的持仓，请调整筛选或搜索。':b.as_of?'这个组合目前没有持仓。':'这个组合还没有资金和估值记录。')+'</td></tr>')+'</tbody></table></div>';
+}
+function holdPending(b){
+  if(!b.pending.length)return '<div class="hold-pending-note">没有待成交订单</div>';
+  return '<details class="hold-details"><summary>待成交订单 · '+b.pending.length+' 笔 · 计划买入 '+holdAmount(b.pending_notional)+' 美元</summary>'
+    +'<p class="card-note">这些订单还没有买入，金额仍在现金余额中。成交后才计入持仓。</p>'
+    +'<div class="table-wrap"><table><thead><tr><th>标的</th><th class="r">计划买入（美元）</th><th>下单日期</th><th>有效至</th></tr></thead><tbody>'
+    +b.pending.map(function(o){return '<tr><td class="mono">'+esc(bareCode(o.code))+'</td><td class="r num">'+holdAmount(o.notional)+'</td><td>'+esc(o.placed_d)+'</td><td>'+esc(o.expire_d||'未记录')+'</td></tr>'}).join('')+'</tbody></table></div></details>';
+}
+function holdAccount(b,drawer){
+  var m=selMetaOf(b.selector),ps=holdFilteredPositions(b,!drawer);
+  return '<div class="'+(drawer?'':'card section ')+'hold-account" data-book="'+esc(b.selector)+'">'
+    +'<div class="hold-account-head"><div><h2 class="card-title">'+esc(m[1]||b.label)+'</h2><div class="card-note">'+esc(holdStrategyNote(b.selector))+'</div></div>'
+    +'<div class="hold-date">金额：美元<br>估值日期：'+esc(b.as_of||'暂无')+'</div></div>'
+    +holdSummary(b)
+    +(!b.reconciled&&b.as_of?'<div class="hold-warning" role="status">部分明细尚未与账户总额对齐。缺少当日估值的金额显示为「—」，请勿按完整账目使用。</div>':'')
+    +(b.cash!=null&&b.cash<0?'<div class="hold-warning">现金余额为负，请检查账户资金记录。</div>':'')
+    +'<div class="hold-table-note"><span>金额为美元；平均成本与最新价格用标的原币。成本含买入费。点击标的查看每笔买入。</span>'
+      +'<span class="hold-row-count">'+ps.length+' / '+b.positions.length+' 个标的</span></div>'
+    +holdTable(b,ps,drawer)+holdPending(b)+'</div>';
+}
+function holdPositionBody(ref){
+  var a=ref.split('|'),subset=a[2]||'all';holdFetch(subset);
+  var b=holdBook(a[0],subset);
+  if(!b)return holdLoadMessage(subset);
+  var p=b.positions.find(function(p){return p.code===a[1]});
+  if(!p)return '<div class="empty-sm">这个组合当前没有该标的的持仓。</div>';
+  var html='<div class="hold-position"><h2 class="card-title">'+esc(p.name)+'</h2><div class="card-note">'+esc(selMetaOf(b.selector)[1])+' · '+esc(holdSubsetLabel(subset))+' · '+esc(p.code)+'</div>'
+    +'<p class="hold-table-note">持有数量 '+holdAmount(p.qty,4)+' · 最新价格 '+holdAmount(p.last_px,4)+' '+esc(p.currency||'币种未记录')+'</p>'
+    +'<div class="hold-summary">'+holdMetric('投入金额（美元）',holdAmount(p.cost),'含买入费')+holdMetric('持仓市值（美元）',holdAmount(p.market_value),'估值日期 '+esc(b.as_of))
+    +holdMetric('仓位占比',p.weight_pct==null?'—':holdAmount(p.weight_pct)+'%','分母：这个组合的总资产')
+    +holdMetric('平均成本（'+esc(p.currency||'未记录')+'）',holdAmount(p.avg_cost,4),'按持有数量加权，含买入费')
+    +holdMetric('未实现盈亏（美元）',holdSigned(p.unrealized),'收益率 '+(p.return_pct==null?'—':holdAmount(p.return_pct)+'%'),pctCls(p.unrealized))+'</div>'
+    +'<h3 class="card-title">每笔买入 · '+p.lots.length+' 笔</h3>';
+  p.lots.forEach(function(l){html+='<div class="hold-lot"><div class="hold-lot-head"><b>'+esc(l.opened_d)+' 买入</b><span class="card-note">'+esc(l.period)+' 期 · '+esc(topicName(l.theme)||l.theme||'主题未记录')+'</span></div>'
+    +'<dl class="hold-lot-values"><div><dt>数量</dt><dd class="num">'+holdAmount(l.qty,4)+'</dd></div><div><dt>买入价格（'+esc(p.currency||'未记录')+'）</dt><dd class="num">'+holdAmount(l.entry_px,4)+'</dd></div>'
+    +'<div><dt>投入金额（美元）</dt><dd class="num">'+holdAmount(l.cost)+'</dd></div><div><dt>持仓市值（美元）</dt><dd class="num">'+holdAmount(l.market_value)+'</dd></div>'
+    +'<div><dt>未实现盈亏（美元）</dt><dd class="num '+pctCls(l.unrealized)+'">'+holdSigned(l.unrealized)+'</dd></div></dl>'
+    +'<p class="hold-thesis">'+esc(l.thesis||'这笔买入没有记录投资理由。')+'</p>'
+    +'<div class="card-note">止损价 '+holdAmount(l.stop_px,4)+' · 止盈价 '+holdAmount(l.take_px,4)+'（'+esc(p.currency||'未记录')+'） · 最新价格日期 '+esc(l.mark_date||'无记录')+'</div></div>'});
+  return html+'</div>';
+}
+function holdSubsetLabel(s){return {all:'当前账户（含历史补跑）',live:'只看按时运行',backfill:'只看历史补跑'}[s]}
+function holdLoadMessage(s){return '<div class="card section empty-sm">'+(HOLD.errors[s]?esc(HOLD.errors[s])+' <button type="button" class="seg-btn" onclick="holdFetch(\''+s+'\',true)">重试</button>':window.__STATIC__?'这份快照没有持仓金额明细。':'正在读取资金和持仓…')+'</div>'}
+function holdPrimary(){
+  if(HOLD.selected===null)HOLD.selected=[currentBooks().some(function(b){return b.selector==='ai_native'})?'ai_native':(currentBooks()[0]||{}).selector].filter(Boolean);
+  if(current==='holdings')holdFetch(HOLD.subset);
+  var html='<div class="card section hold-picker"><div class="hold-picker-head"><div><h2 class="card-title">选择要看的组合</h2><p class="card-note">可同时勾选多个组合。每个组合都有自己的资金和持仓，分别展示。</p></div><span class="tag">模拟账户</span></div>'
+    +'<div class="hold-subsets" role="group" aria-label="账目范围">'+['all','live','backfill'].map(function(s){return '<button type="button" class="seg-btn '+(HOLD.subset===s?'on':'')+'" aria-pressed="'+(HOLD.subset===s)+'" onclick="holdSubset(\''+s+'\')">'+holdSubsetLabel(s)+'</button>'}).join('')+'</div>'
+    +'<p class="hold-scope-note">'+(HOLD.subset==='all'?'读取账户原始账目，包括历史补跑。': '只保留这类运行的成交，并重新计算现金和总资产；与业绩页使用同一套账目。')+'</p>'
+    +'<div class="hold-choices">'+currentBooks().map(function(b){var m=selMetaOf(b.selector),checked=HOLD.selected.indexOf(b.selector)>=0;
+      return '<label class="hold-choice '+(checked?'chosen':'')+'"><input type="checkbox" '+(checked?'checked ':'')+'onchange="holdSelect(\''+jss(b.selector)+'\',this.checked)"><span>'+esc(m[1]||b.label)+'</span></label>'}).join('')+'</div>'
+    +'<div class="hold-tools"><span class="card-note">已选 '+HOLD.selected.filter(function(s){return currentBooks().some(function(b){return b.selector===s})}).length+' 个组合</span><button type="button" onclick="holdSelectAll(true)">全选</button><button type="button" onclick="holdSelectAll(false)">清空</button>'
+    +'</div>'+holdFilterControls()+'</div>';
+  if(!HOLD.selected.length)return html+'<div class="card section empty-sm">勾选上方的组合，就能查看资金和持仓。</div>';
+  if(HOLD.errors[HOLD.subset])return html+holdLoadMessage(HOLD.subset);
+  var doc=HOLD.cache[HOLD.subset];if(!doc)return html+holdLoadMessage(HOLD.subset);
+  var chosen=doc.books.filter(function(b){return HOLD.selected.indexOf(b.selector)>=0});
+  return html+chosen.map(function(b){return holdAccount(b,false)}).join('')+(chosen.length?'':'<div class="card section empty-sm">此前选择的组合已不存在，请重新勾选。</div>');
+}
 function renderHoldings(){
   var root=$('view-holdings');
   if(!S){root.innerHTML='';return}
@@ -5222,10 +5433,11 @@ function renderHoldings(){
      让路的只有「焦点正在框里」这一种情况；本卡自己的按钮一律先 pmrBlur()。 */
   if(pmrTyping())return;
   pmrWhoami();
-  root.innerHTML=ladderStrip()
-    +secWrap('holdings','exposure',holdMapCard(aggBooks()))
-    +secWrap('holdings','shortlist',shortlistReviewCard())
-    +secWrap('holdings','ticket',ticketCard());
+  var input=$('holdSearch'),focused=input&&document.activeElement===input,start=focused?input.selectionStart:null;
+  root.innerHTML=secWrap('holdings','exposure',holdPrimary())
+    +secWrap('holdings','shortlist',holdSecondaryCard('shortlist'))
+    +secWrap('holdings','ticket',holdSecondaryCard('ticket'));
+  if(focused&&$('holdSearch')){$('holdSearch').focus();if(start!=null)try{$('holdSearch').setSelectionRange(start,start)}catch(e){}}
 }
 /* ══ 证据页 ═══════════════════════════════════════════════════════
    这一页此前是七张平级卡，直接从「选取策略对比 · 10 个组合 · 第 2 周」开场。
@@ -10531,8 +10743,8 @@ function drawerLabel(d){
   if(d.t==='ask')return '问它为什么选它';
   if(d.t==='askpick')return '能问它什么';
   if(d.t==='runlog')return '运行日志';
-  if(d.t==='pos')return bareCode(d.p)+' 这一仓';
-  if(d.t==='book')return selMetaOf(d.p)[1]+' 组合';
+  if(d.t==='pos')return bareCode(String(d.p).split('|')[1]||d.p)+' 持仓明细';
+  if(d.t==='book')return selMetaOf(String(d.p).split('|')[0])[1]+' 组合';
   if(d.t==='status')return '系统状态';
   if(d.t==='cal')return '周历';
   if(d.t==='trust')return '可信度与局限';
@@ -10550,7 +10762,7 @@ function drawerQ(d){
   if(d.t==='askpick')return '选一个对象，问这次运行当时的判断依据';
   if(d.t==='props')return '合并前各方法各自写了什么，以及各自引用的研报';
   if(d.t==='runlog')return '逐步耗时与产物清单';
-  if(d.t==='pos')return '论点 · 主题 · 生成方法 · 赔率 · 风控';
+  if(d.t==='pos')return String(d.p).indexOf('|')>=0?'这个组合的金额、仓位占比与每笔买入':'跨组合研究明细';
   if(d.t==='book')return '选取规则 · 持仓 · 损益';
   if(d.t==='status')return '心跳 · 端口 · 数据源';
   if(d.t==='cal')return '按期运行记录，含失败与缺失期';
@@ -10623,8 +10835,8 @@ function phReviseFrom(id){
 }
 function openAskDrawer(kind,id){pushDrawer({t:'ask',p:kind+':'+id})}
 function openTopicEvidence(tid){openTopicDrawer(tid)}
-function openPosDrawer(code){pushDrawer({t:'pos',p:code})}
-function openBookDrawer(sel){pushDrawer({t:'book',p:sel})}
+function openPosDrawer(code,sel,subset){pushDrawer({t:'pos',p:sel?sel+'|'+code+'|'+(subset||HOLD.subset):code})}
+function openBookDrawer(sel){pushDrawer({t:'book',p:sel+'|'+(current==='perf'&&PERF.mode==='paper'?perfSubsetOf('paper'):HOLD.subset)})}
 /* 状态 / 周历 / 可信度三个抽屉。它们曾被改成落到页面上的折叠段，理由是
    「抽屉不可寻址」；抽屉栈进了 URL 之后这条理由不再成立（刷新回到同一层、
    后退退回上一层、链接发出去别人打开是同一层），而 PM 2026-09-08 定的是
@@ -10675,8 +10887,8 @@ function crumbName(d){
   if(d.t==='topic')return String(d.p);
   if(d.t==='ask')return askSubjName(String(d.p));
   if(d.t==='runlog')return String(d.p||'最近一次');
-  if(d.t==='pos')return bareCode(d.p);
-  if(d.t==='book')return selMetaOf(d.p)[1];
+  if(d.t==='pos')return bareCode(String(d.p).split('|')[1]||d.p);
+  if(d.t==='book')return selMetaOf(String(d.p).split('|')[0])[1];
   if(d.t==='status')return '体征';
   if(d.t==='cal')return '每周';
   if(d.t==='trust')return '假设与缺陷';
@@ -11118,7 +11330,7 @@ var SEL_META=[
   ['omega_loose','赔率排序 · 宽松','主策略','赔率排序 · 宽阈值','按概率加权赚亏比排序：三情景概率归一后，回报高于现金门槛（月 0.28%）的部分按概率加权记为「赚」、低于门槛的部分记为「亏」，赚 ÷ 亏 即赚亏比——和候选池表里「上行 ÷ |下行|」的简单赔率不是同一个数。准入线取本批中位数与 1.5 的较高者，达标全取，6～14 条；不足 6 条时空位留存现金。候选池本身没有统一的赔率门槛，这条下限只属于这两条策略。'],
   ['spread','分散度约束','主策略','组合层约束','按赔率排序后施加分散约束：同一主题至多 3 条、同一敞口至多 3 条、同一生成方法至多 4 条，避免单一敞口重复计入。'],
   ['calib','证据一致性','主策略','赔率折价','按赔率排序，并对四类情形折价：主题证据不足、置信度高于证据强度、概率估计粗糙、隐含涨幅缺乏依据。'],
-  ['shortlist','精选','常驻探索','共识度 × 期望值 · 前 5','决策时看的短名单，做成组合以便追踪业绩：可入池候选按 共识度（几种生成方式共同提出）× 期望值（为正才算）×（1 − 主题复现折扣比例）排序，同主题至多 2 只，取前 5；平手先看评级、再看期望值。持仓页「本期精选 · PM 把关」与「卫星仓下单单」读的是同一份名单。公式在看过既有期次之后提出，按探索类登记。'],
+  ['shortlist','精选','常驻探索','共识度 × 期望值 · 前 5','决策时看的短名单，做成组合以便追踪业绩：可入池候选按 共识度（几种生成方式共同提出）× 期望值（为正才算）×（1 − 主题复现折扣比例）排序，同主题至多 2 只，取前 5；平手先看评级、再看期望值。持仓页「本期精选 · PM 把关」与「拟买入清单」读的是同一份名单。公式在看过既有期次之后提出，按探索类登记。'],
   ['ev_rank','期望值排序','常驻探索','期望值排序 · 前 20%','按候选自陈三点情景（上行/基准/下行及各自概率）的概率加权期望回报排序，取前 20% 且须高于现金门槛。这个数每条想法都算过，此前没有任何选取策略在用它。**这条排序是在看过既有期次的结果之后才被挑出来检验的**，因此合并口径对那次搜索是样本内的，只有它往后的当期实跑期次才是检验。三项证伪已做：它一阶上在排风险（顶格分位持仓入场前波动是末位的 6.4 倍）、风险调整后跑输指数、优势在剔除最常持有的标的后不成立。'],
   ['left_tail','下行风险优先','常驻探索','下行优先','不计上行空间，仅按期望亏损（亏损概率 × 亏损幅度）由低至高选取。检验组合结果由规避尾部亏损而非捕捉上行主导的假设。'],
   ['omega_strict','赔率排序 · 严格','常驻探索','赔率排序 · 高阈值','排序方法与宽松版完全相同，仅准入不同：只取排名前 40% 且赚亏比 ≥ 1.5 的，6～8 条，空余仓位留存现金。宽松版本期 {n:omega_loose} 条、严格版本期 {n:omega_strict} 条，两者业绩差即阈值收紧的净效应。'],
@@ -13020,7 +13232,7 @@ function stagePoolBody(d){
       +'style="'+(poolShortlist?'background:var(--color-surface-brand-subtle);color:var(--color-text-brand);font-weight:600':'')+'" '
       +'title="共识度 × 期望值 ×（1 − 复现折扣）居前的 '+shortlistN()+' 只；全量照旧可看">'
       +(poolShortlist?'✓ 只看精选（'+fmtInt(nShort)+'）· 点此看全量':'★ 精选：决策短名单（前 '+fmtInt(nShort)+'）')+'</button>'
-      +'<span class="gloss gm" title="全量用于赛马（各选取策略在同一候选池上并行比较）；精选是决策时的短名单：可入池候选按 共识度 × 期望值 ×（1 − 主题复现折扣比例）取前 '+shortlistN()+' 只、同主题至多 '+((shortlistBlock()||{}).max_per_theme||2)+' 只。它同时是「精选」组合的持仓，持仓页的 PM 把关与卫星仓下单单读的是同一份名单。">ⓘ</span>'
+      +'<span class="gloss gm" title="全量用于赛马（各选取策略在同一候选池上并行比较）；精选是决策时的短名单：可入池候选按 共识度 × 期望值 ×（1 − 主题复现折扣比例）取前 '+shortlistN()+' 只、同主题至多 '+((shortlistBlock()||{}).max_per_theme||2)+' 只。它同时是「精选」组合的持仓，持仓页的 PM 把关与拟买入清单读的是同一份名单。">ⓘ</span>'
       +'　'+(poolShortlist?'当前只显示短名单。':'★ 标记的是短名单里的标的。')+'</div>'
       /* 筛选条就是这张表唯一的筛选入口：主题多选 + 一个附加条件 + 计数。 */
       +poolTopicBar(cands)
@@ -13209,7 +13421,7 @@ function stageBookingBody(){
       posHtml='<div class="pos-headr"><span>标的</span><span></span><span>名称</span><span>σ×2 止损 ─ 进场 ─ σ×3 止盈<span class="gloss gm" title="'+esc(SIGMA_GLOSS+'读法：左端止损、右端止盈，竖线是进场价，圆点是现价。')+'">ⓘ</span></span><span style="text-align:right">浮动</span></div>'
         +pos.map(function(p){
           return '<div class="pos-line">'
-            +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\')">'+esc(bareCode(p.code))+'</button></span>'
+            +'<span class="pos-code"><button type="button" class="exp-btn" style="padding:1px 3px" onclick="openPosDrawer(\''+jss(p.code)+'\',\''+jss(b.selector)+'\',\'all\')">'+esc(bareCode(p.code))+'</button></span>'
             +'<span>'+askBtn('idea','pool:'+bareCode(p.code),{stop:true,cls:'sm icon'})+'</span>'
             +'<span class="pos-nm" title="'+esc(p.thesis||'')+'">'+esc(p.instrument_name||'')+(p.theme_id?' · '+esc(topicName(p.theme_id)):'')+'</span>'
             +rngBarHTML(p)
@@ -13259,6 +13471,7 @@ function mergedPositions(){
   return {byCode:byCode,order:order};
 }
 function posDrawerBody(code){
+  if(String(code).indexOf('|')>=0)return holdPositionBody(String(code));
   var mp=mergedPositions();
   var p=mp.byCode[code]||mp.byCode[Object.keys(mp.byCode).find(function(k){return bareCode(k)===bareCode(code)})||''];
   if(!p)return '<div class="empty-sm">在场持仓里找不到 '+esc(code)+'——可能已平仓或来自更早批次</div>';
@@ -13411,49 +13624,10 @@ function themeBarHTML(b,compact){
 }
 
 function bookDrawerBody(sel){
-  var b=currentBooks().find(function(x){return x.selector===sel||x.book_id===sel});
-  if(!b)return '<div class="empty-sm">找不到 '+esc(sel)+' 的组合</div>';
-  var m=selMetaOf(b.selector);
-  var eq=b.equity||[],last=eq.length?eq[eq.length-1].equity:null;
-  var ret=(b.capital&&last!==null)?((last/b.capital-1)*100):null;
-  var pos=b.open_positions||[],exits=b.exits||{};
-  var exitChips=Object.keys(exits).map(function(k){
-    var lbl={stop:'止损',take:'止盈',horizon:'到期',event:'事件'}[k]||k;
-    return '<span class="tag">'+esc(lbl)+' · '+fmtInt(exits[k])+'</span>';
-  }).join(' ');
-  var html='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
-    +'<span style="font:600 20px/28px var(--font-sans);color:var(--color-text-primary)">'+esc(m[1])+'</span>'
-    +'<span class="tag">'+esc(m[2]||'')+'</span>'
-    +'<span class="card-note mono">'+esc(b.book_id||'')+'</span>'
-    +'</div>'
-    /* 同一对「短标签 + 完整说明」在策略卡片里是 <b>标签</b> ⓘ，这里却把说明
-       整句铺出来。口径统一到 ⓘ：标签在外，说明在内。 */
-    +'<div class="quiet" style="margin:4px 0 var(--space-3)"><b style="color:var(--color-text-brand);font-weight:500">'+esc(m[3]||'')+'</b>'
-      +'<span class="gloss gm" title="'+esc(selPlain(b.selector))+'">ⓘ</span></div>'
-    +'<div style="margin:0 0 var(--space-3)">'+askBtn('selector',b.selector)+'</div>'
-    +'<div style="display:flex;gap:var(--space-5);flex-wrap:wrap;align-items:baseline;margin-bottom:var(--space-3)">'
-    +'<span class="num '+pctCls(ret)+'" style="font:600 26px/32px var(--font-sans)">'+fmtPct(ret)+'</span>'
-    +'<span class="card-note">本金 '+fmtMoney(b.capital)+' · '+fmtInt(pos.length)+' 仓在场 · 已平 '+fmtInt(b.closed_n||0)+' · 已实现 <span class="num '+pctCls(b.realized)+'">'+signedMoney(b.realized)+'</span></span>'
-    +'</div>'
-    +(eq.length>=2?singleCurveSVG({equity:eq,capital:b.capital})+'<div class="card-note" style="margin-top:2px">净值指数：期初 = 100</div>':'<div class="card-note">净值曲线待累积</div>')
-    +(exitChips?'<div style="margin-top:var(--space-3)">退出记录：'+exitChips+'</div>':'')
-    +themeBarHTML(b,false);
-  if(pos.length){
-    html+='<div style="font:600 14px/20px var(--font-sans);color:var(--color-text-primary);margin:var(--space-4) 0 4px">持仓 · '+fmtInt(pos.length)+' 仓</div>'
-      +'<div class="table-wrap scroll-y scroll-thin"><table><thead><tr><th>标的</th><th class="r">进场</th><th class="r">现价</th><th class="r">浮动</th></tr></thead><tbody>'
-      +pos.map(function(p){
-        return '<tr class="expandable" onclick="openPosDrawer(\''+jss(p.code)+'\')" title="'+esc(p.thesis||'')+'">'
-          +'<td class="primary mono">'+esc(bareCode(p.code))+' <span class="exp-btn">›</span></td>'
-          +'<td class="r num">'+fmtMoney(p.entry_px)+'</td>'
-          +'<td class="r num">'+fmtMoney(p.last_px)+'</td>'
-          +'<td class="r num '+pctCls(p.unrealized)+'">'+signedMoney(p.unrealized)+'</td></tr>';
-      }).join('')
-      +'</tbody></table></div>';
-  }else{
-    html+='<div class="empty-sm" style="margin-top:var(--space-4)">该组合空仓：无标的达到门槛，留存现金</div>';
-  }
-  html+=epi('与其他组合同池同期，净值差异即选取策略差异 '+glossMark('当前配对样本量尚未满足预注册要求，排名不构成结论。')+periodsActedNote());
-  return html;
+  var ref=String(sel).split('|'),subset=ref[1]||'all';
+  holdFetch(subset);
+  var account=holdBook(ref[0],subset);
+  return account?holdAccount(account,true):holdLoadMessage(subset);
 }
 /* ══════════ 追问记录 — 历次追问的运营视图 ══════════
  * 追问本身也是底账：一次追问 = 有人问了什么、系统当时把哪些材料交给了模型、
@@ -14150,7 +14324,7 @@ function poolShortlistSet(cands){
   var set={};(cands||[]).forEach(function(c){if(c.shortlist_rank)set[c.instrument_id]=1});
   return set;
 }
-/* ══ WS-B 组合决策层：精选 · PM 把关 / 卫星仓下单单 / PM 反方筛选的价值 ══════════
+/* ══ WS-B 组合决策层：精选 · PM 把关 / 拟买入清单 / PM 反方筛选的价值 ══════════
  * 三条规矩写在前面，它们决定了这张卡能做什么、不能做什么：
  *   ① PM 只剔除、不塞名字：按钮只长在精选里已有的标的上，后端也拒绝精选之外的标的。
  *   ② AI 不写反方：每只旁边只并列「AI 为什么选它」，反方判断只由人做。
@@ -14324,7 +14498,7 @@ function shortlistReviewCard(){
   }).join('');
   return '<div class="card section" id="pmrCard">'+head+conc+wseShortlistHealth(b)+'<div class="pmr-list">'+rows+'</div></div>';
 }
-/* 卫星仓下单单：后端 /api/ticket 算（等权、否决的行权重为 0、股数向下取整、
+/* 拟买入清单：后端 /api/ticket 算（等权、否决的行权重为 0、股数向下取整、
    币种不一致不估股数），这里只画表和给一个 CSV 下载入口。 */
 var TK={as_of:null,data:null,err:null,at:0,busy:false};
 function ticketFetch(asOf){
@@ -14339,8 +14513,8 @@ function ticketFetch(asOf){
 }
 function ticketCard(){
   var w=(S||{}).weekly||{},b=w.shortlist||{},tk=b.ticket||{};
-  var head='<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">卫星仓下单单</h2>'
-    +'<span class="card-note">卫星仓 '+pmrPct(tk.sleeve_pct)+' × 模型组合 '+fmtInt(tk.notional)+' '+esc(tk.currency||'')+' · 等权 · 每批至多 '+fmtInt(tk.batch_max)+' 行'
+  var head='<div class="card-title-row"><h2 class="card-title" style="margin-bottom:0">拟买入清单</h2>'
+    +'<span class="card-note">参考预算：卫星仓 '+pmrPct(tk.sleeve_pct)+' × 模型组合 '+fmtInt(tk.notional)+' '+esc(tk.currency||'')+' · 等权 · 每批至多 '+fmtInt(tk.batch_max)+' 行'
     +glossMark('名单就是本期精选。PM 否决的行留在单上、权重记 0，其余等权分卫星仓；观望与未决定的行照常计权重，看「PM 决定」一列区分。股数 = 金额 ÷ 最新收盘价（基金为最新净值）向下取整；价格币种与组合币种不一致时不估股数。')
     +'</span></div>';
   if(isSnapshot())return '<div class="card section" id="ticketCard">'+head+'<div class="empty-sm">静态快照不带下单单</div></div>';
@@ -16252,57 +16426,20 @@ periods:[
   +'点一行切到那一期，再去持仓 / 方法页看那期的现场。<br><br>下一页：<b>持仓</b>，现在拿着什么。'}
 ],
 holdings:[
-{t:'持仓：这一页答「现在拿着什么」',
- h:function(){return '现在在场的每一仓——按宏观主题分组，一个圆点一个标的。'
-  +'它来自最近四期，不是一期；<b>'+tourNB()+' 个选取策略</b>各自独立挑，同一标的可能被几个组合同时持有。'}},
-{t:'持仓：先看它来自哪几期',
- before:function(){switchView('holdings')},
- find:function(){return document.querySelector('#view-holdings .lstrip')},
- h:'每一格是一期，<b>宽度就是它现在还剩多少仓</b>。点一格＝只看那一期（其余压暗，但仍在场）。'
-  +'<br><br>最左边灰掉的是已经滚出的期，不再占仓位——它没被删掉，是因为「上个月那批去哪了」'
-  +'也该有个地方回答。'},
-
-{t:'钱先按宏观主题分组',
- before:function(){switchView('holdings')},
- find:function(){return document.querySelector('#view-holdings .hm-head')},
- h:'每一行是一个主题：<b>X% 仓位 · N 个标的 · 收益率 · 浮盈金额</b>。点行首展开／收起它下面的标的。'
-  +'<br><br>收益率按各主题<b>自己的成本</b>算：直接比金额会把「仓位重」读成「表现差」。'},
-
-{t:'一个圆点 ＝ 一个标的',
- before:function(){switchView('holdings')},
- find:tourBubble,
- h:function(){var nb=tourNB();
-  return '<b>大小</b>＝这一仓的市值。<b>颜色</b>＝浮动盈亏方向，绿涨红跌，越深幅度越大。'
-  +'<br><br>圆点<b>下沿</b>那个 <b>n/'+nb+'</b> 是关键：'+nb+' 个选取策略里，有几个'
-  +'<b>各自独立</b>把它选了进来——也就是跨策略共识度（≥6 会加亮描边）。'
-  +'共识本身不参与挑选，所以它和收益的关系是可以事后检验的。'}},
-
-{t:'同一份持仓的三种看法',
- before:function(){switchView('holdings');if(drawerStack.length)closeDrawers()},
- find:function(){return document.querySelector('#view-holdings [aria-label="视图切换"]')},
- h:'<b>地图</b>＝按主题铺开；<b>Y 轴</b>＝横共识度、纵盈亏，用来看「被更多策略选中的是不是真的更好」；'
-  +'<b>列表</b>＝逐仓明细，可按列排序。<br><br>三个是同一份持仓，不是三份数据。'},
-
-{t:'点开任何一处，右边推出一层',
- before:function(){
-   switchView('holdings');
-   if(!drawerStack.length){var b=tourBubble();if(b){b.click();tourOpenedDrawer=true}}
- },
- find:function(){return document.querySelector('#drawerRoot .drawer:not(.under) .drawer-head')},
- h:'这一层讲「这一仓」：论点、由哪种方法写出来的、赔率，以及进场／止损／止盈的价位。'
-  +'<br><br>右上角写着<b>第几层／共几层</b>——抽屉里还能继续往下点。'
-  +'<kbd>Esc</kbd> 退一层，<kbd>Shift</kbd>+<kbd>Esc</kbd> 或「关闭全部」一次退干净。'},
-
-{t:'勾稽点：一个标的 ↔ 哪些组合',
- find:function(){return document.querySelector('#drawerRoot .drawer:not(.under) #posBooks')},
- h:function(){return '这张表把那个 <b>n/'+tourNB()+'</b> 摊开：哪几个组合在持有它、各持多少、各赚多少。'
-  +'点组合名再进一层，看那个组合的全部持仓。'
-  +'<br><br>行数会比 n 多：同一个组合在不同期各建过一笔，就各占一行——'
-  +'徽标数的是<b>组合</b>，这里列的是<b>每一笔仓</b>。'}},
-
-{t:'就这些',
- h:'这一页读三样：<b>来自哪几期</b>、<b>按主题分了多少钱</b>、<b>每个圆点被几个策略选中</b>。'
-  +'<br><br>下一页：<b>业绩</b>，赚了还是亏了。'}
+{t:'先选组合，再看钱和持仓',
+ find:function(){return document.querySelector('#view-holdings .hold-picker')},
+ h:'勾选你想看的组合，可以同时选多个。每个组合都有自己的账户，资金和持仓分别列出。'},
+{t:'选看哪一份账',
+ find:function(){return document.querySelector('#view-holdings .hold-subsets')},
+ h:'「当前账户」读取原始账目，包含历史补跑。只看按时运行或历史补跑时，会连现金和总资产一起重算，与业绩页口径一致。'},
+{t:'先看账户的五个数字',
+ find:function(){return document.querySelector('#view-holdings .hold-summary')},
+ h:'总资产、现金余额、持仓市值、持仓成本和未实现盈亏。金额统一为美元，每张卡都标出估值日期。'},
+{t:'每个标的买了多少、占多少钱',
+ find:function(){return document.querySelector('#view-holdings .hold-table')},
+ h:'同一组合内，相同标的的多笔买入合并为一行。平均成本含买入费；仓位占比是市值除以这个组合的总资产。点击标的，查看每笔买入日期、数量、金额和投资理由。'},
+{t:'下单不等于持有',
+ h:'待成交订单单独列在各组合下方。本期精选与拟买入参考清单收在页面底部，尚未成交的金额不会混进持仓。'}
 ],
 perf:[
 {t:'业绩：这一页答「赚了还是亏了」',

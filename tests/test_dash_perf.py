@@ -5,7 +5,7 @@
 * 契约键名——两份夹具（tests/fixtures/perf_*_sample.json）必须带齐契约里的每一个键，
   键名与后端测试用的是同一份清单。夹具少一个键，或页面读了契约之外的键，联调时
   才会发现，那时两边都已经写完了。
-* 页面结构——VIEWS 里有「业绩」且七段齐全；模式切换三个选项、实盘读 perf_index；
+* 页面结构——VIEWS 里有「业绩」且七段齐全；两个主入口，旧记录放入折叠区；
   历史回测明细不再只取前四行；表头列数 == 行里的格子数（写法同 test_dash_layout）。
 * 语法——把 <script> 抽出来过一遍 `node --check`。没有 node 就跳过，不装假绿。
 """
@@ -197,16 +197,16 @@ class PerfPageStructure(unittest.TestCase):
         self.assertIn("'mode='+PERF.mode", _fn(self.js, "routeQuery"))
         self.assertIn("r.perf", _fn(self.js, "applyRoute"))
 
-    def test_mode_switch_has_three_options_and_live_reads_perf_index(self):
+    def test_mode_switch_has_two_options_and_archives_are_secondary(self):
         modes = re.search(r"var PERF_MODES=\[(.*?)\];", self.js, re.S).group(1)
-        self.assertEqual(re.findall(r"mode:'([a-z]+)'", modes), ["paper", "backtest", "live"])
+        self.assertEqual(re.findall(r"mode:'([a-z]+)'", modes), ["paper", "backtest"])
         subs = re.search(r"var PERF_SUBSETS=\[(.*?)\];", self.js, re.S).group(1)
         self.assertEqual(re.findall(r"s:'([a-z]+)'", subs), ["live", "backfill", "all"])
-        self.assertIn("perf_index", _fn(self.js, "perfIndexLive"))
         card = _fn(self.js, "perfModeCard")
-        self.assertIn("perfIndexLive()", card)
-        self.assertIn("disabled", card, "实盘不可用时按钮要禁用")
-        self.assertIn("lv.reason", card, "禁用还得写原因")
+        self.assertIn("noteFold('perf.history','历史运行记录'", card)
+        self.assertIn("使用模拟资金记账", card)
+        self.assertNotIn("模拟运行内再分", card)
+        self.assertNotIn("实盘", card)
 
     def test_fetch_never_shows_another_modes_data(self):
         """缓存键含 mode 与 subset；响应自报的 mode 与请求不一致时拒绝显示。"""

@@ -3435,7 +3435,7 @@ function applyRoute(r){
     var np=r.period||null;
     if(np!==PERIOD){PERIOD=np;pChanged=true}
     if(r.view==='perf'&&r.perf&&typeof PERF!=='undefined'){
-      var pm2=r.perf.mode||PERF.mode,ps2=r.perf.subset||PERF.subset;
+      var pm2=r.perf.mode==='backtest'?'backtest':'paper',ps2=r.perf.subset||'live';
       if(pm2!==PERF.mode||ps2!==PERF.subset){PERF.mode=pm2;PERF.subset=ps2;PERF_UI.curves=null;PERF_UI.wkOpen=null;PERF_UI.zoom=null;PERF_UI.cur=null;pChanged=true}
     }
     if(r.view!==current)switchView(r.view,r.sec);
@@ -9242,35 +9242,30 @@ function backtestRosterNote(names,sum){
    「它管用吗」（判定），这一页回答「赚了还是亏了、亏赚从哪来」（数字）。
    两页互相链接，不互相复制——两个 tab 顶同一个问题必错其一。
 
-   数据边界是这一页的第一原则：模拟运行 / 历史回测 / 实盘各是一份完整的
+   数据边界是这一页的第一原则：按期运行 / 历史回测各是一份完整的
    PerfView 文档（GET /api/perf?mode=&subset=），切换时整份换掉。任何一张图、
    一张表只读当前那一份，不拼接、不合计、不用上一模式的数据垫底。
-   模拟运行内部再按「按时运行 / 事后补跑 / 全部」隔离，默认只看按时运行——
+   按期运行固定读取 live。backfill / all 仅供历史记录查阅，
    事后补跑不能伪装成当期已经完成的投资决策。
 
    状态：数据层还没就绪（/api/perf 404）、载入中、失败，都要显示成那个状态，
    不能画成零收益（「绿着的失败」是本仓最常见的缺陷形状）。 */
-/* subset 为 null = 「用数据层说的默认子集」。此前写死 'live'，2026-09-07 组合按补跑
-   期次重建之后这个子集是空的，页面打开就是十三条灰掉的策略——看起来像坏了，
-   其实只是还没有按时运行的期次。默认由 perf_index.modes[paper].default_subset 决定，
-   带原因；用户点过哪个子集就用哪个。 */
-var PERF={mode:'paper',subset:null};
+/* 默认永远是 live：没有按期运行数据时显示无数据，不回退到补跑记录。 */
+var PERF={mode:'paper',subset:'live'};
 function perfPaperIndex(){var pi=(S||{}).perf_index;return ((pi&&pi.modes)||[]).find(function(m){return m.mode==='paper'})||{}}
-function perfDefaultSubset(){return perfPaperIndex().default_subset||'live'}
+function perfDefaultSubset(){return 'live'}
 var PERF_CACHE={};        /* perfKey() -> {data,err,at,loading} */
 var PERF_TTL_MS=60000;    /* 与状态文档同节奏：每分钟最多重取一次 */
-/* 实盘那一格的文案写着「未接入」：这套系统的实盘通道是故意没有接的
-   （tests/test_glossary.py 只允许「实盘」出现在否定里）。真接入那天，
-   perf_index.live.available 变 true，按钮改用它自报的 label。 */
-var PERF_MODES=[{mode:'paper',label:'模拟运行'},{mode:'backtest',label:'历史回测'},{mode:'live',label:'实盘（未接入）'}];
-var PERF_SUBSETS=[{s:'live',label:'按时运行'},{s:'backfill',label:'事后补跑'},{s:'all',label:'全部'}];
+/* 未接入的真钱交易通道不占入口。 */
+var PERF_MODES=[{mode:'paper',label:'按期运行'},{mode:'backtest',label:'历史回测'}];
+var PERF_SUBSETS=[{s:'live',label:'按期运行'},{s:'backfill',label:'历史补跑记录'},{s:'all',label:'完整旧账（含补跑）'}];
 /* 方法学的中文写法只此一处。stock-picking-study-30d 是现有 30 天持有的简化
    回测，只能标成「选股能力研究」，不能当完整账户表现——Jon 原话。 */
 var PERF_METHOD={
-  'paper-rules':{label:'模拟运行规则',warn:false,
+  'paper-rules':{label:'交易与记账规则',warn:false,
     plain:'按周三下单、分批资金、仓位分配、交易成本、止盈止损与到期退出，逐日按真实收盘计价。'},
-  'formal-paper-rules':{label:'正式回测 · 规则同模拟运行',warn:false,
-    plain:'复用模拟运行的交易规则回放历史，成交价与交易时点按披露的假设。'},
+  'formal-paper-rules':{label:'正式回测 · 使用相同交易规则',warn:false,
+    plain:'用相同的交易规则重新跑历史数据，成交价与交易时点按列出的假设。'},
   'stock-picking-study-30d':{label:'选股能力研究 · 30 天持有简化回测',warn:true,
     plain:'每条想法按当时收盘价买入、30 天后卖出，不含仓位分配、止损与现金约束。它检验的是候选或排序有没有信息，不是完整系统的账户表现。'}
 };
@@ -9358,9 +9353,9 @@ function perfGo(mode,subset){
   renderPerf();
 }
 function perfSetMode(m){
-  if(m===PERF.mode)return;
-  if(m==='live'&&!perfIndexLive().available)return;
-  perfGo(m,null);
+  if(m!=='paper'&&m!=='backtest')return;
+  if(m===PERF.mode&&(m!=='paper'||perfSubsetOf('paper')==='live'))return;
+  perfGo(m,'live');
 }
 function perfSetSubset(s){if(s!==PERF.subset)perfGo(null,s)}
 function perfSetUI(k,v){PERF_UI[k]=v;renderPerf()}
@@ -9398,7 +9393,7 @@ function perfStatusBadge(st,reason){
 function perfModeLabel(mode){var m=PERF_MODES.find(function(x){return x.mode===mode});return m?m.label:mode}
 function perfSubsetLabel(s){var m=PERF_SUBSETS.find(function(x){return x.s===s});return m?m.label:s}
 function perfWhat(){
-  return perfModeLabel(PERF.mode)+(PERF.mode==='paper'?' · '+perfSubsetLabel(PERF.subset):'');
+  return PERF.mode==='paper'?perfSubsetLabel(perfSubsetOf('paper')):perfModeLabel(PERF.mode);
 }
 
 function renderPerf(){
@@ -9423,33 +9418,24 @@ function renderPerf(){
   if(current==='perf')buildNav();
 }
 
-/* ── 页首：模式与区间 ───────────────────────────────────────────
-   模式切换就是这一组按钮，全页只此一处（一个动作一个入口）。实盘从
-   perf_index.live 读，不可用就禁用并把原因写在旁边——不做成「灰掉但不说为什么」。 */
+/* ── 页首：模式与区间。历史补跑收在查阅入口，主入口只有两个。 ── */
 function perfModeCard(e){
-  var P=e&&e.data,lv=perfIndexLive();
+  var P=e&&e.data,archived=PERF.mode==='paper'&&perfSubsetOf('paper')!=='live';
   var modes='<div class="pf-seg" role="group" aria-label="业绩数据类型">'
     +PERF_MODES.map(function(m){
-      var dis=(m.mode==='live')&&!lv.available;
       var idx=perfIndexMode(m.mode);
-      var tip=m.mode==='live'?(lv.reason||''):(idx&&idx.available===false?(idx.reason||'索引标记为不可用'):'');
-      return '<button type="button" class="seg-btn'+(PERF.mode===m.mode?' on':'')+'"'
-        +(dis?' disabled aria-disabled="true"':'')
+      var tip=idx&&idx.available===false?(idx.reason||'暂无数据'):'';
+      return '<button type="button" class="seg-btn'+(PERF.mode===m.mode&&!archived?' on':'')+'"'
         +' data-el="perf.mode.'+m.mode+'" title="'+esc(tip)+'"'
-        +' onclick="perfSetMode(\''+m.mode+'\')">'+esc((m.mode==='live'&&lv.available&&lv.label)?lv.label:m.label)+'</button>';
-    }).join('')+'</div>'
-    +(lv.available?'':'<span class="card-note" style="margin-left:var(--space-2)">实盘未接入，不可选：'+esc(lv.reason||'原因未记录')+'</span>');
+        +' onclick="perfSetMode(\''+m.mode+'\')">'+esc(m.label)+'</button>';
+    }).join('')+'</div>';
   var subs=PERF.mode==='paper'
-    ? '<div class="pf-sub"><span class="card-note">模拟运行内再分：</span>'
-      +'<div class="pf-seg" role="group" aria-label="模拟运行子集">'
-      +PERF_SUBSETS.map(function(s){
+    ? noteFold('perf.history','历史运行记录',
+      '<div class="card-note">早期补跑用于查阅，单独记账；它不是历史回测，也不计入按期运行的表现。</div>'
+      +'<div class="pf-sub">'+PERF_SUBSETS.filter(function(s){return s.s!=='live'}).map(function(s){
         return '<button type="button" class="seg-btn'+(perfSubsetOf('paper')===s.s?' on':'')+'"'
-          +' data-el="perf.subset.'+s.s+'" onclick="perfSetSubset(\''+s.s+'\')">'+esc(s.label)+'</button>';
-      }).join('')+'</div>'
-      +'<span class="card-note">'+(perfDefaultSubset()==='live'
-          ?'默认只看按时运行；补跑单独看、单独标——它不是当期做出的决定'
-          :'默认看全部：'+esc(perfPaperIndex().default_reason||'还没有按时运行建的仓位')+'。补跑单独标——它不是当期做出的决定')
-      +'</span></div>'
+          +' onclick="perfSetSubset(\''+s.s+'\')">'+esc(s.label)+'</button>';
+      }).join('')+'</div>')
     : '';
   var lead,meta='',disc='',sample='';
   if(e&&e.loading&&!P){
@@ -9460,9 +9446,8 @@ function perfModeCard(e){
   }else if(P){
     var mth=PERF_METHOD[P.methodology]||{label:P.methodology||'方法学未标注',warn:true,plain:'契约之外的方法学值，按未知处理。'};
     var w=P.window||{};
-    lead='<div class="quiet">现在看的是 <b style="color:var(--color-text-primary)">'+esc(P.label||perfModeLabel(P.mode))
-      +(P.mode==='paper'?' · '+esc(perfSubsetLabel(P.subset)):'')+'</b>'
-      +'，方法学 <b style="color:'+(mth.warn?'var(--color-feedback-warning-text)':'var(--color-text-primary)')+'">'+esc(mth.label)+'</b>'
+    lead='<div class="quiet">现在看的是 <b style="color:var(--color-text-primary)">'+esc(perfWhat())+'</b>'
+      +' · <b style="color:'+(mth.warn?'var(--color-feedback-warning-text)':'var(--color-text-primary)')+'">'+esc(mth.label)+'</b>'
       +'<span class="gloss gm" title="'+esc(mth.plain)+'">ⓘ</span>'
       +(mth.warn?'——它不能当完整账户表现读':'')+'。'
       +(e&&e.err?' <span style="color:var(--color-feedback-warning-text)">本次刷新失败（'+esc(e.err)+'），下面是这一模式上一次取到的数据。</span>':'')
@@ -9491,10 +9476,11 @@ function perfModeCard(e){
     +'<span class="card-note">这一页只报数字；它管不管用的判定在 <a href="#/evidence" class="pf-link" onclick="goto(\'evidence\');return false">证据页 ›</a></span></div>'
     +lead
     +'<div class="pf-modes">'+modes+'</div>'
-    +subs
+    +'<div class="card-note">'+(PERF.mode==='backtest'?'用过去的数据重新跑，查看历史表现。':archived?'正在查阅旧记录，包含事后补跑。点「按期运行」返回当时运行的表现。':'当时生成策略，之后跟着行情记录买卖和收益。使用模拟资金记账。')+'</div>'
     +meta
     +sample
     +disc
+    +subs
     +'</div>';
 }
 
